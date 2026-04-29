@@ -4,8 +4,10 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useStudioAccess } from '../hooks/useStudioAccess'
 import {
+  createProject,
   deleteSoftware,
   getSoftware,
+  listProjects,
   me,
   testGitConnection,
   updateSoftware,
@@ -43,6 +45,24 @@ export function SoftwarePage(): ReactElement {
     queryKey: ['softwareOne', sid, sfid],
     queryFn: () => getSoftware(sid, sfid),
     enabled: Boolean(sid && sfid && access.isMember),
+  })
+
+  const projectsQ = useQuery({
+    queryKey: ['projects', sfid],
+    queryFn: () => listProjects(sfid),
+    enabled: Boolean(sfid && access.isMember),
+  })
+
+  const [projectName, setProjectName] = useState('')
+  const createProjectMut = useMutation({
+    mutationFn: () =>
+      createProject(sfid, {
+        name: projectName.trim() || 'Untitled project',
+      }),
+    onSuccess: () => {
+      setProjectName('')
+      void qc.invalidateQueries({ queryKey: ['projects', sfid] })
+    },
   })
 
   const [name, setName] = useState('')
@@ -163,6 +183,53 @@ export function SoftwarePage(): ReactElement {
           <>
             <h1 className="text-2xl font-semibold">{swQ.data.name}</h1>
             {msg && <p className="mt-2 text-sm text-emerald-400">{msg}</p>}
+
+            <section className="mt-8 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
+              <h2 className="text-sm font-medium text-zinc-300">Projects</h2>
+              {access.isMember && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <input
+                    className="min-w-[12rem] flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
+                    placeholder="Project name"
+                    value={projectName}
+                    onChange={(e) => setProjectName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        createProjectMut.mutate()
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    disabled={createProjectMut.isPending}
+                    className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+                    onClick={() => createProjectMut.mutate()}
+                  >
+                    New project
+                  </button>
+                </div>
+              )}
+              {projectsQ.isPending && (
+                <p className="mt-3 text-sm text-zinc-500">Loading projects…</p>
+              )}
+              {projectsQ.data && projectsQ.data.length === 0 && (
+                <p className="mt-3 text-sm text-zinc-500">No projects yet.</p>
+              )}
+              {projectsQ.data && projectsQ.data.length > 0 && (
+                <ul className="mt-4 space-y-2">
+                  {projectsQ.data.map((p) => (
+                    <li key={p.id}>
+                      <Link
+                        to={`/studios/${sid}/software/${sfid}/projects/${p.id}`}
+                        className="text-violet-400 hover:underline"
+                      >
+                        {p.name}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
 
             <div className="mt-8 space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
               <h2 className="text-sm font-medium text-zinc-300">Details</h2>

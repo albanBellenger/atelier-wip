@@ -20,7 +20,7 @@ from app.exceptions import ApiError
 
 limiter = Limiter(key_func=get_remote_address)
 
-from app.routers import admin, auth, software, studios
+from app.routers import admin, auth, projects, sections, software, studios
 
 
 def configure_logging() -> None:
@@ -99,6 +99,8 @@ def create_app() -> FastAPI:
     app.include_router(admin.router)
     app.include_router(studios.router)
     app.include_router(software.router)
+    app.include_router(projects.router)
+    app.include_router(sections.router)
     return app
 
 

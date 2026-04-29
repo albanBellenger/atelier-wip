@@ -14,11 +14,25 @@ async function request<T>(
     init.body = JSON.stringify(body)
   }
   const response = await fetch(base() + path, init)
-  const data: unknown = await response.json()
+  const text = await response.text()
   if (!response.ok) {
-    throw data as AuthErrorBody
+    let err: AuthErrorBody = {
+      detail: response.statusText,
+      code: 'HTTP_ERROR',
+    }
+    if (text) {
+      try {
+        err = JSON.parse(text) as AuthErrorBody
+      } catch {
+        err = { detail: text, code: 'HTTP_ERROR' }
+      }
+    }
+    throw err
   }
-  return data as T
+  if (!text) {
+    return undefined as T
+  }
+  return JSON.parse(text) as T
 }
 
 export interface AuthErrorBody {
@@ -248,5 +262,145 @@ export async function testGitConnection(
   return request<GitTestResult>(
     'POST',
     `/studios/${studioId}/software/${softwareId}/git/test`,
+  )
+}
+
+// --- Projects (under /software/{software_id}) ---
+
+export interface ProjectCreateBody {
+  name: string
+  description?: string | null
+}
+
+export interface ProjectUpdateBody {
+  name?: string | null
+  description?: string | null
+}
+
+export interface SectionSummary {
+  id: string
+  title: string
+  slug: string
+  order: number
+}
+
+export interface Project {
+  id: string
+  software_id: string
+  name: string
+  description: string | null
+  created_at: string
+  updated_at: string
+  sections: SectionSummary[] | null
+}
+
+export async function listProjects(softwareId: string): Promise<Project[]> {
+  return request<Project[]>('GET', `/software/${softwareId}/projects`)
+}
+
+export async function createProject(
+  softwareId: string,
+  body: ProjectCreateBody,
+): Promise<Project> {
+  return request<Project>('POST', `/software/${softwareId}/projects`, body)
+}
+
+export async function getProject(
+  softwareId: string,
+  projectId: string,
+): Promise<Project> {
+  return request<Project>(
+    'GET',
+    `/software/${softwareId}/projects/${projectId}`,
+  )
+}
+
+export async function updateProject(
+  softwareId: string,
+  projectId: string,
+  body: ProjectUpdateBody,
+): Promise<Project> {
+  return request<Project>(
+    'PATCH',
+    `/software/${softwareId}/projects/${projectId}`,
+    body,
+  )
+}
+
+export async function deleteProject(
+  softwareId: string,
+  projectId: string,
+): Promise<void> {
+  return request<void>(
+    'DELETE',
+    `/software/${softwareId}/projects/${projectId}`,
+  )
+}
+
+// --- Sections (under /projects/{project_id}) ---
+
+export interface SectionCreateBody {
+  title: string
+  slug?: string | null
+}
+
+export interface SectionUpdateBody {
+  title?: string | null
+  slug?: string | null
+  order?: number | null
+  content?: string | null
+}
+
+export interface Section {
+  id: string
+  project_id: string
+  title: string
+  slug: string
+  order: number
+  content: string
+  created_at: string
+  updated_at: string
+}
+
+export async function listSections(projectId: string): Promise<Section[]> {
+  return request<Section[]>('GET', `/projects/${projectId}/sections`)
+}
+
+export async function createSection(
+  projectId: string,
+  body: SectionCreateBody,
+): Promise<Section> {
+  return request<Section>('POST', `/projects/${projectId}/sections`, body)
+}
+
+export async function getSection(
+  projectId: string,
+  sectionId: string,
+): Promise<Section> {
+  return request<Section>(
+    'GET',
+    `/projects/${projectId}/sections/${sectionId}`,
+  )
+}
+
+export async function updateSection(
+  projectId: string,
+  sectionId: string,
+  body: SectionUpdateBody,
+): Promise<Section> {
+  return request<Section>(
+    'PATCH',
+    `/projects/${projectId}/sections/${sectionId}`,
+    body,
+  )
+}
+
+export async function deleteSection(
+  projectId: string,
+  sectionId: string,
+): Promise<void> {
+  return request<void>(
+    'DELETE',
+    `/projects/${projectId}/sections/${sectionId}`,
   )
 }

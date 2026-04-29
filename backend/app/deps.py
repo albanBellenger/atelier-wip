@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.exceptions import ApiError
-from app.models import Studio, StudioMember, User
+from app.models import Project, Software, Studio, StudioMember, User
 from app.services.auth_service import AuthService
 
 
@@ -54,10 +54,10 @@ class StudioAccess:
         )
 
 
-async def get_studio_access(
+async def resolve_studio_access(
+    session: AsyncSession,
+    user: User,
     studio_id: UUID,
-    session: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
 ) -> StudioAccess:
     studio = await session.get(Studio, studio_id)
     if studio is None:
@@ -82,6 +82,144 @@ async def get_studio_access(
     return StudioAccess(
         user=user, studio_id=studio_id, membership=membership
     )
+
+
+async def get_studio_access(
+    studio_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> StudioAccess:
+    return await resolve_studio_access(session, user, studio_id)
+
+
+@dataclass(frozen=True)
+class SoftwareAccess:
+    """Software row + studio membership for its studio."""
+
+    studio_access: StudioAccess
+    software: Software
+
+
+@dataclass(frozen=True)
+class ProjectAccess:
+    """Project + parent software + studio membership."""
+
+    studio_access: StudioAccess
+    software: Software
+    project: Project
+
+
+async def get_software_access(
+    software_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> SoftwareAccess:
+    software = await session.get(Software, software_id)
+    if software is None:
+        raise ApiError(
+            status_code=404,
+            code="NOT_FOUND",
+            message="Software not found",
+        )
+    studio_access = await resolve_studio_access(
+        session, user, software.studio_id
+    )
+    return SoftwareAccess(studio_access=studio_access, software=software)
+
+
+async def require_software_admin(
+    sa: SoftwareAccess = Depends(get_software_access),
+) -> SoftwareAccess:
+    if not sa.studio_access.is_studio_admin:
+        raise ApiError(
+            status_code=403,
+            code="FORBIDDEN",
+            message="Studio admin access required",
+        )
+    return sa
+
+
+async def get_project_access_nested(
+    software_id: UUID,
+    project_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ProjectAccess:
+    software = await session.get(Software, software_id)
+    if software is None:
+        raise ApiError(
+            status_code=404,
+            code="NOT_FOUND",
+            message="Software not found",
+        )
+    project = await session.get(Project, project_id)
+    if project is None or project.software_id != software_id:
+        raise ApiError(
+            status_code=404,
+            code="NOT_FOUND",
+            message="Project not found",
+        )
+    studio_access = await resolve_studio_access(
+        session, user, software.studio_id
+    )
+    return ProjectAccess(
+        studio_access=studio_access,
+        software=software,
+        project=project,
+    )
+
+
+async def get_project_access(
+    project_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ProjectAccess:
+    project = await session.get(Project, project_id)
+    if project is None:
+        raise ApiError(
+            status_code=404,
+            code="NOT_FOUND",
+            message="Project not found",
+        )
+    software = await session.get(Software, project.software_id)
+    if software is None:
+        raise ApiError(
+            status_code=404,
+            code="NOT_FOUND",
+            message="Project not found",
+        )
+    studio_access = await resolve_studio_access(
+        session, user, software.studio_id
+    )
+    return ProjectAccess(
+        studio_access=studio_access,
+        software=software,
+        project=project,
+    )
+
+
+async def require_project_studio_admin(
+    pa: ProjectAccess = Depends(get_project_access),
+) -> ProjectAccess:
+    if not pa.studio_access.is_studio_admin:
+        raise ApiError(
+            status_code=403,
+            code="FORBIDDEN",
+            message="Studio admin access required",
+        )
+    return pa
+
+
+async def require_project_studio_admin_nested(
+    pa: ProjectAccess = Depends(get_project_access_nested),
+) -> ProjectAccess:
+    if not pa.studio_access.is_studio_admin:
+        raise ApiError(
+            status_code=403,
+            code="FORBIDDEN",
+            message="Studio admin access required",
+        )
+    return pa
 
 
 async def require_studio_admin(
