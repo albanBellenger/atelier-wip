@@ -88,5 +88,10 @@ async def test_projects_crud_and_rbac(client: AsyncClient) -> None:
 
     token_out = await _register(client, sfx, "outsider")
     client.cookies.set("atelier_token", token_out)
+    post_out = await client.post(
+        f"/software/{software_id}/projects",
+        json={"name": "Intruder", "description": None},
+    )
+    assert post_out.status_code == 403
     gf = await client.get(f"/software/{software_id}/projects")
     assert gf.status_code == 403

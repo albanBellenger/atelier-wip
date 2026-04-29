@@ -53,6 +53,12 @@ class StudioAccess:
             self.membership is not None and self.membership.role == "studio_admin"
         )
 
+    @property
+    def is_studio_member(self) -> bool:
+        if self.user.is_tool_admin:
+            return True
+        return self.membership is not None
+
 
 async def resolve_studio_access(
     session: AsyncSession,
@@ -135,6 +141,18 @@ async def require_software_admin(
             status_code=403,
             code="FORBIDDEN",
             message="Studio admin access required",
+        )
+    return sa
+
+
+async def require_software_member(
+    sa: SoftwareAccess = Depends(get_software_access),
+) -> SoftwareAccess:
+    if not sa.studio_access.is_studio_member:
+        raise ApiError(
+            status_code=403,
+            code="FORBIDDEN",
+            message="Studio membership required",
         )
     return sa
 
