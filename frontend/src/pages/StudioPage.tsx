@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { FormEvent, ReactElement } from 'react'
+import type { ReactElement } from 'react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useStudioAccess } from '../hooks/useStudioAccess'
@@ -124,14 +124,11 @@ export function StudioPage(): ReactElement {
   })
 
   const createSwMut = useMutation({
-    mutationFn: () =>
-      createSoftware(sid, {
-        name: swName.trim(),
-      }),
-    onSuccess: (sw) => {
-      setSwName('')
+    mutationFn: () => createSoftware(sid, { name: swName.trim() }),
+    onSuccess: (newSw) => {
       void qc.invalidateQueries({ queryKey: ['software', sid] })
-      navigate(`/studios/${sid}/software/${sw.id}`)
+      void navigate(`/studios/${sid}/software/${newSw.id}`)
+      setSwName('')
     },
   })
 
@@ -199,13 +196,7 @@ export function StudioPage(): ReactElement {
             {msg && <p className="mt-2 text-sm text-emerald-400">{msg}</p>}
 
             {access.isStudioAdmin && (
-              <form
-                className="mt-6 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5"
-                onSubmit={(e: FormEvent) => {
-                  e.preventDefault()
-                  updateMut.mutate()
-                }}
-              >
+              <div className="mt-6 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
                 <h2 className="mb-3 text-sm font-medium text-zinc-300">
                   Studio settings
                 </h2>
@@ -222,12 +213,13 @@ export function StudioPage(): ReactElement {
                   onChange={(e) => setStudioDesc(e.target.value)}
                 />
                 <button
-                  type="submit"
+                  type="button"
                   className="mt-3 rounded-lg bg-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-600"
+                  onClick={() => updateMut.mutate()}
                 >
                   Save
                 </button>
-              </form>
+              </div>
             )}
 
             <section className="mt-10">
@@ -245,14 +237,7 @@ export function StudioPage(): ReactElement {
                 ))}
               </ul>
               {access.isStudioAdmin && (
-                <form
-                  className="mt-4 flex flex-wrap gap-2"
-                  onSubmit={(e: FormEvent) => {
-                    e.preventDefault()
-                    if (!swName.trim()) return
-                    createSwMut.mutate()
-                  }}
-                >
+                <div className="mt-4 flex flex-wrap gap-2">
                   <input
                     className="flex-1 min-w-[12rem] rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
                     placeholder="New software name"
@@ -260,12 +245,16 @@ export function StudioPage(): ReactElement {
                     onChange={(e) => setSwName(e.target.value)}
                   />
                   <button
-                    type="submit"
+                    type="button"
                     className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500"
+                    onClick={() => {
+                      if (!swName.trim()) return
+                      createSwMut.mutate()
+                    }}
                   >
                     Add software
                   </button>
-                </form>
+                </div>
               )}
             </section>
 
@@ -318,16 +307,9 @@ export function StudioPage(): ReactElement {
               </ul>
 
               {access.isStudioAdmin && (
-                <form
-                  className="mt-4 flex flex-wrap gap-2"
-                  onSubmit={(e: FormEvent) => {
-                    e.preventDefault()
-                    addMut.mutate()
-                  }}
-                >
+                <div className="mt-4 flex flex-wrap gap-2">
                   <input
                     type="email"
-                    required
                     className="flex-1 min-w-[12rem] rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
                     placeholder="user@example.com"
                     value={memberEmail}
@@ -346,12 +328,16 @@ export function StudioPage(): ReactElement {
                     <option value="studio_admin">Admin</option>
                   </select>
                   <button
-                    type="submit"
+                    type="button"
                     className="rounded-lg bg-zinc-700 px-4 py-2 text-sm hover:bg-zinc-600"
+                    onClick={() => {
+                      if (!memberEmail.trim()) return
+                      addMut.mutate()
+                    }}
                   >
                     Invite
                   </button>
-                </form>
+                </div>
               )}
             </section>
 
