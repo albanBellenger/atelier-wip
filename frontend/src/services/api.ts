@@ -404,3 +404,14 @@ export async function deleteSection(
     `/projects/${projectId}/sections/${sectionId}`,
   )
 }
+
+export async function reorderSections(
+  projectId: string,
+  sectionIds: string[],
+): Promise<Section[]> {
+  return request<Section[]>(
+    'POST',
+    `/projects/${projectId}/sections/reorder`,
+    { section_ids: sectionIds },
+  )
+}

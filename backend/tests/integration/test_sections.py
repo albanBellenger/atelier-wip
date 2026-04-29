@@ -90,6 +90,23 @@ async def test_sections_order_slug_and_rbac(client: AsyncClient) -> None:
     titles_order = [(x["title"], x["order"]) for x in lst2.json()]
     assert titles_order == [("Hello World", 1), ("Hello World", 5)]
 
+    sid2 = s2.json()["id"]
+    reorder_ok = await client.post(
+        f"/projects/{project_id}/sections/reorder",
+        json={"section_ids": [sid2, sid1]},
+    )
+    assert reorder_ok.status_code == 200, reorder_ok.text
+    reorder_body = reorder_ok.json()
+    assert len(reorder_body) == 2
+    by_order = sorted(reorder_body, key=lambda x: x["order"])
+    assert [x["id"] for x in by_order] == [sid2, sid1]
+    assert [x["order"] for x in by_order] == [0, 1]
+
+    lst_after_reorder = await client.get(f"/projects/{project_id}/sections")
+    assert lst_after_reorder.status_code == 200
+    by_o2 = sorted(lst_after_reorder.json(), key=lambda x: x["order"])
+    assert [x["id"] for x in by_o2] == [sid2, sid1]
+
     client.cookies.set("atelier_token", token_member)
     ok_read = await client.get(f"/projects/{project_id}/sections/{sid1}")
     assert ok_read.status_code == 200
@@ -112,3 +129,9 @@ async def test_sections_order_slug_and_rbac(client: AsyncClient) -> None:
         json={"order": 0},
     )
     assert patch_order_forbidden.status_code == 403
+
+    reorder_forbidden = await client.post(
+        f"/projects/{project_id}/sections/reorder",
+        json={"section_ids": [sid1, sid2]},
+    )
+    assert reorder_forbidden.status_code == 403

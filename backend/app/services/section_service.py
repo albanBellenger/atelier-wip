@@ -75,6 +75,40 @@ class SectionService:
         rows = (await self.db.execute(q)).scalars().all()
         return [self._to_response(s) for s in rows]
 
+    async def reorder_sections(
+        self,
+        project_id: uuid.UUID,
+        section_ids: list[uuid.UUID],
+    ) -> list[SectionResponse]:
+        q = select(Section).where(Section.project_id == project_id)
+        rows = (await self.db.execute(q)).scalars().all()
+        existing: dict[uuid.UUID, Section] = {s.id: s for s in rows}
+        if len(section_ids) != len(existing):
+            raise ApiError(
+                status_code=400,
+                code="BAD_REQUEST",
+                message="section_ids must list every section in the project exactly once",
+            )
+        seen: set[uuid.UUID] = set()
+        for sid in section_ids:
+            if sid in seen:
+                raise ApiError(
+                    status_code=400,
+                    code="BAD_REQUEST",
+                    message="section_ids must not contain duplicates",
+                )
+            seen.add(sid)
+            if sid not in existing:
+                raise ApiError(
+                    status_code=400,
+                    code="BAD_REQUEST",
+                    message="Unknown section id for this project",
+                )
+        for i, sid in enumerate(section_ids):
+            existing[sid].order = i
+        await self.db.commit()
+        return await self.list_sections(project_id)
+
     async def create_section(
         self, project_id: uuid.UUID, body: SectionCreate
     ) -> SectionResponse:

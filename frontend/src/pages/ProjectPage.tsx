@@ -10,8 +10,8 @@ import {
   getProject,
   getSection,
   me,
+  reorderSections,
   updateProject,
-  updateSection,
 } from '../services/api'
 import type { SectionSummary } from '../services/api'
 
@@ -104,13 +104,8 @@ export function ProjectPage(): ReactElement {
   })
 
   const reorderMut = useMutation({
-    mutationFn: async (orderedIds: string[]) => {
-      await Promise.all(
-        orderedIds.map((id, index) =>
-          updateSection(pid, id, { order: index }),
-        ),
-      )
-    },
+    mutationFn: (orderedIds: string[]) =>
+      reorderSections(pid, orderedIds),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['project', sfid, pid] })
     },

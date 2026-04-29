@@ -7,7 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import get_project_access, require_project_studio_admin
-from app.schemas.section import SectionCreate, SectionResponse, SectionUpdate
+from app.schemas.section import (
+    SectionCreate,
+    SectionReorder,
+    SectionResponse,
+    SectionUpdate,
+)
 from app.services.section_service import SectionService
 
 router = APIRouter(prefix="/projects/{project_id}/sections", tags=["sections"])
@@ -30,6 +35,18 @@ async def create_section(
     _pa=Depends(require_project_studio_admin),
 ) -> SectionResponse:
     return await SectionService(session).create_section(project_id, body)
+
+
+@router.post("/reorder", response_model=list[SectionResponse])
+async def reorder_sections(
+    project_id: UUID,
+    body: SectionReorder,
+    session: AsyncSession = Depends(get_db),
+    _pa=Depends(require_project_studio_admin),
+) -> list[SectionResponse]:
+    return await SectionService(session).reorder_sections(
+        project_id, body.section_ids
+    )
 
 
 @router.get("/{section_id}", response_model=SectionResponse)

@@ -18,6 +18,10 @@ class SectionUpdate(BaseModel):
     content: str | None = None
 
 
+class SectionReorder(BaseModel):
+    section_ids: list[UUID]
+
+
 class SectionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
