@@ -15,6 +15,8 @@ import * as Y from 'yjs'
 import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next'
 import type { YjsCollab } from '../../hooks/useYjsCollab'
 
+const SAVE_SAVED_RESET_MS = 2500
+
 const editorTheme = EditorView.theme(
   {
     '&': {
@@ -101,14 +103,143 @@ export function SplitEditor({ collab }: SplitEditorProps): ReactElement {
     }
   }, [collab, undoManager])
 
+  const [saveState, setSaveState] = useState<'saving' | 'saved'>('saved')
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const [isLg, setIsLg] = useState(false)
+  const [leftPct, setLeftPct] = useState(50)
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)')
+    const apply = (): void => {
+      setIsLg(mq.matches)
+    }
+    apply()
+    mq.addEventListener('change', apply)
+    return () => {
+      mq.removeEventListener('change', apply)
+    }
+  }, [])
+
+  const collabYtext = collab?.ytext
+
+  useEffect(() => {
+    const p = collab?.provider as
+      | {
+          on?: (e: 'sync', fn: (s: boolean) => void) => void
+          off?: (e: 'sync', fn: (s: boolean) => void) => void
+        }
+      | undefined
+    if (p == null || typeof p.on !== 'function') {
+      return
+    }
+    const onSync = (isSynced: boolean): void => {
+      if (isSynced) {
+        setSaveState('saved')
+      }
+    }
+    p.on('sync', onSync)
+    return () => p.off?.('sync', onSync)
+  }, [collab])
+
+  useEffect(() => {
+    if (!collabYtext) {
+      return
+    }
+    const onY = (): void => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current)
+        saveTimerRef.current = null
+      }
+      setSaveState('saving')
+      saveTimerRef.current = setTimeout(() => {
+        setSaveState('saved')
+        saveTimerRef.current = null
+      }, SAVE_SAVED_RESET_MS)
+    }
+    collabYtext.observe(onY)
+    return () => {
+      collabYtext.unobserve(onY)
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current)
+        saveTimerRef.current = null
+      }
+    }
+  }, [collabYtext])
+
+  function onDividerMouseDown(
+    e: import('react').MouseEvent<HTMLButtonElement>,
+  ): void {
+    e.preventDefault()
+    if (!isLg) {
+      return
+    }
+    const container = (e.currentTarget as HTMLButtonElement).parentElement
+    if (!container) {
+      return
+    }
+    const startX = e.clientX
+    const startPct = leftPct
+    const totalW = container.getBoundingClientRect().width
+    if (totalW < 1) {
+      return
+    }
+
+    const onMove = (me: globalThis.MouseEvent): void => {
+      const dPct = ((me.clientX - startX) / totalW) * 100
+      setLeftPct(Math.min(88, Math.max(12, startPct + dPct)))
+    }
+    const onUp = (): void => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
+  const editorPaneStyle: import('react').CSSProperties = isLg
+    ? { width: `${leftPct}%`, minWidth: 0, flexShrink: 0 }
+    : { minWidth: 0 }
+
+  const previewPaneStyle: import('react').CSSProperties = isLg
+    ? { width: `${100 - leftPct}%`, minWidth: 0, flexShrink: 0 }
+    : { minWidth: 0 }
+
   return (
-    <div className="grid min-h-[480px] grid-cols-1 gap-0 border border-zinc-800 lg:grid-cols-2">
+    <div>
+      <p
+        className="mb-2 text-xs text-zinc-500"
+        role="status"
+        aria-live="polite"
+      >
+        {saveState === 'saving' ? 'Saving…' : 'Saved'}
+      </p>
       <div
-        ref={parentRef}
-        className="min-h-[280px] border-b border-zinc-800 lg:min-h-0 lg:border-b-0 lg:border-r"
-      />
-      <div className="max-h-[60vh] overflow-auto bg-zinc-950 p-4 text-sm text-zinc-300 lg:max-h-none [&_a]:text-violet-400 [&_code]:rounded [&_code]:bg-zinc-800 [&_code]:px-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-zinc-900">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{preview}</ReactMarkdown>
+        className={
+          isLg
+            ? 'flex min-h-[480px] flex-row overflow-hidden border border-zinc-800'
+            : 'flex min-h-[480px] flex-col overflow-hidden border border-zinc-800'
+        }
+      >
+        <div
+          ref={parentRef}
+          style={editorPaneStyle}
+          className="min-h-[280px] border-b border-zinc-800 bg-zinc-950 lg:min-h-0 lg:border-b-0 lg:border-r lg:border-zinc-800"
+        />
+        {isLg && (
+          <button
+            type="button"
+            className="w-1.5 flex-shrink-0 cursor-col-resize border-0 bg-zinc-800 p-0 hover:bg-violet-900/40"
+            aria-label="Resize panes"
+            onMouseDown={onDividerMouseDown}
+          />
+        )}
+        <div
+          style={isLg ? previewPaneStyle : undefined}
+          className="min-h-0 max-h-[60vh] min-w-0 flex-1 overflow-auto bg-zinc-950 p-4 text-sm text-zinc-300 lg:max-h-none [&_a]:text-violet-400 [&_code]:rounded [&_code]:bg-zinc-800 [&_code]:px-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-zinc-900"
+        >
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{preview}</ReactMarkdown>
+        </div>
       </div>
     </div>
   )

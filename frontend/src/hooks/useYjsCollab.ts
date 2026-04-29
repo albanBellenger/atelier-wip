@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import {
+  atelierTokenForWebSocket,
   collabRoomName,
   collabWebSocketBaseUrl,
   YDOC_TEXT_FIELD,
@@ -55,9 +56,16 @@ export function useYjsCollab(
 
     const roomName = collabRoomName(projectId, sectionId)
     const ydoc = new Y.Doc()
-    const provider = new WebsocketProvider(baseUrl, roomName, ydoc, {
-      connect: true,
-    })
+    const token = atelierTokenForWebSocket()
+    const provider = new WebsocketProvider(
+      baseUrl,
+      roomName,
+      ydoc,
+      {
+        connect: true,
+        ...(token ? { params: { token } } : {}),
+      },
+    )
     const ytext = ydoc.getText(YDOC_TEXT_FIELD)
     const { awareness } = provider
 
@@ -70,14 +78,20 @@ export function useYjsCollab(
     }
   }, [projectId, sectionId, baseUrl])
 
+  const userName = user?.name
+  const userColor = user?.color
+  const userColorLight = user?.colorLight
+
   useEffect(() => {
-    if (!bundle || !user) return
+    if (!bundle || userName == null || !userColor || !userColorLight) {
+      return
+    }
     bundle.awareness.setLocalStateField('user', {
-      name: user.name,
-      color: user.color,
-      colorLight: user.colorLight,
+      name: userName,
+      color: userColor,
+      colorLight: userColorLight,
     })
-  }, [bundle, user])
+  }, [bundle, userName, userColor, userColorLight])
 
   return bundle
 }

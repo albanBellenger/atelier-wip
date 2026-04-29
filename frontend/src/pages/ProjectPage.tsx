@@ -234,7 +234,12 @@ export function ProjectPage(): ReactElement {
                   sections={sectionsSorted}
                   selectedSectionId={selectedSectionId}
                   isStudioAdmin={access.isStudioAdmin}
-                  onSelect={(id) => setSelectedSectionId(id)}
+                  onSelect={(id) => {
+                    setSelectedSectionId(id)
+                    void navigate(
+                      `/studios/${sid}/software/${sfid}/projects/${pid}/sections/${id}`,
+                    )
+                  }}
                   onDelete={(id) => deleteSectionMut.mutate(id)}
                   onReorder={(orderedIds) => reorderMut.mutate(orderedIds)}
                   newTitle={newTitle}
