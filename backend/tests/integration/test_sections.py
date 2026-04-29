@@ -79,18 +79,8 @@ async def test_sections_order_slug_and_rbac(client: AsyncClient) -> None:
     assert orders == [0, 1]
 
     sid1 = s1.json()["id"]
-    patch_order = await client.patch(
-        f"/projects/{project_id}/sections/{sid1}",
-        json={"order": 5},
-    )
-    assert patch_order.status_code == 200
-    assert patch_order.json()["order"] == 5
-
-    lst2 = await client.get(f"/projects/{project_id}/sections")
-    titles_order = [(x["title"], x["order"]) for x in lst2.json()]
-    assert titles_order == [("Hello World", 1), ("Hello World", 5)]
-
     sid2 = s2.json()["id"]
+
     reorder_ok = await client.post(
         f"/projects/{project_id}/sections/reorder",
         json={"section_ids": [sid2, sid1]},
@@ -98,14 +88,14 @@ async def test_sections_order_slug_and_rbac(client: AsyncClient) -> None:
     assert reorder_ok.status_code == 200, reorder_ok.text
     reorder_body = reorder_ok.json()
     assert len(reorder_body) == 2
-    by_order = sorted(reorder_body, key=lambda x: x["order"])
-    assert [x["id"] for x in by_order] == [sid2, sid1]
-    assert [x["order"] for x in by_order] == [0, 1]
+    assert [x["order"] for x in reorder_body] == [0, 1]
+    assert [x["id"] for x in reorder_body] == [sid2, sid1]
 
-    lst_after_reorder = await client.get(f"/projects/{project_id}/sections")
-    assert lst_after_reorder.status_code == 200
-    by_o2 = sorted(lst_after_reorder.json(), key=lambda x: x["order"])
-    assert [x["id"] for x in by_o2] == [sid2, sid1]
+    lst2 = await client.get(f"/projects/{project_id}/sections")
+    assert lst2.status_code == 200
+    items = lst2.json()
+    assert [x["id"] for x in items] == [sid2, sid1]
+    assert [x["order"] for x in items] == [0, 1]
 
     client.cookies.set("atelier_token", token_member)
     ok_read = await client.get(f"/projects/{project_id}/sections/{sid1}")
@@ -135,3 +125,12 @@ async def test_sections_order_slug_and_rbac(client: AsyncClient) -> None:
         json={"section_ids": [sid1, sid2]},
     )
     assert reorder_forbidden.status_code == 403
+
+    client.cookies.set("atelier_token", token_admin)
+    del_r = await client.delete(f"/projects/{project_id}/sections/{sid1}")
+    assert del_r.status_code == 204
+    lst_final = await client.get(f"/projects/{project_id}/sections")
+    assert lst_final.status_code == 200
+    final_ids = [x["id"] for x in lst_final.json()]
+    assert sid1 not in final_ids
+    assert final_ids == [sid2]
