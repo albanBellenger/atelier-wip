@@ -33,5 +33,14 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
+# Playwright (reports, artifacts, MCP browser snapshots)
+.playwright-mcp/
+playwright-report/
+test-results/
+blob-report/
+.playwright/
+e2e/playwright-report/
+e2e/test-results/
+
 # Alembic (keep versions; ignore local overrides if any)
 # backend/alembic/versions/*.pyc

@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Dev / local: Vite with HMR. Use compose bind mount + node_modules volume (see docker-compose.yml).
 FROM node:20-alpine
 
@@ -7,7 +8,8 @@ COPY docker-entrypoint.dev.sh /usr/local/bin/docker-entrypoint.dev.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.dev.sh
 
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
 
 COPY . .
 
