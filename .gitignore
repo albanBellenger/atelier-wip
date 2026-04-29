@@ -17,6 +17,7 @@ build/
 htmlcov/
 coverage.xml
 *.cover
+backend/.pytest_cache/
 
 # Node
 node_modules/
