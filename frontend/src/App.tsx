@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthPage } from './pages/AuthPage'
 import { HomePage } from './pages/HomePage'
 import { ProjectPage } from './pages/ProjectPage'
+import { SectionPage } from './pages/SectionPage'
 import { SoftwarePage } from './pages/SoftwarePage'
 import { StudioPage } from './pages/StudioPage'
 import { StudiosListPage } from './pages/StudiosListPage'
@@ -18,6 +19,10 @@ function App(): ReactElement {
         <Route
           path="/studios/:studioId/software/:softwareId"
           element={<SoftwarePage />}
+        />
+        <Route
+          path="/studios/:studioId/software/:softwareId/projects/:projectId/sections/:sectionId"
+          element={<SectionPage />}
         />
         <Route
           path="/studios/:studioId/software/:softwareId/projects/:projectId"

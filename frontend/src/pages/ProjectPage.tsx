@@ -253,7 +253,12 @@ export function ProjectPage(): ReactElement {
                 {selectedSectionId && sectionDetailQ.data && (
                   <div>
                     <h2 className="text-lg font-medium">
-                      {sectionDetailQ.data.title}
+                      <Link
+                        to={`/studios/${sid}/software/${sfid}/projects/${pid}/sections/${selectedSectionId}`}
+                        className="text-violet-400 hover:text-violet-300 hover:underline"
+                      >
+                        {sectionDetailQ.data.title}
+                      </Link>
                     </h2>
                     <p className="mt-1 font-mono text-xs text-zinc-500">
                       {sectionDetailQ.data.slug}
