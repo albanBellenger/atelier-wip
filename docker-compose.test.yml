@@ -1,0 +1,12 @@
+# Test database only — used by pytest integration tests (port 5433 avoids clash with dev db).
+services:
+  db_test:
+    image: pgvector/pgvector:pg16
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: atelier_test
+      POSTGRES_PASSWORD: atelier_test
+      POSTGRES_DB: atelier_test
+    tmpfs:
+      - /var/lib/postgresql/data

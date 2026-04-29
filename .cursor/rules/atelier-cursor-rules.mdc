@@ -1,0 +1,206 @@
+# Atelier — Cursor Project Rules
+# Place this file at: .cursor/rules/atelier.mdc
+
+---
+description: Core rules for all Atelier development. Apply to every file in the monorepo.
+globs: ["**/*"]
+alwaysApply: true
+---
+
+## Project Identity
+
+You are working on **Atelier** — a collaborative software specification platform.
+The canonical architecture is defined in:
+- `docs/atelier-functional-requirements.md`
+- `docs/atelier-technical-architecture.md`
+
+Always consult these documents before making structural decisions. Never invent architecture that contradicts them.
+
+---
+
+## Hierarchy (never break this)
+
+```
+Studio → Software → Project → Work Order
+```
+
+Every database query, API route, and service method must respect this hierarchy.
+Cross-studio data access is only permitted when a `cross_studio_access` record exists and is approved.
+
+---
+
+## TDD is mandatory
+
+**Write tests before writing implementation code.** This is not optional.
+
+1. Write a failing unit test for the service logic
+2. Write a failing integration test for the API route
+3. Implement until tests pass
+4. Write the frontend component test (MSW mocks the API)
+5. Implement the component until tests pass
+6. Write the E2E test
+7. If the feature involves LLM calls, write a `@pytest.mark.llm` test
+
+Never submit a PR with implementation code that has no corresponding test. Never delete a test to make a build pass.
+
+---
+
+## Backend Rules (Python / FastAPI)
+
+### General
+- Python 3.12+. Use type hints everywhere — no untyped functions.
+- Use `async`/`await` throughout. No synchronous database or HTTP calls in route handlers.
+- All route handlers must be thin — business logic lives in service classes, never in routers.
+- Use Pydantic v2 for all request/response schemas. Never return raw SQLAlchemy models from endpoints.
+- Never use `SELECT *` — always select explicit columns.
+- All database access goes through the SQLAlchemy async session dependency (`get_db`). Never import the engine directly in a service.
+
+### RBAC — never skip this
+Every protected route must use the appropriate FastAPI dependency:
+- `get_current_user` — for any authenticated route
+- `require_studio_member(studio_id)` — for member-level actions
+- `require_studio_admin(studio_id)` — for admin-level actions
+- `require_tool_admin` — for tool-wide admin actions
+- `get_cross_studio_access(user, software_id)` — for cross-studio viewers/editors
+
+Never perform manual role checks inside route handlers — always use the dependency chain.
+
+### LLM calls — always use LLMService
+Never call an LLM provider SDK directly in a route or service.
+Always go through `LLMService`:
+- `chat_stream()` — for user-facing conversational calls (threads, chat)
+- `chat_structured()` — for structured generation (Work Orders, conflict analysis, drift detection)
+
+`chat_structured()` must always receive an `output_schema` dict. Never parse free-text LLM output with regex or string splitting.
+
+### File downloads — never use presigned URLs
+All artifact downloads must stream through FastAPI. Never generate presigned MinIO URLs for client consumption. MinIO is strictly private.
+
+### Error handling
+Use the global exception handler pattern. Never return raw Python exceptions or unstructured error strings. All errors return:
+```json
+{ "detail": "...", "code": "ERROR_CODE" }
+```
+
+### Migrations
+Every schema change requires a new Alembic migration. Never modify an existing migration. Never edit the database schema directly.
+
+---
+
+## Database Rules
+
+### Yjs state — always dual-write
+When persisting section content after a Yjs update, you must write both:
+- `sections.yjs_state` — the full binary `Uint8Array` Yjs document state (CRDT source of truth)
+- `sections.content` — plain text Markdown extracted from the Yjs doc (RAG source of truth)
+
+Never save only plain text — this destroys the Yjs CRDT vector clocks and breaks offline merge.
+
+### Vector indexes — always HNSW
+All pgvector indexes must use HNSW, not IVFFlat:
+```sql
+-- CORRECT
+CREATE INDEX ON artifact_chunks USING hnsw (embedding vector_cosine_ops);
+
+-- WRONG — never use this
+CREATE INDEX ON artifact_chunks USING ivfflat (embedding vector_cosine_ops);
+```
+
+IVFFlat requires centroid training on pre-existing data. HNSW works correctly from an empty table.
+
+### Cascades
+All foreign keys to `studios`, `software`, `projects`, and `sections` must have `ON DELETE CASCADE`. Never leave orphaned records.
+
+---
+
+## Frontend Rules (React / TypeScript)
+
+### General
+- TypeScript strict mode. No `any` types. No `// @ts-ignore`.
+- All API calls go through `src/services/api.ts`. Never call `fetch` directly in a component.
+- All WebSocket connections go through `src/services/ws.ts`.
+- Use React Query for all server state. No `useEffect` + `fetch` patterns.
+
+### RBAC on the frontend
+Use the `useStudioAccess()` hook to determine permissions. Never hardcode role checks in components.
+Unauthorised UI elements must be **absent from the DOM**, not just hidden with CSS.
+
+```tsx
+// CORRECT
+const { canEdit } = useStudioAccess()
+return canEdit ? <EditButton /> : null
+
+// WRONG
+return <EditButton style={{ display: canEdit ? 'block' : 'none' }} />
+```
+
+### Component structure
+- One component per file. No barrel exports that re-export everything.
+- Co-locate component tests: `ComponentName.tsx` + `ComponentName.test.tsx` in the same directory.
+- No inline styles. Use Tailwind utility classes only.
+
+### Streaming LLM responses
+Use the `useStream()` hook for all SSE-streamed LLM responses. Never manually manage `EventSource` in a component.
+
+---
+
+## Testing Rules
+
+### Backend
+- `tests/unit/` — pure logic, no DB, no HTTP, no real LLM. All external deps mocked.
+- `tests/integration/` — real test DB (rolled-back transaction per test), real FastAPI via httpx.
+- `tests/llm/` — real LLM API calls, tagged `@pytest.mark.llm`. Run nightly only.
+
+Every integration test must cover:
+- Happy path (correct role + valid data)
+- Missing auth → 401
+- Wrong role → 403
+- Cross-studio violation → 403
+- Invalid input → 422
+- Not found → 404
+
+### LLM test assertions — never assert string lengths
+Because structured output is enforced via `chat_structured()`, tests must validate:
+- Key presence (`assert isinstance(wo["title"], str) and wo["title"]`)
+- Semantic relevance (keyword matching against known fixture content)
+- Status/type correctness
+
+Never assert `len(string) < N` — this is a flap risk.
+
+### Frontend
+- All component tests use MSW to intercept HTTP calls. Never mock `fetch` directly.
+- Test user interactions with `@testing-library/user-event`, not `fireEvent`.
+- Every component test must include a "viewer cannot perform privileged action" case.
+
+### E2E (Playwright)
+- Always use the Page Object Model (`e2e/pages/`). Never write raw `page.click()` calls in spec files.
+- E2E tests use a deterministic LLM proxy — never hit the real LLM API in E2E.
+- Always clean up test state in `afterEach` or use isolated test DB snapshots.
+
+---
+
+## Git / GitLab Rules
+
+- Branch naming: `feat/`, `fix/`, `chore/`, `test/` prefixes
+- Every commit must pass: `pytest tests/unit tests/integration` + `npm test`
+- Never commit directly to `main`. Always use a merge request.
+- E2E runs automatically on MR merge to `main` via GitLab CI.
+- LLM regression tests run nightly. Trigger manually with `[llm-test]` in commit message.
+- Coverage gate: backend line coverage must stay ≥ 90%. MR is blocked if it drops.
+
+---
+
+## What to never do
+
+- Never call an LLM provider SDK directly — always go through `LLMService`
+- Never generate presigned MinIO URLs for client downloads — always proxy through FastAPI
+- Never use `ivfflat` for pgvector indexes — always use `hnsw`
+- Never save only plain text to `sections.content` on a Yjs debounce — always dual-write with `yjs_state`
+- Never skip the RBAC dependency chain — never check roles manually in route handlers
+- Never return a raw SQLAlchemy model from an API endpoint — always use a Pydantic schema
+- Never write implementation code without a failing test first
+- Never delete a test to make a build pass
+- Never modify an existing Alembic migration — always create a new one
+- Never use `any` in TypeScript
+- Never call `fetch` directly in a React component — always use `src/services/api.ts`
+- Never hide unauthorised UI elements with CSS — remove them from the DOM entirely

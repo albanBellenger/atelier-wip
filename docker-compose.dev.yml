@@ -1,0 +1,9 @@
+# Override for local development: run backend and frontend on the host with hot reload.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db storage
+# Then: cd backend && uvicorn app.main:app --reload
+#       cd frontend && npm run dev
+
+services:
+  backend:
+    profiles:
+      - donotstart
