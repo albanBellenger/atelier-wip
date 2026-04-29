@@ -12,6 +12,7 @@ from uuid import UUID
 from pycrdt import Doc, Text, TransactionEvent
 from pycrdt.websocket import WebsocketServer, YRoom, exception_logger
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from starlette.websockets import WebSocketDisconnect
 
 from app.models import Section
 
@@ -57,6 +58,47 @@ def init_collab_server(
     return _collab_server
 
 
+def _is_client_disconnect(exc: BaseException) -> bool:
+    """True when the peer closed the socket or the transport died mid-flight."""
+    if isinstance(exc, WebSocketDisconnect):
+        return True
+    name = type(exc).__name__
+    mod = type(exc).__module__ or ""
+    if name == "ClientDisconnected":
+        return True
+    if name in ("ConnectionClosedError", "ConnectionClosed"):
+        return True
+    if mod.startswith("websockets.") and "Closed" in name:
+        return True
+    if isinstance(exc, OSError) and getattr(exc, "errno", None) in (
+        104,
+        10054,
+        10053,
+    ):
+        return True
+    if isinstance(exc, asyncio.exceptions.IncompleteReadError):
+        return True
+    if isinstance(exc, BaseExceptionGroup):
+        return bool(exc.exceptions) and all(
+            _is_client_disconnect(e) for e in exc.exceptions
+        )
+    cause = exc.__cause__
+    if isinstance(cause, BaseException):
+        return _is_client_disconnect(cause)
+    ctx = exc.__context__
+    if isinstance(ctx, BaseException) and ctx is not cause:
+        return _is_client_disconnect(ctx)
+    return False
+
+
+def collab_exception_handler(exc: Exception, lg: logging.Logger) -> bool:
+    """Downgrade expected disconnect noise from pycrdt TaskGroups."""
+    if _is_client_disconnect(exc):
+        lg.debug("collab: websocket ended (%s)", type(exc).__name__)
+        return True
+    return exception_logger(exc, lg)
+
+
 class AtelierWebsocketServer(WebsocketServer):
     """Per-section YRoom with hydrated Doc and debounced dual-write to sections."""
 
@@ -72,7 +114,7 @@ class AtelierWebsocketServer(WebsocketServer):
             d = float(os.environ.get("ATELIER_COLLAB_DEBOUNCE_SECONDS", "2"))
         super().__init__(
             auto_clean_rooms=True,
-            exception_handler=exception_logger,
+            exception_handler=collab_exception_handler,
             log=log,
             **kwargs,
         )
@@ -115,7 +157,20 @@ class AtelierWebsocketServer(WebsocketServer):
                 raise ValueError("Section not found for collab room")
             doc = Doc()
             if sec.yjs_state:
-                doc.apply_update(bytes(sec.yjs_state))
+                raw = bytes(sec.yjs_state)
+                try:
+                    doc.apply_update(raw)
+                except ValueError:
+                    log.warning(
+                        "collab: invalid yjs_state for section %s (wrong encoding or "
+                        "legacy get_state blob); falling back to plain content",
+                        section_id,
+                    )
+                    doc = Doc()
+                    if sec.content:
+                        doc[YDOC_TEXT_FIELD] = Text(sec.content)
+                    sec.yjs_state = None
+                    await session.commit()
             elif sec.content:
                 doc[YDOC_TEXT_FIELD] = Text(sec.content)
             return doc
@@ -151,7 +206,10 @@ class AtelierWebsocketServer(WebsocketServer):
         section_id: UUID,
         doc: Doc,
     ) -> None:
-        state = doc.get_state()
+        # Must store Yjs *update* bytes (full snapshot from empty), not get_state().
+        # apply_update() cannot load get_state() output — it expects mergeable updates
+        # compatible with JS Yjs encodeStateAsUpdate / Y.Sync.
+        snapshot = doc.get_update()
         text = ""
         if YDOC_TEXT_FIELD in doc:
             text = str(doc[YDOC_TEXT_FIELD])
@@ -159,6 +217,6 @@ class AtelierWebsocketServer(WebsocketServer):
             sec = await session.get(Section, section_id)
             if sec is None or sec.project_id != project_id:
                 return
-            sec.yjs_state = state
+            sec.yjs_state = snapshot
             sec.content = text
             await session.commit()
