@@ -5,7 +5,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.exceptions import AppError
+from app.exceptions import ApiError
 from app.models import User
 from app.services.auth_service import AuthService
 
@@ -17,11 +17,19 @@ async def get_current_user(
     creds: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> User:
     if creds is None or not creds.credentials:
-        raise AppError(code="UNAUTHORIZED", message="Not authenticated", status_code=401)
-    return await AuthService.get_user_from_token(session, creds.credentials)
+        raise ApiError(
+            status_code=401,
+            code="UNAUTHORIZED",
+            message="Not authenticated",
+        )
+    return await AuthService(session).get_user_from_token(creds.credentials)
 
 
 async def require_tool_admin(user: User = Depends(get_current_user)) -> User:
     if not user.is_tool_admin:
-        raise AppError(code="FORBIDDEN", message="Tool admin access required", status_code=403)
+        raise ApiError(
+            status_code=403,
+            code="FORBIDDEN",
+            message="Tool admin access required",
+        )
     return user

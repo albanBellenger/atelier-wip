@@ -1,41 +1,49 @@
+import { useMutation } from '@tanstack/react-query'
+import type { FormEvent, ReactElement } from 'react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { login, register, setToken, type AuthErrorBody } from '../services/api'
 
 type Mode = 'login' | 'register'
 
-export function AuthPage() {
+export function AuthPage(): ReactElement {
   const navigate = useNavigate()
   const [mode, setMode] = useState<Mode>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setError(null)
-    setLoading(true)
-    try {
-      if (mode === 'register') {
-        const res = await register({
-          email,
-          password,
-          display_name: displayName,
+  const mutation = useMutation({
+    mutationFn: async (vars: {
+      mode: Mode
+      email: string
+      password: string
+      displayName: string
+    }) => {
+      if (vars.mode === 'register') {
+        return register({
+          email: vars.email,
+          password: vars.password,
+          display_name: vars.displayName,
         })
-        setToken(res.access_token)
-      } else {
-        const res = await login({ email, password })
-        setToken(res.access_token)
       }
+      return login({ email: vars.email, password: vars.password })
+    },
+    onSuccess: (res) => {
+      setToken(res.access_token)
       navigate('/')
-    } catch (err: unknown) {
+    },
+    onError: (err: unknown) => {
       const b = err as AuthErrorBody
       setError(typeof b.detail === 'string' ? b.detail : 'Request failed')
-    } finally {
-      setLoading(false)
-    }
+    },
+  })
+
+  function onSubmit(e: FormEvent): void {
+    e.preventDefault()
+    setError(null)
+    mutation.mutate({ mode, email, password, displayName })
   }
 
   return (
@@ -127,7 +135,7 @@ export function AuthPage() {
               id="password"
               type="password"
               required
-              minLength={8}
+              minLength={mode === 'register' ? 8 : 1}
               autoComplete={
                 mode === 'login' ? 'current-password' : 'new-password'
               }
@@ -145,10 +153,14 @@ export function AuthPage() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={mutation.isPending}
             className="w-full rounded-lg bg-violet-600 py-2.5 text-sm font-medium text-white transition hover:bg-violet-500 disabled:opacity-50"
           >
-            {loading ? 'Please wait…' : mode === 'login' ? 'Log in' : 'Create account'}
+            {mutation.isPending
+              ? 'Please wait…'
+              : mode === 'login'
+                ? 'Log in'
+                : 'Create account'}
           </button>
         </form>
       </div>

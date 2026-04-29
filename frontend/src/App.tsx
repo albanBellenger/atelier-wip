@@ -1,9 +1,10 @@
+import type { ReactElement } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthPage } from './pages/AuthPage'
 import { HomePage } from './pages/HomePage'
 import { getToken } from './services/api'
 
-function App() {
+function App(): ReactElement {
   return (
     <BrowserRouter>
       <Routes>

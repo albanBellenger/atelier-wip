@@ -14,38 +14,52 @@ export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY)
 }
 
-export type AuthErrorBody = { detail: string; code: string }
+export interface AuthErrorBody {
+  detail: string | unknown
+  code: string
+}
 
-export async function register(body: {
+export interface TokenResponse {
+  access_token: string
+  token_type?: string
+}
+
+export interface RegisterRequestBody {
   email: string
   password: string
   display_name: string
-}): Promise<{ access_token: string }> {
+}
+
+export interface LoginRequestBody {
+  email: string
+  password: string
+}
+
+export async function register(
+  body: RegisterRequestBody,
+): Promise<TokenResponse> {
   const r = await fetch(`${base()}/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  const data = await r.json()
+  const data: unknown = await r.json()
   if (!r.ok) throw data as AuthErrorBody
-  return data
+  return data as TokenResponse
 }
 
-export async function login(body: {
-  email: string
-  password: string
-}): Promise<{ access_token: string }> {
+export async function login(body: LoginRequestBody): Promise<TokenResponse> {
   const r = await fetch(`${base()}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  const data = await r.json()
+  const data: unknown = await r.json()
   if (!r.ok) throw data as AuthErrorBody
-  return data
+  return data as TokenResponse
 }
 
-export type MeResponse = {
+export interface MeResponse {
   user: {
     id: string
     email: string
@@ -59,7 +73,7 @@ export async function me(token: string): Promise<MeResponse> {
   const r = await fetch(`${base()}/auth/me`, {
     headers: { Authorization: `Bearer ${token}` },
   })
-  const data = await r.json()
+  const data: unknown = await r.json()
   if (!r.ok) throw data as AuthErrorBody
-  return data
+  return data as MeResponse
 }

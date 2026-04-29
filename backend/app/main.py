@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 
 from app.config import get_settings
 from app.database import async_session_factory, engine
-from app.exceptions import AppError
+from app.exceptions import ApiError
 from app.models import AdminConfig
 from app.routers import admin, auth
 from sqlalchemy import select
@@ -50,11 +50,12 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    @app.exception_handler(AppError)
-    async def app_error_handler(_request: Request, exc: AppError) -> JSONResponse:
+    @app.exception_handler(ApiError)
+    async def api_error_handler(_request: Request, exc: ApiError) -> JSONResponse:
+        detail_msg = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
         return JSONResponse(
             status_code=exc.status_code,
-            content={"detail": exc.message, "code": exc.code},
+            content={"detail": detail_msg, "code": exc.error_code},
         )
 
     @app.exception_handler(RequestValidationError)

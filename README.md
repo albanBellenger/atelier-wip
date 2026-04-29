@@ -45,7 +45,7 @@ npm install
 npm run dev
 ```
 
-App: http://127.0.0.1:5173 — proxied to the API for `/auth`, `/admin`, `/health`.
+App: http://127.0.0.1:5173 — proxied to the API for `/auth`, `/admin`, `/health`. Server state for the home screen uses **TanStack React Query** (`@tanstack/react-query`); all REST calls stay in `src/services/api.ts` per project rules.
 
 Optional: `frontend/.env` with `VITE_API_BASE_URL=https://your-api-host` for production builds.
 

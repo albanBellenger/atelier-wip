@@ -1,32 +1,39 @@
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import type { ReactElement } from 'react'
+import { useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { clearToken, getToken, me } from '../services/api'
 import type { MeResponse } from '../services/api'
 
-export function HomePage() {
+export function HomePage(): ReactElement {
   const navigate = useNavigate()
-  const [profile, setProfile] = useState<MeResponse | null>(null)
+  const token = getToken()
+
+  const { data: profile, isPending, isError } = useQuery<MeResponse>({
+    queryKey: ['auth', 'me', token],
+    queryFn: () => me(token as string),
+    enabled: Boolean(token),
+  })
 
   useEffect(() => {
-    const t = getToken()
-    if (!t) {
+    if (!token) {
       navigate('/auth', { replace: true })
-      return
     }
-    me(t)
-      .then(setProfile)
-      .catch(() => {
-        clearToken()
-        navigate('/auth', { replace: true })
-      })
-  }, [navigate])
+  }, [token, navigate])
 
-  function logout() {
+  useEffect(() => {
+    if (isError) {
+      clearToken()
+      navigate('/auth', { replace: true })
+    }
+  }, [isError, navigate])
+
+  function logout(): void {
     clearToken()
     navigate('/auth', { replace: true })
   }
 
-  if (!profile) {
+  if (!token || isPending || !profile) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-zinc-950 text-zinc-400">
         Loading…

@@ -1,11 +1,11 @@
-"""Structured API errors (handled in main.py)."""
+"""Structured API errors — subclass FastAPI HTTPException per backend rules."""
+
+from fastapi import HTTPException
 
 
-class AppError(Exception):
-    """Application error with stable machine-readable `code` for clients."""
+class ApiError(HTTPException):
+    """Machine-readable error code + message; handler returns flat `{detail, code}` JSON."""
 
-    def __init__(self, *, code: str, message: str, status_code: int = 400) -> None:
-        self.code = code
-        self.message = message
-        self.status_code = status_code
-        super().__init__(message)
+    def __init__(self, *, status_code: int, code: str, message: str) -> None:
+        self.error_code = code
+        super().__init__(status_code=status_code, detail=message)

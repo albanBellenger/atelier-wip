@@ -2,18 +2,22 @@
 
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
-class RegisterRequest(BaseModel):
+class UserCreate(BaseModel):
+    """POST /auth/register"""
+
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     display_name: str = Field(min_length=1, max_length=255)
 
 
-class LoginRequest(BaseModel):
+class UserLogin(BaseModel):
+    """POST /auth/login"""
+
     email: EmailStr
-    password: str
+    password: str = Field(min_length=1)
 
 
 class TokenResponse(BaseModel):
@@ -22,15 +26,17 @@ class TokenResponse(BaseModel):
 
 
 class UserPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     email: str
     display_name: str
     is_tool_admin: bool
 
-    model_config = {"from_attributes": True}
-
 
 class StudioMembershipPublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     studio_id: UUID
     studio_name: str
     role: str
@@ -41,7 +47,9 @@ class MeResponse(BaseModel):
     studios: list[StudioMembershipPublic]
 
 
-class AdminConfigPublic(BaseModel):
+class AdminConfigResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     llm_provider: str | None
     llm_model: str | None
     llm_api_key_set: bool

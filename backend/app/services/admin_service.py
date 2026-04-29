@@ -1,10 +1,9 @@
 """Tool admin configuration for LLM and embedding providers."""
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import AdminConfig
-from app.schemas.auth import AdminConfigPublic, AdminConfigUpdate
+from app.schemas.auth import AdminConfigResponse, AdminConfigUpdate
 
 
 def _mask(s: str | None) -> bool:
@@ -14,19 +13,20 @@ def _mask(s: str | None) -> bool:
 class AdminService:
     """CRUD for singleton `admin_config` row (id=1)."""
 
-    @staticmethod
-    async def get_or_create(session: AsyncSession) -> AdminConfig:
-        row = await session.get(AdminConfig, 1)
+    def __init__(self, db: AsyncSession) -> None:
+        self.db = db
+
+    async def get_or_create(self) -> AdminConfig:
+        row = await self.db.get(AdminConfig, 1)
         if row is None:
             row = AdminConfig(id=1)
-            session.add(row)
-            await session.flush()
+            self.db.add(row)
+            await self.db.flush()
         return row
 
-    @staticmethod
-    async def get_public(session: AsyncSession) -> AdminConfigPublic:
-        row = await AdminService.get_or_create(session)
-        return AdminConfigPublic(
+    async def get_public(self) -> AdminConfigResponse:
+        row = await self.get_or_create()
+        return AdminConfigResponse(
             llm_provider=row.llm_provider,
             llm_model=row.llm_model,
             llm_api_key_set=_mask(row.llm_api_key),
@@ -35,11 +35,10 @@ class AdminService:
             embedding_api_key_set=_mask(row.embedding_api_key),
         )
 
-    @staticmethod
-    async def update(session: AsyncSession, body: AdminConfigUpdate) -> AdminConfigPublic:
-        row = await AdminService.get_or_create(session)
+    async def update(self, body: AdminConfigUpdate) -> AdminConfigResponse:
+        row = await self.get_or_create()
         data = body.model_dump(exclude_unset=True)
         for key, value in data.items():
             setattr(row, key, value)
-        await session.flush()
-        return await AdminService.get_public(session)
+        await self.db.flush()
+        return await self.get_public()
