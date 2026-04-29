@@ -22,7 +22,7 @@ async def _register(client: AsyncClient, suffix: str, label: str) -> str:
 
 
 @pytest.mark.asyncio
-async def test_studio_software_rbac_and_git_test_mocked(
+async def test_studio_software_happy_path_and_rbac(
     client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
@@ -117,3 +117,85 @@ async def test_studio_software_rbac_and_git_test_mocked(
         f"/studios/{studio_id}/software/{sw_id}",
     )
     assert del_sw.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_get_studio_without_auth_returns_401(client: AsyncClient) -> None:
+    r = await client.get("/studios/00000000-0000-0000-0000-000000000000")
+    assert r.status_code == 401
+    assert r.json()["code"] == "UNAUTHORIZED"
+
+
+@pytest.mark.asyncio
+async def test_get_studio_not_found_returns_404(client: AsyncClient) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token = await _register(client, sfx, "user")
+    client.cookies.set("atelier_token", token)
+    r = await client.get(f"/studios/{uuid.uuid4()}")
+    assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_studio_name_empty_returns_422(client: AsyncClient) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token = await _register(client, sfx, "user")
+    client.cookies.set("atelier_token", token)
+    r = await client.post("/studios", json={"name": ""})
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_get_software_not_found_returns_404(client: AsyncClient) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token_admin = await _register(client, sfx, "admin")
+    client.cookies.set("atelier_token", token_admin)
+    studio = (await client.post("/studios", json={"name": f"S{sfx}"})).json()
+    r = await client.get(f"/studios/{studio['id']}/software/{uuid.uuid4()}")
+    assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_software_without_auth_returns_401(client: AsyncClient) -> None:
+    r = await client.post(
+        f"/studios/{uuid.uuid4()}/software",
+        json={"name": "Test"},
+    )
+    assert r.status_code == 401
+    assert r.json()["code"] == "UNAUTHORIZED"
+
+
+@pytest.mark.asyncio
+async def test_demote_last_admin_returns_400(client: AsyncClient) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token_admin = await _register(client, sfx, "admin")
+    client.cookies.set("atelier_token", token_admin)
+    studio = (await client.post("/studios", json={"name": f"S{sfx}"})).json()
+    studio_id = studio["id"]
+    me_r = await client.get("/auth/me")
+    admin_user_id = me_r.json()["user"]["id"]
+    r = await client.patch(
+        f"/studios/{studio_id}/members/{admin_user_id}",
+        json={"role": "studio_member"},
+    )
+    assert r.status_code == 400
+    assert r.json()["code"] == "LAST_ADMIN"
+
+
+@pytest.mark.asyncio
+async def test_delete_studio_cascades_software(client: AsyncClient) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token_admin = await _register(client, sfx, "admin")
+    client.cookies.set("atelier_token", token_admin)
+    studio = (await client.post("/studios", json={"name": f"S{sfx}"})).json()
+    studio_id = studio["id"]
+    sw = (
+        await client.post(
+            f"/studios/{studio_id}/software",
+            json={"name": "MySW"},
+        )
+    ).json()
+    sw_id = sw["id"]
+    del_r = await client.delete(f"/studios/{studio_id}")
+    assert del_r.status_code == 204
+    r = await client.get(f"/studios/{studio_id}/software/{sw_id}")
+    assert r.status_code in (403, 404)
