@@ -187,10 +187,10 @@ async def get_project_access_nested(
     )
 
 
-async def get_project_access(
+async def fetch_project_access(
+    session: AsyncSession,
+    user: User,
     project_id: UUID,
-    session: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
 ) -> ProjectAccess:
     project = await session.get(Project, project_id)
     if project is None:
@@ -214,6 +214,14 @@ async def get_project_access(
         software=software,
         project=project,
     )
+
+
+async def get_project_access(
+    project_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ProjectAccess:
+    return await fetch_project_access(session, user, project_id)
 
 
 async def require_project_studio_admin(

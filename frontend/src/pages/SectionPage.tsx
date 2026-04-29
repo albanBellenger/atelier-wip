@@ -1,11 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { SplitEditor } from '../components/editor/SplitEditor'
+import { colorsForUser, useYjsCollab } from '../hooks/useYjsCollab'
 import { useStudioAccess } from '../hooks/useStudioAccess'
 import { getSection, me } from '../services/api'
 
-/** Section deep-link; editor UI in Slice 4. */
+/** Section deep-link with collaborative Markdown editor. */
 export function SectionPage(): ReactElement {
   const { studioId, softwareId, projectId, sectionId } = useParams<{
     studioId: string
@@ -43,6 +45,22 @@ export function SectionPage(): ReactElement {
     enabled: Boolean(pid && secid && access.isMember),
   })
 
+  const collabUser = useMemo(() => {
+    if (!profile?.user) return null
+    const { color, colorLight } = colorsForUser(profile.user.id)
+    return {
+      name: profile.user.display_name,
+      color,
+      colorLight,
+    }
+  }, [profile?.user.display_name, profile?.user.id])
+
+  const collab = useYjsCollab(
+    sectionQ.data ? pid : undefined,
+    sectionQ.data ? secid : undefined,
+    collabUser,
+  )
+
   if (!sid || !sfid || !pid || !secid) {
     void navigate('/studios', { replace: true })
     return <div className="min-h-screen bg-zinc-950" />
@@ -71,7 +89,7 @@ export function SectionPage(): ReactElement {
 
   return (
     <div className="min-h-screen bg-zinc-950 px-4 py-10 text-zinc-100">
-      <div className="mx-auto max-w-3xl">
+      <div className="mx-auto max-w-7xl">
         <div className="mb-6 flex flex-wrap gap-4 text-sm">
           <Link
             to={projectHref}
@@ -94,12 +112,21 @@ export function SectionPage(): ReactElement {
           <p className="text-red-400">Could not load section.</p>
         )}
         {sectionQ.data && (
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-6">
-            <h1 className="text-2xl font-semibold">{sectionQ.data.title}</h1>
-            <p className="mt-2 font-mono text-sm text-zinc-500">
-              {sectionQ.data.slug}
-            </p>
-          </div>
+          <>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-6">
+              <h1 className="text-2xl font-semibold">{sectionQ.data.title}</h1>
+              <p className="mt-2 font-mono text-sm text-zinc-500">
+                {sectionQ.data.slug}
+              </p>
+            </div>
+            <div className="mt-6">
+              {!collab ? (
+                <p className="text-zinc-500">Connecting editor…</p>
+              ) : (
+                <SplitEditor collab={collab} />
+              )}
+            </div>
+          </>
         )}
       </div>
     </div>

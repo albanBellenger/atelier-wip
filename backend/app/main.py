@@ -2,6 +2,7 @@
 
 import logging
 import os
+from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI, Request, status
@@ -14,13 +15,23 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIASGIMiddleware  # pure ASGI; BaseHTTP SlowAPIMiddleware breaks async DB in same loop
 from slowapi.util import get_remote_address
 
+from app.collab.server import init_collab_server
 from app.config import get_settings
-from app.database import engine
+from app.database import async_session_factory, engine
 from app.exceptions import ApiError
 
 limiter = Limiter(key_func=get_remote_address)
 
-from app.routers import admin, auth, projects, sections, software, studios
+from app.routers import admin, auth, collab, projects, sections, software, studios
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    srv = init_collab_server(async_session_factory)
+    async with srv:
+        yield
+    if not os.environ.get("PYTEST_VERSION"):
+        await engine.dispose()
 
 
 def configure_logging() -> None:
@@ -51,18 +62,10 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Atelier API",
         version="0.1.0",
+        lifespan=lifespan,
     )
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-    @app.on_event("shutdown")
-    async def _dispose_engine() -> None:
-        # Under pytest, ASGI shutdown can interleave with the test DB connection
-        # teardown; skip disposing the process-global engine (pool is not used for
-        # requests when get_db is overridden).
-        if os.environ.get("PYTEST_VERSION"):
-            return
-        await engine.dispose()
 
     app.add_middleware(SlowAPIASGIMiddleware)
     app.add_middleware(
@@ -101,6 +104,7 @@ def create_app() -> FastAPI:
     app.include_router(software.router)
     app.include_router(projects.router)
     app.include_router(sections.router)
+    app.include_router(collab.router)
     return app
 
 

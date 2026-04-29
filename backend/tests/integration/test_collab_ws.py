@@ -1,0 +1,80 @@
+"""Slice 4: collaborative section WebSocket (Yjs / pycrdt-websocket)."""
+
+import os
+import uuid
+
+import pytest
+from fastapi.testclient import TestClient
+from httpx import AsyncClient
+
+from app.main import app
+
+
+async def _register(client: AsyncClient, suffix: str, label: str) -> str:
+    r = await client.post(
+        "/auth/register",
+        json={
+            "email": f"{label}-{suffix}@example.com",
+            "password": "securepass123",
+            "display_name": label,
+        },
+    )
+    assert r.status_code == 200, r.text
+    token = r.cookies.get("atelier_token")
+    assert token
+    return token
+
+
+async def _studio_project_section(client: AsyncClient, sfx: str) -> tuple[str, str, str, str, str]:
+    """Returns (token, studio_id, software_id, project_id, section_id)."""
+    token = await _register(client, sfx, "owner")
+    client.cookies.set("atelier_token", token)
+    cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
+    assert cr.status_code == 200
+    studio_id = cr.json()["id"]
+    sw = await client.post(
+        f"/studios/{studio_id}/software",
+        json={"name": "SW", "description": None},
+    )
+    assert sw.status_code == 200
+    software_id = sw.json()["id"]
+    pr = await client.post(
+        f"/software/{software_id}/projects",
+        json={"name": "P1", "description": None},
+    )
+    assert pr.status_code == 200
+    project_id = pr.json()["id"]
+    sec = await client.post(
+        f"/projects/{project_id}/sections",
+        json={"title": "Intro", "slug": None},
+    )
+    assert sec.status_code == 200
+    section_id = sec.json()["id"]
+    return token, studio_id, software_id, project_id, section_id
+
+
+@pytest.mark.asyncio
+async def test_collab_websocket_requires_auth(client: AsyncClient) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    _, _, _, project_id, section_id = await _studio_project_section(client, sfx)
+
+    with TestClient(app) as tc:
+        with pytest.raises(Exception):
+            with tc.websocket_connect(
+                f"/ws/projects/{project_id}/sections/{section_id}/collab",
+            ):
+                pass
+
+
+@pytest.mark.asyncio
+async def test_collab_websocket_sync_handshake(client: AsyncClient) -> None:
+    os.environ["ATELIER_COLLAB_DEBOUNCE_SECONDS"] = "0.05"
+    sfx = uuid.uuid4().hex[:8]
+    token, _, _, project_id, section_id = await _studio_project_section(client, sfx)
+
+    with TestClient(app) as tc:
+        tc.cookies.set("atelier_token", token)
+        path = f"/ws/projects/{project_id}/sections/{section_id}/collab"
+        with tc.websocket_connect(path) as ws:
+            first = ws.receive_bytes()
+            assert len(first) >= 1
