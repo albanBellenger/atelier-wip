@@ -97,57 +97,26 @@ export interface Studio {
 }
 
 export async function listStudios(): Promise<Studio[]> {
-  const r = await fetch(`${base()}/studios`, { credentials: 'include' })
-  const data: unknown = await r.json()
-  if (!r.ok) throw data as AuthErrorBody
-  return data as Studio[]
+  return request<Studio[]>('GET', '/studios')
 }
 
 export async function createStudio(body: StudioCreateBody): Promise<Studio> {
-  const r = await fetch(`${base()}/studios`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    credentials: 'include',
-  })
-  const data: unknown = await r.json()
-  if (!r.ok) throw data as AuthErrorBody
-  return data as Studio
+  return request<Studio>('POST', '/studios', body)
 }
 
 export async function getStudio(studioId: string): Promise<Studio> {
-  const r = await fetch(`${base()}/studios/${studioId}`, {
-    credentials: 'include',
-  })
-  const data: unknown = await r.json()
-  if (!r.ok) throw data as AuthErrorBody
-  return data as Studio
+  return request<Studio>('GET', `/studios/${studioId}`)
 }
 
 export async function updateStudio(
   studioId: string,
   body: StudioUpdateBody,
 ): Promise<Studio> {
-  const r = await fetch(`${base()}/studios/${studioId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    credentials: 'include',
-  })
-  const data: unknown = await r.json()
-  if (!r.ok) throw data as AuthErrorBody
-  return data as Studio
+  return request<Studio>('PATCH', `/studios/${studioId}`, body)
 }
 
 export async function deleteStudio(studioId: string): Promise<void> {
-  const r = await fetch(`${base()}/studios/${studioId}`, {
-    method: 'DELETE',
-    credentials: 'include',
-  })
-  if (!r.ok) {
-    const data: unknown = await r.json()
-    throw data as AuthErrorBody
-  }
+  return request<void>('DELETE', `/studios/${studioId}`)
 }
 
 export interface StudioMember {
@@ -161,44 +130,24 @@ export interface StudioMember {
 export async function listMembers(
   studioId: string,
 ): Promise<StudioMember[]> {
-  const r = await fetch(`${base()}/studios/${studioId}/members`, {
-    credentials: 'include',
-  })
-  const data: unknown = await r.json()
-  if (!r.ok) throw data as AuthErrorBody
-  return data as StudioMember[]
+  return request<StudioMember[]>('GET', `/studios/${studioId}/members`)
 }
 
 export async function addMember(
   studioId: string,
   body: { email: string; role: 'studio_admin' | 'studio_member' },
 ): Promise<StudioMember> {
-  const r = await fetch(`${base()}/studios/${studioId}/members`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    credentials: 'include',
-  })
-  const data: unknown = await r.json()
-  if (!r.ok) throw data as AuthErrorBody
-  return data as StudioMember
+  return request<StudioMember>('POST', `/studios/${studioId}/members`, body)
 }
 
 export async function removeMember(
   studioId: string,
   userId: string,
 ): Promise<void> {
-  const r = await fetch(
-    `${base()}/studios/${studioId}/members/${userId}`,
-    {
-      method: 'DELETE',
-      credentials: 'include',
-    },
+  return request<void>(
+    'DELETE',
+    `/studios/${studioId}/members/${userId}`,
   )
-  if (!r.ok) {
-    const data: unknown = await r.json()
-    throw data as AuthErrorBody
-  }
 }
 
 export async function updateMemberRole(
@@ -206,18 +155,11 @@ export async function updateMemberRole(
   userId: string,
   role: 'studio_admin' | 'studio_member',
 ): Promise<StudioMember> {
-  const r = await fetch(
-    `${base()}/studios/${studioId}/members/${userId}`,
-    {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role }),
-      credentials: 'include',
-    },
+  return request<StudioMember>(
+    'PATCH',
+    `/studios/${studioId}/members/${userId}`,
+    { role },
   )
-  const data: unknown = await r.json()
-  if (!r.ok) throw data as AuthErrorBody
-  return data as StudioMember
 }
 
 // --- Software ---
@@ -252,40 +194,24 @@ export interface Software {
 }
 
 export async function listSoftware(studioId: string): Promise<Software[]> {
-  const r = await fetch(`${base()}/studios/${studioId}/software`, {
-    credentials: 'include',
-  })
-  const data: unknown = await r.json()
-  if (!r.ok) throw data as AuthErrorBody
-  return data as Software[]
+  return request<Software[]>('GET', `/studios/${studioId}/software`)
 }
 
 export async function createSoftware(
   studioId: string,
   body: SoftwareCreateBody,
 ): Promise<Software> {
-  const r = await fetch(`${base()}/studios/${studioId}/software`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    credentials: 'include',
-  })
-  const data: unknown = await r.json()
-  if (!r.ok) throw data as AuthErrorBody
-  return data as Software
+  return request<Software>('POST', `/studios/${studioId}/software`, body)
 }
 
 export async function getSoftware(
   studioId: string,
   softwareId: string,
 ): Promise<Software> {
-  const r = await fetch(
-    `${base()}/studios/${studioId}/software/${softwareId}`,
-    { credentials: 'include' },
+  return request<Software>(
+    'GET',
+    `/studios/${studioId}/software/${softwareId}`,
   )
-  const data: unknown = await r.json()
-  if (!r.ok) throw data as AuthErrorBody
-  return data as Software
 }
 
 export async function updateSoftware(
@@ -293,35 +219,21 @@ export async function updateSoftware(
   softwareId: string,
   body: SoftwareUpdateBody,
 ): Promise<Software> {
-  const r = await fetch(
-    `${base()}/studios/${studioId}/software/${softwareId}`,
-    {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      credentials: 'include',
-    },
+  return request<Software>(
+    'PATCH',
+    `/studios/${studioId}/software/${softwareId}`,
+    body,
   )
-  const data: unknown = await r.json()
-  if (!r.ok) throw data as AuthErrorBody
-  return data as Software
 }
 
 export async function deleteSoftware(
   studioId: string,
   softwareId: string,
 ): Promise<void> {
-  const r = await fetch(
-    `${base()}/studios/${studioId}/software/${softwareId}`,
-    {
-      method: 'DELETE',
-      credentials: 'include',
-    },
+  return request<void>(
+    'DELETE',
+    `/studios/${studioId}/software/${softwareId}`,
   )
-  if (!r.ok) {
-    const data: unknown = await r.json()
-    throw data as AuthErrorBody
-  }
 }
 
 export interface GitTestResult {
@@ -333,14 +245,8 @@ export async function testGitConnection(
   studioId: string,
   softwareId: string,
 ): Promise<GitTestResult> {
-  const r = await fetch(
-    `${base()}/studios/${studioId}/software/${softwareId}/git/test`,
-    {
-      method: 'POST',
-      credentials: 'include',
-    },
+  return request<GitTestResult>(
+    'POST',
+    `/studios/${studioId}/software/${softwareId}/git/test`,
   )
-  const data: unknown = await r.json()
-  if (!r.ok) throw data as AuthErrorBody
-  return data as GitTestResult
 }
