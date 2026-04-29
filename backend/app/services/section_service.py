@@ -113,6 +113,8 @@ class SectionService:
         project_id: uuid.UUID,
         section_id: uuid.UUID,
         body: SectionUpdate,
+        *,
+        is_studio_admin: bool,
     ) -> SectionResponse:
         s = await self.db.get(Section, section_id)
         if s is None or s.project_id != project_id:
@@ -123,6 +125,13 @@ class SectionService:
             )
         old_title = s.title
         data = body.model_dump(exclude_unset=True)
+        structure_keys = ("title", "slug", "order")
+        if any(k in data for k in structure_keys) and not is_studio_admin:
+            raise ApiError(
+                status_code=403,
+                code="FORBIDDEN",
+                message="Studio admin access required to modify section title, slug, or order",
+            )
         if "title" in data and data["title"] is not None:
             s.title = str(data["title"]).strip()
         if "slug" in data and data["slug"] is not None:

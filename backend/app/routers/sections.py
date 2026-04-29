@@ -48,10 +48,13 @@ async def update_section(
     section_id: UUID,
     body: SectionUpdate,
     session: AsyncSession = Depends(get_db),
-    _pa=Depends(require_project_studio_admin),
+    pa=Depends(get_project_access),
 ) -> SectionResponse:
     return await SectionService(session).update_section(
-        project_id, section_id, body
+        project_id,
+        section_id,
+        body,
+        is_studio_admin=pa.studio_access.is_studio_admin,
     )
 
 

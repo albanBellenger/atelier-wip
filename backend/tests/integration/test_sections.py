@@ -93,3 +93,22 @@ async def test_sections_order_slug_and_rbac(client: AsyncClient) -> None:
     client.cookies.set("atelier_token", token_member)
     ok_read = await client.get(f"/projects/{project_id}/sections/{sid1}")
     assert ok_read.status_code == 200
+
+    patch_content = await client.patch(
+        f"/projects/{project_id}/sections/{sid1}",
+        json={"content": "Member notes"},
+    )
+    assert patch_content.status_code == 200, patch_content.text
+    assert patch_content.json()["content"] == "Member notes"
+
+    patch_title_forbidden = await client.patch(
+        f"/projects/{project_id}/sections/{sid1}",
+        json={"title": "Hacked"},
+    )
+    assert patch_title_forbidden.status_code == 403
+
+    patch_order_forbidden = await client.patch(
+        f"/projects/{project_id}/sections/{sid1}",
+        json={"order": 0},
+    )
+    assert patch_order_forbidden.status_code == 403
