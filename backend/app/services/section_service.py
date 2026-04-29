@@ -25,16 +25,23 @@ class SectionService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    async def _next_unique_slug(self, project_id: uuid.UUID, base_slug: str) -> str:
+    async def _next_unique_slug(
+        self,
+        project_id: uuid.UUID,
+        base_slug: str,
+        *,
+        exclude_section_id: uuid.UUID | None = None,
+    ) -> str:
         candidate = base_slug
         n = 2
         while True:
-            r = await self.db.execute(
-                select(Section.id).where(
-                    Section.project_id == project_id,
-                    Section.slug == candidate,
-                )
+            q = select(Section.id).where(
+                Section.project_id == project_id,
+                Section.slug == candidate,
             )
+            if exclude_section_id is not None:
+                q = q.where(Section.id != exclude_section_id)
+            r = await self.db.execute(q)
             if r.scalar_one_or_none() is None:
                 return candidate
             candidate = f"{base_slug}-{n}"
@@ -114,18 +121,31 @@ class SectionService:
                 code="NOT_FOUND",
                 message="Section not found",
             )
+        old_title = s.title
         data = body.model_dump(exclude_unset=True)
         if "title" in data and data["title"] is not None:
             s.title = str(data["title"]).strip()
         if "slug" in data and data["slug"] is not None:
             raw = str(data["slug"]).strip().lower()
             if raw and raw != s.slug:
-                unique = await self._next_unique_slug(project_id, raw[:256])
+                unique = await self._next_unique_slug(
+                    project_id, raw[:256], exclude_section_id=section_id
+                )
                 s.slug = unique
         if "order" in data and data["order"] is not None:
             s.order = int(data["order"])
         if "content" in data:
             s.content = data["content"] if data["content"] is not None else ""
+        if (
+            "title" in data
+            and data["title"] is not None
+            and s.title != old_title
+            and "slug" not in data
+        ):
+            base = slugify_title(s.title)[:256]
+            s.slug = await self._next_unique_slug(
+                project_id, base, exclude_section_id=section_id
+            )
         await self.db.commit()
         await self.db.refresh(s)
         return self._to_response(s)
