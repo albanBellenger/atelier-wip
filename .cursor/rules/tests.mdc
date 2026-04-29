@@ -1,0 +1,56 @@
+# ─────────────────────────────────────────────────────────────
+# FILE: .cursor/rules/tests.mdc
+# ─────────────────────────────────────────────────────────────
+---
+description: Rules for all test files (pytest, Jest, Playwright)
+globs: ["**/tests/**/*.py", "frontend/src/**/*.test.{ts,tsx}", "e2e/**/*.spec.ts"]
+alwaysApply: false
+---
+
+## TDD order — never skip
+
+1. Write failing unit test
+2. Write failing integration test
+3. Implement until green
+4. Write component test (MSW mocks)
+5. Implement component until green
+6. Write E2E test
+7. Write `@pytest.mark.llm` test if LLM is involved
+
+## Integration test must-haves (every route)
+
+Every integration test file must cover:
+- ✅ Happy path (correct role + valid data)
+- ✅ Missing auth → 401
+- ✅ Wrong role → 403
+- ✅ Cross-studio violation → 403
+- ✅ Invalid input → 422
+- ✅ Not found → 404
+
+## LLM test assertions — never assert string length
+
+```python
+# CORRECT — key presence + type
+assert isinstance(wo["title"], str) and wo["title"]
+
+# WRONG — brittle, will flap
+assert len(wo["title"]) < 100
+```
+
+## Pytest fixtures
+
+- Use `db_session` (rolled-back transaction) — never commit in tests
+- Use factories from `backend/tests/factories.py` — never insert raw SQL
+- Mark slow LLM tests: `@pytest.mark.llm`
+
+## Frontend tests
+
+- Use MSW handlers — never mock `fetch` directly
+- Use `@testing-library/user-event` — never `fireEvent`
+- Every component test must include a viewer/unauthorised case
+
+## Playwright
+
+- Always use Page Object Model from `e2e/pages/`
+- Never write raw `page.click()` in spec files
+- LLM proxy is active in E2E — never hit real LLM API

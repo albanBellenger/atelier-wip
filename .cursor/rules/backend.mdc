@@ -1,0 +1,45 @@
+# ─────────────────────────────────────────────────────────────
+# FILE: .cursor/rules/backend.mdc
+# ─────────────────────────────────────────────────────────────
+---
+description: Rules for all FastAPI backend code
+globs: ["backend/**/*.py"]
+alwaysApply: false
+---
+
+## FastAPI conventions
+
+- Route handlers must be async and thin — no business logic in routers
+- All business logic lives in `backend/app/services/`
+- Return Pydantic response schemas — never return ORM models directly
+- Use `Depends()` for all RBAC checks — never check roles inline
+- Use `select(Column1, Column2)` — never `select(Model)` (no SELECT *)
+- All DB access via `AsyncSession` from `Depends(get_db)`
+- Raise `HTTPException` with structured body: `{"detail": "...", "code": "..."}`
+
+## Service class pattern
+
+```python
+class MyService:
+    def __init__(self, db: AsyncSession):
+        self.db = db
+
+    async def my_method(self, ...) -> MyResponseSchema:
+        ...
+```
+
+## LLM calls
+
+- Use `LLMService.chat_stream()` for conversational (thread/chat) calls
+- Use `LLMService.chat_structured(output_schema=...)` for structured generation
+- Never call provider SDKs (openai, anthropic) directly
+- Never parse LLM output with regex or string splitting
+
+## File downloads
+
+- Always `StreamingResponse` from MinIO — never presigned URLs
+
+## Yjs persistence
+
+- Always dual-write: `yjs_state` (BYTEA binary) + `content` (plain text)
+- Never write only `content` — this destroys CRDT state

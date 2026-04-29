@@ -1,0 +1,24 @@
+# ─────────────────────────────────────────────────────────────
+# FILE: .cursor/rules/schemas.mdc
+# ─────────────────────────────────────────────────────────────
+---
+description: Rules for Pydantic schema files
+globs: ["backend/app/schemas/**/*.py"]
+alwaysApply: false
+---
+
+## Pydantic v2 conventions
+
+- Use `model_config = ConfigDict(from_attributes=True)` on response schemas
+- Separate request and response schemas — never reuse the same class for both
+- Never expose `password_hash`, `git_token`, `yjs_state`, `llm_api_key`, or `embedding_api_key` in any response schema
+- Use `UUID` not `str` for ID fields
+- Use `datetime` not `str` for timestamp fields
+- Validate sensitive string fields: `min_length=1` on required text
+
+## Naming convention
+
+- `{Entity}Create` — POST request body
+- `{Entity}Update` — PUT/PATCH request body  
+- `{Entity}Response` — API response
+- `{Entity}ListResponse` — paginated list response

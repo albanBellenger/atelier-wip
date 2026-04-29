@@ -1,0 +1,115 @@
+﻿# .cursorignore
+# Tells Cursor what NOT to index or include in context.
+# Reducing the indexed surface = fewer irrelevant tokens on every request.
+
+# Python cache & build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python tooling caches (often large; low signal for codegen)
+.ruff_cache/
+.mypy_cache/
+.pytype/
+.tox/
+
+# Test outputs & coverage — agent doesn't need these in context
+.coverage
+coverage.xml
+htmlcov/
+coverage/
+.nyc_output/
+.pytest_cache/
+junit*.xml
+llm-test-results.xml
+playwright-report/
+test-results/
+
+# Frontend build output
+frontend/dist/
+frontend/build/
+frontend/out/
+frontend/.next/
+frontend/node_modules/
+frontend/coverage/
+
+# Frontend tooling caches (if created outside node_modules)
+frontend/.vite/
+frontend/.turbo/
+
+# TypeScript incremental metadata (large)
+*.tsbuildinfo
+
+# Large lock files — never useful in LLM context
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+poetry.lock
+Pipfile.lock
+uv.lock
+bun.lock
+Gemfile.lock
+
+# Docker & infrastructure — not needed for code generation
+docker-compose*.yml.bak
+.docker/
+
+# MinIO local data
+minio_data/
+postgres_data/
+
+# IDE & OS noise
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+*.swo
+.vscode/extensions.json
+
+# Git internals
+.git/
+
+# Logs
+*.log
+logs/
+
+# Environment files — never index these (secrets)
+.env
+.env.*
+!.env.example
+
+# Node modules (should already be gitignored but belt-and-suspenders)
+node_modules/
+
+# Playwright browsers (large binaries, useless as context)
+.playwright/
+
+# E2E workspace — mirror root ignores when populated
+e2e/node_modules/
+e2e/.cache/
+e2e/test-results/
+e2e/playwright-report/
+
+# Local DB files / dumps (large binary-ish)
+*.sqlite
+*.sqlite3
+
+# Jupyter checkpoints (if notebooks appear in repo)
+.ipynb_checkpoints/
+
+# Monorepo/tooling (if introduced later)
+.turbo/
+.parcel-cache/

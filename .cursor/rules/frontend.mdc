@@ -1,0 +1,44 @@
+# ─────────────────────────────────────────────────────────────
+# FILE: .cursor/rules/frontend.mdc
+# ─────────────────────────────────────────────────────────────
+---
+description: Rules for all React/TypeScript frontend code
+globs: ["frontend/src/**/*.{ts,tsx}"]
+alwaysApply: false
+---
+
+## TypeScript
+
+- Strict mode — no `any`, no `// @ts-ignore`
+- Explicit return types on all functions and hooks
+- Use `interface` for object shapes, `type` for unions/aliases
+
+## API and data fetching
+
+- All REST calls via `src/services/api.ts` — never raw `fetch`
+- All WebSocket connections via `src/services/ws.ts`
+- Use React Query (`useQuery`, `useMutation`) for all server state
+- Never `useEffect` + `fetch` — this is an anti-pattern
+
+## Permissions
+
+- Use `useStudioAccess()` for all permission checks
+- Unauthorised elements must be absent from DOM — not hidden with CSS:
+  ```tsx
+  // CORRECT
+  {canEdit && <EditButton />}
+  // WRONG
+  <EditButton className={canEdit ? '' : 'hidden'} />
+  ```
+
+## Streaming
+
+- Use `useStream()` hook for all SSE LLM responses
+- Never manage `EventSource` manually in components
+
+## Component rules
+
+- One component per file
+- Co-locate test: `Button.tsx` + `Button.test.tsx`
+- No inline styles — Tailwind only
+- No barrel `index.ts` that re-exports everything

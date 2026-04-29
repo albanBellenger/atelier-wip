@@ -1,5 +1,5 @@
 # Atelier — Cursor Project Rules
-# Place this file at: .cursor/rules/atelier.mdc
+# File: .cursor/rules/atelier-cursor-rules.mdc
 
 ---
 description: Core rules for all Atelier development. Apply to every file in the monorepo.
@@ -147,9 +147,9 @@ Use the `useStream()` hook for all SSE-streamed LLM responses. Never manually ma
 ## Testing Rules
 
 ### Backend
-- `tests/unit/` — pure logic, no DB, no HTTP, no real LLM. All external deps mocked.
-- `tests/integration/` — real test DB (rolled-back transaction per test), real FastAPI via httpx.
-- `tests/llm/` — real LLM API calls, tagged `@pytest.mark.llm`. Run nightly only.
+- `backend/tests/unit/` — pure logic, no DB, no HTTP, no real LLM. All external deps mocked.
+- `backend/tests/integration/` — real test DB (rolled-back transaction per test), real FastAPI via httpx.
+- `backend/tests/llm/` — real LLM API calls, tagged `@pytest.mark.llm`. Run nightly only.
 
 Every integration test must cover:
 - Happy path (correct role + valid data)

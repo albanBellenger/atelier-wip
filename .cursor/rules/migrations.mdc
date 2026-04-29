@@ -1,0 +1,24 @@
+# ─────────────────────────────────────────────────────────────
+# FILE: .cursor/rules/migrations.mdc
+# ─────────────────────────────────────────────────────────────
+---
+description: Rules for Alembic migration files
+globs: ["backend/migrations/**/*.py"]
+alwaysApply: false
+---
+
+## Migration rules
+
+- NEVER edit an existing migration file
+- Always create a new one: `alembic revision --autogenerate -m "description"`
+- Every schema change needs a migration — never ALTER directly in psql
+- Always include a `downgrade()` function that fully reverses the `upgrade()`
+- pgvector indexes must use HNSW — never IVFFlat:
+  ```python
+  # CORRECT
+  op.execute("CREATE INDEX ON artifact_chunks USING hnsw (embedding vector_cosine_ops)")
+
+  # WRONG
+  op.execute("CREATE INDEX ON artifact_chunks USING ivfflat (embedding vector_cosine_ops)")
+  ```
+- Foreign keys to studios/software/projects/sections must include ON DELETE CASCADE

@@ -1,0 +1,38 @@
+# ─────────────────────────────────────────────────────────────
+# FILE: .cursor/rules/services.mdc
+# ─────────────────────────────────────────────────────────────
+---
+description: Rules for backend service files
+globs: ["backend/app/services/**/*.py"]
+alwaysApply: false
+---
+
+## Service responsibilities
+
+Each service owns exactly one domain:
+- `llm_service.py` — all LLM provider calls (stream + structured)
+- `rag_service.py` — context assembly, chunking, embedding, pgvector search
+- `drift_service.py` — Work Order staleness detection
+- `conflict_service.py` — section pair conflict/gap analysis
+- `graph_service.py` — knowledge graph edge management
+- `publish_service.py` — spec compilation, git commit, trigger analysis
+- `git_service.py` — GitLab API calls only
+
+## Cross-service calls
+
+Services may call other services but must not import routers or models directly.
+Pass dependencies via constructor injection — never import a service as a singleton.
+
+## Token tracking
+
+Every `LLMService` call automatically records token usage via `TokenTracker`.
+Do not add manual token counting anywhere else.
+
+## RAG context budget
+
+Default token budget is 6000. Do not exceed this without explicit justification.
+The overflow fallback order is:
+1. Summarise Software Definition if > 500 tokens
+2. Truncate the current section from the bottom — preserve at least the first 20% (opening context is highest priority)
+3. Show the UI warning banner if mandatory context still exceeds budget after steps 1–2 — see `docs/atelier-functional-requirements.md` (Smart Context Assembly / overflow fallback)
+4. The LLM call always proceeds — never block silently
