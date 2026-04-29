@@ -234,36 +234,34 @@ class StudioService:
     async def update_member_role(
         self, access: StudioAccess, user_id: uuid.UUID, body: MemberRoleUpdate
     ) -> StudioMemberResponse:
-        n_admins = await self.db.scalar(
-            select(func.count())
-            .select_from(StudioMember)
-            .where(
-                StudioMember.studio_id == access.studio_id,
-                StudioMember.role == "studio_admin",
-            )
-        )
-        current = await self.db.scalar(
+        target = await self.db.execute(
             select(StudioMember.role).where(
                 StudioMember.studio_id == access.studio_id,
                 StudioMember.user_id == user_id,
             )
         )
+        current = target.scalar_one_or_none()
         if current is None:
             raise ApiError(
                 status_code=404,
                 code="NOT_FOUND",
                 message="Member not found in this studio",
             )
-        if (
-            current == "studio_admin"
-            and body.role == "studio_member"
-            and (n_admins or 0) <= 1
-        ):
-            raise ApiError(
-                status_code=400,
-                code="LAST_ADMIN",
-                message="Cannot demote the last studio admin",
+        if current == "studio_admin" and body.role == "studio_member":
+            n_admins = await self.db.scalar(
+                select(func.count())
+                .select_from(StudioMember)
+                .where(
+                    StudioMember.studio_id == access.studio_id,
+                    StudioMember.role == "studio_admin",
+                )
             )
+            if (n_admins or 0) <= 1:
+                raise ApiError(
+                    status_code=400,
+                    code="LAST_ADMIN",
+                    message="Cannot demote the last studio admin",
+                )
         await self.db.execute(
             update(StudioMember)
             .where(
