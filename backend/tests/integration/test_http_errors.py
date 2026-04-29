@@ -30,3 +30,32 @@ async def test_register_invalid_email_returns_422(client: AsyncClient) -> None:
     )
     assert r.status_code == 422
     assert r.json()["code"] == "VALIDATION_ERROR"
+
+
+@pytest.mark.asyncio
+async def test_login_rate_limit_21st_request_returns_429(client: AsyncClient) -> None:
+    """POST /auth/login is limited to 20/minute per client IP."""
+    payload = {"email": "rate-limit@example.com", "password": "wrong-password"}
+    for _ in range(20):
+        r = await client.post("/auth/login", json=payload)
+        assert r.status_code != 429, "unexpected 429 before limit"
+    r21 = await client.post("/auth/login", json=payload)
+    assert r21.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_register_password_over_bcrypt_byte_limit_returns_422(
+    client: AsyncClient,
+) -> None:
+    """bcrypt rejects passwords > 72 UTF-8 bytes; reject before hashing."""
+    too_long = "a" * 73
+    r = await client.post(
+        "/auth/register",
+        json={
+            "email": "longpw-user@example.com",
+            "password": too_long,
+            "display_name": "Test",
+        },
+    )
+    assert r.status_code == 422
+    assert r.json()["code"] == "VALIDATION_ERROR"

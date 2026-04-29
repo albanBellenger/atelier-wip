@@ -2,15 +2,29 @@
 
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+from app.security.passwords import BCRYPT_MAX_PASSWORD_BYTES
 
 
 class UserCreate(BaseModel):
     """POST /auth/register"""
 
     email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
+    # bcrypt allows at most 72 UTF-8 bytes (stricter than character count for non-ASCII).
+    password: str = Field(min_length=8)
     display_name: str = Field(min_length=1, max_length=255)
+
+    @field_validator("password")
+    @classmethod
+    def password_within_bcrypt_byte_limit(cls, v: str) -> str:
+        n = len(v.encode("utf-8"))
+        if n > BCRYPT_MAX_PASSWORD_BYTES:
+            raise ValueError(
+                f"Password must be at most {BCRYPT_MAX_PASSWORD_BYTES} bytes in UTF-8 "
+                f"(bcrypt limit; got {n} bytes). Use a shorter password."
+            )
+        return v
 
 
 class UserLogin(BaseModel):
@@ -21,8 +35,7 @@ class UserLogin(BaseModel):
 
 
 class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
+    message: str = "ok"
 
 
 class UserPublic(BaseModel):
@@ -32,6 +45,14 @@ class UserPublic(BaseModel):
     email: str
     display_name: str
     is_tool_admin: bool
+
+
+class AdminStatusUpdate(BaseModel):
+    is_tool_admin: bool
+
+
+class UserPublicWithAdmin(UserPublic):
+    pass  # already has is_tool_admin
 
 
 class StudioMembershipPublic(BaseModel):

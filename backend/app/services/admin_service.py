@@ -1,9 +1,12 @@
 """Tool admin configuration for LLM and embedding providers."""
 
+from uuid import UUID
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import AdminConfig
-from app.schemas.auth import AdminConfigResponse, AdminConfigUpdate
+from app.exceptions import ApiError
+from app.models import AdminConfig, User
+from app.schemas.auth import AdminConfigResponse, AdminConfigUpdate, UserPublic
 
 
 def _mask(s: str | None) -> bool:
@@ -42,3 +45,27 @@ class AdminService:
             setattr(row, key, value)
         await self.db.flush()
         return await self.get_public()
+
+    async def set_admin_status(
+        self,
+        target_user_id: UUID,
+        is_tool_admin: bool,
+        requesting_user: User,
+    ) -> UserPublic:
+        if target_user_id == requesting_user.id and is_tool_admin is False:
+            raise ApiError(
+                status_code=400,
+                code="SELF_REVOCATION_BLOCKED",
+                message="A Tool Admin cannot revoke their own admin status.",
+            )
+        target_user = await self.db.get(User, target_user_id)
+        if target_user is None:
+            raise ApiError(
+                status_code=404,
+                code="NOT_FOUND",
+                message="User not found.",
+            )
+        target_user.is_tool_admin = is_tool_admin
+        self.db.add(target_user)
+        await self.db.flush()
+        return UserPublic.model_validate(target_user)
