@@ -3,6 +3,8 @@
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from slowapi import Limiter  # noqa: F401
+from slowapi.util import get_remote_address  # noqa: F401
 
 from app.config import get_settings
 from app.database import get_db

@@ -1,9 +1,18 @@
-# Override for local development: run backend and frontend on the host with hot reload.
+# Override: only Postgres + MinIO in Docker; run API and/or UI on the host (hot reload).
 # Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db storage
 # Then: cd backend && uvicorn app.main:app --reload
 #       cd frontend && npm run dev
+#
+# To run the frontend container against a host-backed API (backend on :8000):
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm -p 5173:5173 \
+#     -e ATELIER_API_PROXY=http://host.docker.internal:8000 frontend
+#
+# `backend` and `frontend` use profile `donotstart` so a plain `up` with this file only starts db + storage.
 
 services:
   backend:
+    profiles:
+      - donotstart
+  frontend:
     profiles:
       - donotstart

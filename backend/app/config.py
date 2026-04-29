@@ -10,9 +10,11 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
+    env: str = "dev"  # set to "production" in production .env
     database_url: str = "postgresql+asyncpg://atelier:atelier@localhost:5432/atelier"
     jwt_secret: str = "changeme-use-a-long-random-string"
     jwt_expire_minutes: int = 10080
+    secure_cookies: bool = False
     encryption_key: str = ""
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 

@@ -11,7 +11,6 @@ from app.models import Studio, StudioMember, User
 from app.schemas.auth import (
     MeResponse,
     StudioMembershipPublic,
-    TokenResponse,
     UserCreate,
     UserPublic,
 )
@@ -25,7 +24,7 @@ class AuthService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    async def register(self, body: UserCreate) -> TokenResponse:
+    async def register(self, body: UserCreate) -> str:
         existing_id = await self.db.scalar(
             select(User.id).where(User.email == body.email.lower().strip())
         )
@@ -46,10 +45,9 @@ class AuthService:
         )
         self.db.add(user)
         await self.db.flush()
-        token = create_access_token(user.id)
-        return TokenResponse(access_token=token)
+        return create_access_token(user.id)
 
-    async def login(self, email: str, password: str) -> TokenResponse:
+    async def login(self, email: str, password: str) -> str:
         row = (
             await self.db.execute(
                 select(User.id, User.password_hash).where(
@@ -64,7 +62,7 @@ class AuthService:
                 message="Invalid email or password",
             )
         uid = row.id
-        return TokenResponse(access_token=create_access_token(uid))
+        return create_access_token(uid)
 
     async def me(self, user: User) -> MeResponse:
         q = (

@@ -35,6 +35,9 @@ async def test_register_invalid_email_returns_422(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_login_rate_limit_21st_request_returns_429(client: AsyncClient) -> None:
     """POST /auth/login is limited to 20/minute per client IP."""
+    from app.main import limiter
+
+    limiter.reset()
     payload = {"email": "rate-limit@example.com", "password": "wrong-password"}
     for _ in range(20):
         r = await client.post("/auth/login", json=payload)

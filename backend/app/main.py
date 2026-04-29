@@ -1,38 +1,49 @@
 """FastAPI application entry point."""
 
 import logging
-from contextlib import asynccontextmanager
+import os
 
+import structlog
 from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIASGIMiddleware  # pure ASGI; BaseHTTP SlowAPIMiddleware breaks async DB in same loop
+from slowapi.util import get_remote_address
 
 from app.config import get_settings
-from app.database import async_session_factory, engine
+from app.database import engine
 from app.exceptions import ApiError
-from app.models import AdminConfig
-from app.routers import admin, auth
-from sqlalchemy import select
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
-log = logging.getLogger("atelier")
+limiter = Limiter(key_func=get_remote_address)
+
+from app.routers import admin, auth, software, studios
 
 
-@asynccontextmanager
-async def lifespan(_app: FastAPI):
-    """Startup: ensure `admin_config` singleton exists."""
-    async with async_session_factory() as session:
-        row = await session.get(AdminConfig, 1)
-        if row is None:
-            session.add(AdminConfig(id=1))
-            await session.commit()
-            log.info("Seeded admin_config id=1")
-    yield
-    await engine.dispose()
+def configure_logging() -> None:
+    shared_processors = [
+        structlog.contextvars.merge_contextvars,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
+        structlog.processors.TimeStamper(fmt="iso"),
+    ]
+    if os.getenv("ENV", "dev") == "production":
+        processors = shared_processors + [structlog.processors.JSONRenderer()]
+    else:
+        processors = shared_processors + [structlog.dev.ConsoleRenderer()]
+    structlog.configure(
+        processors=processors,
+        wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+        logger_factory=structlog.PrintLoggerFactory(),
+        cache_logger_on_first_use=True,
+    )
+
+
+configure_logging()
+log = structlog.get_logger("atelier")
 
 
 def create_app() -> FastAPI:
@@ -40,8 +51,20 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Atelier API",
         version="0.1.0",
-        lifespan=lifespan,
     )
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+    @app.on_event("shutdown")
+    async def _dispose_engine() -> None:
+        # Under pytest, ASGI shutdown can interleave with the test DB connection
+        # teardown; skip disposing the process-global engine (pool is not used for
+        # requests when get_db is overridden).
+        if os.environ.get("PYTEST_VERSION"):
+            return
+        await engine.dispose()
+
+    app.add_middleware(SlowAPIASGIMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
@@ -62,7 +85,10 @@ def create_app() -> FastAPI:
     async def validation_handler(_request: Request, exc: RequestValidationError) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            content={"detail": exc.errors(), "code": "VALIDATION_ERROR"},
+            content={
+                "detail": jsonable_encoder(exc.errors()),
+                "code": "VALIDATION_ERROR",
+            },
         )
 
     @app.get("/health", tags=["health"])
@@ -71,6 +97,8 @@ def create_app() -> FastAPI:
 
     app.include_router(auth.router)
     app.include_router(admin.router)
+    app.include_router(studios.router)
+    app.include_router(software.router)
     return app
 
 

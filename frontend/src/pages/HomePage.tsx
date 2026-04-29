@@ -2,38 +2,42 @@ import { useQuery } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
 import { useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { clearToken, getToken, me } from '../services/api'
+import { logout as logoutApi, me } from '../services/api'
 import type { MeResponse } from '../services/api'
 
 export function HomePage(): ReactElement {
   const navigate = useNavigate()
-  const token = getToken()
 
   const { data: profile, isPending, isError } = useQuery<MeResponse>({
-    queryKey: ['auth', 'me', token],
-    queryFn: () => me(token as string),
-    enabled: Boolean(token),
+    queryKey: ['auth', 'me'],
+    queryFn: () => me(),
+    retry: false,
   })
 
   useEffect(() => {
-    if (!token) {
-      navigate('/auth', { replace: true })
-    }
-  }, [token, navigate])
-
-  useEffect(() => {
     if (isError) {
-      clearToken()
-      navigate('/auth', { replace: true })
+      void navigate('/auth', { replace: true })
     }
   }, [isError, navigate])
 
-  function logout(): void {
-    clearToken()
-    navigate('/auth', { replace: true })
+  async function logout(): Promise<void> {
+    try {
+      await logoutApi()
+    } catch {
+      /* still leave app */
+    }
+    void navigate('/auth', { replace: true })
   }
 
-  if (!token || isPending || !profile) {
+  if (isError) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-zinc-950 text-zinc-400">
+        Loading…
+      </div>
+    )
+  }
+
+  if (isPending || !profile) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-zinc-950 text-zinc-400">
         Loading…
@@ -54,12 +58,17 @@ export function HomePage(): ReactElement {
           <p className="mt-2 text-sm text-violet-400">Tool administrator</p>
         )}
         <p className="mt-6 text-sm text-zinc-500">
-          This is a placeholder home screen for Slice&nbsp;1. Studio list and
-          the rest of the app arrive in later slices.
+          <Link
+            to="/studios"
+            className="font-medium text-violet-400 hover:underline"
+          >
+            Studios & software
+          </Link>{' '}
+          — manage teams and products (Slice&nbsp;2).
         </p>
         <button
           type="button"
-          onClick={logout}
+          onClick={() => void logout()}
           className="mt-8 rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800"
         >
           Log out

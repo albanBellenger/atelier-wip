@@ -2,7 +2,7 @@ import { useMutation } from '@tanstack/react-query'
 import type { FormEvent, ReactElement } from 'react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { login, register, setToken, type AuthErrorBody } from '../services/api'
+import { login, register, type AuthErrorBody } from '../services/api'
 
 type Mode = 'login' | 'register'
 
@@ -30,8 +30,7 @@ export function AuthPage(): ReactElement {
       }
       return login({ email: vars.email, password: vars.password })
     },
-    onSuccess: (res) => {
-      setToken(res.access_token)
+    onSuccess: () => {
       navigate('/')
     },
     onError: (err: unknown) => {
