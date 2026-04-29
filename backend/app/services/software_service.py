@@ -81,6 +81,7 @@ class SoftwareService:
             studio_id=access.studio_id,
             name=body.name.strip(),
             description=body.description.strip() if body.description else None,
+            git_provider=None,
         )
         self.db.add(s)
         await self.db.commit()
@@ -119,7 +120,12 @@ class SoftwareService:
         if "definition" in data:
             s.definition = data["definition"]
         if "git_repo_url" in data:
-            s.git_repo_url = data["git_repo_url"]
+            url = data["git_repo_url"]
+            s.git_repo_url = url
+            if url is not None and str(url).strip() != "":
+                s.git_provider = "gitlab"
+            else:
+                s.git_provider = None
         if "git_branch" in data and data["git_branch"] is not None:
             s.git_branch = str(data["git_branch"]).strip() or "main"
         if "git_token" in data:
