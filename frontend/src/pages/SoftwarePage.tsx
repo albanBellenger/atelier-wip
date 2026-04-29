@@ -54,17 +54,18 @@ export function SoftwarePage(): ReactElement {
   const [msg, setMsg] = useState<string | null>(null)
   const [gitMsg, setGitMsg] = useState<string | null>(null)
 
-  useEffect(() => {
-    const sw = swQ.data
-    if (sw) {
-      setName(sw.name)
-      setDescription(sw.description ?? '')
-      setDefinition(sw.definition ?? '')
-      setGitRepoUrl(sw.git_repo_url ?? '')
-      setGitBranch(sw.git_branch ?? 'main')
-      setGitTokenInput('')
-    }
-  }, [swQ.data?.id, swQ.data?.updated_at])
+  const [formSyncKey, setFormSyncKey] = useState('')
+  const sw = swQ.data
+  const serverSyncKey = sw ? `${sw.id}:${sw.updated_at ?? ''}` : ''
+  if (sw && serverSyncKey !== formSyncKey) {
+    setFormSyncKey(serverSyncKey)
+    setName(sw.name)
+    setDescription(sw.description ?? '')
+    setDefinition(sw.definition ?? '')
+    setGitRepoUrl(sw.git_repo_url ?? '')
+    setGitBranch(sw.git_branch ?? 'main')
+    setGitTokenInput('')
+  }
 
   const saveMut = useMutation({
     mutationFn: () =>

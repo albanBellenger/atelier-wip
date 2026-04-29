@@ -67,13 +67,16 @@ export function StudioPage(): ReactElement {
   const [swName, setSwName] = useState('')
   const [msg, setMsg] = useState<string | null>(null)
 
-  useEffect(() => {
-    const st = studioQ.data
-    if (st) {
-      setStudioName(st.name)
-      setStudioDesc(st.description ?? '')
-    }
-  }, [studioQ.data?.id, studioQ.data?.name, studioQ.data?.description])
+  const [studioFormSyncKey, setStudioFormSyncKey] = useState('')
+  const st = studioQ.data
+  const studioServerKey = st
+    ? `${st.id}:${st.name}:${st.description ?? ''}`
+    : ''
+  if (st && studioServerKey !== studioFormSyncKey) {
+    setStudioFormSyncKey(studioServerKey)
+    setStudioName(st.name)
+    setStudioDesc(st.description ?? '')
+  }
 
   const updateMut = useMutation({
     mutationFn: () =>

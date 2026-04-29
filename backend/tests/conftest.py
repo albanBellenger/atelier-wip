@@ -16,11 +16,22 @@ os.environ.setdefault(
     "ENCRYPTION_KEY",
     "I31jfQ9199nB85jcLQGtlaOsUCvhEyON2yN2IpM6d6Q=",
 )
-os.environ.setdefault(
-    "DATABASE_URL",
-    "postgresql+asyncpg://atelier_test:atelier_test@127.0.0.1:5433/atelier_test",
+_DEFAULT_TEST_DB = (
+    "postgresql+asyncpg://atelier_test:atelier_test@127.0.0.1:5433/atelier_test"
 )
-os.environ.setdefault("TEST_DATABASE_URL", os.environ["DATABASE_URL"])
+
+# Do not inherit a dev DATABASE_URL from the host shell for pytest (would fail the
+# safety check and risk migrating the wrong database). Honor TEST_DATABASE_URL or an
+# already test-shaped DATABASE_URL; otherwise use the default test instance on 5433.
+if os.environ.get("TEST_DATABASE_URL"):
+    os.environ.setdefault("DATABASE_URL", os.environ["TEST_DATABASE_URL"])
+else:
+    _db = os.environ.get("DATABASE_URL", "")
+    if "test" in _db or ":5433" in _db:
+        os.environ["TEST_DATABASE_URL"] = _db
+    else:
+        os.environ["DATABASE_URL"] = _DEFAULT_TEST_DB
+        os.environ["TEST_DATABASE_URL"] = _DEFAULT_TEST_DB
 
 from app.config import get_settings as _get_settings
 from app.security.field_encryption import reset_fernet_cache
