@@ -92,7 +92,7 @@ async def test_studio_software_happy_path_and_rbac(
         fake_gitlab_test,
     )
 
-    patch_git = await client.patch(
+    put_git = await client.put(
         f"/studios/{studio_id}/software/{sw_id}",
         json={
             "definition": "Be helpful.",
@@ -101,8 +101,8 @@ async def test_studio_software_happy_path_and_rbac(
             "git_token": "glpat-test-token",
         },
     )
-    assert patch_git.status_code == 200
-    assert patch_git.json()["git_token_set"] is True
+    assert put_git.status_code == 200
+    assert put_git.json()["git_token_set"] is True
 
     test_r = await client.post(
         f"/studios/{studio_id}/software/{sw_id}/git/test",

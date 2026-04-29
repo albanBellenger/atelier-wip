@@ -39,7 +39,7 @@ async def get_software(
     return await SoftwareService(session).get_software(access, software_id)
 
 
-@router.patch("/{software_id}", response_model=SoftwareResponse)
+@router.put("/{software_id}", response_model=SoftwareResponse)
 async def update_software(
     software_id: UUID,
     body: SoftwareUpdate,

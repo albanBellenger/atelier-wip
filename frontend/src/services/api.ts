@@ -234,7 +234,7 @@ export async function updateSoftware(
   body: SoftwareUpdateBody,
 ): Promise<Software> {
   return request<Software>(
-    'PATCH',
+    'PUT',
     `/studios/${studioId}/software/${softwareId}`,
     body,
   )
@@ -321,7 +321,7 @@ export async function updateProject(
   body: ProjectUpdateBody,
 ): Promise<Project> {
   return request<Project>(
-    'PATCH',
+    'PUT',
     `/software/${softwareId}/projects/${projectId}`,
     body,
   )

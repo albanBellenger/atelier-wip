@@ -62,19 +62,19 @@ async def test_projects_crud_and_rbac(client: AsyncClient) -> None:
     pid = create.json()["id"]
 
     client.cookies.set("atelier_token", token_admin)
-    patch = await client.patch(
+    put = await client.put(
         f"/software/{software_id}/projects/{pid}",
         json={"name": "Proj A2"},
     )
-    assert patch.status_code == 200
-    assert patch.json()["name"] == "Proj A2"
+    assert put.status_code == 200
+    assert put.json()["name"] == "Proj A2"
 
     client.cookies.set("atelier_token", token_member)
-    forbidden_patch = await client.patch(
+    forbidden_put = await client.put(
         f"/software/{software_id}/projects/{pid}",
         json={"name": "nope"},
     )
-    assert forbidden_patch.status_code == 403
+    assert forbidden_put.status_code == 403
 
     detail = await client.get(f"/software/{software_id}/projects/{pid}")
     assert detail.status_code == 200

@@ -50,7 +50,7 @@ async def get_project(
     )
 
 
-@router.patch("/{project_id}", response_model=ProjectResponse)
+@router.put("/{project_id}", response_model=ProjectResponse)
 async def update_project(
     software_id: UUID,
     project_id: UUID,
