@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { FormEvent, ReactElement } from 'react'
+import type { ReactElement } from 'react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useStudioAccess } from '../hooks/useStudioAccess'
@@ -164,51 +164,61 @@ export function SoftwarePage(): ReactElement {
             <h1 className="text-2xl font-semibold">{swQ.data.name}</h1>
             {msg && <p className="mt-2 text-sm text-emerald-400">{msg}</p>}
 
-            <form
-              className="mt-8 space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5"
-              onSubmit={(e: FormEvent) => {
-                e.preventDefault()
-                if (!access.isStudioAdmin) return
-                saveMut.mutate()
-              }}
-            >
+            <div className="mt-8 space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
               <h2 className="text-sm font-medium text-zinc-300">Details</h2>
-              <input
-                className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
-                value={name}
-                disabled={!access.isStudioAdmin}
-                onChange={(e) => setName(e.target.value)}
-              />
-              <textarea
-                className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
-                rows={2}
-                placeholder="Description"
-                value={description}
-                disabled={!access.isStudioAdmin}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-              <div>
-                <label className="mb-1 block text-xs text-zinc-500">
-                  Software definition (LLM context)
-                </label>
-                <textarea
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 font-mono text-sm"
-                  rows={8}
-                  value={definition}
-                  disabled={!access.isStudioAdmin}
-                  onChange={(e) => setDefinition(e.target.value)}
-                />
-              </div>
-              {access.isStudioAdmin && (
-                <button
-                  type="submit"
-                  disabled={saveMut.isPending}
-                  className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
-                >
-                  Save
-                </button>
+              {access.isStudioAdmin ? (
+                <>
+                  <input
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                  />
+                  <textarea
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
+                    rows={2}
+                    placeholder="Description"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                  />
+                  <div>
+                    <label className="mb-1 block text-xs text-zinc-500">
+                      Software definition (LLM context)
+                    </label>
+                    <textarea
+                      className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 font-mono text-sm"
+                      rows={8}
+                      value={definition}
+                      onChange={(e) => setDefinition(e.target.value)}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={saveMut.isPending}
+                    className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+                    onClick={() => saveMut.mutate()}
+                  >
+                    Save
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="w-full rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-sm">
+                    {name}
+                  </p>
+                  <p className="w-full rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-sm whitespace-pre-wrap">
+                    {description}
+                  </p>
+                  <div>
+                    <p className="mb-1 text-xs text-zinc-500">
+                      Software definition (LLM context)
+                    </p>
+                    <div className="w-full rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2 font-mono text-sm whitespace-pre-wrap">
+                      {definition}
+                    </div>
+                  </div>
+                </>
               )}
-            </form>
+            </div>
 
             <section className="mt-10 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
               <h2 className="text-sm font-medium text-zinc-300">
@@ -221,29 +231,44 @@ export function SoftwarePage(): ReactElement {
                   <span className="text-emerald-500"> A token is on file.</span>
                 )}
               </p>
-              <input
-                className="mt-3 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
-                placeholder="Repository URL (https://gitlab.example.com/group/repo)"
-                value={gitRepoUrl}
-                disabled={!access.isStudioAdmin}
-                onChange={(e) => setGitRepoUrl(e.target.value)}
-              />
-              <input
-                className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
-                placeholder="Branch"
-                value={gitBranch}
-                disabled={!access.isStudioAdmin}
-                onChange={(e) => setGitBranch(e.target.value)}
-              />
-              <input
-                className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
-                type="password"
-                placeholder="Personal access token (optional update)"
-                autoComplete="off"
-                value={gitTokenInput}
-                disabled={!access.isStudioAdmin}
-                onChange={(e) => setGitTokenInput(e.target.value)}
-              />
+              {access.isStudioAdmin ? (
+                <>
+                  <input
+                    className="mt-3 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
+                    placeholder="Repository URL (https://gitlab.example.com/group/repo)"
+                    value={gitRepoUrl}
+                    onChange={(e) => setGitRepoUrl(e.target.value)}
+                  />
+                  <input
+                    className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
+                    placeholder="Branch"
+                    value={gitBranch}
+                    onChange={(e) => setGitBranch(e.target.value)}
+                  />
+                  <input
+                    className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
+                    type="password"
+                    placeholder="Personal access token (optional update)"
+                    autoComplete="off"
+                    value={gitTokenInput}
+                    onChange={(e) => setGitTokenInput(e.target.value)}
+                  />
+                </>
+              ) : (
+                <>
+                  <p className="mt-3 w-full rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-sm">
+                    {gitRepoUrl || '—'}
+                  </p>
+                  <p className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-sm">
+                    {gitBranch || '—'}
+                  </p>
+                  <p className="mt-2 w-full rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-sm text-zinc-500">
+                    {swQ.data.git_token_set
+                      ? 'A token is on file.'
+                      : 'No token on file.'}
+                  </p>
+                </>
+              )}
               {access.isStudioAdmin && (
                 <div className="mt-4 flex flex-wrap gap-3">
                   <button
