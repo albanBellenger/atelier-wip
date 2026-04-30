@@ -1,6 +1,10 @@
 """Unit tests for RAG chunk ordering and mandatory overflow (Slice 6)."""
 
-from app.services.rag_service import _mandatory_parts_with_overflow, _unified_chunk_fill
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.services.rag_service import RAGService, _mandatory_parts_with_overflow, _unified_chunk_fill
+from tests.factories import create_project, create_section, create_software, create_studio
 
 
 def test_chunk_ranking_unified() -> None:
@@ -43,3 +47,25 @@ def test_no_truncation_when_within_budget() -> None:
     p, tr = _mandatory_parts_with_overflow("a", "b", "c", "d", 1000)
     assert tr is False
     assert p == ["a", "b", "cd"]
+
+
+@pytest.mark.asyncio
+async def test_rag_build_context_prefers_plaintext_override(
+    db_session: AsyncSession,
+) -> None:
+    studio = await create_studio(db_session)
+    sw = await create_software(db_session, studio.id, definition="def-small")
+    pr = await create_project(db_session, sw.id)
+    sec = await create_section(
+        db_session, pr.id, title="T", slug="t", order=0, content="DB_ONLY"
+    )
+    rag = RAGService(db_session)
+    ctx = await rag.build_context(
+        query="",
+        project_id=pr.id,
+        current_section_id=sec.id,
+        token_budget=6000,
+        current_section_plaintext_override="OVERRIDE_BODY",
+    )
+    assert "OVERRIDE_BODY" in ctx.text
+    assert "DB_ONLY" not in ctx.text

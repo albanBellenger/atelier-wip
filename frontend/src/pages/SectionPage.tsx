@@ -128,7 +128,13 @@ export function SectionPage(): ReactElement {
                   <SplitEditor collab={collab} />
                 )}
               </div>
-              <ThreadPanel projectId={pid} sectionId={secid} />
+              <ThreadPanel
+                projectId={pid}
+                sectionId={secid}
+                sectionTitle={sectionQ.data.title}
+                projectHref={projectHref}
+                collab={collab}
+              />
             </div>
           </>
         )}

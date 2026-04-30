@@ -75,11 +75,10 @@ describe('WorkOrdersPage archived', () => {
       </MemoryRouter>,
     )
 
-    await waitFor(() => {
-      expect(
-        screen.getByRole('heading', { name: 'Archived' }),
-      ).toBeInTheDocument()
-    })
+    await screen.findByText('Archived task title', {}, { timeout: 5000 })
+    expect(
+      screen.getByRole('heading', { name: 'Archived' }),
+    ).toBeInTheDocument()
 
     const titleEl = screen.getByText('Archived task title')
     expect(titleEl).toHaveClass('line-through')

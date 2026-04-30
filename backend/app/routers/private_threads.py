@@ -94,6 +94,8 @@ async def stream_private_thread_reply(
             section_id=section_id,
             user_id=pa.studio_access.user.id,
             content=body.content,
+            current_section_plaintext=body.current_section_plaintext,
+            include_git_history=body.include_git_history,
         ):
             yield chunk
 

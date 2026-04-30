@@ -101,7 +101,7 @@ async def test_stream_sse_envelope_format(
         yield " world"
 
     async def fake_structured(self, *a, **k):
-        return {"conflicts": []}
+        return {"findings": []}
 
     monkeypatch.setattr("app.services.rag_service.RAGService.build_context", fake_rag)
     monkeypatch.setattr("app.services.llm_service.LLMService.chat_stream", fake_stream)
@@ -128,6 +128,7 @@ async def test_stream_sse_envelope_format(
     meta = [x for x in parsed if x.get("type") == "meta"]
     assert len(meta) == 1
     assert meta[0].get("conflicts") == []
+    assert meta[0].get("findings") == []
     assert "context_truncated" in meta[0]
     assert meta[0].get("context_truncated") is False
     assert _last_nonempty_line(body) == "data: [DONE]"
@@ -158,8 +159,11 @@ async def test_stream_conflict_meta_populated(
 
     async def fake_structured(self, *a, **k):
         return {
-            "conflicts": [
-                {"description": "X contradicts Y"},
+            "findings": [
+                {
+                    "finding_type": "conflict",
+                    "description": "X contradicts Y",
+                },
             ],
         }
 
@@ -185,6 +189,101 @@ async def test_stream_conflict_meta_populated(
     assert meta is not None
     assert len(meta["conflicts"]) == 1
     assert meta["conflicts"][0]["description"] == "X contradicts Y"
+    assert len(meta["findings"]) == 1
+    assert meta["findings"][0]["finding_type"] == "conflict"
+
+    g = await client.get(f"/projects/{pid}/sections/{section_id}/thread")
+    assert g.status_code == 200
+    asst = [m for m in g.json()["messages"] if m["role"] == "assistant"][-1]
+    assert "**Conflicts and gaps**" in asst["content"]
+    assert "X contradicts Y" in asst["content"]
+
+
+@pytest.mark.asyncio
+async def test_thread_post_passes_plaintext_override_to_rag(
+    client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _sid, pid, section_id, email = await _project_section(client, sfx)
+    await _promote_tool_admin(db_session, email)
+    client.cookies.set("atelier_token", token)
+    await client.put(
+        "/admin/config",
+        json={
+            "llm_provider": "openai",
+            "llm_model": "gpt-4o-mini",
+            "llm_api_key": "sk-test",
+        },
+    )
+    captured: dict[str, object] = {}
+
+    async def cap_rag(self, *a: object, **k: object) -> RAGContext:
+        captured.update(k)
+        return RAGContext(text="ctx", truncated=False)
+
+    async def fake_stream(self, *a: object, **k: object) -> AsyncIterator[str]:
+        yield "ok"
+
+    async def fake_structured(self, *a: object, **k: object) -> dict[str, object]:
+        return {"findings": []}
+
+    monkeypatch.setattr("app.services.rag_service.RAGService.build_context", cap_rag)
+    monkeypatch.setattr("app.services.llm_service.LLMService.chat_stream", fake_stream)
+    monkeypatch.setattr(
+        "app.services.llm_service.LLMService.chat_structured", fake_structured
+    )
+
+    r = await client.post(
+        f"/projects/{pid}/sections/{section_id}/thread/messages",
+        json={
+            "content": "hello",
+            "current_section_plaintext": "LIVE_FROM_EDITOR",
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert captured.get("current_section_plaintext_override") == "LIVE_FROM_EDITOR"
+
+
+@pytest.mark.asyncio
+async def test_thread_post_passes_include_git_history_to_rag(
+    client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _sid, pid, section_id, email = await _project_section(client, sfx)
+    await _promote_tool_admin(db_session, email)
+    client.cookies.set("atelier_token", token)
+    await client.put(
+        "/admin/config",
+        json={
+            "llm_provider": "openai",
+            "llm_model": "gpt-4o-mini",
+            "llm_api_key": "sk-test",
+        },
+    )
+    captured: dict[str, object] = {}
+
+    async def cap_rag(self, *a: object, **k: object) -> RAGContext:
+        captured.update(k)
+        return RAGContext(text="ctx", truncated=False)
+
+    async def fake_stream(self, *a: object, **k: object) -> AsyncIterator[str]:
+        yield "ok"
+
+    async def fake_structured(self, *a: object, **k: object) -> dict[str, object]:
+        return {"findings": []}
+
+    monkeypatch.setattr("app.services.rag_service.RAGService.build_context", cap_rag)
+    monkeypatch.setattr("app.services.llm_service.LLMService.chat_stream", fake_stream)
+    monkeypatch.setattr(
+        "app.services.llm_service.LLMService.chat_structured", fake_structured
+    )
+
+    r = await client.post(
+        f"/projects/{pid}/sections/{section_id}/thread/messages",
+        json={"content": "hello", "include_git_history": True},
+    )
+    assert r.status_code == 200, r.text
+    assert captured.get("include_git_history") is True
 
 
 @pytest.mark.asyncio
@@ -247,7 +346,7 @@ async def test_get_thread_returns_history(
         yield "ok"
 
     async def fake_structured(self, *a, **k):
-        return {"conflicts": []}
+        return {"findings": []}
 
     monkeypatch.setattr("app.services.rag_service.RAGService.build_context", fake_rag)
     monkeypatch.setattr("app.services.llm_service.LLMService.chat_stream", fake_stream)
@@ -354,7 +453,7 @@ async def test_stream_meta_context_truncated_true_when_budget_tight(
         yield "ok"
 
     async def fake_structured(self, *a, **k):
-        return {"conflicts": []}
+        return {"findings": []}
 
     monkeypatch.setattr("app.services.llm_service.LLMService.chat_stream", fake_stream)
     monkeypatch.setattr(
@@ -402,7 +501,7 @@ async def test_reset_thread_clears_history(
         yield "ok"
 
     async def fake_structured(self, *a, **k):
-        return {"conflicts": []}
+        return {"findings": []}
 
     monkeypatch.setattr("app.services.rag_service.RAGService.build_context", fake_rag)
     monkeypatch.setattr("app.services.llm_service.LLMService.chat_stream", fake_stream)

@@ -1,3 +1,8 @@
+import {
+  consumePrivateThreadSseBody,
+  type PrivateThreadStreamMeta,
+} from './privateThreadSse'
+
 const base = (): string => import.meta.env.VITE_API_BASE_URL ?? ''
 
 async function request<T>(
@@ -1149,16 +1154,19 @@ export async function resetPrivateThread(
   )
 }
 
+export interface PrivateThreadStreamPayload {
+  content: string
+  current_section_plaintext?: string
+  include_git_history?: boolean
+}
+
 export async function streamPrivateThreadReply(
   projectId: string,
   sectionId: string,
-  content: string,
+  payload: PrivateThreadStreamPayload,
   handlers: {
     onToken: (text: string) => void
-    onMeta: (meta: {
-      conflicts: { description: string }[]
-      context_truncated?: boolean
-    }) => void
+    onMeta: (meta: PrivateThreadStreamMeta) => void
   },
 ): Promise<void> {
   const r = await fetch(
@@ -1168,7 +1176,7 @@ export async function streamPrivateThreadReply(
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify(payload),
     },
   )
   if (!r.ok) {
@@ -1190,47 +1198,7 @@ export async function streamPrivateThreadReply(
   if (!reader) {
     throw new Error('No response body')
   }
-  const dec = new TextDecoder()
-  let buf = ''
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) {
-      break
-    }
-    buf += dec.decode(value, { stream: true })
-    const parts = buf.split('\n\n')
-    buf = parts.pop() ?? ''
-    for (const block of parts) {
-      for (const line of block.split('\n')) {
-        if (!line.startsWith('data: ')) {
-          continue
-        }
-        const payload = line.slice(6).trim()
-        if (payload === '[DONE]') {
-          continue
-        }
-        try {
-          const j = JSON.parse(payload) as {
-            type?: string
-            text?: string
-            conflicts?: { description: string }[]
-            context_truncated?: boolean
-          }
-          if (j.type === 'token' && j.text) {
-            handlers.onToken(j.text)
-          }
-          if (j.type === 'meta') {
-            handlers.onMeta({
-              conflicts: Array.isArray(j.conflicts) ? j.conflicts : [],
-              context_truncated: Boolean(j.context_truncated),
-            })
-          }
-        } catch {
-          /* ignore malformed chunk */
-        }
-      }
-    }
-  }
+  await consumePrivateThreadSseBody(reader, handlers)
 }
 
 export async function downloadArtifactBlob(

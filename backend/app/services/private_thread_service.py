@@ -15,28 +15,79 @@ from app.schemas.token_context import TokenContext
 from app.services.llm_service import LLMService
 from app.services.rag_service import RAGService
 
-THREAD_CONFLICT_JSON_SCHEMA: dict = {
-    "name": "thread_conflicts",
+THREAD_FINDINGS_JSON_SCHEMA: dict = {
+    "name": "thread_findings",
     "strict": True,
     "schema": {
         "type": "object",
         "additionalProperties": False,
         "properties": {
-            "conflicts": {
+            "findings": {
                 "type": "array",
                 "items": {
                     "type": "object",
                     "additionalProperties": False,
                     "properties": {
+                        "finding_type": {
+                            "type": "string",
+                            "enum": ["conflict", "gap"],
+                        },
                         "description": {"type": "string"},
                     },
-                    "required": ["description"],
+                    "required": ["finding_type", "description"],
                 },
             }
         },
-        "required": ["conflicts"],
+        "required": ["findings"],
     },
 }
+
+
+def _normalize_thread_findings(scan: object) -> list[dict[str, str]]:
+    if not isinstance(scan, dict):
+        return []
+    raw = scan.get("findings")
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, str]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        ft = item.get("finding_type")
+        desc = str(item.get("description") or "").strip()
+        if ft not in ("conflict", "gap") or not desc:
+            continue
+        out.append({"finding_type": str(ft), "description": desc})
+    return out
+
+
+def _findings_appendix(findings: list[dict[str, str]]) -> str:
+    if not findings:
+        return ""
+    lines: list[str] = ["---", "**Conflicts and gaps**"]
+    for f in findings:
+        label = "Conflict" if f["finding_type"] == "conflict" else "Gap"
+        lines.append(f"- **{label}:** {f['description']}")
+    return "\n".join(lines) + "\n"
+
+
+def _conflicts_from_findings(findings: list[dict[str, str]]) -> list[dict[str, str]]:
+    return [
+        {"description": f["description"]}
+        for f in findings
+        if f.get("finding_type") == "conflict"
+    ]
+
+
+def _chunk_text_for_sse(text: str, max_len: int = 320) -> list[str]:
+    if not text:
+        return []
+    chunks: list[str] = []
+    i = 0
+    while i < len(text):
+        chunks.append(text[i : i + max_len])
+        i += max_len
+    return chunks
 
 
 class PrivateThreadService:
@@ -107,6 +158,8 @@ class PrivateThreadService:
         section_id: uuid.UUID,
         user_id: uuid.UUID,
         content: str,
+        current_section_plaintext: str | None = None,
+        include_git_history: bool = False,
     ) -> AsyncIterator[bytes]:
         """SSE chunks: JSON lines with type token | meta, then [DONE]."""
         await self.require_section_in_project(project_id, section_id)
@@ -142,6 +195,8 @@ class PrivateThreadService:
             project_id=project_id,
             current_section_id=section_id,
             token_budget=6000,
+            current_section_plaintext_override=current_section_plaintext,
+            include_git_history=include_git_history,
         )
         rag_text = rag.text
         context_truncated = rag.truncated
@@ -168,18 +223,9 @@ class PrivateThreadService:
                 yield f"data: {payload}\n\n".encode()
 
             full = "".join(buf)
-            if full.strip():
-                self.db.add(
-                    ThreadMessage(
-                        id=uuid.uuid4(),
-                        thread_id=thread.id,
-                        role="assistant",
-                        content=full,
-                    )
-                )
-                await self.db.flush()
         except Exception:
             stream_failed = True
+            full = ""
             self.db.add(
                 ThreadMessage(
                     id=uuid.uuid4(),
@@ -189,46 +235,69 @@ class PrivateThreadService:
                 )
             )
             await self.db.flush()
-            # Response headers may already be sent; do not re-raise (breaks ASGI).
-        if not stream_failed:
+
+        findings_list: list[dict[str, str]] = []
+        appendix = ""
+        full_final = full
+
+        if not stream_failed and full.strip():
             try:
                 scan = await llm.chat_structured(
                     system_prompt=(
-                        "You scan a user question and assistant reply for contradictory "
-                        "requirements or conflicting facts. Return JSON only."
+                        "You scan the user message and assistant reply. Identify "
+                        "(1) contradictory requirements or conflicting facts, and "
+                        "(2) missing requirements, unanswered questions, or "
+                        "specification gaps. Return JSON only."
                     ),
                     user_prompt=(
                         f"User:\n{content}\n\nAssistant:\n{full}\n\n"
-                        "List concrete conflicts, if any."
+                        "List concrete findings. Use finding_type \"conflict\" for "
+                        "contradictions and \"gap\" for missing or unclear coverage."
                     ),
-                    json_schema=THREAD_CONFLICT_JSON_SCHEMA,
+                    json_schema=THREAD_FINDINGS_JSON_SCHEMA,
                     context=ctx,
                     call_type="thread_conflict_scan",
                 )
-                conflicts = scan.get("conflicts") if isinstance(scan, dict) else []
-                if not isinstance(conflicts, list):
-                    conflicts = []
-                meta = json.dumps(
-                    {
-                        "type": "meta",
-                        "conflicts": conflicts,
-                        "context_truncated": context_truncated,
-                    }
-                )
-                yield f"data: {meta}\n\n".encode()
+                findings_list = _normalize_thread_findings(scan)
+                appendix = _findings_appendix(findings_list)
+                full_final = f"{full}\n\n{appendix}" if appendix else full
             except ApiError:
-                meta = json.dumps(
-                    {
-                        "type": "meta",
-                        "conflicts": [],
-                        "context_truncated": context_truncated,
-                    }
+                findings_list = []
+                appendix = ""
+                full_final = full
+
+            self.db.add(
+                ThreadMessage(
+                    id=uuid.uuid4(),
+                    thread_id=thread.id,
+                    role="assistant",
+                    content=full_final,
                 )
-                yield f"data: {meta}\n\n".encode()
+            )
+            await self.db.flush()
+
+            if appendix:
+                for piece in _chunk_text_for_sse(appendix):
+                    payload = json.dumps({"type": "token", "text": piece})
+                    yield f"data: {payload}\n\n".encode()
+
+        conflicts_out = _conflicts_from_findings(findings_list)
+
+        if not stream_failed:
+            meta = json.dumps(
+                {
+                    "type": "meta",
+                    "findings": findings_list,
+                    "conflicts": conflicts_out,
+                    "context_truncated": context_truncated,
+                }
+            )
+            yield f"data: {meta}\n\n".encode()
         else:
             meta = json.dumps(
                 {
                     "type": "meta",
+                    "findings": [],
                     "conflicts": [],
                     "context_truncated": context_truncated,
                 }

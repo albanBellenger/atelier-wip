@@ -838,18 +838,21 @@ async def check_work_order_drift(work_order_id: UUID):
 ### Private Thread (SSE)
 ```
 POST /projects/{pid}/sections/{sid}/thread/messages
+  JSON: { content, current_section_plaintext?, include_git_history? }
         │
         ▼
-RAGService.build_context()
+RAGService.build_context(query, project_id, section_id,
+    current_section_plaintext_override?, include_git_history?)
         │
         ▼
 LLMService.chat_stream() + TokenTracker
         │
-   text/event-stream
+   text/event-stream (type: token — main reply, then optional token chunks for
+   "Conflicts and gaps" appendix; type: meta — findings[], conflicts[], context_truncated)
         │
         ▼
-ThreadPanel.tsx (useStream hook)
-→ tokens appended live to assistant bubble
+ThreadPanel.tsx — useStream() → streamPrivateThreadReply → privateThreadSse.consumePrivateThreadSseBody
+→ tokens appended live to assistant bubble; persisted assistant message includes appendix
 ```
 
 ### Project Chat (WebSocket broadcast)
@@ -992,10 +995,9 @@ ENCRYPTION_KEY=changeme-32-byte-fernet-key
 
 ### Slice 6 — LLM & RAG
 - LLMService + TokenTracker (every call recorded)
-- RAGService (smart context assembly, pgvector search)
-- Private thread endpoints with SSE streaming
-- Inline conflict detection in thread responses
-- ThreadPanel sidebar
+- RAGService (smart context assembly, pgvector search; optional live `current_section_plaintext` override; optional GitLab commit list when `include_git_history` is true)
+- Private thread endpoints with SSE streaming; post-reply structured scan for conflicts and gaps (appended to stored assistant content and streamed as trailing tokens)
+- ThreadPanel sidebar (`useStream` hook + shared SSE parser in `privateThreadSse.ts`)
 
 ### Slice 7 — Work Orders
 - Work Order CRUD endpoints

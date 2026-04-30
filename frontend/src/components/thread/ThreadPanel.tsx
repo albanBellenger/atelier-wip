@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { useStream } from '../../hooks/useStream'
+import type { YjsCollab } from '../../hooks/useYjsCollab'
 import {
   getPrivateThread,
   resetPrivateThread,
-  streamPrivateThreadReply,
   type PrivateThreadMessage,
 } from '../../services/api'
 import { ContextTruncationBanner } from './ContextTruncationBanner'
@@ -12,13 +14,20 @@ import { ContextTruncationBanner } from './ContextTruncationBanner'
 export function ThreadPanel(props: {
   projectId: string
   sectionId: string
+  sectionTitle: string
+  projectHref: string
+  collab: YjsCollab | null
 }): ReactElement {
-  const { projectId, sectionId } = props
+  const { projectId, sectionId, sectionTitle, projectHref, collab } = props
+  const { streamPrivateThread } = useStream()
   const qc = useQueryClient()
   const [draft, setDraft] = useState('')
   const [streaming, setStreaming] = useState('')
-  const [conflicts, setConflicts] = useState<{ description: string }[]>([])
+  const [findings, setFindings] = useState<
+    { finding_type: string; description: string }[]
+  >([])
   const [contextTruncated, setContextTruncated] = useState(false)
+  const [includeGitHistory, setIncludeGitHistory] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -52,17 +61,19 @@ export function ThreadPanel(props: {
       setErr(null)
       setDraft('')
       setStreaming('')
-      setConflicts([])
+      setFindings([])
       setContextTruncated(false)
-      await streamPrivateThreadReply(projectId, sectionId, content, {
+      const snapshot = collab?.ytext?.toString()
+      await streamPrivateThread(projectId, sectionId, {
+        content,
+        ...(collab != null ? { current_section_plaintext: snapshot ?? '' } : {}),
+        include_git_history: includeGitHistory,
+      }, {
         onToken: (t: string) => {
           setStreaming((s) => s + t)
         },
-        onMeta: (meta: {
-          conflicts: { description: string }[]
-          context_truncated?: boolean
-        }) => {
-          setConflicts(meta.conflicts)
+        onMeta: (meta) => {
+          setFindings(meta.findings ?? [])
           setContextTruncated(Boolean(meta.context_truncated))
         },
       })
@@ -89,9 +100,18 @@ export function ThreadPanel(props: {
       <div className="flex items-start justify-between gap-2 border-b border-zinc-800 px-3 py-2">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold text-zinc-200">Private thread</h2>
-          <p className="text-xs text-zinc-500">
-            RAG-backed assistant (streaming). Conflicts scanned after reply.
+          <p className="truncate text-xs text-zinc-300" title={sectionTitle}>
+            {sectionTitle}
           </p>
+          <p className="mt-0.5 text-xs text-zinc-500">
+            Scoped to this section. Live editor text is sent with each message.
+          </p>
+          <Link
+            to={projectHref}
+            className="mt-1 inline-block text-xs text-violet-400 hover:underline"
+          >
+            Back to project outline
+          </Link>
         </div>
         <button
           type="button"
@@ -103,6 +123,16 @@ export function ThreadPanel(props: {
         </button>
       </div>
       <ContextTruncationBanner visible={contextTruncated} />
+      <label className="flex cursor-pointer items-center gap-2 border-b border-zinc-800/80 px-3 py-1.5 text-xs text-zinc-400">
+        <input
+          type="checkbox"
+          checked={includeGitHistory}
+          disabled={sendMut.isPending}
+          onChange={(e) => setIncludeGitHistory(e.target.checked)}
+          className="rounded border-zinc-600"
+        />
+        Include recent git history in context (GitLab)
+      </label>
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-2 text-sm">
         {threadQ.isPending && (
           <p className="text-zinc-500">Loading thread…</p>
@@ -128,12 +158,17 @@ export function ThreadPanel(props: {
         )}
         <div ref={bottomRef} />
       </div>
-      {conflicts.length > 0 && (
+      {findings.length > 0 && (
         <div className="border-t border-amber-900/40 bg-amber-950/30 px-3 py-2 text-xs text-amber-100">
-          <p className="font-medium text-amber-200">Possible conflicts</p>
-          <ul className="mt-1 list-inside list-disc">
-            {conflicts.map((c, i) => (
-              <li key={i}>{c.description}</li>
+          <p className="font-medium text-amber-200">Conflicts and gaps</p>
+          <ul className="mt-1 list-inside list-disc space-y-0.5">
+            {findings.map((f, i) => (
+              <li key={i}>
+                <span className="font-medium text-amber-300">
+                  {f.finding_type === 'gap' ? 'Gap' : 'Conflict'}
+                </span>
+                : {f.description}
+              </li>
             ))}
           </ul>
         </div>

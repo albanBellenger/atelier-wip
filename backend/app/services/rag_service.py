@@ -14,7 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.exceptions import ApiError
 from app.models import Artifact, ArtifactChunk, Project, Section, SectionChunk, Software
 from app.schemas.token_context import TokenContext
+from app.security.field_encryption import decrypt_secret, fernet_configured
 from app.services.embedding_service import EmbeddingService
+from app.services import git_service as gitlab_history
 from app.services.llm_service import LLMService
 
 log = structlog.get_logger("atelier.rag")
@@ -127,6 +129,44 @@ class RAGService:
         self._software_def_summary_cache[key] = summary
         return summary
 
+    async def _git_history_block(self, software: Software, *, max_chars: int) -> str:
+        """Recent commits for RAG; never raises; empty string if no room."""
+        header = "## Recent git history (user-requested)\n"
+        if max_chars <= len(header) + 24:
+            return ""
+        if not (software.git_repo_url or "").strip() or not (software.git_token or "").strip():
+            return header + "No git history available (repository not configured).\n"
+        if not fernet_configured():
+            return header + "No git history available.\n"
+        try:
+            plain = decrypt_secret(software.git_token)
+        except Exception:
+            log.warning("rag_git_token_decrypt_failed")
+            return header + "No git history available.\n"
+        try:
+            commits = await gitlab_history.list_commits(
+                repo_web_url=software.git_repo_url.strip(),
+                token=plain,
+                branch=(software.git_branch or "main").strip(),
+                per_page=15,
+            )
+        except (ValueError, ApiError) as e:
+            log.warning("rag_git_list_failed", err=str(e))
+            return header + "No git history available.\n"
+        lines: list[str] = []
+        for c in commits[:15]:
+            if not isinstance(c, dict):
+                continue
+            raw_title = c.get("title") or c.get("message") or ""
+            title = str(raw_title).strip().split("\n", 1)[0][:200]
+            sid = str(c.get("short_id") or (c.get("id") or ""))[:12]
+            lines.append(f"- {sid}: {title}")
+        body = "\n".join(lines) if lines else "(no commits returned)"
+        block = header + body + "\n"
+        if len(block) > max_chars:
+            block = block[: max(0, max_chars - 4)] + "\n…\n"
+        return block
+
     async def build_context(
         self,
         query: str,
@@ -134,6 +174,8 @@ class RAGService:
         current_section_id: uuid.UUID | None,
         *,
         token_budget: int = 6000,
+        current_section_plaintext_override: str | None = None,
+        include_git_history: bool = False,
     ) -> RAGContext:
         """Assemble labelled context string within approximate token budget."""
         project = await self.db.get(Project, project_id)
@@ -176,7 +218,8 @@ class RAGService:
                     code="NOT_FOUND",
                     message="Section not found.",
                 )
-            current_body = cur.content or ""
+            override = (current_section_plaintext_override or "").strip()
+            current_body = override if override else (cur.content or "")
 
         ctx = TokenContext(
             studio_id=software.studio_id,
@@ -209,6 +252,20 @@ class RAGService:
                 current_body,
                 budget_chars,
             )
+
+        if include_git_history:
+            remaining = budget_chars - sum(len(p) for p in parts)
+            if remaining > 200:
+                git_part = await self._git_history_block(
+                    software, max_chars=min(8000, remaining - 80)
+                )
+                if git_part:
+                    parts.append(git_part)
+                    if sum(len(p) for p in parts) > budget_chars:
+                        context_was_truncated = True
+                        over = sum(len(p) for p in parts) - budget_chars
+                        last = parts[-1]
+                        parts[-1] = last[: max(0, len(last) - over - 4)] + "\n…\n"
 
         q = (query or "").strip()
         qvec: list[float] | None = None

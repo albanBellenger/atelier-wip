@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi, afterEach } from 'vitest'
 
 import * as api from '../../services/api'
@@ -49,9 +50,17 @@ describe('ThreadPanel new thread', () => {
     })
 
     render(
-      <QueryClientProvider client={qc}>
-        <ThreadPanel projectId="p1" sectionId="sec1" />
-      </QueryClientProvider>,
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <ThreadPanel
+            projectId="p1"
+            sectionId="sec1"
+            sectionTitle="Intro"
+            projectHref="/studios/s1/software/sw1/projects/p1"
+            collab={null}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
     )
 
     await waitFor(() => {
