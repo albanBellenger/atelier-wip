@@ -2,6 +2,7 @@ import type { ReactElement } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthPage } from './pages/AuthPage'
 import { HomePage } from './pages/HomePage'
+import { AdminSettingsPage } from './pages/AdminSettingsPage'
 import { ArtifactsPage } from './pages/ArtifactsPage'
 import { ProjectPage } from './pages/ProjectPage'
 import { SectionPage } from './pages/SectionPage'
@@ -15,6 +16,7 @@ function App(): ReactElement {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/auth" element={<AuthPage />} />
+        <Route path="/admin/settings" element={<AdminSettingsPage />} />
         <Route path="/studios" element={<StudiosListPage />} />
         <Route path="/studios/:studioId" element={<StudioPage />} />
         <Route

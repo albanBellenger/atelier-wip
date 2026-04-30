@@ -106,14 +106,15 @@ class ArtifactService:
             ) from e
 
         aid = uuid.uuid4()
-        safe = _safe_filename(name.strip() or "document.md", "md")
+        display_name = name.strip()[:512] or "document.md"
+        safe = _safe_filename(display_name, "md")
         storage_path = f"{project_id}/{aid}/{safe}"
 
         art = Artifact(
             id=aid,
             project_id=project_id,
             uploaded_by=uploaded_by,
-            name=name.strip()[:512],
+            name=display_name,
             file_type="md",
             storage_path=storage_path,
         )

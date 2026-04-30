@@ -14,24 +14,22 @@ from fastapi import (
     UploadFile,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
+import structlog
 
 from app.database import get_db
 from app.deps import ProjectAccess, get_project_access, require_project_member
 from app.exceptions import ApiError
 from app.schemas.artifact import ArtifactResponse, MarkdownArtifactCreate
 from app.services.artifact_service import ArtifactService
-from app.services.embedding_pipeline import schedule_artifact_embedding
+from app.services.embedding_pipeline import enqueue_artifact_embedding
 from app.storage.minio_storage import get_storage_client
 
 router = APIRouter(prefix="/projects/{project_id}/artifacts", tags=["artifacts"])
+log = structlog.get_logger("atelier.artifacts")
 
 
 def _content_type(file_type: str) -> str:
     return "application/pdf" if file_type == "pdf" else "text/markdown"
-
-
-def _kick_artifact_embed(artifact_id: UUID) -> None:
-    schedule_artifact_embedding(artifact_id)
 
 
 @router.post("", response_model=ArtifactResponse)
@@ -68,13 +66,15 @@ async def upload_artifact(
     try:
         await storage.put_bytes(art.storage_path, raw, _content_type(art.file_type))
     except Exception as exc:
+        await session.delete(art)
+        await session.flush()
         raise ApiError(
             status_code=502,
             code="STORAGE_ERROR",
             message="Could not store file.",
         ) from exc
 
-    background_tasks.add_task(_kick_artifact_embed, art.id)
+    background_tasks.add_task(enqueue_artifact_embedding, art.id)
     return ArtifactResponse.model_validate(art)
 
 
@@ -104,13 +104,15 @@ async def create_markdown_artifact(
     try:
         await storage.put_bytes(art.storage_path, raw, _content_type(art.file_type))
     except Exception as exc:
+        await session.delete(art)
+        await session.flush()
         raise ApiError(
             status_code=502,
             code="STORAGE_ERROR",
             message="Could not store file.",
         ) from exc
 
-    background_tasks.add_task(_kick_artifact_embed, art.id)
+    background_tasks.add_task(enqueue_artifact_embedding, art.id)
     return ArtifactResponse.model_validate(art)
 
 
@@ -170,7 +172,7 @@ async def delete_artifact(
     artifact_id: UUID,
     session: AsyncSession = Depends(get_db),
     pa: ProjectAccess = Depends(require_project_member),
-) -> None:
+) -> Response:
     if pa.project.id != project_id:
         raise ApiError(
             status_code=404,
@@ -183,4 +185,5 @@ async def delete_artifact(
     try:
         await storage.remove(path)
     except Exception:
-        pass
+        log.warning("minio_remove_failed", storage_path=path)
+    return Response(status_code=204)

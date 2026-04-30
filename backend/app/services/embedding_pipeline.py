@@ -70,29 +70,36 @@ async def run_section_embedding(session: AsyncSession, section_id: uuid.UUID) ->
         )
 
 
-def schedule_artifact_embedding(artifact_id: uuid.UUID) -> None:
-    async def _job() -> None:
-        async with async_session_factory() as session:
-            try:
-                await run_artifact_embedding(session, artifact_id)
-                await session.commit()
-            except Exception:
-                await session.rollback()
-                log.exception("artifact_embedding_failed", artifact_id=str(artifact_id))
+async def enqueue_artifact_embedding(artifact_id: uuid.UUID) -> None:
+    """Run artifact embedding on the current event loop (e.g. FastAPI BackgroundTasks)."""
+    async with async_session_factory() as session:
+        try:
+            if not await embedding_configured(session):
+                return
+            await run_artifact_embedding(session, artifact_id)
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            log.exception("artifact_embedding_failed", artifact_id=str(artifact_id))
 
-    asyncio.create_task(_job())
+
+def schedule_artifact_embedding(artifact_id: uuid.UUID) -> None:
+    """Fire-and-forget when already inside a running event loop (not from a thread pool)."""
+    asyncio.create_task(enqueue_artifact_embedding(artifact_id))
+
+
+async def enqueue_section_embedding(section_id: uuid.UUID) -> None:
+    """Run section embedding on the current event loop."""
+    async with async_session_factory() as session:
+        try:
+            if not await embedding_configured(session):
+                return
+            await run_section_embedding(session, section_id)
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            log.exception("section_embedding_failed", section_id=str(section_id))
 
 
 def schedule_section_embedding(section_id: uuid.UUID) -> None:
-    async def _job() -> None:
-        async with async_session_factory() as session:
-            try:
-                if not await embedding_configured(session):
-                    return
-                await run_section_embedding(session, section_id)
-                await session.commit()
-            except Exception:
-                await session.rollback()
-                log.exception("section_embedding_failed", section_id=str(section_id))
-
-    asyncio.create_task(_job())
+    asyncio.create_task(enqueue_section_embedding(section_id))

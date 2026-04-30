@@ -55,13 +55,17 @@ class SectionService:
         return (m + 1) if m is not None else 0
 
     def _to_response(self, s: Section) -> SectionResponse:
+        # Plaintext snapshot; collab historically wrote str(None) when pycrdt had no Text.
+        snap = s.content or ""
+        if snap == "None":
+            snap = ""
         return SectionResponse(
             id=s.id,
             project_id=s.project_id,
             title=s.title,
             slug=s.slug,
             order=s.order,
-            content=s.content or "",
+            content=snap,
             created_at=s.created_at,
             updated_at=s.updated_at,
         )

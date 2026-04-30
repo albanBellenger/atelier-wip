@@ -81,6 +81,37 @@ export async function me(): Promise<MeResponse> {
   return request<MeResponse>('GET', '/auth/me')
 }
 
+// --- Tool admin /admin/config ---
+
+export interface AdminConfigPublic {
+  llm_provider: string | null
+  llm_model: string | null
+  llm_api_key_set: boolean
+  embedding_provider: string | null
+  embedding_model: string | null
+  embedding_api_key_set: boolean
+}
+
+/** Only include fields you intend to change; omitted keys are left unchanged on the server. */
+export type AdminConfigUpdateBody = {
+  llm_provider?: string | null
+  llm_model?: string | null
+  llm_api_key?: string | null
+  embedding_provider?: string | null
+  embedding_model?: string | null
+  embedding_api_key?: string | null
+}
+
+export async function getAdminConfig(): Promise<AdminConfigPublic> {
+  return request<AdminConfigPublic>('GET', '/admin/config')
+}
+
+export async function putAdminConfig(
+  body: AdminConfigUpdateBody,
+): Promise<AdminConfigPublic> {
+  return request<AdminConfigPublic>('PUT', '/admin/config', body)
+}
+
 export const api = {
   get: <T>(path: string) => request<T>('GET', path),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),

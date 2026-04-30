@@ -55,6 +55,17 @@ async def _promote_tool_admin(db_session, email: str) -> None:
 
 @pytest.fixture(autouse=True)
 def _noop_embed_tasks(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def noop(*_a: object, **_k: object) -> None:
+        return None
+
+    monkeypatch.setattr(
+        "app.services.embedding_pipeline.enqueue_artifact_embedding",
+        noop,
+    )
+    monkeypatch.setattr(
+        "app.services.embedding_pipeline.enqueue_section_embedding",
+        noop,
+    )
     monkeypatch.setattr(
         "app.services.embedding_pipeline.schedule_artifact_embedding",
         lambda *_a, **_k: None,

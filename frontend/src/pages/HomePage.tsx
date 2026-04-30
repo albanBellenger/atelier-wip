@@ -55,7 +55,18 @@ export function HomePage(): ReactElement {
           {profile.user.email})
         </p>
         {profile.user.is_tool_admin && (
-          <p className="mt-2 text-sm text-violet-400">Tool administrator</p>
+          <>
+            <p className="mt-2 text-sm text-violet-400">Tool administrator</p>
+            <p className="mt-3 text-sm text-zinc-400">
+              <Link
+                to="/admin/settings"
+                className="font-medium text-violet-400 hover:underline"
+              >
+                Tool admin settings
+              </Link>{' '}
+              — LLM and embedding configuration.
+            </p>
+          </>
         )}
         <p className="mt-6 text-sm text-zinc-500">
           <Link

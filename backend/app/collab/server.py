@@ -210,18 +210,31 @@ class AtelierWebsocketServer(WebsocketServer):
         # apply_update() cannot load get_state() output — it expects mergeable updates
         # compatible with JS Yjs encodeStateAsUpdate / Y.Sync.
         snapshot = doc.get_update()
-        text = ""
+        text: str | None = None
         if YDOC_TEXT_FIELD in doc:
-            text = str(doc[YDOC_TEXT_FIELD])
+            shared = doc[YDOC_TEXT_FIELD]
+            if isinstance(shared, Text):
+                text = str(shared)
+            else:
+                log.warning(
+                    "collab: %r is not a pycrdt Text after merge (got %s); "
+                    "skipping plaintext snapshot update (yjs_state still saved)",
+                    YDOC_TEXT_FIELD,
+                    type(shared).__name__,
+                )
+        else:
+            text = ""
         async with self._session_factory() as session:
             sec = await session.get(Section, section_id)
             if sec is None or sec.project_id != project_id:
                 return
             old_content = sec.content or ""
             sec.yjs_state = snapshot
-            sec.content = text
+            if text is not None:
+                sec.content = text
             await session.commit()
-        if text != old_content:
+        effective = text if text is not None else old_content
+        if effective != old_content:
             from app.services.embedding_pipeline import schedule_section_embedding
 
             schedule_section_embedding(section_id)
