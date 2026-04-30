@@ -37,7 +37,13 @@ async def section_collab(
     async with async_session_factory() as session:
         try:
             user = await _ws_user(session, websocket)
-            await fetch_project_access(session, user, project_id)
+            pa = await fetch_project_access(session, user, project_id)
+            if not pa.studio_access.is_studio_editor:
+                raise ApiError(
+                    status_code=403,
+                    code="FORBIDDEN",
+                    message="Studio editor access required for collaborative editing.",
+                )
             sec = await session.get(Section, section_id)
             if sec is None or sec.project_id != project_id:
                 raise ApiError(

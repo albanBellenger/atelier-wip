@@ -63,9 +63,21 @@ class StudioMembershipPublic(BaseModel):
     role: str
 
 
+class CrossStudioGrantPublic(BaseModel):
+    """Approved cross-studio software access for the current user."""
+
+    grant_id: UUID
+    target_software_id: UUID
+    owner_studio_id: UUID
+    owner_studio_name: str
+    software_name: str
+    access_level: str
+
+
 class MeResponse(BaseModel):
     user: UserPublic
     studios: list[StudioMembershipPublic]
+    cross_studio_grants: list[CrossStudioGrantPublic] = []
 
 
 class AdminConfigResponse(BaseModel):

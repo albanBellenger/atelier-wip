@@ -28,6 +28,7 @@ from app.routers import (
     artifacts,
     auth,
     collab,
+    me_token_usage,
     mcp_api,
     private_threads,
     project_chat,
@@ -129,6 +130,7 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(auth.router)
+    app.include_router(me_token_usage.router)
     app.include_router(admin.router)
     app.include_router(studios.router)
     app.include_router(mcp_api.router)

@@ -188,7 +188,7 @@ export function StudioPage(): ReactElement {
               to={`/studios/${sid}/settings`}
               className="text-sm text-violet-400 hover:underline"
             >
-              MCP keys
+              Settings
             </Link>
           ) : null}
         </div>

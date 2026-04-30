@@ -67,6 +67,15 @@ export async function logout(): Promise<{ message: string }> {
   return request<{ message: string }>('POST', '/auth/logout')
 }
 
+export interface CrossStudioGrantPublic {
+  grant_id: string
+  target_software_id: string
+  owner_studio_id: string
+  owner_studio_name: string
+  software_name: string
+  access_level: string
+}
+
 export interface MeResponse {
   user: {
     id: string
@@ -75,10 +84,234 @@ export interface MeResponse {
     is_tool_admin: boolean
   }
   studios: { studio_id: string; studio_name: string; role: string }[]
+  cross_studio_grants?: CrossStudioGrantPublic[]
 }
 
 export async function me(): Promise<MeResponse> {
   return request<MeResponse>('GET', '/auth/me')
+}
+
+function appendTokenUsageParams(
+  sp: URLSearchParams,
+  params: TokenUsageQueryParams | undefined,
+): void {
+  if (!params) return
+  const entries: [string, string | number | undefined][] = [
+    ['studio_id', params.studio_id],
+    ['software_id', params.software_id],
+    ['project_id', params.project_id],
+    ['user_id', params.user_id],
+    ['call_type', params.call_type],
+    ['date_from', params.date_from],
+    ['date_to', params.date_to],
+    ['limit', params.limit],
+    ['offset', params.offset],
+  ]
+  for (const [k, v] of entries) {
+    if (v !== undefined && v !== '') sp.set(k, String(v))
+  }
+}
+
+async function fetchCsv(pathWithQuery: string): Promise<Blob> {
+  const response = await fetch(base() + pathWithQuery, {
+    credentials: 'include',
+    headers: { Accept: 'text/csv' },
+  })
+  if (!response.ok) {
+    const text = await response.text()
+    let err: AuthErrorBody = {
+      detail: response.statusText,
+      code: 'HTTP_ERROR',
+    }
+    if (text) {
+      try {
+        err = JSON.parse(text) as AuthErrorBody
+      } catch {
+        err = { detail: text, code: 'HTTP_ERROR' }
+      }
+    }
+    throw err
+  }
+  return response.blob()
+}
+
+export function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+export interface TokenUsageQueryParams {
+  studio_id?: string
+  software_id?: string
+  project_id?: string
+  user_id?: string
+  call_type?: string
+  date_from?: string
+  date_to?: string
+  limit?: number
+  offset?: number
+}
+
+export interface TokenUsageRow {
+  id: string
+  studio_id: string | null
+  software_id: string | null
+  project_id: string | null
+  user_id: string | null
+  call_type: string
+  model: string
+  input_tokens: number
+  output_tokens: number
+  estimated_cost_usd: string | null
+  created_at: string
+}
+
+export interface TokenUsageTotals {
+  input_tokens: number
+  output_tokens: number
+  estimated_cost_usd: string
+}
+
+export interface TokenUsageReport {
+  rows: TokenUsageRow[]
+  totals: TokenUsageTotals
+}
+
+export async function getAdminTokenUsage(
+  params?: TokenUsageQueryParams,
+): Promise<TokenUsageReport> {
+  const sp = new URLSearchParams()
+  appendTokenUsageParams(sp, params)
+  const q = sp.toString()
+  return request<TokenUsageReport>(
+    'GET',
+    `/admin/token-usage${q ? `?${q}` : ''}`,
+  )
+}
+
+export async function downloadAdminTokenUsageCsv(
+  params?: TokenUsageQueryParams,
+): Promise<Blob> {
+  const sp = new URLSearchParams()
+  appendTokenUsageParams(sp, params)
+  const q = sp.toString()
+  return fetchCsv(`/admin/token-usage${q ? `?${q}` : ''}`)
+}
+
+export async function getStudioTokenUsage(
+  studioId: string,
+  params?: Omit<TokenUsageQueryParams, 'studio_id'>,
+): Promise<TokenUsageReport> {
+  const sp = new URLSearchParams()
+  appendTokenUsageParams(sp, params)
+  const q = sp.toString()
+  return request<TokenUsageReport>(
+    'GET',
+    `/studios/${studioId}/token-usage${q ? `?${q}` : ''}`,
+  )
+}
+
+export async function downloadStudioTokenUsageCsv(
+  studioId: string,
+  params?: Omit<TokenUsageQueryParams, 'studio_id'>,
+): Promise<Blob> {
+  const sp = new URLSearchParams()
+  appendTokenUsageParams(sp, params)
+  const q = sp.toString()
+  return fetchCsv(`/studios/${studioId}/token-usage${q ? `?${q}` : ''}`)
+}
+
+export async function getMeTokenUsage(
+  params?: Omit<TokenUsageQueryParams, 'studio_id' | 'user_id'>,
+): Promise<TokenUsageReport> {
+  const sp = new URLSearchParams()
+  appendTokenUsageParams(sp, params)
+  const q = sp.toString()
+  return request<TokenUsageReport>(
+    'GET',
+    `/me/token-usage${q ? `?${q}` : ''}`,
+  )
+}
+
+export async function downloadMeTokenUsageCsv(
+  params?: Omit<TokenUsageQueryParams, 'studio_id' | 'user_id'>,
+): Promise<Blob> {
+  const sp = new URLSearchParams()
+  appendTokenUsageParams(sp, params)
+  const q = sp.toString()
+  return fetchCsv(`/me/token-usage${q ? `?${q}` : ''}`)
+}
+
+export interface CrossStudioRequestBody {
+  target_software_id: string
+  requested_access_level?: 'viewer' | 'external_editor'
+}
+
+export interface CrossStudioRequestResult {
+  id: string
+  status: string
+  access_level: string
+}
+
+export async function postStudioCrossStudioRequest(
+  studioId: string,
+  body: CrossStudioRequestBody,
+): Promise<CrossStudioRequestResult> {
+  return request<CrossStudioRequestResult>(
+    'POST',
+    `/studios/${studioId}/cross-studio-request`,
+    body,
+  )
+}
+
+export interface CrossStudioAdminRow {
+  id: string
+  requesting_studio_id: string
+  requesting_studio_name: string
+  target_software_id: string
+  target_software_name: string
+  owner_studio_id: string
+  owner_studio_name: string
+  requested_by: string
+  requester_email: string
+  access_level: string
+  status: string
+  created_at: string
+  resolved_at: string | null
+}
+
+export async function listAdminCrossStudio(params?: {
+  status?: string
+  limit?: number
+}): Promise<CrossStudioAdminRow[]> {
+  const sp = new URLSearchParams()
+  if (params?.status) sp.set('status', params.status)
+  if (params?.limit != null) sp.set('limit', String(params.limit))
+  const q = sp.toString()
+  return request<CrossStudioAdminRow[]>(
+    'GET',
+    `/admin/cross-studio${q ? `?${q}` : ''}`,
+  )
+}
+
+export interface CrossStudioResolveBody {
+  decision: 'approve' | 'reject' | 'revoke'
+  access_level?: 'viewer' | 'external_editor' | null
+}
+
+export async function putAdminCrossStudioResolve(
+  grantId: string,
+  body: CrossStudioResolveBody,
+): Promise<CrossStudioRequestResult> {
+  return request<CrossStudioRequestResult>(
+    'PUT',
+    `/admin/cross-studio/${grantId}`,
+    body,
+  )
 }
 
 // --- Tool admin /admin/config ---

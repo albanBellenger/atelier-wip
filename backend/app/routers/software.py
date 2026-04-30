@@ -6,7 +6,15 @@ from fastapi import APIRouter, Depends, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.deps import StudioAccess, get_studio_access, require_studio_admin, require_studio_editor
+from app.deps import (
+    SoftwareAccess,
+    StudioAccess,
+    get_software_in_studio,
+    get_studio_access,
+    require_software_admin_in_studio,
+    require_software_editor_in_studio,
+    require_studio_admin,
+)
 from app.schemas.publish import GitCommitItem, GitHistoryResponse
 from app.schemas.software import GitTestResult, SoftwareCreate, SoftwareResponse, SoftwareUpdate
 from app.services.software_service import SoftwareService
@@ -35,9 +43,9 @@ async def create_software(
 async def get_software(
     software_id: UUID,
     session: AsyncSession = Depends(get_db),
-    access: StudioAccess = Depends(get_studio_access),
+    sa: SoftwareAccess = Depends(get_software_in_studio),
 ) -> SoftwareResponse:
-    return await SoftwareService(session).get_software(access, software_id)
+    return await SoftwareService(session).get_software(sa.studio_access, software_id)
 
 
 @router.put("/{software_id}", response_model=SoftwareResponse)
@@ -45,9 +53,11 @@ async def update_software(
     software_id: UUID,
     body: SoftwareUpdate,
     session: AsyncSession = Depends(get_db),
-    access: StudioAccess = Depends(require_studio_editor),
+    sa: SoftwareAccess = Depends(require_software_editor_in_studio),
 ) -> SoftwareResponse:
-    return await SoftwareService(session).update_software(access, software_id, body)
+    return await SoftwareService(session).update_software(
+        sa.studio_access, software_id, body
+    )
 
 
 @router.patch("/{software_id}", response_model=SoftwareResponse)
@@ -55,18 +65,20 @@ async def patch_software(
     software_id: UUID,
     body: SoftwareUpdate,
     session: AsyncSession = Depends(get_db),
-    access: StudioAccess = Depends(require_studio_editor),
+    sa: SoftwareAccess = Depends(require_software_editor_in_studio),
 ) -> SoftwareResponse:
-    return await SoftwareService(session).update_software(access, software_id, body)
+    return await SoftwareService(session).update_software(
+        sa.studio_access, software_id, body
+    )
 
 
 @router.delete("/{software_id}", status_code=204)
 async def delete_software(
     software_id: UUID,
     session: AsyncSession = Depends(get_db),
-    access: StudioAccess = Depends(require_studio_admin),
+    sa: SoftwareAccess = Depends(require_software_admin_in_studio),
 ) -> Response:
-    await SoftwareService(session).delete_software(access, software_id)
+    await SoftwareService(session).delete_software(sa.studio_access, software_id)
     return Response(status_code=204)
 
 
@@ -74,10 +86,10 @@ async def delete_software(
 async def software_git_history(
     software_id: UUID,
     session: AsyncSession = Depends(get_db),
-    access: StudioAccess = Depends(get_studio_access),
+    sa: SoftwareAccess = Depends(get_software_in_studio),
 ) -> GitHistoryResponse:
     rows = await SoftwareService(session).git_commit_history(
-        access, software_id, per_page=30
+        sa.studio_access, software_id, per_page=30
     )
     return GitHistoryResponse(
         commits=[GitCommitItem.model_validate(r) for r in rows],
@@ -88,6 +100,6 @@ async def software_git_history(
 async def test_git_connection(
     software_id: UUID,
     session: AsyncSession = Depends(get_db),
-    access: StudioAccess = Depends(require_studio_admin),
+    sa: SoftwareAccess = Depends(require_software_admin_in_studio),
 ) -> GitTestResult:
-    return await SoftwareService(session).test_git(access, software_id)
+    return await SoftwareService(session).test_git(sa.studio_access, software_id)

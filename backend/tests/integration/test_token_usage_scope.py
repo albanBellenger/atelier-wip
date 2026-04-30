@@ -1,0 +1,127 @@
+"""Token usage reporting scopes and CSV."""
+
+import uuid
+from decimal import Decimal
+
+import pytest
+import pytest_asyncio
+from httpx import AsyncClient
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models import TokenUsage
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _truncate_users(db_session: AsyncSession) -> None:
+    await db_session.execute(text("TRUNCATE TABLE users RESTART IDENTITY CASCADE"))
+    await db_session.flush()
+
+
+async def _register(client: AsyncClient, suffix: str, label: str) -> str:
+    r = await client.post(
+        "/auth/register",
+        json={
+            "email": f"{label}-{suffix}@example.com",
+            "password": "securepass123",
+            "display_name": label,
+        },
+    )
+    assert r.status_code == 200, r.text
+    token = r.cookies.get("atelier_token")
+    assert token
+    return token
+
+
+@pytest.mark.asyncio
+async def test_token_usage_scope_member_studio_admin_tool_admin_csv(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token_ta = await _register(client, sfx, "ta")
+    client.cookies.set("atelier_token", token_ta)
+    studio_a = (
+        await client.post("/studios", json={"name": f"S{sfx}", "description": ""})
+    ).json()["id"]
+
+    token_sa = await _register(client, sfx, "sadmin")
+    client.cookies.set("atelier_token", token_ta)
+    add_sa = await client.post(
+        f"/studios/{studio_a}/members",
+        json={"email": f"sadmin-{sfx}@example.com", "role": "studio_admin"},
+    )
+    assert add_sa.status_code == 200
+
+    token_m = await _register(client, sfx, "member")
+    client.cookies.set("atelier_token", token_ta)
+    add_m = await client.post(
+        f"/studios/{studio_a}/members",
+        json={"email": f"member-{sfx}@example.com", "role": "studio_member"},
+    )
+    assert add_m.status_code == 200
+
+    client.cookies.set("atelier_token", token_sa)
+    uid_sa = (await client.get("/auth/me")).json()["user"]["id"]
+
+    client.cookies.set("atelier_token", token_m)
+    uid_m = (await client.get("/auth/me")).json()["user"]["id"]
+
+    db_session.add_all(
+        [
+            TokenUsage(
+                studio_id=uuid.UUID(studio_a),
+                software_id=None,
+                project_id=None,
+                user_id=uuid.UUID(uid_m),
+                call_type="chat",
+                model="gpt-test",
+                input_tokens=10,
+                output_tokens=20,
+                estimated_cost_usd=Decimal("0.010000"),
+            ),
+            TokenUsage(
+                studio_id=uuid.UUID(studio_a),
+                software_id=None,
+                project_id=None,
+                user_id=uuid.UUID(uid_sa),
+                call_type="thread",
+                model="gpt-test",
+                input_tokens=5,
+                output_tokens=5,
+                estimated_cost_usd=Decimal("0.005000"),
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    client.cookies.set("atelier_token", token_m)
+    me_r = await client.get("/me/token-usage")
+    assert me_r.status_code == 200
+    body = me_r.json()
+    assert len(body["rows"]) == 1
+    assert body["rows"][0]["user_id"] == uid_m
+
+    client.cookies.set("atelier_token", token_sa)
+    st_r = await client.get(f"/studios/{studio_a}/token-usage")
+    assert st_r.status_code == 200
+    st_body = st_r.json()
+    assert len(st_body["rows"]) == 2
+
+    token_out = await _register(client, sfx, "outsider")
+    client.cookies.set("atelier_token", token_out)
+    forbidden = await client.get(f"/studios/{studio_a}/token-usage")
+    assert forbidden.status_code == 403
+
+    client.cookies.set("atelier_token", token_ta)
+    admin_r = await client.get("/admin/token-usage")
+    assert admin_r.status_code == 200
+    assert len(admin_r.json()["rows"]) >= 2
+
+    csv_r = await client.get(
+        "/admin/token-usage",
+        headers={"Accept": "text/csv"},
+    )
+    assert csv_r.status_code == 200
+    assert "text/csv" in (csv_r.headers.get("content-type") or "")
+    assert "call_type" in csv_r.text

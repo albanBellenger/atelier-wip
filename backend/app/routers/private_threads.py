@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.deps import ProjectAccess, get_project_access, require_project_member
+from app.deps import ProjectAccess, require_project_member
 from app.exceptions import ApiError
 from app.main import limiter
 from app.schemas.private_thread import (
@@ -38,7 +38,7 @@ async def get_private_thread(
     project_id: UUID,
     section_id: UUID,
     session: AsyncSession = Depends(get_db),
-    pa: ProjectAccess = Depends(get_project_access),
+    pa: ProjectAccess = Depends(require_project_member),
 ) -> PrivateThreadDetail:
     _ensure_project(pa, project_id)
     svc = PrivateThreadService(session)

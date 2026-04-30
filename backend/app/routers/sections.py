@@ -9,6 +9,7 @@ from app.database import get_db
 from app.deps import (
     ProjectAccess,
     get_project_access,
+    require_project_member,
     require_project_studio_admin,
 )
 from app.schemas.section import (
@@ -69,7 +70,7 @@ async def update_section(
     section_id: UUID,
     body: SectionUpdate,
     session: AsyncSession = Depends(get_db),
-    pa=Depends(get_project_access),
+    pa=Depends(require_project_member),
 ) -> SectionResponse:
     return await SectionService(session).update_section(
         project_id,

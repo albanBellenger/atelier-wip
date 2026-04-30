@@ -126,6 +126,35 @@ function DraggableCard(props: {
   )
 }
 
+function ReadOnlyWoCard(props: {
+  wo: WorkOrder
+  onOpen: () => void
+}): ReactElement {
+  const { wo, onOpen } = props
+  return (
+    <div className="rounded-lg border border-zinc-700 bg-zinc-900/80 p-2 text-left text-sm shadow-sm">
+      <button type="button" className="w-full text-left" onClick={() => onOpen()}>
+        <span className="line-clamp-2 font-medium text-zinc-100">
+          {wo.title}
+        </span>
+        {wo.phase && (
+          <span className="mt-1 block text-xs text-zinc-500">{wo.phase}</span>
+        )}
+        {wo.assignee_display_name && (
+          <span className="mt-1 block text-xs text-violet-300">
+            {wo.assignee_display_name}
+          </span>
+        )}
+        {wo.is_stale && (
+          <span className="mt-1 inline-block rounded bg-amber-900/50 px-1.5 py-0.5 text-[10px] uppercase text-amber-200">
+            Stale
+          </span>
+        )}
+      </button>
+    </div>
+  )
+}
+
 function StatusColumn(props: {
   status: string
   title: string
@@ -179,7 +208,7 @@ export function WorkOrdersPage(): ReactElement {
     }
   }, [profileQ.isError, navigate])
 
-  const access = useStudioAccess(profileQ.data, sid)
+  const access = useStudioAccess(profileQ.data, sid, sfid)
 
   const ordersQ = useQuery({
     queryKey: ['workOrders', pid, filters],
@@ -202,7 +231,7 @@ export function WorkOrdersPage(): ReactElement {
   const membersQ = useQuery({
     queryKey: ['members', sid],
     queryFn: () => listMembers(sid),
-    enabled: Boolean(sid && access.isMember),
+    enabled: Boolean(sid && access.isMember && !access.crossGrant),
   })
 
   const detailQ = useQuery({
@@ -351,6 +380,7 @@ export function WorkOrdersPage(): ReactElement {
           noteMut={noteMut}
           dismissMut={dismissMut}
           members={membersQ.data ?? []}
+          readOnly={!access.isStudioEditor}
         />
       )}
     </aside>
@@ -401,16 +431,18 @@ export function WorkOrdersPage(): ReactElement {
               List
             </button>
           </div>
-          <button
-            type="button"
-            className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500"
-            onClick={() => {
-              genMut.reset()
-              setGenOpen(true)
-            }}
-          >
-            Generate…
-          </button>
+          {access.isStudioEditor ? (
+            <button
+              type="button"
+              className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500"
+              onClick={() => {
+                genMut.reset()
+                setGenOpen(true)
+              }}
+            >
+              Generate…
+            </button>
+          ) : null}
         </div>
 
         <div className="mb-6 flex flex-wrap gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 text-sm">
@@ -509,11 +541,41 @@ export function WorkOrdersPage(): ReactElement {
         )}
 
         {view === 'kanban' && !ordersQ.isPending && (
-          <DndContext
-            sensors={sensors}
-            onDragStart={onDragStart}
-            onDragEnd={onDragEnd}
-          >
+          access.isStudioEditor ? (
+            <DndContext
+              sensors={sensors}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEnd}
+            >
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+                <div className="flex min-w-0 flex-1 flex-wrap gap-2 lg:flex-nowrap">
+                  {STATUSES.map((st) => (
+                    <StatusColumn
+                      key={st}
+                      status={st}
+                      title={STATUS_LABEL[st] ?? st}
+                    >
+                      {(byStatus[st] ?? []).map((wo) => (
+                        <DraggableCard
+                          key={wo.id}
+                          wo={wo}
+                          onOpen={() => setSelectedId(wo.id)}
+                        />
+                      ))}
+                    </StatusColumn>
+                  ))}
+                </div>
+                {detailPanel}
+              </div>
+              <DragOverlay dropAnimation={null}>
+                {activeDrag ? (
+                  <div className="max-w-[200px] rounded-lg border border-violet-500 bg-zinc-900 p-2 text-sm shadow-xl">
+                    {activeDrag.title}
+                  </div>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
+          ) : (
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
               <div className="flex min-w-0 flex-1 flex-wrap gap-2 lg:flex-nowrap">
                 {STATUSES.map((st) => (
@@ -523,7 +585,7 @@ export function WorkOrdersPage(): ReactElement {
                     title={STATUS_LABEL[st] ?? st}
                   >
                     {(byStatus[st] ?? []).map((wo) => (
-                      <DraggableCard
+                      <ReadOnlyWoCard
                         key={wo.id}
                         wo={wo}
                         onOpen={() => setSelectedId(wo.id)}
@@ -534,14 +596,7 @@ export function WorkOrdersPage(): ReactElement {
               </div>
               {detailPanel}
             </div>
-            <DragOverlay dropAnimation={null}>
-              {activeDrag ? (
-                <div className="max-w-[200px] rounded-lg border border-violet-500 bg-zinc-900 p-2 text-sm shadow-xl">
-                  {activeDrag.title}
-                </div>
-              ) : null}
-            </DragOverlay>
-          </DndContext>
+          )
         )}
 
         {view === 'list' && !ordersQ.isPending && (
@@ -707,6 +762,7 @@ function DetailForm(props: {
   noteMut: { mutate: (args: { content: string }) => void; isPending: boolean }
   dismissMut: { mutate: () => void; isPending: boolean }
   members: { user_id: string; display_name: string }[]
+  readOnly?: boolean
 }): ReactElement {
   const {
     detail,
@@ -718,6 +774,7 @@ function DetailForm(props: {
     noteMut,
     dismissMut,
     members,
+    readOnly = false,
   } = props
 
   const [title, setTitle] = useState(detail.title)
@@ -756,7 +813,7 @@ function DetailForm(props: {
           <button
             type="button"
             className="mt-2 rounded bg-amber-800/50 px-3 py-1 text-xs text-amber-100"
-            disabled={dismissMut.isPending}
+            disabled={dismissMut.isPending || readOnly}
             onClick={() => dismissMut.mutate()}
           >
             Dismiss stale
@@ -767,6 +824,7 @@ function DetailForm(props: {
       <input
         className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
         value={title}
+        disabled={readOnly}
         onChange={(e) => setTitle(e.target.value)}
       />
       <label className="block text-xs text-zinc-500">Description</label>
@@ -774,12 +832,14 @@ function DetailForm(props: {
         className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
         rows={4}
         value={description}
+        disabled={readOnly}
         onChange={(e) => setDescription(e.target.value)}
       />
       <label className="block text-xs text-zinc-500">Phase</label>
       <input
         className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
         value={phase}
+        disabled={readOnly}
         onChange={(e) => setPhase(e.target.value)}
       />
       <label className="block text-xs text-zinc-500">Phase order</label>
@@ -788,11 +848,13 @@ function DetailForm(props: {
         inputMode="numeric"
         placeholder="optional integer"
         value={phaseOrder}
+        disabled={readOnly}
         onChange={(e) => setPhaseOrder(e.target.value)}
       />
       <select
         className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
         value={assigneeId}
+        disabled={readOnly}
         onChange={(e) => setAssigneeId(e.target.value)}
       >
         <option value="">—</option>
@@ -807,6 +869,7 @@ function DetailForm(props: {
         className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
         rows={3}
         value={impl}
+        disabled={readOnly}
         onChange={(e) => setImpl(e.target.value)}
       />
       <label className="block text-xs text-zinc-500">Acceptance criteria</label>
@@ -814,8 +877,10 @@ function DetailForm(props: {
         className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
         rows={3}
         value={accept}
+        disabled={readOnly}
         onChange={(e) => setAccept(e.target.value)}
       />
+      {!readOnly ? (
       <button
         type="button"
         className="w-full rounded-lg bg-violet-600 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
@@ -844,6 +909,7 @@ function DetailForm(props: {
       >
         Save changes
       </button>
+      ) : null}
       {detail.section_ids.length > 0 && (
         <div>
           <p className="text-xs text-zinc-500">Linked sections</p>
@@ -869,6 +935,7 @@ function DetailForm(props: {
             </li>
           ))}
         </ul>
+        {!readOnly ? (
         <textarea
           className="mt-2 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
           rows={2}
@@ -876,6 +943,8 @@ function DetailForm(props: {
           value={noteDraft}
           onChange={(e) => setNoteDraft(e.target.value)}
         />
+        ) : null}
+        {!readOnly ? (
         <button
           type="button"
           className="mt-2 rounded bg-zinc-700 px-3 py-1 text-sm text-white disabled:opacity-50"
@@ -887,6 +956,7 @@ function DetailForm(props: {
         >
           Add note
         </button>
+        ) : null}
       </div>
     </div>
   )

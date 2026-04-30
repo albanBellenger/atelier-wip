@@ -1,4 +1,9 @@
-"""Record token_usage rows after LLM calls."""
+"""Record token_usage rows after LLM calls.
+
+Dashboard totals aggregate these rows. Embedding workloads (EmbeddingService /
+embedding_pipeline) currently do not call ``record_usage``; embedding spend may be
+absent from reports until wired similarly.
+"""
 
 from __future__ import annotations
 

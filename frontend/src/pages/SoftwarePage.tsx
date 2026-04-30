@@ -40,7 +40,7 @@ export function SoftwarePage(): ReactElement {
     }
   }, [profileError, navigate])
 
-  const access = useStudioAccess(profile, sid)
+  const access = useStudioAccess(profile, sid, sfid)
 
   const swQ = useQuery({
     queryKey: ['softwareOne', sid, sfid],
@@ -200,7 +200,7 @@ export function SoftwarePage(): ReactElement {
 
             <section className="mt-8 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
               <h2 className="text-sm font-medium text-zinc-300">Projects</h2>
-              {access.isMember && (
+              {access.isMember && access.canCreateProject && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   <input
                     className="min-w-[12rem] flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"

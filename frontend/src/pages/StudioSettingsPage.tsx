@@ -4,16 +4,22 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useStudioAccess } from '../hooks/useStudioAccess'
 import {
-  createMcpKey,
-  listMcpKeys,
   me,
-  revokeMcpKey,
+  postStudioCrossStudioRequest,
+  type AuthErrorBody,
 } from '../services/api'
+
+function formatApiDetail(err: unknown): string {
+  if (err && typeof err === 'object' && 'detail' in err) {
+    const d = (err as AuthErrorBody).detail
+    if (typeof d === 'string') return d
+  }
+  return 'Request failed.'
+}
 
 export function StudioSettingsPage(): ReactElement {
   const { studioId } = useParams<{ studioId: string }>()
   const navigate = useNavigate()
-  const qc = useQueryClient()
   const sid = studioId ?? ''
 
   const profileQ = useQuery({
@@ -30,32 +36,26 @@ export function StudioSettingsPage(): ReactElement {
 
   const access = useStudioAccess(profileQ.data, sid)
 
-  const keysQ = useQuery({
-    queryKey: ['mcpKeys', sid],
-    queryFn: () => listMcpKeys(sid),
-    enabled: Boolean(sid && access.isStudioAdmin),
-  })
+  const qc = useQueryClient()
+  const [targetSoftwareId, setTargetSoftwareId] = useState('')
+  const [requestedLevel, setRequestedLevel] = useState<'viewer' | 'external_editor'>(
+    'viewer',
+  )
+  const [crossMsg, setCrossMsg] = useState<string | null>(null)
 
-  const [label, setLabel] = useState('')
-  const [secretOnce, setSecretOnce] = useState<string | null>(null)
-
-  const createMut = useMutation({
+  const crossMut = useMutation({
     mutationFn: () =>
-      createMcpKey(sid, {
-        label: label.trim() || 'key',
-        access_level: 'editor',
+      postStudioCrossStudioRequest(sid, {
+        target_software_id: targetSoftwareId.trim(),
+        requested_access_level: requestedLevel,
       }),
-    onSuccess: (data) => {
-      setSecretOnce(data.secret)
-      setLabel('')
-      void qc.invalidateQueries({ queryKey: ['mcpKeys', sid] })
-    },
-  })
-
-  const revokeMut = useMutation({
-    mutationFn: (keyId: string) => revokeMcpKey(sid, keyId),
     onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['mcpKeys', sid] })
+      setCrossMsg('Request submitted.')
+      setTargetSoftwareId('')
+      void qc.invalidateQueries({ queryKey: ['auth', 'me'] })
+    },
+    onError: (e: unknown) => {
+      setCrossMsg(formatApiDetail(e))
     },
   })
 
@@ -90,66 +90,80 @@ export function StudioSettingsPage(): ReactElement {
           ← Studio
         </Link>
         <h1 className="text-2xl font-semibold">Studio settings</h1>
-        <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-          <h2 className="text-sm font-medium text-zinc-300">MCP API keys</h2>
+        <Link
+          to={`/studios/${sid}/settings/mcp`}
+          className="block rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 transition hover:border-zinc-700"
+        >
+          <h2 className="text-sm font-medium text-zinc-200">MCP server</h2>
           <p className="mt-1 text-xs text-zinc-500">
-            Use with Authorization: Bearer &lt;secret&gt; on /mcp/v1/…
+            API base URL, endpoints, and keys for coding-agent integrations.
           </p>
-          {secretOnce && (
-            <div className="mt-3 rounded-lg border border-amber-700/50 bg-amber-950/30 p-3 text-xs text-amber-200">
-              <p className="font-medium">Copy now — shown once:</p>
-              <code className="mt-1 block break-all font-mono">{secretOnce}</code>
-              <button
-                type="button"
-                className="mt-2 text-violet-400 hover:underline"
-                onClick={() => setSecretOnce(null)}
-              >
-                Dismiss
-              </button>
-            </div>
-          )}
-          <div className="mt-4 flex gap-2">
-            <input
-              className="flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
-              placeholder="Label"
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-            />
-            <button
-              type="button"
-              disabled={createMut.isPending}
-              className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
-              onClick={() => createMut.mutate()}
+          <span className="mt-3 inline-block text-sm text-violet-400">Open →</span>
+        </Link>
+
+        <Link
+          to={`/studios/${sid}/token-usage`}
+          className="block rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 transition hover:border-zinc-700"
+        >
+          <h2 className="text-sm font-medium text-zinc-200">Token usage</h2>
+          <p className="mt-1 text-xs text-zinc-500">
+            Usage across members and projects in this studio (aggregated rows).
+          </p>
+          <span className="mt-3 inline-block text-sm text-violet-400">Open →</span>
+        </Link>
+
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+          <h2 className="text-sm font-medium text-zinc-200">
+            Request cross-studio access
+          </h2>
+          <p className="mt-1 text-xs text-zinc-500">
+            Ask Tool Admin for read or edit access to software owned by another studio.
+            Paste the target software UUID (owner validates on approval).
+          </p>
+          {crossMsg && (
+            <p
+              className={`mt-3 text-sm ${crossMut.isError ? 'text-red-400' : 'text-emerald-400'}`}
             >
-              Create
-            </button>
-          </div>
-          <ul className="mt-4 space-y-2 text-sm">
-            {(keysQ.data ?? []).map((k) => (
-              <li
-                key={k.id}
-                className="flex items-center justify-between rounded-lg border border-zinc-800 px-3 py-2"
-              >
-                <span>
-                  {k.label}{' '}
-                  <span className="text-zinc-500">
-                    ({k.access_level}
-                    {k.revoked_at ? ', revoked' : ''})
-                  </span>
-                </span>
-                {!k.revoked_at ? (
-                  <button
-                    type="button"
-                    className="text-xs text-red-400 hover:underline"
-                    onClick={() => revokeMut.mutate(k.id)}
-                  >
-                    Revoke
-                  </button>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </section>
+              {crossMsg}
+            </p>
+          )}
+          <label className="mt-4 block text-xs text-zinc-500">
+            Target software ID
+            <input
+              className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-sm"
+              value={targetSoftwareId}
+              onChange={(e) => {
+                setTargetSoftwareId(e.target.value)
+                setCrossMsg(null)
+              }}
+              placeholder="UUID"
+            />
+          </label>
+          <label className="mt-3 block text-xs text-zinc-500">
+            Requested access
+            <select
+              className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+              value={requestedLevel}
+              onChange={(e) =>
+                setRequestedLevel(e.target.value as 'viewer' | 'external_editor')
+              }
+            >
+              <option value="viewer">Viewer</option>
+              <option value="external_editor">External editor</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            disabled={!targetSoftwareId.trim() || crossMut.isPending}
+            className="mt-4 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+            onClick={() => {
+              setCrossMsg(null)
+              crossMut.mutate()
+            }}
+          >
+            {crossMut.isPending ? 'Submitting…' : 'Submit request'}
+          </button>
+        </div>
       </div>
     </div>
   )

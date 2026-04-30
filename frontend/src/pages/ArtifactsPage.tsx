@@ -49,7 +49,7 @@ export function ArtifactsPage(): ReactElement {
     }
   }, [profileError, navigate])
 
-  const access = useStudioAccess(profile, sid)
+  const access = useStudioAccess(profile, sid, sfid)
 
   const artifactsQ = useQuery({
     queryKey: ['artifacts', pid],
@@ -159,30 +159,36 @@ export function ArtifactsPage(): ReactElement {
 
         <section className="mt-8 space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
           <h2 className="text-sm font-medium text-zinc-300">Upload</h2>
-          <input
-            type="text"
-            className="mb-2 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
-            placeholder="Display name (optional)"
-            value={uploadName}
-            onChange={(e) => setUploadName(e.target.value)}
-          />
-          <input
-            type="file"
-            accept=".pdf,.md,application/pdf,text/markdown"
-            className="block text-sm text-zinc-400 file:mr-3 file:rounded file:border-0 file:bg-violet-600 file:px-3 file:py-1.5 file:text-white"
-            onChange={(e) => {
-              const f = e.target.files?.[0]
-              if (f) {
-                uploadMut.mutate(f)
-                e.target.value = ''
-              }
-            }}
-            disabled={uploadMut.isPending}
-          />
-          {uploadMut.isError && (
-            <p className="whitespace-pre-wrap text-sm text-red-400">
-              {formatApiDetail(uploadMut.error)}
-            </p>
+          {access.isStudioEditor ? (
+            <>
+              <input
+                type="text"
+                className="mb-2 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
+                placeholder="Display name (optional)"
+                value={uploadName}
+                onChange={(e) => setUploadName(e.target.value)}
+              />
+              <input
+                type="file"
+                accept=".pdf,.md,application/pdf,text/markdown"
+                className="block text-sm text-zinc-400 file:mr-3 file:rounded file:border-0 file:bg-violet-600 file:px-3 file:py-1.5 file:text-white"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) {
+                    uploadMut.mutate(f)
+                    e.target.value = ''
+                  }
+                }}
+                disabled={uploadMut.isPending}
+              />
+              {uploadMut.isError && (
+                <p className="whitespace-pre-wrap text-sm text-red-400">
+                  {formatApiDetail(uploadMut.error)}
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-sm text-zinc-500">View only — uploads require editor access.</p>
           )}
         </section>
 
@@ -191,15 +197,17 @@ export function ArtifactsPage(): ReactElement {
             <h2 className="text-sm font-medium text-zinc-300">
               New Markdown artifact
             </h2>
-            <button
-              type="button"
-              className="rounded-lg border border-zinc-700 px-3 py-1 text-xs text-zinc-300 hover:bg-zinc-800"
-              onClick={() => setShowMdForm((v) => !v)}
-            >
-              {showMdForm ? 'Hide' : 'Create'}
-            </button>
+            {access.isStudioEditor ? (
+              <button
+                type="button"
+                className="rounded-lg border border-zinc-700 px-3 py-1 text-xs text-zinc-300 hover:bg-zinc-800"
+                onClick={() => setShowMdForm((v) => !v)}
+              >
+                {showMdForm ? 'Hide' : 'Create'}
+              </button>
+            ) : null}
           </div>
-          {showMdForm && (
+          {access.isStudioEditor && showMdForm && (
             <>
               <input
                 type="text"
@@ -260,18 +268,20 @@ export function ArtifactsPage(): ReactElement {
                   >
                     Download
                   </button>
-                  <button
-                    type="button"
-                    className="text-red-400 hover:underline disabled:opacity-40"
-                    disabled={deleteMut.isPending}
-                    onClick={() => {
-                      if (window.confirm(`Delete “${a.name}”?`)) {
-                        deleteMut.mutate(a.id)
-                      }
-                    }}
-                  >
-                    Delete
-                  </button>
+                  {access.isStudioEditor ? (
+                    <button
+                      type="button"
+                      className="text-red-400 hover:underline disabled:opacity-40"
+                      disabled={deleteMut.isPending}
+                      onClick={() => {
+                        if (window.confirm(`Delete “${a.name}”?`)) {
+                          deleteMut.mutate(a.id)
+                        }
+                      }}
+                    >
+                      Delete
+                    </button>
+                  ) : null}
                 </div>
               </li>
             ))}

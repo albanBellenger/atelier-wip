@@ -66,7 +66,44 @@ export function HomePage(): ReactElement {
               </Link>{' '}
               — LLM and embedding configuration.
             </p>
+            <p className="mt-2 text-sm text-zinc-400">
+              <Link
+                to="/admin/cross-studio"
+                className="font-medium text-violet-400 hover:underline"
+              >
+                Cross-studio requests
+              </Link>{' '}
+              ·{' '}
+              <Link
+                to="/admin/token-usage"
+                className="font-medium text-violet-400 hover:underline"
+              >
+                Token usage (global)
+              </Link>
+            </p>
           </>
+        )}
+        {(profile.cross_studio_grants ?? []).length > 0 && (
+          <div className="mt-8 rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
+            <h2 className="text-sm font-medium text-zinc-300">
+              Shared with you (other studios)
+            </h2>
+            <ul className="mt-3 space-y-2 text-sm">
+              {(profile.cross_studio_grants ?? []).map((g) => (
+                <li key={g.grant_id}>
+                  <Link
+                    to={`/studios/${g.owner_studio_id}/software/${g.target_software_id}`}
+                    className="text-violet-400 hover:underline"
+                  >
+                    {g.software_name}
+                  </Link>
+                  <span className="ml-2 text-xs text-zinc-500">
+                    ({g.owner_studio_name}) · {g.access_level}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
         <p className="mt-6 text-sm text-zinc-500">
           <Link
@@ -76,6 +113,15 @@ export function HomePage(): ReactElement {
             Studios & software
           </Link>{' '}
           — manage teams and products (Slice&nbsp;2).
+        </p>
+        <p className="mt-4 text-sm text-zinc-500">
+          <Link
+            to="/me/token-usage"
+            className="font-medium text-violet-400 hover:underline"
+          >
+            My token usage
+          </Link>{' '}
+          — LLM usage recorded for your account.
         </p>
         <button
           type="button"

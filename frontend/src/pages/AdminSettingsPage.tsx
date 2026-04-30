@@ -149,9 +149,15 @@ export function AdminSettingsPage(): ReactElement {
   return (
     <div className="min-h-screen bg-zinc-950 px-4 py-10 text-zinc-100">
       <div className="mx-auto max-w-xl">
-        <div className="mb-6 text-sm">
+        <div className="mb-6 flex flex-wrap gap-4 text-sm">
           <Link to="/" className="text-violet-400 hover:underline">
             ← Home
+          </Link>
+          <Link to="/admin/cross-studio" className="text-zinc-400 hover:text-zinc-200">
+            Cross-studio
+          </Link>
+          <Link to="/admin/token-usage" className="text-zinc-400 hover:text-zinc-200">
+            Token usage
           </Link>
         </div>
         <h1 className="text-2xl font-semibold">Tool admin settings</h1>

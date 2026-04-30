@@ -47,7 +47,7 @@ export function ProjectPage(): ReactElement {
     }
   }, [profileError, navigate])
 
-  const access = useStudioAccess(profile, sid)
+  const access = useStudioAccess(profile, sid, sfid)
 
   const projectQ = useQuery({
     queryKey: ['project', sfid, pid],
@@ -215,7 +215,7 @@ export function ProjectPage(): ReactElement {
           >
             Work orders
           </Link>
-          {access.isStudioEditor ? (
+          {access.isStudioEditor && !access.isCrossStudioViewer ? (
             <Link
               to={`/studios/${sid}/software/${sfid}/projects/${pid}/issues`}
               className="text-violet-400 hover:underline"
@@ -223,7 +223,7 @@ export function ProjectPage(): ReactElement {
               Issues
             </Link>
           ) : null}
-          {access.isStudioEditor ? (
+          {access.canPublish ? (
             <button
               type="button"
               className="text-violet-400 hover:underline"
@@ -332,7 +332,7 @@ export function ProjectPage(): ReactElement {
                 <OutlineNav
                   sections={sectionsSorted}
                   selectedSectionId={selectedSectionId}
-                  isStudioAdmin={access.isStudioAdmin}
+                  isStudioAdmin={access.canManageProjectOutline}
                   onSelect={(id) => {
                     setSelectedSectionId(id)
                     void navigate(

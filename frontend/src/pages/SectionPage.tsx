@@ -38,7 +38,7 @@ export function SectionPage(): ReactElement {
     }
   }, [profileError, navigate])
 
-  const access = useStudioAccess(profile, sid)
+  const access = useStudioAccess(profile, sid, sfid)
 
   const sectionQ = useQuery({
     queryKey: ['section', pid, secid],

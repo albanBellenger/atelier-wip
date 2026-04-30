@@ -34,7 +34,7 @@ export function IssuesPage(): ReactElement {
     }
   }, [profileQ.isError, navigate])
 
-  const access = useStudioAccess(profileQ.data, sid)
+  const access = useStudioAccess(profileQ.data, sid, sfid)
 
   const issuesQ = useQuery({
     queryKey: ['issues', pid],
@@ -76,6 +76,20 @@ export function IssuesPage(): ReactElement {
         <p>No access.</p>
         <Link to={`/studios/${sid}`} className="mt-4 inline-block text-violet-400">
           Back
+        </Link>
+      </div>
+    )
+  }
+
+  if (access.isCrossStudioViewer) {
+    return (
+      <div className="min-h-screen bg-zinc-950 px-4 py-12 text-zinc-100">
+        <p>Issues are not visible for cross-studio viewers.</p>
+        <Link
+          to={`/studios/${sid}/software/${sfid}/projects/${pid}`}
+          className="mt-4 inline-block text-violet-400"
+        >
+          Back to project
         </Link>
       </div>
     )

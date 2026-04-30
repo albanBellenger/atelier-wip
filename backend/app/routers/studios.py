@@ -1,8 +1,10 @@
 """Studio routes."""
 
+from datetime import date
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -13,7 +15,13 @@ from app.deps import (
     require_studio_admin,
 )
 from app.models import User
+from app.schemas.cross_studio import CrossStudioRequestCreate, CrossStudioRequestResult
 from app.schemas.mcp_keys import McpKeyCreateBody, McpKeyCreatedResponse, McpKeyPublic
+from app.schemas.token_usage_report import (
+    TokenUsageReportOut,
+    TokenUsageRowOut,
+    TokenUsageTotalsOut,
+)
 from app.schemas.studio import (
     MemberInvite,
     MemberRoleUpdate,
@@ -22,10 +30,17 @@ from app.schemas.studio import (
     StudioResponse,
     StudioUpdate,
 )
+from app.services.cross_studio_service import CrossStudioService
 from app.services.mcp_key_admin_service import McpKeyAdminService
 from app.services.studio_service import StudioService
+from app.services.token_usage_query_service import TokenUsageQueryService
 
 router = APIRouter(prefix="/studios", tags=["studios"])
+
+
+def _studio_wants_csv(request: Request) -> bool:
+    accept = (request.headers.get("accept") or "").lower()
+    return "text/csv" in accept
 
 
 @router.get("", response_model=list[StudioResponse])
@@ -106,6 +121,74 @@ async def update_member_role(
     access: StudioAccess = Depends(require_studio_admin),
 ) -> StudioMemberResponse:
     return await StudioService(session).update_member_role(access, user_id, body)
+
+
+@router.post(
+    "/{studio_id}/cross-studio-request",
+    response_model=CrossStudioRequestResult,
+)
+async def create_cross_studio_request(
+    studio_id: UUID,
+    body: CrossStudioRequestCreate,
+    session: AsyncSession = Depends(get_db),
+    access: StudioAccess = Depends(require_studio_admin),
+) -> CrossStudioRequestResult:
+    result = await CrossStudioService(session).create_request(access, body)
+    await session.commit()
+    return result
+
+
+@router.get("/{studio_id}/token-usage")
+async def studio_token_usage(
+    studio_id: UUID,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+    access: StudioAccess = Depends(require_studio_admin),
+    software_id: UUID | None = Query(None),
+    project_id: UUID | None = Query(None),
+    user_id: UUID | None = Query(None),
+    call_type: str | None = Query(None),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    limit: int = Query(100, ge=1, le=5000),
+    offset: int = Query(0, ge=0),
+):
+    svc = TokenUsageQueryService(session)
+    csv_mode = _studio_wants_csv(request)
+    lim = 500_000 if csv_mode else limit
+    off = 0 if csv_mode else offset
+    rows, totals = await svc.list_rows(
+        scope="studio",
+        scope_studio_id=access.studio_id,
+        scope_user_id=None,
+        studio_id=None,
+        software_id=software_id,
+        project_id=project_id,
+        user_id=user_id,
+        call_type=call_type,
+        date_from=date_from,
+        date_to=date_to,
+        limit=lim,
+        offset=off,
+    )
+    if csv_mode:
+        body = svc.rows_to_csv(rows)
+        return Response(
+            content=body.encode("utf-8"),
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": 'attachment; filename="studio-token-usage.csv"'
+            },
+        )
+    tin, tout, cost = totals
+    return TokenUsageReportOut(
+        rows=[TokenUsageRowOut.model_validate(r) for r in rows],
+        totals=TokenUsageTotalsOut(
+            input_tokens=tin,
+            output_tokens=tout,
+            estimated_cost_usd=cost,
+        ),
+    )
 
 
 @router.get("/{studio_id}/mcp-keys", response_model=list[McpKeyPublic])

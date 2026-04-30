@@ -13,6 +13,7 @@ export default defineConfig({
     proxy: {
       '/auth': { target: apiProxy, changeOrigin: true },
       '/admin': { target: apiProxy, changeOrigin: true },
+      '/me': { target: apiProxy, changeOrigin: true },
       '/health': { target: apiProxy, changeOrigin: true },
       '/studios': { target: apiProxy, changeOrigin: true },
       '/software': { target: apiProxy, changeOrigin: true },

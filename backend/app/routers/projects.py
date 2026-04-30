@@ -11,7 +11,7 @@ from app.deps import (
     get_project_access_nested,
     get_software_access,
     require_project_studio_admin_nested,
-    require_software_member,
+    require_software_home_editor,
 )
 from app.schemas.project import ProjectCreate, ProjectResponse, ProjectUpdate
 from app.services.project_service import ProjectService
@@ -33,7 +33,7 @@ async def create_project(
     software_id: UUID,
     body: ProjectCreate,
     session: AsyncSession = Depends(get_db),
-    _sa: SoftwareAccess = Depends(require_software_member),
+    _sa: SoftwareAccess = Depends(require_software_home_editor),
 ) -> ProjectResponse:
     return await ProjectService(session).create_project(software_id, body)
 

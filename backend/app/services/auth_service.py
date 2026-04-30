@@ -7,8 +7,15 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
-from app.models import Studio, StudioMember, User
+from app.models import (
+    CrossStudioAccess,
+    Software,
+    Studio,
+    StudioMember,
+    User,
+)
 from app.schemas.auth import (
+    CrossStudioGrantPublic,
     MeResponse,
     StudioMembershipPublic,
     UserCreate,
@@ -81,9 +88,33 @@ class AuthService:
             )
             for sid, role, name in raw_rows
         ]
+        gq = (
+            select(CrossStudioAccess, Software, Studio)
+            .join(Software, CrossStudioAccess.target_software_id == Software.id)
+            .join(Studio, Software.studio_id == Studio.id)
+            .join(
+                StudioMember,
+                (StudioMember.studio_id == CrossStudioAccess.requesting_studio_id)
+                & (StudioMember.user_id == user.id),
+            )
+            .where(CrossStudioAccess.status == "approved")
+        )
+        grant_rows = (await self.db.execute(gq)).all()
+        cross_studio_grants = [
+            CrossStudioGrantPublic(
+                grant_id=g.id,
+                target_software_id=g.target_software_id,
+                owner_studio_id=st.id,
+                owner_studio_name=st.name,
+                software_name=sw.name,
+                access_level=g.access_level,
+            )
+            for g, sw, st in grant_rows
+        ]
         return MeResponse(
             user=UserPublic.model_validate(user),
             studios=studios,
+            cross_studio_grants=cross_studio_grants,
         )
 
     async def get_user_from_token(self, token: str) -> User:

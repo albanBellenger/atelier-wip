@@ -7,7 +7,11 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.deps import ProjectAccess, get_project_access, require_project_member
+from app.deps import (
+    ProjectAccess,
+    require_project_issues_readable,
+    require_project_member,
+)
 from app.exceptions import ApiError
 from app.models import Issue
 from app.schemas.issues import AnalyzeResponse, IssueResponse, IssueUpdateBody
@@ -29,7 +33,7 @@ def _ensure_project(pa: ProjectAccess, project_id: UUID) -> None:
 async def list_project_issues(
     project_id: UUID,
     session: AsyncSession = Depends(get_db),
-    pa: ProjectAccess = Depends(get_project_access),
+    pa: ProjectAccess = Depends(require_project_issues_readable),
 ) -> list[IssueResponse]:
     _ensure_project(pa, project_id)
     if not pa.studio_access.is_studio_member:
