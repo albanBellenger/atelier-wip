@@ -2,12 +2,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { KnowledgeGraph } from '../components/graph/KnowledgeGraph'
 import { OutlineNav } from '../components/outline/OutlineNav'
 import { useStudioAccess } from '../hooks/useStudioAccess'
 import {
   createSection,
   deleteSection,
   getProject,
+  getProjectGraph,
   getSection,
   me,
   reorderSections,
@@ -81,11 +83,21 @@ export function ProjectPage(): ReactElement {
     enabled: Boolean(pid && selectedSectionId && access.isMember),
   })
 
-  const [newTitle, setNewTitle] = useState('')
+  const [projectView, setProjectView] = useState<'outline' | 'graph'>('outline')
   const [projectName, setProjectName] = useState('')
   const [projectDescription, setProjectDescription] = useState('')
   const [projectFormSyncKey, setProjectFormSyncKey] = useState('')
   const [saveMsg, setSaveMsg] = useState<string | null>(null)
+
+  const graphQ = useQuery({
+    queryKey: ['projectGraph', pid],
+    queryFn: () => getProjectGraph(pid),
+    enabled: Boolean(
+      pid && access.isMember && projectView === 'graph' && projectQ.isSuccess,
+    ),
+  })
+
+  const [newTitle, setNewTitle] = useState('')
 
   const createSectionMut = useMutation({
     mutationFn: () =>
@@ -240,6 +252,32 @@ export function ProjectPage(): ReactElement {
               </>
             )}
 
+            <div className="mt-6 flex gap-2 border-b border-zinc-800 pb-2">
+              <button
+                type="button"
+                onClick={() => setProjectView('outline')}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                  projectView === 'outline'
+                    ? 'bg-zinc-800 text-zinc-100'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                Outline
+              </button>
+              <button
+                type="button"
+                onClick={() => setProjectView('graph')}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                  projectView === 'graph'
+                    ? 'bg-zinc-800 text-zinc-100'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                Knowledge graph
+              </button>
+            </div>
+
+            {projectView === 'outline' ? (
             <div className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,280px)_1fr]">
               <aside className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
                 <OutlineNav
@@ -289,6 +327,22 @@ export function ProjectPage(): ReactElement {
                 )}
               </main>
             </div>
+            ) : (
+              <div className="mt-10">
+                {graphQ.isPending && (
+                  <p className="text-zinc-500">Loading graph…</p>
+                )}
+                {graphQ.isError && (
+                  <p className="text-red-400">Could not load knowledge graph.</p>
+                )}
+                {graphQ.data && (
+                  <KnowledgeGraph
+                    nodes={graphQ.data.nodes}
+                    edges={graphQ.data.edges}
+                  />
+                )}
+              </div>
+            )}
           </>
         )}
       </div>

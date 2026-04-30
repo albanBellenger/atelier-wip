@@ -9,4 +9,4 @@ class TokenContext:
     studio_id: UUID
     software_id: UUID
     project_id: UUID
-    user_id: UUID
+    user_id: UUID | None = None

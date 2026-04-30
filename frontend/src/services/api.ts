@@ -386,6 +386,37 @@ export async function deleteProject(
   )
 }
 
+// --- Project knowledge graph (GET /projects/{project_id}/graph) ---
+
+export interface ProjectGraphNode {
+  id: string
+  entity_type: string
+  entity_id: string
+  label: string
+  stale?: boolean | null
+  status?: string | null
+}
+
+export interface ProjectGraphEdge {
+  source: string
+  target: string
+  edge_type: string
+}
+
+export interface ProjectGraphResponse {
+  nodes: ProjectGraphNode[]
+  edges: ProjectGraphEdge[]
+}
+
+export async function getProjectGraph(
+  projectId: string,
+): Promise<ProjectGraphResponse> {
+  return request<ProjectGraphResponse>(
+    'GET',
+    `/projects/${projectId}/graph`,
+  )
+}
+
 // --- Sections (under /projects/{project_id}) ---
 
 export interface SectionCreateBody {

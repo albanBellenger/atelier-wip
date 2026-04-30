@@ -86,6 +86,47 @@ async def generate_work_orders(
     )
 
 
+@router.post(
+    "/{work_order_id}/dependencies/{prerequisite_id}",
+    status_code=201,
+)
+async def add_work_order_dependency(
+    project_id: UUID,
+    work_order_id: UUID,
+    prerequisite_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    pa: ProjectAccess = Depends(require_project_member),
+) -> Response:
+    """Prerequisite must complete before dependent (edge: prerequisite → dependent)."""
+    _ensure_project(pa, project_id)
+    await WorkOrderService(session).add_work_order_dependency(
+        project_id,
+        dependent_id=work_order_id,
+        prerequisite_id=prerequisite_id,
+    )
+    return Response(status_code=201)
+
+
+@router.delete(
+    "/{work_order_id}/dependencies/{prerequisite_id}",
+    status_code=204,
+)
+async def remove_work_order_dependency(
+    project_id: UUID,
+    work_order_id: UUID,
+    prerequisite_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    pa: ProjectAccess = Depends(require_project_member),
+) -> Response:
+    _ensure_project(pa, project_id)
+    await WorkOrderService(session).remove_work_order_dependency(
+        project_id,
+        dependent_id=work_order_id,
+        prerequisite_id=prerequisite_id,
+    )
+    return Response(status_code=204)
+
+
 @router.get("/{work_order_id}", response_model=WorkOrderDetailResponse)
 async def get_work_order(
     project_id: UUID,

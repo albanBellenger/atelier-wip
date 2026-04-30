@@ -30,6 +30,7 @@ from app.schemas.work_order import (
     WorkOrderResponse,
     WorkOrderUpdate,
 )
+from app.services.graph_service import GraphService
 from app.services.llm_service import WORK_ORDER_BATCH_JSON_SCHEMA, LLMService
 
 log = structlog.get_logger("atelier.work_order")
@@ -336,6 +337,15 @@ class WorkOrderService:
         wo.stale_reason = None
         wo.stale_dismissed_by = user_id
         wo.stale_dismissed_at = datetime.now(timezone.utc)
+        self.db.add(
+            WorkOrderNote(
+                id=uuid.uuid4(),
+                work_order_id=work_order_id,
+                author_id=user_id,
+                source="stale_dismiss",
+                content="Stale flag dismissed (work order reviewed against current spec).",
+            )
+        )
         await self.db.flush()
         await self.db.refresh(wo)
         sec_map = await self._section_ids_for_work_orders([wo.id])
@@ -476,10 +486,13 @@ class WorkOrderService:
                 self.db.add(
                     WorkOrderSection(work_order_id=wo.id, section_id=sec.id)
                 )
-                await self._ensure_graph_edge(
+                await GraphService(self.db).add_edge(
                     project_id=project_id,
-                    section_id=sec.id,
-                    work_order_id=wo.id,
+                    source_type="section",
+                    source_id=sec.id,
+                    target_type="work_order",
+                    target_id=wo.id,
+                    edge_type="generates",
                 )
             await self.db.flush()
             created.append(wo)
@@ -497,33 +510,55 @@ class WorkOrderService:
             for w in created
         ]
 
-    async def _ensure_graph_edge(
+    async def add_work_order_dependency(
         self,
-        *,
         project_id: uuid.UUID,
-        section_id: uuid.UUID,
-        work_order_id: uuid.UUID,
+        dependent_id: uuid.UUID,
+        prerequisite_id: uuid.UUID,
     ) -> None:
-        existing = await self.db.execute(
-            select(GraphEdge.id).where(
+        """Prerequisite work order must be satisfied before dependent (edge: prereq -> dependent)."""
+        if prerequisite_id == dependent_id:
+            raise ApiError(
+                status_code=400,
+                code="BAD_REQUEST",
+                message="A work order cannot depend on itself.",
+            )
+        await self._get_wo(project_id, prerequisite_id)
+        await self._get_wo(project_id, dependent_id)
+        await GraphService(self.db).add_edge(
+            project_id=project_id,
+            source_type="work_order",
+            source_id=prerequisite_id,
+            target_type="work_order",
+            target_id=dependent_id,
+            edge_type="depends",
+        )
+        await self.db.flush()
+
+    async def remove_work_order_dependency(
+        self,
+        project_id: uuid.UUID,
+        dependent_id: uuid.UUID,
+        prerequisite_id: uuid.UUID,
+    ) -> None:
+        await self._get_wo(project_id, dependent_id)
+        await self._get_wo(project_id, prerequisite_id)
+        r = await self.db.execute(
+            select(GraphEdge).where(
                 GraphEdge.project_id == project_id,
-                GraphEdge.source_type == "section",
-                GraphEdge.source_id == section_id,
+                GraphEdge.source_type == "work_order",
+                GraphEdge.source_id == prerequisite_id,
                 GraphEdge.target_type == "work_order",
-                GraphEdge.target_id == work_order_id,
-                GraphEdge.edge_type == "generates",
+                GraphEdge.target_id == dependent_id,
+                GraphEdge.edge_type == "depends",
             )
         )
-        if existing.scalar_one_or_none() is not None:
-            return
-        self.db.add(
-            GraphEdge(
-                id=uuid.uuid4(),
-                project_id=project_id,
-                source_type="section",
-                source_id=section_id,
-                target_type="work_order",
-                target_id=work_order_id,
-                edge_type="generates",
+        row = r.scalar_one_or_none()
+        if row is None:
+            raise ApiError(
+                status_code=404,
+                code="NOT_FOUND",
+                message="Dependency edge not found.",
             )
-        )
+        await self.db.delete(row)
+        await self.db.flush()

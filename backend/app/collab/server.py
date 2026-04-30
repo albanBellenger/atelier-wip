@@ -235,6 +235,8 @@ class AtelierWebsocketServer(WebsocketServer):
             await session.commit()
         effective = text if text is not None else old_content
         if effective != old_content:
+            from app.services.drift_pipeline import schedule_drift_check
             from app.services.embedding_pipeline import schedule_section_embedding
 
             schedule_section_embedding(section_id)
+            schedule_drift_check(section_id)
