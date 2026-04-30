@@ -415,3 +415,99 @@ export async function reorderSections(
     { section_ids: sectionIds },
   )
 }
+
+// --- Artifacts (under /projects/{project_id}) ---
+
+export interface ArtifactItem {
+  id: string
+  project_id: string
+  name: string
+  file_type: string
+  uploaded_by: string | null
+  created_at: string
+}
+
+export async function listArtifacts(projectId: string): Promise<ArtifactItem[]> {
+  return request<ArtifactItem[]>('GET', `/projects/${projectId}/artifacts`)
+}
+
+export async function uploadArtifact(
+  projectId: string,
+  file: File,
+  displayName?: string,
+): Promise<ArtifactItem> {
+  const fd = new FormData()
+  fd.append('file', file)
+  if (displayName?.trim()) {
+    fd.append('name', displayName.trim())
+  }
+  const r = await fetch(base() + `/projects/${projectId}/artifacts`, {
+    method: 'POST',
+    credentials: 'include',
+    body: fd,
+  })
+  const text = await r.text()
+  if (!r.ok) {
+    let err: AuthErrorBody = {
+      detail: r.statusText,
+      code: 'HTTP_ERROR',
+    }
+    if (text) {
+      try {
+        err = JSON.parse(text) as AuthErrorBody
+      } catch {
+        err = { detail: text, code: 'HTTP_ERROR' }
+      }
+    }
+    throw err
+  }
+  return JSON.parse(text) as ArtifactItem
+}
+
+export async function createMarkdownArtifact(
+  projectId: string,
+  body: { name: string; content: string },
+): Promise<ArtifactItem> {
+  return request<ArtifactItem>(
+    'POST',
+    `/projects/${projectId}/artifacts/md`,
+    body,
+  )
+}
+
+export async function deleteArtifact(
+  projectId: string,
+  artifactId: string,
+): Promise<void> {
+  return request<void>(
+    'DELETE',
+    `/projects/${projectId}/artifacts/${artifactId}`,
+  )
+}
+
+export async function downloadArtifactBlob(
+  projectId: string,
+  artifactId: string,
+): Promise<Blob> {
+  const r = await fetch(
+    base() +
+      `/projects/${projectId}/artifacts/${artifactId}/download`,
+    { credentials: 'include' },
+  )
+  if (!r.ok) {
+    const text = await r.text()
+    let err: AuthErrorBody = {
+      detail: r.statusText,
+      code: 'HTTP_ERROR',
+    }
+    if (text) {
+      try {
+        err = JSON.parse(text) as AuthErrorBody
+      } catch {
+        err = { detail: text, code: 'HTTP_ERROR' }
+      }
+    }
+    throw err
+  }
+  return r.blob()
+}

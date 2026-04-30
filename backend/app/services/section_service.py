@@ -157,6 +157,7 @@ class SectionService:
                 code="NOT_FOUND",
                 message="Section not found",
             )
+        old_content = s.content or ""
         old_title = s.title
         data = body.model_dump(exclude_unset=True)
         structure_keys = ("title", "slug", "order")
@@ -191,6 +192,10 @@ class SectionService:
             )
         await self.db.commit()
         await self.db.refresh(s)
+        if "content" in data and (s.content or "") != old_content:
+            from app.services.embedding_pipeline import schedule_section_embedding
+
+            schedule_section_embedding(section_id)
         return self._to_response(s)
 
     async def delete_section(self, project_id: uuid.UUID, section_id: uuid.UUID) -> None:

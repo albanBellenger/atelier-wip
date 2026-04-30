@@ -224,6 +224,19 @@ async def get_project_access(
     return await fetch_project_access(session, user, project_id)
 
 
+async def require_project_member(
+    pa: ProjectAccess = Depends(get_project_access),
+) -> ProjectAccess:
+    """Studio Member (or Tool Admin) — upload/delete; excludes viewer-only if added later."""
+    if not pa.studio_access.is_studio_member:
+        raise ApiError(
+            status_code=403,
+            code="FORBIDDEN",
+            message="Studio membership required",
+        )
+    return pa
+
+
 async def require_project_studio_admin(
     pa: ProjectAccess = Depends(get_project_access),
 ) -> ProjectAccess:

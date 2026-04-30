@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     encryption_key: str = ""
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
+    # MinIO (S3-compatible). When backend runs on host, use localhost:9000.
+    minio_endpoint: str = "127.0.0.1:9000"
+    minio_root_user: str = "atelier"
+    minio_root_password: str = "atelierdev"
+    minio_bucket: str = "atelier-artifacts"
+    minio_use_ssl: bool = False
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

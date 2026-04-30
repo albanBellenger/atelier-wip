@@ -217,6 +217,11 @@ class AtelierWebsocketServer(WebsocketServer):
             sec = await session.get(Section, section_id)
             if sec is None or sec.project_id != project_id:
                 return
+            old_content = sec.content or ""
             sec.yjs_state = snapshot
             sec.content = text
             await session.commit()
+        if text != old_content:
+            from app.services.embedding_pipeline import schedule_section_embedding
+
+            schedule_section_embedding(section_id)

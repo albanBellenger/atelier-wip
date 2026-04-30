@@ -2,6 +2,7 @@ import type { ReactElement } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthPage } from './pages/AuthPage'
 import { HomePage } from './pages/HomePage'
+import { ArtifactsPage } from './pages/ArtifactsPage'
 import { ProjectPage } from './pages/ProjectPage'
 import { SectionPage } from './pages/SectionPage'
 import { SoftwarePage } from './pages/SoftwarePage'
@@ -27,6 +28,10 @@ function App(): ReactElement {
         <Route
           path="/studios/:studioId/software/:softwareId/projects/:projectId"
           element={<ProjectPage />}
+        />
+        <Route
+          path="/studios/:studioId/software/:softwareId/projects/:projectId/artifacts"
+          element={<ArtifactsPage />}
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

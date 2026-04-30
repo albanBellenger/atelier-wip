@@ -17,16 +17,18 @@ from slowapi.util import get_remote_address
 
 from app.collab.server import init_collab_server
 from app.config import get_settings
+from app.storage.minio_storage import get_storage_client
 from app.database import async_session_factory, engine
 from app.exceptions import ApiError
 
 limiter = Limiter(key_func=get_remote_address)
 
-from app.routers import admin, auth, collab, projects, sections, software, studios
+from app.routers import admin, artifacts, auth, collab, projects, sections, software, studios
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    await get_storage_client().ensure_bucket()
     srv = init_collab_server(async_session_factory)
     async with srv:
         yield
@@ -104,6 +106,7 @@ def create_app() -> FastAPI:
     app.include_router(software.router)
     app.include_router(projects.router)
     app.include_router(sections.router)
+    app.include_router(artifacts.router)
     app.include_router(collab.router)
     return app
 
