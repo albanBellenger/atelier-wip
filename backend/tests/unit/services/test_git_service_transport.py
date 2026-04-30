@@ -10,6 +10,89 @@ from app.services import git_service as gs
 
 
 @pytest.mark.asyncio
+async def test_gitlab_file_exists_200_and_404() -> None:
+    with patch.object(gs.httpx, "AsyncClient") as mock_cls:
+        inst = MagicMock()
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=inst)
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        r_ok = MagicMock()
+        r_ok.status_code = 200
+        r_404 = MagicMock()
+        r_404.status_code = 404
+        inst.get = AsyncMock(side_effect=[r_ok, r_404])
+        assert await gs.gitlab_file_exists(
+            api_origin="https://gitlab.com",
+            project_path="group/repo",
+            token="t",
+            branch="main",
+            file_path="a/b.md",
+        )
+        assert not await gs.gitlab_file_exists(
+            api_origin="https://gitlab.com",
+            project_path="group/repo",
+            token="t",
+            branch="main",
+            file_path="c/d.md",
+        )
+
+
+@pytest.mark.asyncio
+async def test_gitlab_file_exists_http_500_returns_false() -> None:
+    with patch.object(gs.httpx, "AsyncClient") as mock_cls:
+        inst = MagicMock()
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=inst)
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        r = MagicMock()
+        r.status_code = 500
+        r.text = "err"
+        inst.get = AsyncMock(return_value=r)
+        out = await gs.gitlab_file_exists(
+            api_origin="https://gitlab.com",
+            project_path="p",
+            token="t",
+            branch="main",
+            file_path="f",
+        )
+        assert out is False
+
+
+@pytest.mark.asyncio
+async def test_gitlab_file_exists_timeout() -> None:
+    with patch.object(gs.httpx, "AsyncClient") as mock_cls:
+        inst = MagicMock()
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=inst)
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        inst.get = AsyncMock(side_effect=httpx.ReadTimeout("timeout", request=None))
+        with pytest.raises(ApiError) as e:
+            await gs.gitlab_file_exists(
+                api_origin="https://gitlab.com",
+                project_path="p",
+                token="t",
+                branch="main",
+                file_path="f",
+            )
+        assert e.value.status_code == 504
+
+
+@pytest.mark.asyncio
+async def test_gitlab_file_exists_connect_error() -> None:
+    with patch.object(gs.httpx, "AsyncClient") as mock_cls:
+        inst = MagicMock()
+        mock_cls.return_value.__aenter__ = AsyncMock(return_value=inst)
+        mock_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        inst.get = AsyncMock(side_effect=httpx.ConnectError("refused", request=None))
+        with pytest.raises(ApiError) as e:
+            await gs.gitlab_file_exists(
+                api_origin="https://gitlab.com",
+                project_path="p",
+                token="t",
+                branch="main",
+                file_path="f",
+            )
+        assert e.value.status_code == 502
+
+
+@pytest.mark.asyncio
 async def test_list_commits_connect_error_maps_to_api_error() -> None:
     with patch.object(gs.httpx, "AsyncClient") as mock_cls:
         inst = MagicMock()

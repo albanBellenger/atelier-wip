@@ -379,3 +379,288 @@ async def test_admin_connectivity_probe_invalid_json_body_returns_result(
     out = await llm.admin_connectivity_probe()
     assert out.ok is False
     assert "Unexpected" in (out.message or "") or "unexpected" in (out.message or "").lower()
+
+
+class _StructuredUpstreamErrorResponse:
+    status_code = 503
+    text = "upstream down"
+
+    def json(self) -> dict:
+        return {}
+
+
+class _StructuredUpstreamErrPostClient:
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        pass
+
+    async def __aenter__(self) -> "_StructuredUpstreamErrPostClient":
+        return self
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+    async def post(self, *args: object, **kwargs: object) -> object:
+        return _StructuredUpstreamErrorResponse()
+
+
+@pytest.mark.asyncio
+async def test_chat_structured_upstream_http_error_maps_to_api_error(
+    db_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = await db_session.get(AdminConfig, 1)
+    assert row is not None
+    row.llm_model = "gpt-test"
+    row.llm_api_key = "sk-test"
+    row.llm_provider = "openai"
+    await db_session.flush()
+
+    monkeypatch.setattr(
+        "app.services.llm_service.httpx.AsyncClient",
+        _StructuredUpstreamErrPostClient,
+    )
+
+    llm = LLMService(db_session)
+    ctx = TokenContext(
+        studio_id=uuid.uuid4(),
+        software_id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+    )
+    with pytest.raises(ApiError) as exc_info:
+        await llm.chat_structured(
+            system_prompt="s",
+            user_prompt="u",
+            json_schema={"name": "x", "strict": True, "schema": {"type": "object"}},
+            context=ctx,
+            call_type="test",
+        )
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.error_code == "LLM_UPSTREAM_ERROR"
+
+
+class _StructuredEmptyChoicesResponse:
+    status_code = 200
+    text = ""
+
+    def json(self) -> dict:
+        return {"choices": [], "usage": {}}
+
+
+class _StructuredEmptyChoicesPostClient(_StructuredUpstreamErrPostClient):
+    async def post(self, *args: object, **kwargs: object) -> object:
+        return _StructuredEmptyChoicesResponse()
+
+
+@pytest.mark.asyncio
+async def test_chat_structured_empty_choices_maps_to_api_error(
+    db_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = await db_session.get(AdminConfig, 1)
+    assert row is not None
+    row.llm_model = "gpt-test"
+    row.llm_api_key = "sk-test"
+    row.llm_provider = "openai"
+    await db_session.flush()
+
+    monkeypatch.setattr(
+        "app.services.llm_service.httpx.AsyncClient",
+        _StructuredEmptyChoicesPostClient,
+    )
+
+    llm = LLMService(db_session)
+    ctx = TokenContext(
+        studio_id=uuid.uuid4(),
+        software_id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+    )
+    with pytest.raises(ApiError) as exc_info:
+        await llm.chat_structured(
+            system_prompt="s",
+            user_prompt="u",
+            json_schema={"name": "x", "strict": True, "schema": {"type": "object"}},
+            context=ctx,
+            call_type="test",
+        )
+    assert exc_info.value.error_code == "LLM_EMPTY_RESPONSE"
+
+
+class _StructuredBadJsonContentResponse:
+    status_code = 200
+    text = ""
+
+    def json(self) -> dict:
+        return {
+            "choices": [{"message": {"content": "not valid json {"}}],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+        }
+
+
+class _StructuredBadJsonPostClient(_StructuredUpstreamErrPostClient):
+    async def post(self, *args: object, **kwargs: object) -> object:
+        return _StructuredBadJsonContentResponse()
+
+
+@pytest.mark.asyncio
+async def test_chat_structured_invalid_content_json_maps_to_api_error(
+    db_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = await db_session.get(AdminConfig, 1)
+    assert row is not None
+    row.llm_model = "gpt-test"
+    row.llm_api_key = "sk-test"
+    row.llm_provider = "openai"
+    await db_session.flush()
+
+    monkeypatch.setattr(
+        "app.services.llm_service.httpx.AsyncClient",
+        _StructuredBadJsonPostClient,
+    )
+
+    llm = LLMService(db_session)
+    ctx = TokenContext(
+        studio_id=uuid.uuid4(),
+        software_id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+    )
+    with pytest.raises(ApiError) as exc_info:
+        await llm.chat_structured(
+            system_prompt="s",
+            user_prompt="u",
+            json_schema={"name": "x", "strict": True, "schema": {"type": "object"}},
+            context=ctx,
+            call_type="test",
+        )
+    assert exc_info.value.error_code == "LLM_INVALID_JSON"
+
+
+class _StreamTimeoutCtx:
+    async def __aenter__(self) -> None:
+        raise httpx.ReadTimeout("timeout", request=None)
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+
+class _StreamTimeoutClient:
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        pass
+
+    async def __aenter__(self) -> "_StreamTimeoutClient":
+        return self
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+    def stream(self, *args: object, **kwargs: object) -> _StreamTimeoutCtx:
+        return _StreamTimeoutCtx()
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_read_timeout_maps_to_api_error(
+    db_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = await db_session.get(AdminConfig, 1)
+    assert row is not None
+    row.llm_model = "gpt-test"
+    row.llm_api_key = "sk-test"
+    row.llm_provider = "openai"
+    await db_session.flush()
+
+    monkeypatch.setattr(
+        "app.services.llm_service.httpx.AsyncClient",
+        _StreamTimeoutClient,
+    )
+
+    llm = LLMService(db_session)
+    ctx = TokenContext(
+        studio_id=uuid.uuid4(),
+        software_id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+    )
+    gen = llm.chat_stream(
+        system_prompt="s",
+        messages=[{"role": "user", "content": "hi"}],
+        context=ctx,
+        call_type="test",
+    )
+    with pytest.raises(ApiError) as exc_info:
+        async for _ in gen:
+            pass
+    assert exc_info.value.error_code == "LLM_TIMEOUT"
+
+
+class _StreamHttpErrResp:
+    status_code = 429
+    _body = b"rate limited"
+
+    async def aread(self) -> bytes:
+        return self._body
+
+    async def aiter_lines(self):
+        if False:
+            yield ""
+
+
+class _StreamHttpErrClient:
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        pass
+
+    async def __aenter__(self) -> "_StreamHttpErrClient":
+        return self
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+    def stream(self, *args: object, **kwargs: object) -> "_StreamHttpErrCtx":
+        return _StreamHttpErrCtx()
+
+
+class _StreamHttpErrCtx:
+    async def __aenter__(self) -> _StreamHttpErrResp:
+        return _StreamHttpErrResp()
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_upstream_http_error_maps_to_api_error(
+    db_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = await db_session.get(AdminConfig, 1)
+    assert row is not None
+    row.llm_model = "gpt-test"
+    row.llm_api_key = "sk-test"
+    row.llm_provider = "openai"
+    await db_session.flush()
+
+    monkeypatch.setattr(
+        "app.services.llm_service.httpx.AsyncClient",
+        _StreamHttpErrClient,
+    )
+
+    llm = LLMService(db_session)
+    ctx = TokenContext(
+        studio_id=uuid.uuid4(),
+        software_id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+    )
+    gen = llm.chat_stream(
+        system_prompt="s",
+        messages=[{"role": "user", "content": "hi"}],
+        context=ctx,
+        call_type="test",
+    )
+    with pytest.raises(ApiError) as exc_info:
+        async for _ in gen:
+            pass
+    assert exc_info.value.error_code == "LLM_UPSTREAM_ERROR"

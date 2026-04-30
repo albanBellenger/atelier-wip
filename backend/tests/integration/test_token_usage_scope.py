@@ -108,6 +108,15 @@ async def test_token_usage_scope_member_studio_admin_tool_admin_csv(
     st_body = st_r.json()
     assert len(st_body["rows"]) == 2
 
+    csv_studio = await client.get(
+        f"/studios/{studio_a}/token-usage",
+        headers={"Accept": "text/csv"},
+    )
+    assert csv_studio.status_code == 200
+    disp = csv_studio.headers.get("content-disposition") or ""
+    assert "attachment" in disp.lower()
+    assert "call_type" in csv_studio.text
+
     token_out = await _register(client, sfx, "outsider")
     client.cookies.set("atelier_token", token_out)
     forbidden = await client.get(f"/studios/{studio_a}/token-usage")

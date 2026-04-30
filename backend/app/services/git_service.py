@@ -39,14 +39,14 @@ async def gitlab_file_exists(
         async with httpx.AsyncClient(timeout=30.0) as client:
             r = await client.get(url, headers=headers, params=params)
     except httpx.TimeoutException as e:
-        log.warning("gitlab_file_exists_timeout", exc_type=type(e).__name__)
+        log.warning("gitlab_file_exists_timeout: %s", type(e).__name__)
         raise ApiError(
             status_code=504,
             code="GITLAB_TRANSPORT_ERROR",
             message="GitLab did not respond in time.",
         ) from e
     except httpx.RequestError as e:
-        log.warning("gitlab_file_exists_transport", exc_type=type(e).__name__)
+        log.warning("gitlab_file_exists_transport: %s", type(e).__name__)
         raise ApiError(
             status_code=502,
             code="GITLAB_TRANSPORT_ERROR",
@@ -56,7 +56,11 @@ async def gitlab_file_exists(
         return True
     if r.status_code == 404:
         return False
-    log.warning("gitlab_file_head_failed", status=r.status_code, body=r.text[:200])
+    log.warning(
+        "gitlab_file_head_failed status=%s body=%s",
+        r.status_code,
+        r.text[:200],
+    )
     return False
 
 
@@ -105,14 +109,14 @@ async def commit_files(
         async with httpx.AsyncClient(timeout=120.0) as client:
             r = await client.post(url, headers=headers, json=body)
     except httpx.TimeoutException as e:
-        log.warning("gitlab_commit_timeout", exc_type=type(e).__name__)
+        log.warning("gitlab_commit_timeout: %s", type(e).__name__)
         raise ApiError(
             status_code=504,
             code="GITLAB_TRANSPORT_ERROR",
             message="GitLab did not respond in time.",
         ) from e
     except httpx.RequestError as e:
-        log.warning("gitlab_commit_transport", exc_type=type(e).__name__)
+        log.warning("gitlab_commit_transport: %s", type(e).__name__)
         raise ApiError(
             status_code=502,
             code="GITLAB_TRANSPORT_ERROR",
@@ -120,7 +124,11 @@ async def commit_files(
         ) from e
     if r.status_code not in (200, 201):
         detail = r.text[:500]
-        log.warning("gitlab_commit_http_error", status=r.status_code, body=detail[:500])
+        log.warning(
+            "gitlab_commit_http_error status=%s body=%s",
+            r.status_code,
+            detail[:500],
+        )
         raise ApiError(
             status_code=502,
             code="GITLAB_ERROR",
@@ -151,14 +159,14 @@ async def list_commits(
         async with httpx.AsyncClient(timeout=30.0) as client:
             r = await client.get(url, headers=headers, params=params)
     except httpx.TimeoutException as e:
-        log.warning("gitlab_list_commits_timeout", exc_type=type(e).__name__)
+        log.warning("gitlab_list_commits_timeout: %s", type(e).__name__)
         raise ApiError(
             status_code=504,
             code="GITLAB_TRANSPORT_ERROR",
             message="GitLab did not respond in time.",
         ) from e
     except httpx.RequestError as e:
-        log.warning("gitlab_list_commits_transport", exc_type=type(e).__name__)
+        log.warning("gitlab_list_commits_transport: %s", type(e).__name__)
         raise ApiError(
             status_code=502,
             code="GITLAB_TRANSPORT_ERROR",
@@ -166,7 +174,11 @@ async def list_commits(
         ) from e
     if r.status_code != 200:
         detail = r.text[:300]
-        log.warning("gitlab_list_commits_http_error", status=r.status_code, body=detail[:500])
+        log.warning(
+            "gitlab_list_commits_http_error status=%s body=%s",
+            r.status_code,
+            detail[:500],
+        )
         raise ApiError(
             status_code=502,
             code="GITLAB_ERROR",

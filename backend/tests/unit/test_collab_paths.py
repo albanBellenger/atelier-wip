@@ -30,6 +30,17 @@ def test_parse_collab_path_invalid() -> None:
         parse_collab_path("/wrong/path")
 
 
+def test_parse_collab_path_rejects_trailing_slash_or_query() -> None:
+    from uuid import uuid4
+
+    pid, sid = uuid4(), uuid4()
+    base = collab_room_path(pid, sid)
+    with pytest.raises(ValueError, match="invalid collab path"):
+        parse_collab_path(base + "/")
+    with pytest.raises(ValueError, match="invalid collab path"):
+        parse_collab_path(base + "?x=1")
+
+
 def test_get_collab_server_before_init_raises() -> None:
     import app.collab.server as srv
 
