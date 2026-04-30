@@ -13,6 +13,8 @@ class AdminConfig(Base):
     llm_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
     llm_model: Mapped[str | None] = mapped_column(String(256), nullable=True)
     llm_api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    llm_api_base_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     embedding_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
     embedding_model: Mapped[str | None] = mapped_column(String(256), nullable=True)
     embedding_api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    embedding_api_base_url: Mapped[str | None] = mapped_column(Text, nullable=True)

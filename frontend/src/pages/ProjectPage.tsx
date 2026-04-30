@@ -178,6 +178,12 @@ export function ProjectPage(): ReactElement {
           >
             Artifacts
           </Link>
+          <Link
+            to={`/studios/${sid}/software/${sfid}/projects/${pid}/work-orders`}
+            className="text-violet-400 hover:underline"
+          >
+            Work orders
+          </Link>
         </div>
 
         {projectQ.isPending && <p className="text-zinc-500">Loading…</p>}

@@ -11,6 +11,7 @@ from app.models import User
 from app.schemas.auth import (
     AdminConfigResponse,
     AdminConfigUpdate,
+    AdminConnectivityResult,
     AdminStatusUpdate,
     UserPublic,
 )
@@ -34,6 +35,22 @@ async def put_admin_config(
     _: User = Depends(require_tool_admin),
 ) -> AdminConfigResponse:
     return await AdminService(session).update(body)
+
+
+@router.post("/test/llm", response_model=AdminConnectivityResult)
+async def test_admin_llm(
+    session: AsyncSession = Depends(get_db),
+    _: User = Depends(require_tool_admin),
+) -> AdminConnectivityResult:
+    return await AdminService(session).test_llm()
+
+
+@router.post("/test/embedding", response_model=AdminConnectivityResult)
+async def test_admin_embedding(
+    session: AsyncSession = Depends(get_db),
+    _: User = Depends(require_tool_admin),
+) -> AdminConnectivityResult:
+    return await AdminService(session).test_embedding()
 
 
 @router.put("/users/{user_id}/admin-status", response_model=UserPublic)

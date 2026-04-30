@@ -3,6 +3,7 @@ import type { ReactElement } from 'react'
 import { useEffect, useMemo } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { SplitEditor } from '../components/editor/SplitEditor'
+import { ThreadPanel } from '../components/thread/ThreadPanel'
 import { colorsForUser, useYjsCollab } from '../hooks/useYjsCollab'
 import { useStudioAccess } from '../hooks/useStudioAccess'
 import { getSection, me } from '../services/api'
@@ -119,12 +120,15 @@ export function SectionPage(): ReactElement {
                 {sectionQ.data.slug}
               </p>
             </div>
-            <div className="mt-6">
-              {!collab ? (
-                <p className="text-zinc-500">Connecting editor…</p>
-              ) : (
-                <SplitEditor collab={collab} />
-              )}
+            <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_minmax(280px,360px)] lg:items-start">
+              <div>
+                {!collab ? (
+                  <p className="text-zinc-500">Connecting editor…</p>
+                ) : (
+                  <SplitEditor collab={collab} />
+                )}
+              </div>
+              <ThreadPanel projectId={pid} sectionId={secid} />
             </div>
           </>
         )}

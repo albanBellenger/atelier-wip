@@ -7,6 +7,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 
 from app.models import User
+from app.services.embedding_service import OPENAI_EMBEDDINGS_URL
 
 
 async def _register(client: AsyncClient, suffix: str, label: str) -> str:
@@ -102,8 +103,8 @@ def _in_memory_minio(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def fake_embed(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def ready(_self: object) -> tuple[str, str, str]:
-        return ("text-embedding-3-small", "sk-fake", "openai")
+    async def ready(_self: object) -> tuple[str, str, str, str]:
+        return ("text-embedding-3-small", "sk-fake", "openai", OPENAI_EMBEDDINGS_URL)
 
     async def batch(_self: object, texts: list[str]) -> list[list[float]]:
         return [[0.0] * 1536 for _ in texts]
@@ -217,7 +218,7 @@ async def test_artifacts_requires_embedding_config(
     await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
     client.cookies.set("atelier_token", token)
 
-    async def boom(_self: object) -> tuple[str, str, str]:
+    async def boom(_self: object) -> tuple[str, str, str, str]:
         from app.exceptions import ApiError
 
         raise ApiError(

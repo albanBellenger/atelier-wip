@@ -23,7 +23,18 @@ from app.exceptions import ApiError
 
 limiter = Limiter(key_func=get_remote_address)
 
-from app.routers import admin, artifacts, auth, collab, projects, sections, software, studios
+from app.routers import (
+    admin,
+    artifacts,
+    auth,
+    collab,
+    private_threads,
+    projects,
+    sections,
+    software,
+    studios,
+    work_orders,
+)
 
 
 @asynccontextmanager
@@ -36,11 +47,19 @@ async def lifespan(_app: FastAPI):
         await engine.dispose()
 
 
+def _add_logger_name_if_present(logger: object, _method_name: str, event_dict: dict) -> dict:
+    """stdlib's add_logger_name crashes with PrintLoggerFactory (no .name)."""
+    name = getattr(logger, "name", None)
+    if name is not None:
+        event_dict["logger"] = name
+    return event_dict
+
+
 def configure_logging() -> None:
     shared_processors = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
-        structlog.stdlib.add_logger_name,
+        _add_logger_name_if_present,
         structlog.processors.TimeStamper(fmt="iso"),
     ]
     if os.getenv("ENV", "dev") == "production":
@@ -107,6 +126,8 @@ def create_app() -> FastAPI:
     app.include_router(projects.router)
     app.include_router(sections.router)
     app.include_router(artifacts.router)
+    app.include_router(work_orders.router)
+    app.include_router(private_threads.router)
     app.include_router(collab.router)
     return app
 

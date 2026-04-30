@@ -86,9 +86,11 @@ export async function me(): Promise<MeResponse> {
 export interface AdminConfigPublic {
   llm_provider: string | null
   llm_model: string | null
+  llm_api_base_url: string | null
   llm_api_key_set: boolean
   embedding_provider: string | null
   embedding_model: string | null
+  embedding_api_base_url: string | null
   embedding_api_key_set: boolean
 }
 
@@ -97,9 +99,11 @@ export type AdminConfigUpdateBody = {
   llm_provider?: string | null
   llm_model?: string | null
   llm_api_key?: string | null
+  llm_api_base_url?: string | null
   embedding_provider?: string | null
   embedding_model?: string | null
   embedding_api_key?: string | null
+  embedding_api_base_url?: string | null
 }
 
 export async function getAdminConfig(): Promise<AdminConfigPublic> {
@@ -110,6 +114,20 @@ export async function putAdminConfig(
   body: AdminConfigUpdateBody,
 ): Promise<AdminConfigPublic> {
   return request<AdminConfigPublic>('PUT', '/admin/config', body)
+}
+
+export interface AdminConnectivityResult {
+  ok: boolean
+  message: string
+  detail: string | null
+}
+
+export async function postAdminTestLlm(): Promise<AdminConnectivityResult> {
+  return request<AdminConnectivityResult>('POST', '/admin/test/llm')
+}
+
+export async function postAdminTestEmbedding(): Promise<AdminConnectivityResult> {
+  return request<AdminConnectivityResult>('POST', '/admin/test/embedding')
 }
 
 export const api = {
@@ -514,6 +532,282 @@ export async function deleteArtifact(
     'DELETE',
     `/projects/${projectId}/artifacts/${artifactId}`,
   )
+}
+
+// --- Work orders (under /projects/{project_id}) ---
+
+export type WorkOrderStatus =
+  | 'backlog'
+  | 'in_progress'
+  | 'in_review'
+  | 'done'
+
+export interface WorkOrder {
+  id: string
+  project_id: string
+  title: string
+  description: string
+  implementation_guide: string | null
+  acceptance_criteria: string | null
+  status: string
+  phase: string | null
+  assignee_id: string | null
+  assignee_display_name: string | null
+  is_stale: boolean
+  stale_reason: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  section_ids: string[]
+}
+
+export interface WorkOrderNote {
+  id: string
+  author_id: string | null
+  source: string
+  content: string
+  created_at: string
+}
+
+export interface WorkOrderDetail extends WorkOrder {
+  notes: WorkOrderNote[]
+}
+
+export interface WorkOrderCreateBody {
+  title: string
+  description: string
+  implementation_guide?: string | null
+  acceptance_criteria?: string | null
+  status?: string
+  phase?: string | null
+  assignee_id?: string | null
+  section_ids?: string[]
+}
+
+export interface WorkOrderUpdateBody {
+  title?: string | null
+  description?: string | null
+  implementation_guide?: string | null
+  acceptance_criteria?: string | null
+  status?: string | null
+  phase?: string | null
+  assignee_id?: string | null
+  section_ids?: string[] | null
+}
+
+export interface WorkOrderListFilters {
+  status?: string
+  assignee_id?: string
+  phase?: string
+  is_stale?: boolean
+  section_id?: string
+}
+
+function workOrdersQueryString(f?: WorkOrderListFilters): string {
+  if (!f) {
+    return ''
+  }
+  const p = new URLSearchParams()
+  if (f.status) {
+    p.set('status', f.status)
+  }
+  if (f.assignee_id) {
+    p.set('assignee_id', f.assignee_id)
+  }
+  if (f.phase) {
+    p.set('phase', f.phase)
+  }
+  if (f.is_stale !== undefined) {
+    p.set('is_stale', String(f.is_stale))
+  }
+  if (f.section_id) {
+    p.set('section_id', f.section_id)
+  }
+  const s = p.toString()
+  return s ? `?${s}` : ''
+}
+
+export async function listWorkOrders(
+  projectId: string,
+  filters?: WorkOrderListFilters,
+): Promise<WorkOrder[]> {
+  return request<WorkOrder[]>(
+    'GET',
+    `/projects/${projectId}/work-orders${workOrdersQueryString(filters)}`,
+  )
+}
+
+export async function getWorkOrder(
+  projectId: string,
+  workOrderId: string,
+): Promise<WorkOrderDetail> {
+  return request<WorkOrderDetail>(
+    'GET',
+    `/projects/${projectId}/work-orders/${workOrderId}`,
+  )
+}
+
+export async function createWorkOrder(
+  projectId: string,
+  body: WorkOrderCreateBody,
+): Promise<WorkOrder> {
+  return request<WorkOrder>('POST', `/projects/${projectId}/work-orders`, body)
+}
+
+export async function updateWorkOrder(
+  projectId: string,
+  workOrderId: string,
+  body: WorkOrderUpdateBody,
+): Promise<WorkOrder> {
+  return request<WorkOrder>(
+    'PUT',
+    `/projects/${projectId}/work-orders/${workOrderId}`,
+    body,
+  )
+}
+
+export async function deleteWorkOrder(
+  projectId: string,
+  workOrderId: string,
+): Promise<void> {
+  return request<void>(
+    'DELETE',
+    `/projects/${projectId}/work-orders/${workOrderId}`,
+  )
+}
+
+export async function generateWorkOrders(
+  projectId: string,
+  body: { section_ids: string[] },
+): Promise<WorkOrder[]> {
+  return request<WorkOrder[]>(
+    'POST',
+    `/projects/${projectId}/work-orders/generate`,
+    body,
+  )
+}
+
+export async function dismissWorkOrderStale(
+  projectId: string,
+  workOrderId: string,
+): Promise<WorkOrder> {
+  return request<WorkOrder>(
+    'POST',
+    `/projects/${projectId}/work-orders/${workOrderId}/dismiss-stale`,
+  )
+}
+
+export async function addWorkOrderNote(
+  projectId: string,
+  workOrderId: string,
+  body: { content: string },
+): Promise<WorkOrderNote> {
+  return request<WorkOrderNote>(
+    'POST',
+    `/projects/${projectId}/work-orders/${workOrderId}/notes`,
+    body,
+  )
+}
+
+// --- Private thread (Slice 6) ---
+
+export interface PrivateThreadMessage {
+  id: string
+  role: string
+  content: string
+  created_at: string
+}
+
+export interface PrivateThreadDetail {
+  thread_id: string
+  messages: PrivateThreadMessage[]
+}
+
+export async function getPrivateThread(
+  projectId: string,
+  sectionId: string,
+): Promise<PrivateThreadDetail> {
+  return request<PrivateThreadDetail>(
+    'GET',
+    `/projects/${projectId}/sections/${sectionId}/private-thread`,
+  )
+}
+
+export async function streamPrivateThreadReply(
+  projectId: string,
+  sectionId: string,
+  content: string,
+  handlers: {
+    onToken: (text: string) => void
+    onMeta: (conflicts: { description: string }[]) => void
+  },
+): Promise<void> {
+  const r = await fetch(
+    base() +
+      `/projects/${projectId}/sections/${sectionId}/private-thread/messages/stream`,
+    {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    },
+  )
+  if (!r.ok) {
+    const text = await r.text()
+    let err: AuthErrorBody = {
+      detail: r.statusText,
+      code: 'HTTP_ERROR',
+    }
+    if (text) {
+      try {
+        err = JSON.parse(text) as AuthErrorBody
+      } catch {
+        err = { detail: text, code: 'HTTP_ERROR' }
+      }
+    }
+    throw err
+  }
+  const reader = r.body?.getReader()
+  if (!reader) {
+    throw new Error('No response body')
+  }
+  const dec = new TextDecoder()
+  let buf = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) {
+      break
+    }
+    buf += dec.decode(value, { stream: true })
+    const parts = buf.split('\n\n')
+    buf = parts.pop() ?? ''
+    for (const block of parts) {
+      for (const line of block.split('\n')) {
+        if (!line.startsWith('data: ')) {
+          continue
+        }
+        const payload = line.slice(6).trim()
+        if (payload === '[DONE]') {
+          continue
+        }
+        try {
+          const j = JSON.parse(payload) as {
+            type?: string
+            text?: string
+            conflicts?: { description: string }[]
+          }
+          if (j.type === 'token' && j.text) {
+            handlers.onToken(j.text)
+          }
+          if (j.type === 'meta' && Array.isArray(j.conflicts)) {
+            handlers.onMeta(j.conflicts)
+          }
+        } catch {
+          /* ignore malformed chunk */
+        }
+      }
+    }
+  }
 }
 
 export async function downloadArtifactBlob(

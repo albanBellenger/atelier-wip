@@ -73,9 +73,11 @@ class AdminConfigResponse(BaseModel):
 
     llm_provider: str | None
     llm_model: str | None
+    llm_api_base_url: str | None
     llm_api_key_set: bool
     embedding_provider: str | None
     embedding_model: str | None
+    embedding_api_base_url: str | None
     embedding_api_key_set: bool
 
 
@@ -83,6 +85,30 @@ class AdminConfigUpdate(BaseModel):
     llm_provider: str | None = None
     llm_model: str | None = None
     llm_api_key: str | None = None
+    llm_api_base_url: str | None = None
     embedding_provider: str | None = None
     embedding_model: str | None = None
     embedding_api_key: str | None = None
+    embedding_api_base_url: str | None = None
+
+    @field_validator("llm_api_base_url", "embedding_api_base_url", mode="before")
+    @classmethod
+    def normalize_optional_api_base(cls, v: object) -> str | None:
+        if v is None:
+            return None
+        if not isinstance(v, str):
+            return None
+        s = v.strip().rstrip("/")
+        if not s:
+            return None
+        if not (s.startswith("http://") or s.startswith("https://")):
+            raise ValueError("API base URL must start with http:// or https://")
+        return s
+
+
+class AdminConnectivityResult(BaseModel):
+    """Result of a tool-admin connectivity probe (LLM or embeddings)."""
+
+    ok: bool
+    message: str
+    detail: str | None = None

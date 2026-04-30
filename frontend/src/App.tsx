@@ -1,9 +1,10 @@
 import type { ReactElement } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { AdminSettingsPage } from './pages/AdminSettingsPage'
 import { AuthPage } from './pages/AuthPage'
 import { HomePage } from './pages/HomePage'
-import { AdminSettingsPage } from './pages/AdminSettingsPage'
 import { ArtifactsPage } from './pages/ArtifactsPage'
+import { WorkOrdersPage } from './pages/WorkOrdersPage'
 import { ProjectPage } from './pages/ProjectPage'
 import { SectionPage } from './pages/SectionPage'
 import { SoftwarePage } from './pages/SoftwarePage'
@@ -34,6 +35,10 @@ function App(): ReactElement {
         <Route
           path="/studios/:studioId/software/:softwareId/projects/:projectId/artifacts"
           element={<ArtifactsPage />}
+        />
+        <Route
+          path="/studios/:studioId/software/:softwareId/projects/:projectId/work-orders"
+          element={<WorkOrdersPage />}
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

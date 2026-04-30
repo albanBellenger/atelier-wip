@@ -8,6 +8,8 @@ import {
   type AuthErrorBody,
   getAdminConfig,
   me,
+  postAdminTestEmbedding,
+  postAdminTestLlm,
   putAdminConfig,
 } from '../services/api'
 
@@ -43,10 +45,12 @@ export function AdminSettingsPage(): ReactElement {
 
   const [llmProvider, setLlmProvider] = useState('')
   const [llmModel, setLlmModel] = useState('')
+  const [llmApiBaseUrl, setLlmApiBaseUrl] = useState('')
   const [llmKey, setLlmKey] = useState('')
   const [clearLlmKey, setClearLlmKey] = useState(false)
   const [embedProvider, setEmbedProvider] = useState('')
   const [embedModel, setEmbedModel] = useState('')
+  const [embedApiBaseUrl, setEmbedApiBaseUrl] = useState('')
   const [embedKey, setEmbedKey] = useState('')
   const [clearEmbedKey, setClearEmbedKey] = useState(false)
   const [hydrated, setHydrated] = useState(false)
@@ -56,14 +60,24 @@ export function AdminSettingsPage(): ReactElement {
     const c = configQ.data
     setLlmProvider(c.llm_provider ?? '')
     setLlmModel(c.llm_model ?? '')
+    setLlmApiBaseUrl(c.llm_api_base_url ?? '')
     setEmbedProvider(c.embedding_provider ?? '')
     setEmbedModel(c.embedding_model ?? '')
+    setEmbedApiBaseUrl(c.embedding_api_base_url ?? '')
     setLlmKey('')
     setEmbedKey('')
     setClearLlmKey(false)
     setClearEmbedKey(false)
     setHydrated(true)
   }, [configQ.data, hydrated])
+
+  const testLlmMut = useMutation({
+    mutationFn: () => postAdminTestLlm(),
+  })
+
+  const testEmbedMut = useMutation({
+    mutationFn: () => postAdminTestEmbedding(),
+  })
 
   const saveMut = useMutation({
     mutationFn: (body: AdminConfigUpdateBody) => putAdminConfig(body),
@@ -75,8 +89,10 @@ export function AdminSettingsPage(): ReactElement {
       setClearEmbedKey(false)
       setLlmProvider(data.llm_provider ?? '')
       setLlmModel(data.llm_model ?? '')
+      setLlmApiBaseUrl(data.llm_api_base_url ?? '')
       setEmbedProvider(data.embedding_provider ?? '')
       setEmbedModel(data.embedding_model ?? '')
+      setEmbedApiBaseUrl(data.embedding_api_base_url ?? '')
       setHydrated(true)
     },
   })
@@ -85,8 +101,10 @@ export function AdminSettingsPage(): ReactElement {
     const body: AdminConfigUpdateBody = {
       llm_provider: llmProvider.trim() || null,
       llm_model: llmModel.trim() || null,
+      llm_api_base_url: llmApiBaseUrl.trim() || null,
       embedding_provider: embedProvider.trim() || null,
       embedding_model: embedModel.trim() || null,
+      embedding_api_base_url: embedApiBaseUrl.trim() || null,
     }
     if (clearLlmKey) {
       body.llm_api_key = ''
@@ -138,8 +156,10 @@ export function AdminSettingsPage(): ReactElement {
         </div>
         <h1 className="text-2xl font-semibold">Tool admin settings</h1>
         <p className="mt-2 text-sm text-zinc-400">
-          LLM and embedding provider configuration. API keys are never shown after save; leave
-          blank to keep the stored key, or use &quot;Remove stored key&quot; to clear.
+          OpenAI-compatible LLM and embedding configuration. Use provider{' '}
+          <span className="font-mono text-zinc-300">openai</span> (or leave empty) and optional API
+          base URLs for non-default hosts. API keys are never shown after save; leave blank to keep
+          the stored key, or use &quot;Remove stored key&quot; to clear.
         </p>
 
         {configQ.isPending && (
@@ -167,6 +187,7 @@ export function AdminSettingsPage(): ReactElement {
                   className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100"
                   value={llmProvider}
                   onChange={(e) => setLlmProvider(e.target.value)}
+                  placeholder="openai"
                   autoComplete="off"
                 />
               </label>
@@ -179,6 +200,20 @@ export function AdminSettingsPage(): ReactElement {
                   autoComplete="off"
                 />
               </label>
+              <label className="block text-sm">
+                <span className="text-zinc-400">API base URL</span>
+                <input
+                  className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 font-mono text-sm text-zinc-100"
+                  value={llmApiBaseUrl}
+                  onChange={(e) => setLlmApiBaseUrl(e.target.value)}
+                  placeholder="https://api.openai.com/v1 (optional)"
+                  autoComplete="off"
+                />
+              </label>
+              <p className="text-xs text-zinc-500">
+                Chat requests use <span className="font-mono">{`{base}/chat/completions`}</span>.
+                Leave empty for OpenAI&apos;s default host.
+              </p>
               <p className="text-xs text-zinc-500">
                 API key:{' '}
                 {llmKeySet ? (
@@ -210,6 +245,34 @@ export function AdminSettingsPage(): ReactElement {
                 />
                 Remove stored LLM API key
               </label>
+              <div className="flex flex-col gap-2 border-t border-zinc-800 pt-4">
+                <p className="text-xs text-zinc-500">
+                  Sends a minimal chat completion using the saved model, key, and API base (OpenAI-compatible).
+                </p>
+                <button
+                  type="button"
+                  disabled={testLlmMut.isPending}
+                  onClick={() => testLlmMut.mutate()}
+                  className="self-start rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-700 disabled:opacity-50"
+                >
+                  {testLlmMut.isPending ? 'Testing…' : 'Test LLM'}
+                </button>
+                {testLlmMut.data && (
+                  <p
+                    className={`text-sm ${testLlmMut.data.ok ? 'text-emerald-400' : 'text-amber-400'}`}
+                  >
+                    {testLlmMut.data.message}
+                    {testLlmMut.data.detail ? (
+                      <span className="block whitespace-pre-wrap text-zinc-400">
+                        {testLlmMut.data.detail}
+                      </span>
+                    ) : null}
+                  </p>
+                )}
+                {testLlmMut.isError && (
+                  <p className="text-sm text-red-400">{formatApiDetail(testLlmMut.error)}</p>
+                )}
+              </div>
             </section>
 
             <section className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
@@ -220,7 +283,7 @@ export function AdminSettingsPage(): ReactElement {
                   className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100"
                   value={embedProvider}
                   onChange={(e) => setEmbedProvider(e.target.value)}
-                  placeholder="e.g. openai"
+                  placeholder="openai"
                   autoComplete="off"
                 />
               </label>
@@ -233,6 +296,20 @@ export function AdminSettingsPage(): ReactElement {
                   autoComplete="off"
                 />
               </label>
+              <label className="block text-sm">
+                <span className="text-zinc-400">API base URL</span>
+                <input
+                  className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 font-mono text-sm text-zinc-100"
+                  value={embedApiBaseUrl}
+                  onChange={(e) => setEmbedApiBaseUrl(e.target.value)}
+                  placeholder="https://api.openai.com/v1 (optional)"
+                  autoComplete="off"
+                />
+              </label>
+              <p className="text-xs text-zinc-500">
+                Embeddings use <span className="font-mono">{`{base}/embeddings`}</span>. Leave empty for
+                OpenAI&apos;s default host.
+              </p>
               <p className="text-xs text-zinc-500">
                 API key:{' '}
                 {embedKeySet ? (
@@ -264,6 +341,34 @@ export function AdminSettingsPage(): ReactElement {
                 />
                 Remove stored embedding API key
               </label>
+              <div className="flex flex-col gap-2 border-t border-zinc-800 pt-4">
+                <p className="text-xs text-zinc-500">
+                  Embeds a short probe string using the saved embedding model, key, and API base.
+                </p>
+                <button
+                  type="button"
+                  disabled={testEmbedMut.isPending}
+                  onClick={() => testEmbedMut.mutate()}
+                  className="self-start rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-700 disabled:opacity-50"
+                >
+                  {testEmbedMut.isPending ? 'Testing…' : 'Test embedding'}
+                </button>
+                {testEmbedMut.data && (
+                  <p
+                    className={`text-sm ${testEmbedMut.data.ok ? 'text-emerald-400' : 'text-amber-400'}`}
+                  >
+                    {testEmbedMut.data.message}
+                    {testEmbedMut.data.detail ? (
+                      <span className="block whitespace-pre-wrap text-zinc-400">
+                        {testEmbedMut.data.detail}
+                      </span>
+                    ) : null}
+                  </p>
+                )}
+                {testEmbedMut.isError && (
+                  <p className="text-sm text-red-400">{formatApiDetail(testEmbedMut.error)}</p>
+                )}
+              </div>
             </section>
 
             {saveMut.isSuccess && (
