@@ -46,9 +46,10 @@ async def section_collab(
                     message="Section not found",
                 )
             await session.commit()
-        except ApiError:
+        except ApiError as e:
             await session.rollback()
-            await websocket.close(code=1008)
+            close_code = {401: 4401, 403: 4403}.get(e.status_code, 1008)
+            await websocket.close(code=close_code)
             return
 
     await websocket.accept()

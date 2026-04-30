@@ -289,7 +289,7 @@ export function SoftwarePage(): ReactElement {
 
             <section className="mt-10 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
               <h2 className="text-sm font-medium text-zinc-300">
-                GitLab integration
+                Self-hosted GitLab integration
               </h2>
               <p className="mt-1 text-xs text-zinc-500">
                 Token is stored encrypted. Leave token blank to keep the current

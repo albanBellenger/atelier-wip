@@ -199,3 +199,52 @@ async def test_delete_studio_cascades_software(client: AsyncClient) -> None:
     assert del_r.status_code == 204
     r = await client.get(f"/studios/{studio_id}/software/{sw_id}")
     assert r.status_code in (403, 404)
+
+
+@pytest.mark.asyncio
+async def test_studio_member_patch_definition_forbidden(client: AsyncClient) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token_admin = await _register(client, sfx, "owner")
+    token_member = await _register(client, sfx, "member")
+    client.cookies.set("atelier_token", token_admin)
+    studio = (await client.post("/studios", json={"name": f"S{sfx}"})).json()
+    studio_id = studio["id"]
+    await client.post(
+        f"/studios/{studio_id}/members",
+        json={"email": f"member-{sfx}@example.com", "role": "studio_member"},
+    )
+    sw = (
+        await client.post(
+            f"/studios/{studio_id}/software",
+            json={"name": "P"},
+        )
+    ).json()
+    sw_id = sw["id"]
+    client.cookies.set("atelier_token", token_member)
+    r = await client.patch(
+        f"/studios/{studio_id}/software/{sw_id}",
+        json={"definition": "Hacked"},
+    )
+    assert r.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_studio_admin_patch_definition_ok(client: AsyncClient) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token_admin = await _register(client, sfx, "owner")
+    client.cookies.set("atelier_token", token_admin)
+    studio = (await client.post("/studios", json={"name": f"S{sfx}"})).json()
+    studio_id = studio["id"]
+    sw = (
+        await client.post(
+            f"/studios/{studio_id}/software",
+            json={"name": "P"},
+        )
+    ).json()
+    sw_id = sw["id"]
+    r = await client.patch(
+        f"/studios/{studio_id}/software/{sw_id}",
+        json={"definition": "Official definition text."},
+    )
+    assert r.status_code == 200
+    assert r.json()["definition"] == "Official definition text."

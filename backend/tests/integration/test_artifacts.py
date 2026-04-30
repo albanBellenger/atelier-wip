@@ -327,3 +327,89 @@ async def test_delete_artifact_minio_failure_still_returns_204(
 
     empty = await client.get(f"/projects/{pid}/artifacts")
     assert empty.json() == []
+
+
+@pytest.mark.asyncio
+async def test_cross_studio_viewer_can_download_artifact(
+    client: AsyncClient,
+    db_session,
+    fake_embed: None,
+) -> None:
+    import uuid as u
+
+    from sqlalchemy import select
+
+    from app.models import CrossStudioAccess, User
+
+    sfx = u.uuid4().hex[:8]
+    token_b = await _register(client, sfx, "ownerb")
+    client.cookies.set("atelier_token", token_b)
+    sb = (await client.post("/studios", json={"name": f"SB{sfx}"})).json()
+    studio_b_id = sb["id"]
+    sw_b = (
+        await client.post(
+            f"/studios/{studio_b_id}/software",
+            json={"name": "sw"},
+        )
+    ).json()
+    software_b_id = sw_b["id"]
+    pid_b = (
+        await client.post(
+            f"/software/{software_b_id}/projects",
+            json={"name": "P"},
+        )
+    ).json()["id"]
+
+    await _promote_tool_admin(db_session, f"ownerb-{sfx}@example.com")
+    client.cookies.set("atelier_token", token_b)
+    await client.put(
+        "/admin/config",
+        json={
+            "embedding_provider": "openai",
+            "embedding_model": "text-embedding-3-small",
+            "embedding_api_key": "sk-test",
+        },
+    )
+    md_bytes = b"# cross"
+    up = await client.post(
+        f"/projects/{pid_b}/artifacts",
+        files={"file": ("n.md", md_bytes, "text/markdown")},
+        data={"name": "N"},
+    )
+    assert up.status_code == 200, up.text
+    aid = up.json()["id"]
+
+    token_a = await _register(client, sfx, "ownera")
+    client.cookies.set("atelier_token", token_a)
+    sa = (await client.post("/studios", json={"name": f"SA{sfx}"})).json()
+    studio_a_id = sa["id"]
+    me_a = (await client.get("/auth/me")).json()
+    user_a_id = u.UUID(me_a["user"]["id"])
+
+    r_b = await db_session.execute(
+        select(User).where(User.email == f"ownerb-{sfx}@example.com")
+    )
+    user_b = r_b.scalar_one()
+
+    db_session.add(
+        CrossStudioAccess(
+            id=u.uuid4(),
+            requesting_studio_id=u.UUID(studio_a_id),
+            target_software_id=u.UUID(software_b_id),
+            requested_by=user_a_id,
+            approved_by=user_b.id,
+            access_level="viewer",
+            status="approved",
+        )
+    )
+    await db_session.flush()
+
+    client.cookies.set("atelier_token", token_a)
+    dl = await client.get(f"/projects/{pid_b}/artifacts/{aid}/download")
+    assert dl.status_code == 200
+    assert dl.content == md_bytes
+
+    stranger = await _register(client, sfx, "stranger")
+    client.cookies.set("atelier_token", stranger)
+    forbidden = await client.get(f"/projects/{pid_b}/artifacts/{aid}/download")
+    assert forbidden.status_code == 403

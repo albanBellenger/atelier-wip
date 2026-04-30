@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.deps import StudioAccess, get_studio_access, require_studio_admin
+from app.deps import StudioAccess, get_studio_access, require_studio_admin, require_studio_editor
 from app.schemas.software import GitTestResult, SoftwareCreate, SoftwareResponse, SoftwareUpdate
 from app.services.software_service import SoftwareService
 
@@ -44,7 +44,17 @@ async def update_software(
     software_id: UUID,
     body: SoftwareUpdate,
     session: AsyncSession = Depends(get_db),
-    access: StudioAccess = Depends(require_studio_admin),
+    access: StudioAccess = Depends(require_studio_editor),
+) -> SoftwareResponse:
+    return await SoftwareService(session).update_software(access, software_id, body)
+
+
+@router.patch("/{software_id}", response_model=SoftwareResponse)
+async def patch_software(
+    software_id: UUID,
+    body: SoftwareUpdate,
+    session: AsyncSession = Depends(get_db),
+    access: StudioAccess = Depends(require_studio_editor),
 ) -> SoftwareResponse:
     return await SoftwareService(session).update_software(access, software_id, body)
 

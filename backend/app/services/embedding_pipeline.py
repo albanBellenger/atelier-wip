@@ -6,7 +6,7 @@ import asyncio
 import uuid
 
 import structlog
-from sqlalchemy import delete
+from sqlalchemy import delete, exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session_factory
@@ -103,3 +103,21 @@ async def enqueue_section_embedding(section_id: uuid.UUID) -> None:
 
 def schedule_section_embedding(section_id: uuid.UUID) -> None:
     asyncio.create_task(enqueue_section_embedding(section_id))
+
+
+async def enqueue_sections_missing_embeddings_after_config() -> None:
+    """After embedding is first configured, embed existing sections that have content but no chunks."""
+    async with async_session_factory() as session:
+        if not await embedding_configured(session):
+            return
+        no_chunks = ~exists(
+            select(1).where(SectionChunk.section_id == Section.id)
+        )
+        q = select(Section.id).where(
+            Section.content.isnot(None),
+            Section.content != "",
+            no_chunks,
+        )
+        ids = list((await session.execute(q)).scalars().all())
+    for sid in ids:
+        schedule_section_embedding(sid)

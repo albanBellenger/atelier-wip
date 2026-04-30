@@ -1401,6 +1401,12 @@ Key integration test patterns for every route group:
 - Not found → 404
 - Cascade deletes (delete studio → verify all children gone)
 
+#### Validation error codes (selected)
+
+| Code | HTTP | When |
+|------|------|------|
+| `SECTION_REQUIRED` | 422 | Work order create/update would leave no linked spec sections (e.g. `section_ids: []` on update). |
+
 #### LLM Tests (`@pytest.mark.llm`)
 Real API calls against the configured provider. Slow, tagged, run only in full suite.
 

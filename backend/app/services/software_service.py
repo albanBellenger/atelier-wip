@@ -6,6 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import StudioAccess
+
+_SOFTWARE_ADMIN_FIELDS = frozenset({"definition", "git_repo_url", "git_branch", "git_token"})
 from app.exceptions import ApiError
 from app.integrations.gitlab_client import test_gitlab_connection
 from app.models import Software
@@ -111,6 +113,13 @@ class SoftwareService:
     ) -> SoftwareResponse:
         s = await self._get_software_or_404(access.studio_id, software_id)
         data = body.model_dump(exclude_unset=True)
+        restricted = _SOFTWARE_ADMIN_FIELDS & data.keys()
+        if restricted and not access.is_studio_admin:
+            raise ApiError(
+                status_code=403,
+                code="FORBIDDEN",
+                message="Studio admin access required to change definition or Git settings.",
+            )
         if "name" in data and data["name"] is not None:
             s.name = str(data["name"]).strip()
         if "description" in data:

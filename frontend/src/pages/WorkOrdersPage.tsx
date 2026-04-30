@@ -30,6 +30,7 @@ import {
   type WorkOrderDetail,
   type WorkOrderListFilters,
 } from '../services/api'
+import { compareWorkOrdersKanban } from '../lib/workOrderKanbanSort'
 
 function formatApiError(err: unknown): string {
   if (err && typeof err === 'object' && 'detail' in err) {
@@ -264,14 +265,7 @@ export function WorkOrdersPage(): ReactElement {
       }
     }
     for (const s of STATUSES) {
-      m[s].sort((a, b) => {
-        const pa = a.phase ?? ''
-        const pb = b.phase ?? ''
-        if (pa !== pb) {
-          return pa.localeCompare(pb)
-        }
-        return a.title.localeCompare(b.title)
-      })
+      m[s].sort(compareWorkOrdersKanban)
     }
     return m
   }, [orders])
@@ -729,6 +723,9 @@ function DetailForm(props: {
   const [title, setTitle] = useState(detail.title)
   const [description, setDescription] = useState(detail.description)
   const [phase, setPhase] = useState(detail.phase ?? '')
+  const [phaseOrder, setPhaseOrder] = useState(
+    detail.phase_order != null ? String(detail.phase_order) : '',
+  )
   const [assigneeId, setAssigneeId] = useState(detail.assignee_id ?? '')
   const [impl, setImpl] = useState(detail.implementation_guide ?? '')
   const [accept, setAccept] = useState(detail.acceptance_criteria ?? '')
@@ -785,7 +782,14 @@ function DetailForm(props: {
         value={phase}
         onChange={(e) => setPhase(e.target.value)}
       />
-      <label className="block text-xs text-zinc-500">Assignee</label>
+      <label className="block text-xs text-zinc-500">Phase order</label>
+      <input
+        className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+        inputMode="numeric"
+        placeholder="optional integer"
+        value={phaseOrder}
+        onChange={(e) => setPhaseOrder(e.target.value)}
+      />
       <select
         className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
         value={assigneeId}
@@ -823,6 +827,14 @@ function DetailForm(props: {
               title: title.trim(),
               description: description.trim(),
               phase: phase.trim() || null,
+              phase_order: (() => {
+                const t = phaseOrder.trim()
+                if (t === '') {
+                  return null
+                }
+                const n = Number.parseInt(t, 10)
+                return Number.isFinite(n) ? n : null
+              })(),
               assignee_id: assigneeId || null,
               implementation_guide: impl.trim() || null,
               acceptance_criteria: accept.trim() || null,

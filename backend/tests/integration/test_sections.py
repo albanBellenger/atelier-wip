@@ -126,6 +126,10 @@ async def test_sections_order_slug_and_rbac(client: AsyncClient) -> None:
     )
     assert reorder_forbidden.status_code == 403
 
+    client.cookies.set("atelier_token", token_member)
+    del_forbidden = await client.delete(f"/projects/{project_id}/sections/{sid2}")
+    assert del_forbidden.status_code == 403
+
     client.cookies.set("atelier_token", token_admin)
     del_r = await client.delete(f"/projects/{project_id}/sections/{sid1}")
     assert del_r.status_code == 204

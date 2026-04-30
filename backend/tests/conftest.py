@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,9 @@ from alembic import command
 from alembic.config import Config
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 os.environ["JWT_SECRET"] = "test-jwt-secret-key-not-for-production-use-32b!"
 os.environ.setdefault(

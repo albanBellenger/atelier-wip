@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from app.exceptions import ApiError
 from app.models import User
-from app.services.rag_service import RAGContext
+from app.services.rag_service import RAGContext, RAGService
 
 
 async def _register(client: AsyncClient, suffix: str, label: str) -> str:
@@ -129,6 +129,7 @@ async def test_stream_sse_envelope_format(
     assert len(meta) == 1
     assert meta[0].get("conflicts") == []
     assert "context_truncated" in meta[0]
+    assert meta[0].get("context_truncated") is False
     assert _last_nonempty_line(body) == "data: [DONE]"
 
 
@@ -316,3 +317,62 @@ async def test_llm_failure_writes_tombstone_message(
     asst = [m for m in msgs if m["role"] == "assistant"]
     assert asst
     assert asst[-1]["content"].startswith("[error:")
+
+
+@pytest.mark.asyncio
+async def test_stream_meta_context_truncated_true_when_budget_tight(
+    client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _sid, pid, section_id, email = await _project_section(client, sfx)
+    await _promote_tool_admin(db_session, email)
+    client.cookies.set("atelier_token", token)
+    await client.put(
+        "/admin/config",
+        json={
+            "llm_provider": "openai",
+            "llm_model": "gpt-4o-mini",
+            "llm_api_key": "sk-test",
+        },
+    )
+    huge = "C" * 8000
+    patch_r = await client.patch(
+        f"/projects/{pid}/sections/{section_id}",
+        json={"content": huge},
+    )
+    assert patch_r.status_code == 200
+
+    _orig = RAGService.build_context
+
+    async def low_budget(self, *args, **kwargs):
+        kwargs["token_budget"] = 80
+        return await _orig(self, *args, **kwargs)
+
+    monkeypatch.setattr("app.services.rag_service.RAGService.build_context", low_budget)
+
+    async def fake_stream(self, *a, **k) -> AsyncIterator[str]:
+        yield "ok"
+
+    async def fake_structured(self, *a, **k):
+        return {"conflicts": []}
+
+    monkeypatch.setattr("app.services.llm_service.LLMService.chat_stream", fake_stream)
+    monkeypatch.setattr(
+        "app.services.llm_service.LLMService.chat_structured", fake_structured
+    )
+
+    r = await client.post(
+        f"/projects/{pid}/sections/{section_id}/thread/messages",
+        json={"content": "hello"},
+    )
+    assert r.status_code == 200, r.text
+    meta = None
+    for line in r.text.splitlines():
+        if line.startswith("data: "):
+            p = line[6:].strip()
+            if p.startswith("{"):
+                j = json.loads(p)
+                if j.get("type") == "meta":
+                    meta = j
+    assert meta is not None
+    assert meta.get("context_truncated") is True

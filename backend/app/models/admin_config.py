@@ -18,3 +18,4 @@ class AdminConfig(Base):
     embedding_model: Mapped[str | None] = mapped_column(String(256), nullable=True)
     embedding_api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     embedding_api_base_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    embedding_dim: Mapped[int | None] = mapped_column(Integer, nullable=True)

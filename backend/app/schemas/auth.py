@@ -79,6 +79,7 @@ class AdminConfigResponse(BaseModel):
     embedding_model: str | None
     embedding_api_base_url: str | None
     embedding_api_key_set: bool
+    embedding_dim: int | None = None
 
 
 class AdminConfigUpdate(BaseModel):

@@ -6,6 +6,7 @@ import {
   streamPrivateThreadReply,
   type PrivateThreadMessage,
 } from '../../services/api'
+import { ContextTruncationBanner } from './ContextTruncationBanner'
 
 export function ThreadPanel(props: {
   projectId: string
@@ -16,6 +17,7 @@ export function ThreadPanel(props: {
   const [draft, setDraft] = useState('')
   const [streaming, setStreaming] = useState('')
   const [conflicts, setConflicts] = useState<{ description: string }[]>([])
+  const [contextTruncated, setContextTruncated] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -39,12 +41,17 @@ export function ThreadPanel(props: {
       setDraft('')
       setStreaming('')
       setConflicts([])
+      setContextTruncated(false)
       await streamPrivateThreadReply(projectId, sectionId, content, {
         onToken: (t: string) => {
           setStreaming((s) => s + t)
         },
-        onMeta: (c: { description: string }[]) => {
-          setConflicts(c)
+        onMeta: (meta: {
+          conflicts: { description: string }[]
+          context_truncated?: boolean
+        }) => {
+          setConflicts(meta.conflicts)
+          setContextTruncated(Boolean(meta.context_truncated))
         },
       })
     },
@@ -73,6 +80,7 @@ export function ThreadPanel(props: {
           RAG-backed assistant (streaming). Conflicts scanned after reply.
         </p>
       </div>
+      <ContextTruncationBanner visible={contextTruncated} />
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-2 text-sm">
         {threadQ.isPending && (
           <p className="text-zinc-500">Loading thread…</p>

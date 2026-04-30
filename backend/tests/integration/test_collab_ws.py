@@ -74,3 +74,20 @@ async def test_collab_websocket_requires_auth(client: AsyncClient) -> None:
                 pass
 
 
+@pytest.mark.asyncio
+async def test_collab_websocket_rejects_non_studio_member(
+    client: AsyncClient,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    _token_owner, _studio_id, _sw, project_id, section_id = await _studio_project_section(
+        client, sfx
+    )
+    outsider_tok = await _register(client, sfx, "outsider")
+
+    with TestClient(app) as tc:
+        with pytest.raises(Exception):
+            with tc.websocket_connect(
+                f"/ws/projects/{project_id}/sections/{section_id}/collab"
+                f"?token={outsider_tok}",
+            ):
+                pass

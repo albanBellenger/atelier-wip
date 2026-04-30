@@ -5,7 +5,7 @@ Monorepo for **Atelier**: collaborative spec authoring, Work Orders, and GitLab 
 This slice includes:
 
 - **Backend:** FastAPI, JWT auth, tool-admin bootstrap, studios & software APIs with Studio Admin/Member RBAC, Fernet-encrypted Git tokens, GitLab connection test, `GET/PUT /admin/config`, full PostgreSQL + pgvector schema via Alembic, Docker Compose for Postgres + MinIO + optional frontend dev container.
-- **Frontend:** React (Vite) + TypeScript + Tailwind v4, login/register, studio list/detail, software detail with definition + Git settings + test connection; API client + JWT in `localStorage`.
+- **Frontend:** React (Vite) + TypeScript + Tailwind v4, login/register, studio list/detail, software detail with definition + Git settings + test connection; API client + JWT stored in HttpOnly cookie (`atelier_token`).
 - **Tests:** Pytest integration test (requires Postgres; `docker compose up -d db`).
 
 ## Prerequisites

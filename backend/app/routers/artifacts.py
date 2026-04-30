@@ -17,7 +17,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
 from app.database import get_db
-from app.deps import ProjectAccess, get_project_access, require_project_member
+from app.deps import (
+    ProjectAccess,
+    get_project_access,
+    get_project_access_artifact_download,
+    require_project_member,
+)
 from app.exceptions import ApiError
 from app.schemas.artifact import ArtifactResponse, MarkdownArtifactCreate
 from app.services.artifact_service import ArtifactService
@@ -137,7 +142,7 @@ async def download_artifact(
     project_id: UUID,
     artifact_id: UUID,
     session: AsyncSession = Depends(get_db),
-    pa: ProjectAccess = Depends(get_project_access),
+    pa: ProjectAccess = Depends(get_project_access_artifact_download),
 ) -> Response:
     if pa.project.id != project_id:
         raise ApiError(

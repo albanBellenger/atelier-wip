@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from dataclasses import dataclass
+from typing import Any
 
 import structlog
 from sqlalchemy import select
@@ -11,25 +13,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
 from app.models import Artifact, ArtifactChunk, Project, Section, SectionChunk, Software
+from app.schemas.token_context import TokenContext
 from app.services.embedding_service import EmbeddingService
+from app.services.llm_service import LLMService
 
 log = structlog.get_logger("atelier.rag")
 
 SOFT_DEF_TOKEN_CAP = 500
+
+SOFTWARE_DEF_SUMMARY_SCHEMA: dict[str, Any] = {
+    "name": "software_def_summary",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {"summary": {"type": "string"}},
+        "required": ["summary"],
+    },
+}
 
 
 @dataclass(frozen=True)
 class RAGContext:
     text: str
     truncated: bool  # True when mandatory block exceeded the budget and was adjusted
-
-
-def _def_block_for_software(software: Software) -> str:
-    raw_def = (software.definition or "").strip()
-    soft_def_char_cap = SOFT_DEF_TOKEN_CAP * 4
-    if len(raw_def) <= soft_def_char_cap:
-        return raw_def
-    return raw_def[:soft_def_char_cap]
 
 
 def _unified_chunk_fill(
@@ -79,6 +86,46 @@ def _mandatory_parts_with_overflow(
 class RAGService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
+        self._software_def_summary_cache: dict[tuple[uuid.UUID, str], str] = {}
+
+    async def _definition_block_for_rag(
+        self,
+        software: Software,
+        ctx: TokenContext,
+    ) -> str:
+        raw = (software.definition or "").strip()
+        soft_def_char_cap = SOFT_DEF_TOKEN_CAP * 4
+        if len(raw) <= soft_def_char_cap:
+            return raw
+        digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+        key = (software.id, digest)
+        if key in self._software_def_summary_cache:
+            return self._software_def_summary_cache[key]
+        llm = LLMService(self.db)
+        try:
+            result = await llm.chat_structured(
+                system_prompt=(
+                    "Summarize the software definition for use as RAG context. "
+                    "Preserve technical intent, constraints, and terminology. "
+                    "Be concise but do not invent facts."
+                ),
+                user_prompt=raw,
+                json_schema=SOFTWARE_DEF_SUMMARY_SCHEMA,
+                context=ctx,
+                call_type="rag_software_definition_summary",
+            )
+        except ApiError as e:
+            log.warning("rag_def_summary_llm_failed", code=e.error_code)
+            summary = raw[:soft_def_char_cap]
+            self._software_def_summary_cache[key] = summary
+            return summary
+        summary = ""
+        if isinstance(result, dict):
+            summary = str(result.get("summary") or "").strip()
+        if not summary:
+            summary = raw[:soft_def_char_cap]
+        self._software_def_summary_cache[key] = summary
+        return summary
 
     async def build_context(
         self,
@@ -131,7 +178,14 @@ class RAGService:
                 )
             current_body = cur.content or ""
 
-        def_block = _def_block_for_software(software)
+        ctx = TokenContext(
+            studio_id=software.studio_id,
+            software_id=software.id,
+            project_id=project_id,
+            user_id=None,
+        )
+
+        def_block = await self._definition_block_for_rag(software, ctx)
         def_section = "## Software definition\n" + def_block
         outline_section = "## Project outline\n" + outline
         current_header = "## Current section\n"

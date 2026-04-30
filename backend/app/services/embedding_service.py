@@ -15,7 +15,6 @@ from app.openai_compat_urls import embeddings_url
 
 log = structlog.get_logger("atelier.embedding")
 
-EXPECTED_DIM = 1536
 OPENAI_EMBEDDINGS_URL = embeddings_url(None)
 EMBED_BATCH = 64
 
@@ -93,6 +92,7 @@ class EmbeddingService:
         # Sort by index for safety
         items.sort(key=lambda x: int(x.get("index", 0)))
         vectors: list[list[float]] = []
+        cfg = await self._get_config()
         for item in items:
             emb = item.get("embedding")
             if not isinstance(emb, list):
@@ -101,11 +101,18 @@ class EmbeddingService:
                     code="EMBEDDING_INVALID_RESPONSE",
                     message="Invalid embedding response.",
                 )
-            if len(emb) != EXPECTED_DIM:
+            dim = len(emb)
+            if cfg.embedding_dim is None:
+                cfg.embedding_dim = dim
+                await self.db.flush()
+            elif cfg.embedding_dim != dim:
                 raise ApiError(
                     status_code=502,
                     code="EMBEDDING_DIMENSION_MISMATCH",
-                    message=f"Expected embedding dimension {EXPECTED_DIM}, got {len(emb)}.",
+                    message=(
+                        f"Embedding dimension mismatch: stored {cfg.embedding_dim}, "
+                        f"provider returned {dim}."
+                    ),
                 )
             vectors.append([float(x) for x in emb])
         if len(vectors) != len(inputs):
@@ -125,5 +132,6 @@ async def embedding_configured(session: AsyncSession) -> bool:
         return False
     prov = (row.embedding_provider or "").strip().lower()
     if prov and prov != "openai":
+        log.warning("embedding_skip_unsupported_provider", provider=prov)
         return False
     return bool((row.embedding_model or "").strip() and (row.embedding_api_key or "").strip())

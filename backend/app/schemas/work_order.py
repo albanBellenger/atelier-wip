@@ -28,6 +28,7 @@ class WorkOrderCreate(BaseModel):
     acceptance_criteria: str | None = None
     status: str = Field(default="backlog", max_length=32)
     phase: str | None = Field(None, max_length=256)
+    phase_order: int | None = None
     assignee_id: UUID | None = None
     section_ids: list[UUID] = Field(default_factory=list)
 
@@ -50,8 +51,20 @@ class WorkOrderUpdate(BaseModel):
     acceptance_criteria: str | None = None
     status: str | None = Field(None, max_length=32)
     phase: str | None = Field(None, max_length=256)
+    phase_order: int | None = None
     assignee_id: UUID | None = None
     section_ids: list[UUID] | None = None
+
+    @field_validator("section_ids")
+    @classmethod
+    def section_ids_non_empty_when_set(cls, v: list[UUID] | None) -> list[UUID] | None:
+        if v is not None and len(v) == 0:
+            raise PydanticCustomError(
+                "SECTION_REQUIRED",
+                "At least one section is required.",
+                {},
+            )
+        return v
 
 
 class GenerateWorkOrdersBody(BaseModel):
@@ -67,6 +80,7 @@ class WorkOrderResponse(BaseModel):
     acceptance_criteria: str | None
     status: str
     phase: str | None
+    phase_order: int | None
     assignee_id: UUID | None
     assignee_display_name: str | None = None
     is_stale: bool

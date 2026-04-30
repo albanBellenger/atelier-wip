@@ -255,6 +255,29 @@ async def test_generate_skips_unknown_slug(
 
 
 @pytest.mark.asyncio
+async def test_update_work_order_rejects_empty_section_ids(
+    client: AsyncClient,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _st, _sw, pid, sec_a, _sec_b = await _studio_project_with_sections(
+        client, sfx
+    )
+    client.cookies.set("atelier_token", token)
+    c = await client.post(
+        f"/projects/{pid}/work-orders",
+        json={"title": "T", "description": "D", "section_ids": [sec_a]},
+    )
+    assert c.status_code == 200, c.text
+    wid = c.json()["id"]
+    u = await client.put(
+        f"/projects/{pid}/work-orders/{wid}",
+        json={"section_ids": []},
+    )
+    assert u.status_code == 422
+    assert u.json()["code"] == "SECTION_REQUIRED"
+
+
+@pytest.mark.asyncio
 async def test_viewer_cannot_mutate_work_orders(client: AsyncClient) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, studio_id, _sw, pid, sec_a, _sec_b = await _studio_project_with_sections(

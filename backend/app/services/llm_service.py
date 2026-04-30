@@ -151,16 +151,32 @@ class LLMService:
             call_type=call_type,
             project_id=str(context.project_id),
         )
-        async with httpx.AsyncClient(timeout=180.0) as client:
-            r = await client.post(chat_url, headers=headers, json=body)
-            if r.status_code >= 400:
-                log.warning("llm_http_error", status=r.status_code, body=r.text[:500])
-                raise ApiError(
-                    status_code=502,
-                    code="LLM_UPSTREAM_ERROR",
-                    message="LLM provider returned an error.",
-                )
-            data = r.json()
+        try:
+            async with httpx.AsyncClient(timeout=180.0) as client:
+                r = await client.post(chat_url, headers=headers, json=body)
+                if r.status_code >= 400:
+                    log.warning("llm_http_error", status=r.status_code, body=r.text[:500])
+                    raise ApiError(
+                        status_code=502,
+                        code="LLM_UPSTREAM_ERROR",
+                        message="LLM provider returned an error.",
+                    )
+                data = r.json()
+        except httpx.TimeoutException as e:
+            log.warning(
+                "llm_timeout",
+                call_type=call_type,
+                project_id=str(context.project_id),
+                exc_type=type(e).__name__,
+            )
+            raise ApiError(
+                status_code=504,
+                code="LLM_TIMEOUT",
+                message=(
+                    "The language model did not respond in time. Try again with fewer "
+                    "sections or when the provider is less busy."
+                ),
+            ) from e
 
         usage_raw = data.get("usage") or {}
         input_tokens = int(usage_raw.get("prompt_tokens") or 0)

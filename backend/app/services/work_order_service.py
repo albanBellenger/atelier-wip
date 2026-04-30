@@ -66,6 +66,7 @@ class WorkOrderService:
             acceptance_criteria=wo.acceptance_criteria,
             status=wo.status,
             phase=wo.phase,
+            phase_order=wo.phase_order,
             assignee_id=wo.assignee_id,
             assignee_display_name=assignee_name,
             is_stale=wo.is_stale,
@@ -193,6 +194,7 @@ class WorkOrderService:
             else None,
             status=body.status,
             phase=body.phase.strip() if body.phase else None,
+            phase_order=body.phase_order,
             assignee_id=body.assignee_id,
             created_by=created_by,
         )
@@ -271,6 +273,8 @@ class WorkOrderService:
             wo.phase = (
                 str(data["phase"]).strip() if data["phase"] is not None else None
             )
+        if "phase_order" in data:
+            wo.phase_order = data["phase_order"]
         if "assignee_id" in data:
             wo.assignee_id = data["assignee_id"]
         if "section_ids" in data and data["section_ids"] is not None:
@@ -464,6 +468,7 @@ class WorkOrderService:
                 acceptance_criteria=str(ac).strip() if ac else None,
                 status="backlog",
                 phase=None,
+                phase_order=None,
                 created_by=user_id,
             )
             self.db.add(wo)

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.exceptions import ApiError
-from app.models import Project, Software, Studio, StudioMember, User
+from app.models import CrossStudioAccess, Project, Software, Studio, StudioMember, User
 from app.services.auth_service import AuthService
 
 
@@ -44,6 +44,7 @@ class StudioAccess:
     user: User
     studio_id: UUID
     membership: StudioMember | None
+    cross_studio_reader: bool = False
 
     @property
     def is_studio_admin(self) -> bool:
@@ -56,6 +57,8 @@ class StudioAccess:
     @property
     def is_studio_member(self) -> bool:
         if self.user.is_tool_admin:
+            return True
+        if self.cross_studio_reader:
             return True
         return self.membership is not None
 
@@ -95,7 +98,7 @@ async def resolve_studio_access(
             message="Not a member of this studio",
         )
     return StudioAccess(
-        user=user, studio_id=studio_id, membership=membership
+        user=user, studio_id=studio_id, membership=membership, cross_studio_reader=False
     )
 
 
@@ -225,12 +228,81 @@ async def fetch_project_access(
     )
 
 
+async def fetch_project_access_for_artifact_download(
+    session: AsyncSession,
+    user: User,
+    project_id: UUID,
+) -> ProjectAccess:
+    """Studio membership or approved cross-studio read grant to the project's software."""
+    try:
+        return await fetch_project_access(session, user, project_id)
+    except ApiError as e:
+        if e.status_code != 403 or e.error_code != "NOT_STUDIO_MEMBER":
+            raise
+    project = await session.get(Project, project_id)
+    if project is None:
+        raise ApiError(
+            status_code=404,
+            code="NOT_FOUND",
+            message="Project not found.",
+        )
+    software = await session.get(Software, project.software_id)
+    if software is None:
+        raise ApiError(
+            status_code=404,
+            code="NOT_FOUND",
+            message="Project not found.",
+        )
+    grants = (
+        await session.execute(
+            select(CrossStudioAccess).where(
+                CrossStudioAccess.target_software_id == software.id,
+                CrossStudioAccess.status == "approved",
+            )
+        )
+    ).scalars().all()
+    for grant in grants:
+        m = (
+            await session.execute(
+                select(StudioMember).where(
+                    StudioMember.studio_id == grant.requesting_studio_id,
+                    StudioMember.user_id == user.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if m is not None:
+            studio_access = StudioAccess(
+                user=user,
+                studio_id=software.studio_id,
+                membership=None,
+                cross_studio_reader=True,
+            )
+            return ProjectAccess(
+                studio_access=studio_access,
+                software=software,
+                project=project,
+            )
+    raise ApiError(
+        status_code=403,
+        code="NOT_STUDIO_MEMBER",
+        message="Not a member of this studio",
+    )
+
+
 async def get_project_access(
     project_id: UUID,
     session: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> ProjectAccess:
     return await fetch_project_access(session, user, project_id)
+
+
+async def get_project_access_artifact_download(
+    project_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ProjectAccess:
+    return await fetch_project_access_for_artifact_download(session, user, project_id)
 
 
 async def require_project_member(
@@ -278,5 +350,17 @@ async def require_studio_admin(
             status_code=403,
             code="FORBIDDEN",
             message="Studio admin access required",
+        )
+    return access
+
+
+async def require_studio_editor(
+    access: StudioAccess = Depends(get_studio_access),
+) -> StudioAccess:
+    if not access.is_studio_editor:
+        raise ApiError(
+            status_code=403,
+            code="FORBIDDEN",
+            message="Studio editor access required",
         )
     return access

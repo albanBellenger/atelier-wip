@@ -3,6 +3,7 @@
 from uuid import UUID
 
 import httpx
+from fastapi import BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
@@ -13,7 +14,10 @@ from app.schemas.auth import (
     AdminConnectivityResult,
     UserPublic,
 )
-from app.services.embedding_service import EmbeddingService
+from app.services.embedding_pipeline import (
+    enqueue_sections_missing_embeddings_after_config,
+)
+from app.services.embedding_service import EmbeddingService, embedding_configured
 from app.openai_compat_urls import chat_completions_url
 
 
@@ -46,14 +50,27 @@ class AdminService:
             embedding_model=row.embedding_model,
             embedding_api_base_url=row.embedding_api_base_url,
             embedding_api_key_set=_mask(row.embedding_api_key),
+            embedding_dim=row.embedding_dim,
         )
 
-    async def update(self, body: AdminConfigUpdate) -> AdminConfigResponse:
+    async def update(
+        self,
+        body: AdminConfigUpdate,
+        background_tasks: BackgroundTasks | None = None,
+    ) -> AdminConfigResponse:
+        was_embed = await embedding_configured(self.db)
         row = await self.get_or_create()
         data = body.model_dump(exclude_unset=True)
         for key, value in data.items():
             setattr(row, key, value)
         await self.db.flush()
+        now_embed = await embedding_configured(self.db)
+        if (
+            not was_embed
+            and now_embed
+            and background_tasks is not None
+        ):
+            background_tasks.add_task(enqueue_sections_missing_embeddings_after_config)
         return await self.get_public()
 
     async def set_admin_status(

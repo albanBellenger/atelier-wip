@@ -6,7 +6,11 @@ from fastapi import APIRouter, Depends, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.deps import get_project_access, require_project_studio_admin
+from app.deps import (
+    ProjectAccess,
+    get_project_access,
+    require_project_studio_admin,
+)
 from app.schemas.section import (
     SectionCreate,
     SectionReorder,
@@ -80,7 +84,11 @@ async def delete_section(
     project_id: UUID,
     section_id: UUID,
     session: AsyncSession = Depends(get_db),
-    _pa=Depends(require_project_studio_admin),
+    pa: ProjectAccess = Depends(require_project_studio_admin),
 ) -> Response:
-    await SectionService(session).delete_section(project_id, section_id)
+    await SectionService(session).delete_section(
+        project_id,
+        section_id,
+        actor_is_studio_admin=pa.studio_access.is_studio_admin,
+    )
     return Response(status_code=204)

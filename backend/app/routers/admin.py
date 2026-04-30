@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -30,11 +30,12 @@ async def get_admin_config(
 
 @router.put("/config", response_model=AdminConfigResponse)
 async def put_admin_config(
+    background_tasks: BackgroundTasks,
     body: AdminConfigUpdate,
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_tool_admin),
 ) -> AdminConfigResponse:
-    return await AdminService(session).update(body)
+    return await AdminService(session).update(body, background_tasks)
 
 
 @router.post("/test/llm", response_model=AdminConnectivityResult)

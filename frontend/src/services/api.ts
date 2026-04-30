@@ -582,6 +582,7 @@ export interface WorkOrder {
   acceptance_criteria: string | null
   status: string
   phase: string | null
+  phase_order: number | null
   assignee_id: string | null
   assignee_display_name: string | null
   is_stale: boolean
@@ -611,6 +612,7 @@ export interface WorkOrderCreateBody {
   acceptance_criteria?: string | null
   status?: string
   phase?: string | null
+  phase_order?: number | null
   assignee_id?: string | null
   section_ids?: string[]
 }
@@ -622,6 +624,7 @@ export interface WorkOrderUpdateBody {
   acceptance_criteria?: string | null
   status?: string | null
   phase?: string | null
+  phase_order?: number | null
   assignee_id?: string | null
   section_ids?: string[] | null
 }
@@ -770,7 +773,10 @@ export async function streamPrivateThreadReply(
   content: string,
   handlers: {
     onToken: (text: string) => void
-    onMeta: (conflicts: { description: string }[]) => void
+    onMeta: (meta: {
+      conflicts: { description: string }[]
+      context_truncated?: boolean
+    }) => void
   },
 ): Promise<void> {
   const r = await fetch(
@@ -826,12 +832,16 @@ export async function streamPrivateThreadReply(
             type?: string
             text?: string
             conflicts?: { description: string }[]
+            context_truncated?: boolean
           }
           if (j.type === 'token' && j.text) {
             handlers.onToken(j.text)
           }
-          if (j.type === 'meta' && Array.isArray(j.conflicts)) {
-            handlers.onMeta(j.conflicts)
+          if (j.type === 'meta') {
+            handlers.onMeta({
+              conflicts: Array.isArray(j.conflicts) ? j.conflicts : [],
+              context_truncated: Boolean(j.context_truncated),
+            })
           }
         } catch {
           /* ignore malformed chunk */

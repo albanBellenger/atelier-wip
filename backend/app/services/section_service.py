@@ -204,7 +204,19 @@ class SectionService:
             schedule_drift_check(section_id)
         return self._to_response(s)
 
-    async def delete_section(self, project_id: uuid.UUID, section_id: uuid.UUID) -> None:
+    async def delete_section(
+        self,
+        project_id: uuid.UUID,
+        section_id: uuid.UUID,
+        *,
+        actor_is_studio_admin: bool,
+    ) -> None:
+        if not actor_is_studio_admin:
+            raise ApiError(
+                status_code=403,
+                code="FORBIDDEN",
+                message="Studio admin access required",
+            )
         s = await self.db.get(Section, section_id)
         if s is None or s.project_id != project_id:
             raise ApiError(
