@@ -8,7 +8,7 @@ See [docs/atelier-functional-requirements.md](docs/atelier-functional-requiremen
 
 - **Backend:** FastAPI, async SQLAlchemy, PostgreSQL + pgvector, MinIO, JWT (HttpOnly cookie), RBAC, Alembic migrations.
 - **Frontend:** React 19, Vite, TypeScript (strict), Tailwind v4, TanStack Query; API client in `frontend/src/services/api.ts`.
-- **Tests:** Backend pytest (`tests/unit`, `tests/integration`); frontend Vitest.
+- **Tests:** Backend pytest (`tests/unit`, `tests/integration`); LLM regression in `backend/tests/llm` (`@pytest.mark.llm`, nightly / manual); frontend Vitest.
 
 ## Prerequisites
 
@@ -75,6 +75,13 @@ Optional: `python manage.py create-admin --email admin@example.com --password <v
 ```bash
 cd backend
 python -m pytest tests/unit tests/integration -v
+```
+
+LLM regression (real provider; set `LLM_API_KEY` or `OPENAI_API_KEY`, optional `LLM_MODEL`; use `SKIP_LLM=true` to skip when collecting `tests/llm`):
+
+```bash
+cd backend
+python -m pytest tests/llm -v -m llm
 ```
 
 The integration suite resets the schema via Alembic; **do not run against a production database**.
