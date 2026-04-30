@@ -15,6 +15,7 @@ export function AuthPage(): ReactElement {
   const [error, setError] = useState<string | null>(null)
 
   const mutation = useMutation({
+    meta: { skipGlobalToast: true },
     mutationFn: async (vars: {
       mode: Mode
       email: string

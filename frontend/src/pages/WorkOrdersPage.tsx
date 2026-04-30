@@ -31,6 +31,7 @@ import {
   type WorkOrderListFilters,
 } from '../services/api'
 import { compareWorkOrdersKanban } from '../lib/workOrderKanbanSort'
+import { ListSkeleton } from '../components/ui/ListSkeleton'
 
 function formatApiError(err: unknown): string {
   if (err && typeof err === 'object' && 'detail' in err) {
@@ -535,7 +536,7 @@ export function WorkOrdersPage(): ReactElement {
           </label>
         </div>
 
-        {ordersQ.isPending && <p className="text-zinc-500">Loading…</p>}
+        {ordersQ.isPending ? <ListSkeleton rows={5} /> : null}
         {ordersQ.isError && (
           <p className="text-red-400">Could not load work orders.</p>
         )}

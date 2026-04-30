@@ -167,12 +167,6 @@ class PublishService:
                 files=files,
                 message=msg,
             )
-        except RuntimeError as e:
-            raise ApiError(
-                status_code=502,
-                code="GITLAB_ERROR",
-                message=str(e),
-            ) from e
         except ValueError as e:
             raise ApiError(
                 status_code=400,

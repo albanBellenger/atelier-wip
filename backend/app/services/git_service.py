@@ -8,6 +8,7 @@ from urllib.parse import quote
 
 import httpx
 
+from app.exceptions import ApiError
 from app.integrations.gitlab_client import parse_gitlab_web_url
 
 log = logging.getLogger("atelier.git")
@@ -34,8 +35,23 @@ async def gitlab_file_exists(
     url = f"{api_origin}/api/v4/projects/{enc_p}/repository/files/{enc_f}"
     headers = {"PRIVATE-TOKEN": token.strip()}
     params = {"ref": branch.strip()}
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        r = await client.get(url, headers=headers, params=params)
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.get(url, headers=headers, params=params)
+    except httpx.TimeoutException as e:
+        log.warning("gitlab_file_exists_timeout", exc_type=type(e).__name__)
+        raise ApiError(
+            status_code=504,
+            code="GITLAB_TRANSPORT_ERROR",
+            message="GitLab did not respond in time.",
+        ) from e
+    except httpx.RequestError as e:
+        log.warning("gitlab_file_exists_transport", exc_type=type(e).__name__)
+        raise ApiError(
+            status_code=502,
+            code="GITLAB_TRANSPORT_ERROR",
+            message="Could not reach GitLab.",
+        ) from e
     if r.status_code == 200:
         return True
     if r.status_code == 404:
@@ -85,11 +101,31 @@ async def commit_files(
         "commit_message": message.strip() or "Publish from Atelier",
         "actions": actions,
     }
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        r = await client.post(url, headers=headers, json=body)
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            r = await client.post(url, headers=headers, json=body)
+    except httpx.TimeoutException as e:
+        log.warning("gitlab_commit_timeout", exc_type=type(e).__name__)
+        raise ApiError(
+            status_code=504,
+            code="GITLAB_TRANSPORT_ERROR",
+            message="GitLab did not respond in time.",
+        ) from e
+    except httpx.RequestError as e:
+        log.warning("gitlab_commit_transport", exc_type=type(e).__name__)
+        raise ApiError(
+            status_code=502,
+            code="GITLAB_TRANSPORT_ERROR",
+            message="Could not reach GitLab.",
+        ) from e
     if r.status_code not in (200, 201):
         detail = r.text[:500]
-        raise RuntimeError(f"GitLab commit failed ({r.status_code}): {detail}")
+        log.warning("gitlab_commit_http_error", status=r.status_code, body=detail[:500])
+        raise ApiError(
+            status_code=502,
+            code="GITLAB_ERROR",
+            message="GitLab returned an error.",
+        )
     data = r.json()
     web_url = str(data.get("web_url") or "")
     sha = data.get("id") or data.get("short_id")
@@ -111,11 +147,31 @@ async def list_commits(
     url = f"{origin}/api/v4/projects/{enc_p}/repository/commits"
     headers = {"PRIVATE-TOKEN": token.strip()}
     params = {"ref_name": branch.strip() or "main", "per_page": max(1, min(per_page, 100))}
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        r = await client.get(url, headers=headers, params=params)
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.get(url, headers=headers, params=params)
+    except httpx.TimeoutException as e:
+        log.warning("gitlab_list_commits_timeout", exc_type=type(e).__name__)
+        raise ApiError(
+            status_code=504,
+            code="GITLAB_TRANSPORT_ERROR",
+            message="GitLab did not respond in time.",
+        ) from e
+    except httpx.RequestError as e:
+        log.warning("gitlab_list_commits_transport", exc_type=type(e).__name__)
+        raise ApiError(
+            status_code=502,
+            code="GITLAB_TRANSPORT_ERROR",
+            message="Could not reach GitLab.",
+        ) from e
     if r.status_code != 200:
         detail = r.text[:300]
-        raise RuntimeError(f"GitLab list commits failed ({r.status_code}): {detail}")
+        log.warning("gitlab_list_commits_http_error", status=r.status_code, body=detail[:500])
+        raise ApiError(
+            status_code=502,
+            code="GITLAB_ERROR",
+            message="GitLab returned an error.",
+        )
     rows = r.json()
     if not isinstance(rows, list):
         return []

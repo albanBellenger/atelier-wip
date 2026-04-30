@@ -32,6 +32,7 @@ export function ThreadPanel(props: {
   }, [threadQ.data?.messages, streaming])
 
   const sendMut = useMutation({
+    meta: { skipGlobalToast: true },
     mutationFn: async () => {
       const content = draft.trim()
       if (!content) {

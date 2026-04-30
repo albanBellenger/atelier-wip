@@ -1,0 +1,14 @@
+# Example environment for production-style Docker Compose builds.
+# Copy values into your deployment `.env` (or CI secrets) before:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+#
+# VITE_API_BASE_URL must be the origin the **browser** uses to call the API.
+# It is baked into the static frontend at image build time.
+
+JWT_SECRET=replace-with-a-long-random-string-min-32-chars
+ENCRYPTION_KEY=
+CORS_ORIGINS=https://app.example.com
+SECURE_COOKIES=true
+
+VITE_API_BASE_URL=https://api.example.com
+FRONTEND_PUBLISH_PORT=8080

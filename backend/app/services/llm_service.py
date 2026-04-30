@@ -177,6 +177,18 @@ class LLMService:
                     "sections or when the provider is less busy."
                 ),
             ) from e
+        except httpx.RequestError as e:
+            log.warning(
+                "llm_transport_error",
+                call_type=call_type,
+                project_id=str(context.project_id),
+                exc_type=type(e).__name__,
+            )
+            raise ApiError(
+                status_code=502,
+                code="LLM_TRANSPORT_ERROR",
+                message="Could not reach the language model service.",
+            ) from e
 
         usage_raw = data.get("usage") or {}
         input_tokens = int(usage_raw.get("prompt_tokens") or 0)
@@ -232,50 +244,78 @@ class LLMService:
         assistant_parts: list[str] = []
         usage_final: dict[str, int] | None = None
 
-        async with httpx.AsyncClient(timeout=180.0) as client:
-            async with client.stream(
-                "POST",
-                chat_url,
-                headers=headers,
-                json=body,
-            ) as resp:
-                if resp.status_code >= 400:
-                    text = await resp.aread()
-                    log.warning(
-                        "llm_stream_http_error",
-                        status=resp.status_code,
-                        body=text.decode()[:500],
-                    )
-                    raise ApiError(
-                        status_code=502,
-                        code="LLM_UPSTREAM_ERROR",
-                        message="LLM provider returned an error.",
-                    )
-                async for line in resp.aiter_lines():
-                    line = line.strip()
-                    if not line.startswith("data:"):
-                        continue
-                    payload = line[5:].strip()
-                    if payload == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(payload)
-                    except json.JSONDecodeError:
-                        continue
-                    u = chunk.get("usage")
-                    if isinstance(u, dict) and u.get("prompt_tokens") is not None:
-                        usage_final = {
-                            "prompt_tokens": int(u.get("prompt_tokens") or 0),
-                            "completion_tokens": int(u.get("completion_tokens") or 0),
-                        }
-                    choices_ch = chunk.get("choices") or []
-                    if not choices_ch:
-                        continue
-                    delta = choices_ch[0].get("delta") or {}
-                    piece = delta.get("content") or ""
-                    if piece:
-                        assistant_parts.append(piece)
-                        yield piece
+        try:
+            async with httpx.AsyncClient(timeout=180.0) as client:
+                async with client.stream(
+                    "POST",
+                    chat_url,
+                    headers=headers,
+                    json=body,
+                ) as resp:
+                    if resp.status_code >= 400:
+                        text = await resp.aread()
+                        log.warning(
+                            "llm_stream_http_error",
+                            status=resp.status_code,
+                            body=text.decode()[:500],
+                        )
+                        raise ApiError(
+                            status_code=502,
+                            code="LLM_UPSTREAM_ERROR",
+                            message="LLM provider returned an error.",
+                        )
+                    async for line in resp.aiter_lines():
+                        line = line.strip()
+                        if not line.startswith("data:"):
+                            continue
+                        payload = line[5:].strip()
+                        if payload == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(payload)
+                        except json.JSONDecodeError:
+                            continue
+                        u = chunk.get("usage")
+                        if isinstance(u, dict) and u.get("prompt_tokens") is not None:
+                            usage_final = {
+                                "prompt_tokens": int(u.get("prompt_tokens") or 0),
+                                "completion_tokens": int(u.get("completion_tokens") or 0),
+                            }
+                        choices_ch = chunk.get("choices") or []
+                        if not choices_ch:
+                            continue
+                        delta = choices_ch[0].get("delta") or {}
+                        piece = delta.get("content") or ""
+                        if piece:
+                            assistant_parts.append(piece)
+                            yield piece
+        except httpx.TimeoutException as e:
+            log.warning(
+                "llm_stream_timeout",
+                call_type=call_type,
+                project_id=str(context.project_id),
+                exc_type=type(e).__name__,
+            )
+            raise ApiError(
+                status_code=504,
+                code="LLM_TIMEOUT",
+                message=(
+                    "The language model did not respond in time. Try again with fewer "
+                    "sections or when the provider is less busy."
+                ),
+            ) from e
+        except httpx.RequestError as e:
+            log.warning(
+                "llm_stream_transport_error",
+                call_type=call_type,
+                project_id=str(context.project_id),
+                exc_type=type(e).__name__,
+            )
+            raise ApiError(
+                status_code=502,
+                code="LLM_TRANSPORT_ERROR",
+                message="Could not reach the language model service.",
+            ) from e
 
         full_text = "".join(assistant_parts)
         if usage_final:

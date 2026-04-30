@@ -5,7 +5,7 @@ import os
 from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -125,6 +125,25 @@ def create_app() -> FastAPI:
             },
         )
 
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        """Return structured JSON for unexpected errors (never leak raw trace in production)."""
+        if isinstance(exc, (HTTPException, RequestValidationError, RateLimitExceeded)):
+            raise exc
+        log.exception(
+            "unhandled_exception",
+            path=str(request.url.path),
+            exc_type=type(exc).__name__,
+        )
+        settings = get_settings()
+        detail = "An unexpected error occurred."
+        if settings.env == "dev" and settings.expose_internal_error_detail:
+            detail = f"{type(exc).__name__}: {exc}"
+        return JSONResponse(
+            status_code=500,
+            content={"detail": detail, "code": "INTERNAL_ERROR"},
+        )
+
     @app.get("/health", tags=["health"])
     async def health() -> dict[str, str]:
         return {"status": "ok"}
@@ -145,6 +164,17 @@ def create_app() -> FastAPI:
     app.include_router(private_threads.router)
     app.include_router(project_chat.router)
     app.include_router(collab.router)
+
+    if os.environ.get("PYTEST_VERSION"):
+        @app.get(
+            "/__pytest_probe_internal_error",
+            tags=["health"],
+            include_in_schema=False,
+            response_model=None,
+        )
+        async def _pytest_probe_internal_error() -> None:
+            raise RuntimeError("deliberate unhandled error for integration tests")
+
     return app
 
 

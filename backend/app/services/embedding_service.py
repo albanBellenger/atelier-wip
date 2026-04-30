@@ -74,20 +74,35 @@ class EmbeddingService:
             "Content-Type": "application/json",
         }
         body: dict[str, Any] = {"model": model, "input": inputs}
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            r = await client.post(embeddings_endpoint, headers=headers, json=body)
-            if r.status_code >= 400:
-                log.warning(
-                    "embedding_http_error",
-                    status=r.status_code,
-                    body=r.text[:500],
-                )
-                raise ApiError(
-                    status_code=502,
-                    code="EMBEDDING_UPSTREAM_ERROR",
-                    message="Embedding provider returned an error.",
-                )
-            data = r.json()
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                r = await client.post(embeddings_endpoint, headers=headers, json=body)
+                if r.status_code >= 400:
+                    log.warning(
+                        "embedding_http_error",
+                        status=r.status_code,
+                        body=r.text[:500],
+                    )
+                    raise ApiError(
+                        status_code=502,
+                        code="EMBEDDING_UPSTREAM_ERROR",
+                        message="Embedding provider returned an error.",
+                    )
+                data = r.json()
+        except httpx.TimeoutException as e:
+            log.warning("embedding_timeout", exc_type=type(e).__name__)
+            raise ApiError(
+                status_code=504,
+                code="EMBEDDING_TIMEOUT",
+                message="Embedding provider did not respond in time.",
+            ) from e
+        except httpx.RequestError as e:
+            log.warning("embedding_transport_error", exc_type=type(e).__name__)
+            raise ApiError(
+                status_code=502,
+                code="EMBEDDING_TRANSPORT_ERROR",
+                message="Could not reach the embedding service.",
+            ) from e
         items = data.get("data") or []
         # Sort by index for safety
         items.sort(key=lambda x: int(x.get("index", 0)))

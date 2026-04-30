@@ -1,18 +1,20 @@
-# Atelier (Slice 2 — Studios & Software)
+# Atelier
 
-Monorepo for **Atelier**: collaborative spec authoring, Work Orders, and GitLab publishing (see `docs/`).
+Monorepo for **Atelier**: collaborative software specifications, real-time section editing (Yjs), artifacts and RAG, work orders, GitLab publish, knowledge graph, project chat, MCP integration, cross-studio access, and token usage reporting.
 
-This slice includes:
+See [docs/atelier-functional-requirements.md](docs/atelier-functional-requirements.md) and [docs/atelier-technical-architecture.md](docs/atelier-technical-architecture.md) for the canonical product and system design.
 
-- **Backend:** FastAPI, JWT auth, tool-admin bootstrap, studios & software APIs with Studio Admin/Member RBAC, Fernet-encrypted Git tokens, GitLab connection test, `GET/PUT /admin/config`, full PostgreSQL + pgvector schema via Alembic, Docker Compose for Postgres + MinIO + optional frontend dev container.
-- **Frontend:** React (Vite) + TypeScript + Tailwind v4, login/register, studio list/detail, software detail with definition + Git settings + test connection; API client + JWT stored in HttpOnly cookie (`atelier_token`).
-- **Tests:** Pytest integration test (requires Postgres; `docker compose up -d db`).
+## Stack
+
+- **Backend:** FastAPI, async SQLAlchemy, PostgreSQL + pgvector, MinIO, JWT (HttpOnly cookie), RBAC, Alembic migrations.
+- **Frontend:** React 19, Vite, TypeScript (strict), Tailwind v4, TanStack Query; API client in `frontend/src/services/api.ts`.
+- **Tests:** Backend pytest (`tests/unit`, `tests/integration`); frontend Vitest.
 
 ## Prerequisites
 
-- Docker (for Postgres / optional full stack)
-- Python 3.12+ (`backend/` uses SQLAlchemy 2 async)
-- Node 20+ (for `frontend/`)
+- Docker (for Postgres / MinIO / optional full stack)
+- Python 3.12+ for `backend/`
+- Node 20+ for `frontend/`
 
 ## Quick start (development)
 
@@ -47,11 +49,11 @@ npm install
 npm run dev
 ```
 
-**Option B — Vite in Docker** (hot reload via bind mount; use `docker compose up` in the repo root, or `docker compose up --build` the first time). See [Docker Compose (all services)](#docker-compose-all-services).
+**Option B — Vite in Docker** (hot reload via bind mount; `docker compose up` from the repo root). See [Docker Compose](#docker-compose-all-services).
 
-App: http://127.0.0.1:5173 — proxied to the API for `/auth`, `/admin`, `/health`. Server state for the home screen uses **TanStack React Query** (`@tanstack/react-query`); all REST calls stay in `src/services/api.ts` per project rules.
+App: http://127.0.0.1:5173 — the dev container proxies API routes to the backend via `ATELIER_API_PROXY`.
 
-Optional: `frontend/.env` with `VITE_API_BASE_URL=https://your-api-host` for production builds.
+For production builds, set `VITE_API_BASE_URL` to the public API origin (see [docs/configuration.md](docs/configuration.md)).
 
 ## Emergency recovery
 
@@ -59,7 +61,6 @@ If every Tool Admin account is inaccessible, a sysadmin with shell access to the
 
 ```bash
 cd backend
-# Same DATABASE_URL as the app (postgresql+asyncpg://...); the script uses a sync driver internally.
 set DATABASE_URL=postgresql+asyncpg://atelier:atelier@127.0.0.1:5432/atelier
 python manage.py create-admin --email admin@example.com
 python manage.py list-admins
@@ -69,14 +70,21 @@ Optional: `python manage.py create-admin --email admin@example.com --password <v
 
 ## Tests
 
-With Postgres running and `DATABASE_URL` set (see `tests/conftest.py` defaults):
+**Backend** (Postgres required; see `backend/tests/conftest.py`):
 
 ```bash
 cd backend
-python -m pytest tests/integration -v
+python -m pytest tests/unit tests/integration -v
 ```
 
-The integration test resets the schema via Alembic (`downgrade base` + `upgrade head`); **do not run against a production database**.
+The integration suite resets the schema via Alembic; **do not run against a production database**.
+
+**Frontend:**
+
+```bash
+cd frontend
+npm test
+```
 
 ## Docker Compose (all services)
 
@@ -87,19 +95,25 @@ docker compose up --build
 
 Set `ENCRYPTION_KEY` in `.env` to a Fernet key (see `.env.example`) if you will store GitLab tokens on software records.
 
-Services: **Postgres**, **MinIO**, **backend** (migrations + Uvicorn on `:8000`), **frontend** (Vite dev server on `:5173` with HMR). The frontend container proxies `/auth`, `/admin`, `/health`, and `/studios` to the backend service via `ATELIER_API_PROXY`.
+Services: **Postgres**, **MinIO**, **backend** (migrations + Uvicorn on `:8000`), **frontend** (Vite on `:5173` with HMR).
 
-Open the app at http://127.0.0.1:5173.
+**Production-style overrides** (static frontend, restart policies, backend health check, no frontend bind mount):
 
-Backend entrypoint runs `alembic upgrade head` then Uvicorn.
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+```
+
+See [docs/configuration.md](docs/configuration.md) and [docs/env-production.example](docs/env-production.example).
 
 To run only infrastructure and use the API/UI on the host, see `docker-compose.dev.yml`.
 
 ## Project layout
 
-See [Agent.md](Agent.md) for the full monorepo map. Migration scripts live in `backend/migrations/` (not `alembic/`, to avoid shadowing the Alembic Python package).
+See [Agent.md](Agent.md) for the full monorepo map. Migration scripts live in `backend/migrations/`.
 
 ## Documentation
 
 - [docs/atelier-functional-requirements.md](docs/atelier-functional-requirements.md)
 - [docs/atelier-technical-architecture.md](docs/atelier-technical-architecture.md)
+- [docs/configuration.md](docs/configuration.md)
+- [docs/admin-setup.md](docs/admin-setup.md)

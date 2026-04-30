@@ -18,6 +18,7 @@ import {
   updateProject,
 } from '../services/api'
 import type { SectionSummary } from '../services/api'
+import { ListSkeleton } from '../components/ui/ListSkeleton'
 
 export function ProjectPage(): ReactElement {
   const { studioId, softwareId, projectId } = useParams<{
@@ -234,7 +235,7 @@ export function ProjectPage(): ReactElement {
           ) : null}
         </div>
 
-        {projectQ.isPending && <p className="text-zinc-500">Loading…</p>}
+        {projectQ.isPending ? <ListSkeleton rows={4} /> : null}
         {projectQ.isError && (
           <p className="text-red-400">Could not load project.</p>
         )}

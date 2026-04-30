@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,6 +12,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     env: str = "dev"  # set to "production" in production .env
+    expose_internal_error_detail: bool = Field(
+        default=False,
+        validation_alias="ATELIER_EXPOSE_INTERNAL_ERRORS",
+    )
     database_url: str = "postgresql+asyncpg://atelier:atelier@localhost:5432/atelier"
     jwt_secret: str = "changeme-use-a-long-random-string"
     jwt_expire_minutes: int = 10080

@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { FormEvent, ReactElement } from 'react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { EmptyState } from '../components/ui/EmptyState'
+import { ListSkeleton } from '../components/ui/ListSkeleton'
 import {
   createStudio,
   listStudios,
@@ -28,6 +30,7 @@ export function StudiosListPage(): ReactElement {
   }, [isError, navigate])
 
   const createMut = useMutation({
+    meta: { skipGlobalToast: true },
     mutationFn: (body: StudioCreateBody) => createStudio(body),
     onSuccess: (s) => {
       setName('')
@@ -104,29 +107,32 @@ export function StudiosListPage(): ReactElement {
           </button>
         </form>
 
-        {isPending && (
-          <p className="text-zinc-500">Loading studios…</p>
-        )}
-        {!isPending && studios && studios.length === 0 && (
-          <p className="text-zinc-500">No studios yet — create one above.</p>
-        )}
-        <ul className="space-y-2">
-          {studios?.map((s) => (
-            <li key={s.id}>
-              <Link
-                to={`/studios/${s.id}`}
-                className="block rounded-lg border border-zinc-800 px-4 py-3 hover:border-zinc-600"
-              >
-                <span className="font-medium">{s.name}</span>
-                {s.description && (
-                  <span className="mt-1 block text-sm text-zinc-500">
-                    {s.description}
-                  </span>
-                )}
-              </Link>
-            </li>
-          ))}
-        </ul>
+        {isPending ? <ListSkeleton rows={3} /> : null}
+        {!isPending && studios && studios.length === 0 ? (
+          <EmptyState
+            title="No studios yet"
+            description="Create your first studio using the form above."
+          />
+        ) : null}
+        {studios && studios.length > 0 ? (
+          <ul className="space-y-2">
+            {studios.map((s) => (
+              <li key={s.id}>
+                <Link
+                  to={`/studios/${s.id}`}
+                  className="block rounded-lg border border-zinc-800 px-4 py-3 hover:border-zinc-600"
+                >
+                  <span className="font-medium">{s.name}</span>
+                  {s.description && (
+                    <span className="mt-1 block text-sm text-zinc-500">
+                      {s.description}
+                    </span>
+                  )}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </div>
     </div>
   )

@@ -111,6 +111,7 @@ export function SoftwarePage(): ReactElement {
   })
 
   const testMut = useMutation({
+    meta: { skipGlobalToast: true },
     mutationFn: () => testGitConnection(sid, sfid),
     onSuccess: (r) => {
       setGitMsg(r.ok ? `OK: ${r.message}` : `Failed: ${r.message}`)

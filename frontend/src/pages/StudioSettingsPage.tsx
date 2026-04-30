@@ -44,6 +44,7 @@ export function StudioSettingsPage(): ReactElement {
   const [crossMsg, setCrossMsg] = useState<string | null>(null)
 
   const crossMut = useMutation({
+    meta: { skipGlobalToast: true },
     mutationFn: () =>
       postStudioCrossStudioRequest(sid, {
         target_software_id: targetSoftwareId.trim(),

@@ -12,6 +12,8 @@ import {
   me,
   uploadArtifact,
 } from '../services/api'
+import { EmptyState } from '../components/ui/EmptyState'
+import { ListSkeleton } from '../components/ui/ListSkeleton'
 
 function formatApiDetail(err: unknown): string {
   if (err && typeof err === 'object' && 'detail' in err) {
@@ -241,51 +243,61 @@ export function ArtifactsPage(): ReactElement {
 
         <section className="mt-8">
           <h2 className="mb-3 text-sm font-medium text-zinc-400">Library</h2>
-          {artifactsQ.isPending && <p className="text-zinc-500">Loading…</p>}
+          {artifactsQ.isPending ? <ListSkeleton rows={3} /> : null}
           {artifactsQ.isError && (
             <p className="text-red-400">Could not load artifacts.</p>
           )}
-          {artifactsQ.data?.length === 0 && (
-            <p className="text-sm text-zinc-500">No artifacts yet.</p>
-          )}
-          <ul className="divide-y divide-zinc-800 rounded-xl border border-zinc-800 bg-zinc-900/40">
-            {artifactsQ.data?.map((a) => (
-              <li
-                key={a.id}
-                className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm"
-              >
-                <div>
-                  <span className="font-medium text-zinc-200">{a.name}</span>
-                  <span className="ml-2 text-xs uppercase text-zinc-500">
-                    {a.file_type}
-                  </span>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    className="text-violet-400 hover:underline"
-                    onClick={() => void handleDownload(a.id, a.name)}
+          {!artifactsQ.isPending &&
+            !artifactsQ.isError &&
+            artifactsQ.data?.length === 0 && (
+              <EmptyState
+                title="No artifacts yet"
+                description="Upload a PDF or Markdown file, or create a Markdown artifact."
+              />
+            )}
+          {!artifactsQ.isPending &&
+            !artifactsQ.isError &&
+            artifactsQ.data &&
+            artifactsQ.data.length > 0 && (
+              <ul className="divide-y divide-zinc-800 rounded-xl border border-zinc-800 bg-zinc-900/40">
+                {artifactsQ.data.map((a) => (
+                  <li
+                    key={a.id}
+                    className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm"
                   >
-                    Download
-                  </button>
-                  {access.isStudioEditor ? (
-                    <button
-                      type="button"
-                      className="text-red-400 hover:underline disabled:opacity-40"
-                      disabled={deleteMut.isPending}
-                      onClick={() => {
-                        if (window.confirm(`Delete “${a.name}”?`)) {
-                          deleteMut.mutate(a.id)
-                        }
-                      }}
-                    >
-                      Delete
-                    </button>
-                  ) : null}
-                </div>
-              </li>
-            ))}
-          </ul>
+                    <div>
+                      <span className="font-medium text-zinc-200">{a.name}</span>
+                      <span className="ml-2 text-xs uppercase text-zinc-500">
+                        {a.file_type}
+                      </span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="text-violet-400 hover:underline"
+                        onClick={() => void handleDownload(a.id, a.name)}
+                      >
+                        Download
+                      </button>
+                      {access.isStudioEditor ? (
+                        <button
+                          type="button"
+                          className="text-red-400 hover:underline disabled:opacity-40"
+                          disabled={deleteMut.isPending}
+                          onClick={() => {
+                            if (window.confirm(`Delete “${a.name}”?`)) {
+                              deleteMut.mutate(a.id)
+                            }
+                          }}
+                        >
+                          Delete
+                        </button>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
         </section>
       </div>
     </div>
