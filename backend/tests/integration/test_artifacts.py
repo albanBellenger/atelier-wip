@@ -235,3 +235,92 @@ async def test_artifacts_requires_embedding_config(
         files={"file": ("x.md", b"# x", "text/markdown")},
     )
     assert up.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_upload_storage_error_does_not_leave_orphan(
+    client: AsyncClient,
+    db_session,
+    fake_embed: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _sid, _sfid, pid = await _studio_project(client, sfx)
+    owner_email = f"owner-{sfx}@example.com"
+    await _promote_tool_admin(db_session, owner_email)
+
+    client.cookies.set("atelier_token", token)
+    put_cfg = await client.put(
+        "/admin/config",
+        json={
+            "embedding_provider": "openai",
+            "embedding_model": "text-embedding-3-small",
+            "embedding_api_key": "sk-test",
+        },
+    )
+    assert put_cfg.status_code == 200, put_cfg.text
+
+    from app.storage.minio_storage import StorageClient
+
+    async def put_bytes_fail(_self: object, *_a: object, **_k: object) -> None:
+        raise RuntimeError("minio down")
+
+    monkeypatch.setattr(StorageClient, "put_bytes", put_bytes_fail)
+
+    up = await client.post(
+        f"/projects/{pid}/artifacts",
+        files={"file": ("notes.md", b"# Hello\n", "text/markdown")},
+        data={"name": "Notes"},
+    )
+    assert up.status_code == 502
+    assert up.json()["code"] == "STORAGE_ERROR"
+
+    listed = await client.get(f"/projects/{pid}/artifacts")
+    assert listed.status_code == 200
+    assert listed.json() == []
+
+
+@pytest.mark.asyncio
+async def test_delete_artifact_minio_failure_still_returns_204(
+    client: AsyncClient,
+    db_session,
+    fake_embed: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _sid, _sfid, pid = await _studio_project(client, sfx)
+    owner_email = f"owner-{sfx}@example.com"
+    await _promote_tool_admin(db_session, owner_email)
+
+    client.cookies.set("atelier_token", token)
+    put_cfg = await client.put(
+        "/admin/config",
+        json={
+            "embedding_provider": "openai",
+            "embedding_model": "text-embedding-3-small",
+            "embedding_api_key": "sk-test",
+        },
+    )
+    assert put_cfg.status_code == 200, put_cfg.text
+
+    md_bytes = b"# Hello\n\nworld"
+    up = await client.post(
+        f"/projects/{pid}/artifacts",
+        files={"file": ("notes.md", md_bytes, "text/markdown")},
+        data={"name": "Notes"},
+    )
+    assert up.status_code == 200, up.text
+    aid = up.json()["id"]
+
+    from app.storage.minio_storage import StorageClient
+
+    async def remove_fail(_self: object, *_a: object, **_k: object) -> None:
+        raise RuntimeError("minio down")
+
+    monkeypatch.setattr(StorageClient, "remove", remove_fail)
+
+    deleted = await client.delete(f"/projects/{pid}/artifacts/{aid}")
+    assert deleted.status_code == 204
+
+    empty = await client.get(f"/projects/{pid}/artifacts")
+    assert empty.json() == []

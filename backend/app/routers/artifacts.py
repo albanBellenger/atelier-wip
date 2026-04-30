@@ -172,7 +172,7 @@ async def delete_artifact(
     artifact_id: UUID,
     session: AsyncSession = Depends(get_db),
     pa: ProjectAccess = Depends(require_project_member),
-) -> Response:
+) -> None:
     if pa.project.id != project_id:
         raise ApiError(
             status_code=404,
@@ -186,4 +186,3 @@ async def delete_artifact(
         await storage.remove(path)
     except Exception:
         log.warning("minio_remove_failed", storage_path=path)
-    return Response(status_code=204)
