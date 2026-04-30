@@ -188,15 +188,27 @@ class RAGService:
         def_block = await self._definition_block_for_rag(software, ctx)
         def_section = "## Software definition\n" + def_block
         outline_section = "## Project outline\n" + outline
-        current_header = "## Current section\n"
 
-        parts, context_was_truncated = _mandatory_parts_with_overflow(
-            def_section,
-            outline_section,
-            current_header,
-            current_body,
-            budget_chars,
-        )
+        # Project-wide chat (Slice 10): no single "current section" — outline + RAG only.
+        if current_section_id is None:
+            parts = [def_section, outline_section]
+            context_was_truncated = False
+            total = sum(len(p) for p in parts)
+            if total > budget_chars:
+                allowed_outline = max(0, budget_chars - len(parts[0]) - 32)
+                parts[1] = "## Project outline\n" + outline[:allowed_outline] + (
+                    "\n…" if allowed_outline < len(outline) else ""
+                )
+                context_was_truncated = True
+        else:
+            current_header = "## Current section\n"
+            parts, context_was_truncated = _mandatory_parts_with_overflow(
+                def_section,
+                outline_section,
+                current_header,
+                current_body,
+                budget_chars,
+            )
 
         q = (query or "").strip()
         qvec: list[float] | None = None

@@ -183,3 +183,33 @@ class SoftwareService:
             s.git_repo_url, token, branch
         )
         return GitTestResult(ok=ok, message=msg)
+
+    async def git_commit_history(
+        self,
+        access: StudioAccess,
+        software_id: uuid.UUID,
+        *,
+        per_page: int = 25,
+    ) -> list[dict]:
+        s = await self._get_software_or_404(access.studio_id, software_id)
+        if not s.git_repo_url or not str(s.git_repo_url).strip():
+            raise ApiError(
+                status_code=400,
+                code="GIT_NOT_CONFIGURED",
+                message="git_repo_url is not set",
+            )
+        token = decrypt_secret(s.git_token) if s.git_token else None
+        if not token:
+            raise ApiError(
+                status_code=400,
+                code="GIT_NOT_CONFIGURED",
+                message="No git token stored",
+            )
+        from app.services.git_service import list_commits
+
+        return await list_commits(
+            repo_web_url=s.git_repo_url,
+            token=token,
+            branch=(s.git_branch or "main").strip(),
+            per_page=per_page,
+        )

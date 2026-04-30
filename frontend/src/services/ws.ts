@@ -50,3 +50,9 @@ export function collabRoomName(projectId: string, sectionId: string): string {
 export function atelierTokenForWebSocket(): string | null {
   return readAtelierTokenFromDocument()
 }
+
+/** WebSocket URL for project-wide chat (Slice 10). */
+export function projectChatWebSocketUrl(projectId: string): string {
+  const base = collabWebSocketBaseUrl()
+  return `${base}/projects/${projectId}/chat`
+}

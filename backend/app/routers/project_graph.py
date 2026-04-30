@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.deps import ProjectAccess, get_project_access
+from app.deps import ProjectAccess, get_project_access, require_project_member
 from app.exceptions import ApiError
 from app.schemas.graph import GraphAnalyzeResponse, ProjectGraphResponse
 from app.services.graph_service import GraphService
@@ -35,14 +35,17 @@ async def get_project_graph(
 
 
 @router.post("/graph/analyze-sections", response_model=GraphAnalyzeResponse)
-async def analyze_section_relationships_stub(
+async def analyze_section_relationships(
     project_id: UUID,
     session: AsyncSession = Depends(get_db),
-    pa: ProjectAccess = Depends(get_project_access),
+    pa: ProjectAccess = Depends(require_project_member),
 ) -> GraphAnalyzeResponse:
-    """Reserved for Slice 11 publish-time LLM section pair analysis."""
     _ensure_project(pa, project_id)
-    await GraphService(session).detect_section_relationships(project_id)
+    await GraphService(session).detect_section_relationships(
+        project_id,
+        context_user_id=pa.studio_access.user.id,
+    )
+    await session.commit()
     return GraphAnalyzeResponse(
-        message="Cross-section relationship analysis runs on publish (Slice 11); no edges added yet.",
+        message="Cross-section reference scan complete.",
     )

@@ -2,6 +2,10 @@
 # Dev / local: Vite with HMR. Use compose bind mount + node_modules volume (see docker-compose.yml).
 FROM node:20-alpine
 
+# node:20-alpine ships npm 10; lockfiles produced by npm 11 can fail `npm ci` with
+# "Missing: @emnapi/core … from lock file" (optional/bundled deps). Match npm 11+.
+RUN npm install -g npm@11.6.2
+
 WORKDIR /app
 
 COPY docker-entrypoint.dev.sh /usr/local/bin/docker-entrypoint.dev.sh

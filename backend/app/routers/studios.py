@@ -13,6 +13,7 @@ from app.deps import (
     require_studio_admin,
 )
 from app.models import User
+from app.schemas.mcp_keys import McpKeyCreateBody, McpKeyCreatedResponse, McpKeyPublic
 from app.schemas.studio import (
     MemberInvite,
     MemberRoleUpdate,
@@ -21,6 +22,7 @@ from app.schemas.studio import (
     StudioResponse,
     StudioUpdate,
 )
+from app.services.mcp_key_admin_service import McpKeyAdminService
 from app.services.studio_service import StudioService
 
 router = APIRouter(prefix="/studios", tags=["studios"])
@@ -104,3 +106,33 @@ async def update_member_role(
     access: StudioAccess = Depends(require_studio_admin),
 ) -> StudioMemberResponse:
     return await StudioService(session).update_member_role(access, user_id, body)
+
+
+@router.get("/{studio_id}/mcp-keys", response_model=list[McpKeyPublic])
+async def list_mcp_keys(
+    session: AsyncSession = Depends(get_db),
+    access: StudioAccess = Depends(require_studio_admin),
+) -> list[McpKeyPublic]:
+    return await McpKeyAdminService(session).list_keys(access)
+
+
+@router.post("/{studio_id}/mcp-keys", response_model=McpKeyCreatedResponse)
+async def create_mcp_key(
+    body: McpKeyCreateBody,
+    session: AsyncSession = Depends(get_db),
+    access: StudioAccess = Depends(require_studio_admin),
+) -> McpKeyCreatedResponse:
+    result = await McpKeyAdminService(session).create_key(access, body)
+    await session.commit()
+    return result
+
+
+@router.delete("/{studio_id}/mcp-keys/{key_id}", status_code=204)
+async def revoke_mcp_key(
+    key_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    access: StudioAccess = Depends(require_studio_admin),
+) -> Response:
+    await McpKeyAdminService(session).revoke_key(access, key_id)
+    await session.commit()
+    return Response(status_code=204)

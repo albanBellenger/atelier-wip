@@ -28,8 +28,12 @@ from app.routers import (
     artifacts,
     auth,
     collab,
+    mcp_api,
     private_threads,
+    project_chat,
     project_graph,
+    project_issues,
+    project_publish,
     projects,
     sections,
     software,
@@ -127,13 +131,17 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(admin.router)
     app.include_router(studios.router)
+    app.include_router(mcp_api.router)
     app.include_router(software.router)
     app.include_router(projects.router)
     app.include_router(project_graph.router)
+    app.include_router(project_publish.router)
+    app.include_router(project_issues.router)
     app.include_router(sections.router)
     app.include_router(artifacts.router)
     app.include_router(work_orders.router)
     app.include_router(private_threads.router)
+    app.include_router(project_chat.router)
     app.include_router(collab.router)
     return app
 

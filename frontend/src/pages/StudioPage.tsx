@@ -183,6 +183,14 @@ export function StudioPage(): ReactElement {
           <Link to="/" className="text-sm text-zinc-500 hover:text-zinc-300">
             Home
           </Link>
+          {access.isStudioAdmin ? (
+            <Link
+              to={`/studios/${sid}/settings`}
+              className="text-sm text-violet-400 hover:underline"
+            >
+              MCP keys
+            </Link>
+          ) : null}
         </div>
 
         {studioQ.isPending && <p className="text-zinc-500">Loading…</p>}

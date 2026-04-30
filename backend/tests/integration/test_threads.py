@@ -63,7 +63,7 @@ async def _promote_tool_admin(db_session, email: str) -> None:
     r = await db_session.execute(select(User).where(User.email == email))
     u = r.scalar_one()
     u.is_tool_admin = True
-    await db_session.commit()
+    await db_session.flush()
 
 
 def _last_nonempty_line(text: str) -> str:

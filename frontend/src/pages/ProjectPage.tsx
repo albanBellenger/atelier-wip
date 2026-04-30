@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { ChatRoom } from '../components/chat/ChatRoom'
 import { KnowledgeGraph } from '../components/graph/KnowledgeGraph'
 import { OutlineNav } from '../components/outline/OutlineNav'
 import { useStudioAccess } from '../hooks/useStudioAccess'
@@ -12,6 +13,7 @@ import {
   getProjectGraph,
   getSection,
   me,
+  publishProject,
   reorderSections,
   updateProject,
 } from '../services/api'
@@ -83,11 +85,28 @@ export function ProjectPage(): ReactElement {
     enabled: Boolean(pid && selectedSectionId && access.isMember),
   })
 
-  const [projectView, setProjectView] = useState<'outline' | 'graph'>('outline')
+  const [projectView, setProjectView] = useState<
+    'outline' | 'graph' | 'chat'
+  >('outline')
   const [projectName, setProjectName] = useState('')
   const [projectDescription, setProjectDescription] = useState('')
   const [projectFormSyncKey, setProjectFormSyncKey] = useState('')
   const [saveMsg, setSaveMsg] = useState<string | null>(null)
+  const [publishOpen, setPublishOpen] = useState(false)
+  const [commitMsg, setCommitMsg] = useState('')
+
+  const publishMut = useMutation({
+    mutationFn: () =>
+      publishProject(pid, {
+        commit_message: commitMsg.trim() || null,
+      }),
+    onSuccess: (data) => {
+      setPublishOpen(false)
+      setCommitMsg('')
+      setSaveMsg(`Published (${data.files_committed} files). Open commit link from toast.`)
+      window.alert(`Commit: ${data.commit_url}`)
+    },
+  })
 
   const graphQ = useQuery({
     queryKey: ['projectGraph', pid],
@@ -196,6 +215,23 @@ export function ProjectPage(): ReactElement {
           >
             Work orders
           </Link>
+          {access.isStudioEditor ? (
+            <Link
+              to={`/studios/${sid}/software/${sfid}/projects/${pid}/issues`}
+              className="text-violet-400 hover:underline"
+            >
+              Issues
+            </Link>
+          ) : null}
+          {access.isStudioEditor ? (
+            <button
+              type="button"
+              className="text-violet-400 hover:underline"
+              onClick={() => setPublishOpen(true)}
+            >
+              Publish…
+            </button>
+          ) : null}
         </div>
 
         {projectQ.isPending && <p className="text-zinc-500">Loading…</p>}
@@ -252,7 +288,7 @@ export function ProjectPage(): ReactElement {
               </>
             )}
 
-            <div className="mt-6 flex gap-2 border-b border-zinc-800 pb-2">
+            <div className="mt-6 flex flex-wrap gap-2 border-b border-zinc-800 pb-2">
               <button
                 type="button"
                 onClick={() => setProjectView('outline')}
@@ -275,6 +311,19 @@ export function ProjectPage(): ReactElement {
               >
                 Knowledge graph
               </button>
+              {access.isStudioEditor ? (
+                <button
+                  type="button"
+                  onClick={() => setProjectView('chat')}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                    projectView === 'chat'
+                      ? 'bg-zinc-800 text-zinc-100'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  Project chat
+                </button>
+              ) : null}
             </div>
 
             {projectView === 'outline' ? (
@@ -327,7 +376,7 @@ export function ProjectPage(): ReactElement {
                 )}
               </main>
             </div>
-            ) : (
+            ) : projectView === 'graph' ? (
               <div className="mt-10">
                 {graphQ.isPending && (
                   <p className="text-zinc-500">Loading graph…</p>
@@ -342,10 +391,48 @@ export function ProjectPage(): ReactElement {
                   />
                 )}
               </div>
+            ) : (
+              <div className="mt-10">
+                <ChatRoom projectId={pid} />
+              </div>
             )}
           </>
         )}
       </div>
+      {publishOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-md rounded-xl border border-zinc-700 bg-zinc-900 p-5 shadow-xl">
+            <h3 className="text-lg font-medium text-zinc-100">Publish to GitLab</h3>
+            <p className="mt-2 text-xs text-zinc-500">
+              Requires git URL + token on the software record.
+            </p>
+            <textarea
+              className="mt-4 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+              rows={3}
+              placeholder="Commit message (optional)"
+              value={commitMsg}
+              onChange={(e) => setCommitMsg(e.target.value)}
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg px-3 py-2 text-sm text-zinc-400 hover:text-zinc-200"
+                onClick={() => setPublishOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={publishMut.isPending}
+                className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+                onClick={() => publishMut.mutate()}
+              >
+                {publishMut.isPending ? 'Publishing…' : 'Publish'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

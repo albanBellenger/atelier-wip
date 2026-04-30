@@ -3,7 +3,22 @@
 import uuid
 
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _empty_user_table_for_bootstrap(db_session: AsyncSession) -> None:
+    """First registered user becomes tool admin only when ``users`` is empty.
+
+    Other integration tests may leave committed rows in the shared ``atelier_test``
+    database; this file asserts bootstrap semantics, so start each test with no users.
+    """
+    await db_session.execute(text("TRUNCATE TABLE users RESTART IDENTITY CASCADE"))
+    await db_session.flush()
+    yield
 
 
 @pytest.mark.asyncio

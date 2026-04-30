@@ -9,6 +9,7 @@ export function useStudioAccess(
   role: string | null
   isMember: boolean
   isStudioAdmin: boolean
+  isStudioEditor: boolean
   isToolAdmin: boolean
 } {
   return useMemo(() => {
@@ -17,10 +18,15 @@ export function useStudioAccess(
     const role = row?.role ?? null
     const isMember = isToolAdmin || Boolean(row)
     const isStudioAdmin = isToolAdmin || role === 'studio_admin'
+    const isStudioEditor =
+      isToolAdmin ||
+      role === 'studio_admin' ||
+      role === 'studio_member'
     return {
       role,
       isMember,
       isStudioAdmin,
+      isStudioEditor,
       isToolAdmin,
     }
   }, [profile, studioId])

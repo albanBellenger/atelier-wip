@@ -417,6 +417,144 @@ export async function getProjectGraph(
   )
 }
 
+// --- Project chat (Slice 10) ---
+
+export interface ChatMessageRow {
+  id: string
+  project_id: string
+  user_id: string | null
+  role: string
+  content: string
+  created_at: string
+}
+
+export interface ProjectChatHistoryResponse {
+  messages: ChatMessageRow[]
+  next_before: string | null
+}
+
+export async function getProjectChat(
+  projectId: string,
+  opts?: { before?: string; limit?: number },
+): Promise<ProjectChatHistoryResponse> {
+  const params = new URLSearchParams()
+  if (opts?.before) params.set('before', opts.before)
+  if (opts?.limit != null) params.set('limit', String(opts.limit))
+  const q = params.toString()
+  return request<ProjectChatHistoryResponse>(
+    'GET',
+    `/projects/${projectId}/chat${q ? `?${q}` : ''}`,
+  )
+}
+
+// --- Publish & issues (Slice 11) ---
+
+export interface PublishResponse {
+  commit_url: string
+  commit_sha?: string | null
+  files_committed: number
+}
+
+export async function publishProject(
+  projectId: string,
+  body?: { commit_message?: string | null },
+): Promise<PublishResponse> {
+  return request<PublishResponse>(
+    'POST',
+    `/projects/${projectId}/publish`,
+    body ?? {},
+  )
+}
+
+export interface IssueRow {
+  id: string
+  project_id: string
+  triggered_by: string | null
+  section_a_id: string | null
+  section_b_id: string | null
+  description: string
+  status: string
+  origin: string
+  run_actor_id: string | null
+  created_at: string
+}
+
+export async function listProjectIssues(projectId: string): Promise<IssueRow[]> {
+  return request<IssueRow[]>('GET', `/projects/${projectId}/issues`)
+}
+
+export async function updateIssue(
+  projectId: string,
+  issueId: string,
+  status: 'open' | 'resolved',
+): Promise<IssueRow> {
+  return request<IssueRow>('PUT', `/projects/${projectId}/issues/${issueId}`, {
+    status,
+  })
+}
+
+export async function runProjectAnalyze(
+  projectId: string,
+): Promise<{ issues_created: number }> {
+  return request<{ issues_created: number }>(
+    'POST',
+    `/projects/${projectId}/analyze`,
+  )
+}
+
+export interface GitCommitItem {
+  id?: string | null
+  short_id?: string | null
+  title?: string | null
+  message?: string | null
+  author_name?: string
+  created_at?: string | null
+  web_url?: string | null
+}
+
+export async function getSoftwareGitHistory(
+  studioId: string,
+  softwareId: string,
+): Promise<{ commits: GitCommitItem[] }> {
+  return request<{ commits: GitCommitItem[] }>(
+    'GET',
+    `/studios/${studioId}/software/${softwareId}/history`,
+  )
+}
+
+// --- MCP keys (Slice 12) ---
+
+export interface McpKeyRow {
+  id: string
+  label: string
+  access_level: string
+  created_at: string
+  last_used_at: string | null
+  revoked_at: string | null
+}
+
+export interface McpKeyCreated extends McpKeyRow {
+  secret: string
+}
+
+export async function listMcpKeys(studioId: string): Promise<McpKeyRow[]> {
+  return request<McpKeyRow[]>('GET', `/studios/${studioId}/mcp-keys`)
+}
+
+export async function createMcpKey(
+  studioId: string,
+  body: { label: string; access_level?: 'viewer' | 'editor' },
+): Promise<McpKeyCreated> {
+  return request<McpKeyCreated>('POST', `/studios/${studioId}/mcp-keys`, body)
+}
+
+export async function revokeMcpKey(
+  studioId: string,
+  keyId: string,
+): Promise<void> {
+  return request<void>('DELETE', `/studios/${studioId}/mcp-keys/${keyId}`)
+}
+
 // --- Sections (under /projects/{project_id}) ---
 
 export interface SectionCreateBody {

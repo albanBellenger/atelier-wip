@@ -48,7 +48,7 @@ async def test_drift_service_marks_work_order_stale(
     monkeypatch.setattr(LLMService, "chat_structured", fake_chat)
 
     await DriftService(db_session).run_after_section_change(uuid.UUID(sec_a))
-    await db_session.commit()
+    await db_session.flush()
 
     wo = await db_session.get(WorkOrder, wid)
     assert wo is not None
@@ -100,7 +100,7 @@ async def test_drift_skips_done_work_orders(
     monkeypatch.setattr(LLMService, "chat_structured", fake_chat)
 
     await DriftService(db_session).run_after_section_change(uuid.UUID(sec_a))
-    await db_session.commit()
+    await db_session.flush()
 
     assert calls == []
     wo = await db_session.get(WorkOrder, wid)

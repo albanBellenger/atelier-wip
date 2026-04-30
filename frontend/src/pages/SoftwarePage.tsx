@@ -7,6 +7,7 @@ import {
   createProject,
   deleteSoftware,
   getSoftware,
+  getSoftwareGitHistory,
   listProjects,
   me,
   testGitConnection,
@@ -103,6 +104,7 @@ export function SoftwarePage(): ReactElement {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['softwareOne', sid, sfid] })
       void qc.invalidateQueries({ queryKey: ['software', sid] })
+      void qc.invalidateQueries({ queryKey: ['gitHistory', sid, sfid] })
       setGitTokenInput('')
       setMsg('Saved.')
     },
@@ -117,6 +119,18 @@ export function SoftwarePage(): ReactElement {
       const x = e as { detail?: string }
       setGitMsg(typeof x.detail === 'string' ? x.detail : 'Test failed')
     },
+  })
+
+  const gitHistQ = useQuery({
+    queryKey: ['gitHistory', sid, sfid],
+    queryFn: () => getSoftwareGitHistory(sid, sfid),
+    enabled: Boolean(
+      sid &&
+        sfid &&
+        access.isMember &&
+        swQ.data?.git_token_set &&
+        Boolean(swQ.data?.git_repo_url?.trim()),
+    ),
   })
 
   const delMut = useMutation({
@@ -360,6 +374,33 @@ export function SoftwarePage(): ReactElement {
                 <p className="mt-3 text-sm text-zinc-400">{gitMsg}</p>
               )}
             </section>
+
+            {gitHistQ.data && gitHistQ.data.commits.length > 0 ? (
+              <section className="mt-8 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
+                <h2 className="text-sm font-medium text-zinc-300">
+                  Recent commits
+                </h2>
+                <ul className="mt-3 space-y-2 text-xs text-zinc-400">
+                  {gitHistQ.data.commits.slice(0, 20).map((c, i) => (
+                    <li key={c.id ?? c.short_id ?? `${i}`}>
+                      <span className="text-zinc-300">
+                        {c.title ?? c.short_id ?? 'commit'}
+                      </span>
+                      {c.web_url ? (
+                        <a
+                          href={c.web_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="ml-2 text-violet-400 hover:underline"
+                        >
+                          GitLab
+                        </a>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
 
             {access.isStudioAdmin && (
               <div className="mt-12 border-t border-zinc-800 pt-8">
