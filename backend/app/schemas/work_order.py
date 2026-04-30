@@ -3,7 +3,8 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from pydantic_core import PydanticCustomError
 
 
 class WorkOrderNoteCreate(BaseModel):
@@ -29,6 +30,17 @@ class WorkOrderCreate(BaseModel):
     phase: str | None = Field(None, max_length=256)
     assignee_id: UUID | None = None
     section_ids: list[UUID] = Field(default_factory=list)
+
+    @field_validator("section_ids")
+    @classmethod
+    def section_ids_non_empty(cls, v: list[UUID]) -> list[UUID]:
+        if not v:
+            raise PydanticCustomError(
+                "SECTION_REQUIRED",
+                "At least one section is required.",
+                {},
+            )
+        return v
 
 
 class WorkOrderUpdate(BaseModel):

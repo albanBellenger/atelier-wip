@@ -196,12 +196,14 @@ async def test_artifacts_md_create_and_rbac(
     )
     assert forbidden.status_code == 403
 
+    member_token = await _register(client, sfx, "member")
     client.cookies.set("atelier_token", token)
-    await client.post(
+    add_m = await client.post(
         f"/studios/{studio_id}/members",
         json={"email": f"member-{sfx}@example.com", "role": "studio_member"},
     )
-    client.cookies.set("atelier_token", await _register(client, sfx, "member"))
+    assert add_m.status_code == 200, add_m.text
+    client.cookies.set("atelier_token", member_token)
     ok_list = await client.get(f"/projects/{pid}/artifacts")
     assert ok_list.status_code == 200
     assert len(ok_list.json()) >= 1

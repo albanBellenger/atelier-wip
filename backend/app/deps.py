@@ -59,6 +59,15 @@ class StudioAccess:
             return True
         return self.membership is not None
 
+    @property
+    def is_studio_editor(self) -> bool:
+        """Studio admin or member — can create/edit; excludes studio_viewer."""
+        if self.user.is_tool_admin:
+            return True
+        if self.membership is None:
+            return False
+        return self.membership.role in ("studio_admin", "studio_member")
+
 
 async def resolve_studio_access(
     session: AsyncSession,
@@ -148,7 +157,7 @@ async def require_software_admin(
 async def require_software_member(
     sa: SoftwareAccess = Depends(get_software_access),
 ) -> SoftwareAccess:
-    if not sa.studio_access.is_studio_member:
+    if not sa.studio_access.is_studio_editor:
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
@@ -228,7 +237,7 @@ async def require_project_member(
     pa: ProjectAccess = Depends(get_project_access),
 ) -> ProjectAccess:
     """Studio Member (or Tool Admin) — upload/delete; excludes viewer-only if added later."""
-    if not pa.studio_access.is_studio_member:
+    if not pa.studio_access.is_studio_editor:
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",

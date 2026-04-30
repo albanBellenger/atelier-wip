@@ -69,7 +69,9 @@ async def create_work_order(
     )
 
 
-@router.post("/generate", response_model=list[WorkOrderResponse])
+@router.post(
+    "/generate", response_model=list[WorkOrderResponse], status_code=201
+)
 async def generate_work_orders(
     project_id: UUID,
     body: GenerateWorkOrdersBody,

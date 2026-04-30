@@ -42,6 +42,14 @@ reset_fernet_cache()
 _BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter() -> None:
+    """Avoid 429 from shared /auth/register and /auth/login limits across tests."""
+    from app.main import limiter
+
+    limiter.reset()
+
+
 def _run_alembic_upgrade_head() -> None:
     """Run Alembic migrations against TEST_DATABASE_URL (sync driver)."""
     test_url = os.environ["TEST_DATABASE_URL"]

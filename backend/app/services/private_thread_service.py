@@ -121,12 +121,14 @@ class PrivateThreadService:
         hist = await self.list_messages(thread.id)
         openai_msgs = [{"role": m.role, "content": m.content} for m in hist]
 
-        rag_text = await RAGService(self.db).build_context(
+        rag = await RAGService(self.db).build_context(
             query=content,
             project_id=project_id,
             current_section_id=section_id,
             token_budget=6000,
         )
+        rag_text = rag.text
+        context_truncated = rag.truncated
         system_prompt = (
             "You are a concise assistant for specification and implementation questions. "
             "Ground answers in the context when relevant.\n\n"
@@ -135,50 +137,86 @@ class PrivateThreadService:
 
         llm = LLMService(self.db)
         buf: list[str] = []
+        full = ""
+        stream_failed = False
 
-        async for piece in llm.chat_stream(
-            system_prompt=system_prompt,
-            messages=openai_msgs,
-            context=ctx,
-            call_type="private_thread",
-        ):
-            buf.append(piece)
-            payload = json.dumps({"type": "token", "text": piece})
-            yield f"data: {payload}\n\n".encode()
+        try:
+            async for piece in llm.chat_stream(
+                system_prompt=system_prompt,
+                messages=openai_msgs,
+                context=ctx,
+                call_type="private_thread",
+            ):
+                buf.append(piece)
+                payload = json.dumps({"type": "token", "text": piece})
+                yield f"data: {payload}\n\n".encode()
 
-        full = "".join(buf)
-        if full.strip():
+            full = "".join(buf)
+            if full.strip():
+                self.db.add(
+                    ThreadMessage(
+                        id=uuid.uuid4(),
+                        thread_id=thread.id,
+                        role="assistant",
+                        content=full,
+                    )
+                )
+                await self.db.flush()
+        except Exception:
+            stream_failed = True
             self.db.add(
                 ThreadMessage(
                     id=uuid.uuid4(),
                     thread_id=thread.id,
                     role="assistant",
-                    content=full,
+                    content="[error: LLM call failed]",
                 )
             )
             await self.db.flush()
-
-        try:
-            scan = await llm.chat_structured(
-                system_prompt=(
-                    "You scan a user question and assistant reply for contradictory "
-                    "requirements or conflicting facts. Return JSON only."
-                ),
-                user_prompt=(
-                    f"User:\n{content}\n\nAssistant:\n{full}\n\n"
-                    "List concrete conflicts, if any."
-                ),
-                json_schema=THREAD_CONFLICT_JSON_SCHEMA,
-                context=ctx,
-                call_type="thread_conflict_scan",
+            # Response headers may already be sent; do not re-raise (breaks ASGI).
+        if not stream_failed:
+            try:
+                scan = await llm.chat_structured(
+                    system_prompt=(
+                        "You scan a user question and assistant reply for contradictory "
+                        "requirements or conflicting facts. Return JSON only."
+                    ),
+                    user_prompt=(
+                        f"User:\n{content}\n\nAssistant:\n{full}\n\n"
+                        "List concrete conflicts, if any."
+                    ),
+                    json_schema=THREAD_CONFLICT_JSON_SCHEMA,
+                    context=ctx,
+                    call_type="thread_conflict_scan",
+                )
+                conflicts = scan.get("conflicts") if isinstance(scan, dict) else []
+                if not isinstance(conflicts, list):
+                    conflicts = []
+                meta = json.dumps(
+                    {
+                        "type": "meta",
+                        "conflicts": conflicts,
+                        "context_truncated": context_truncated,
+                    }
+                )
+                yield f"data: {meta}\n\n".encode()
+            except ApiError:
+                meta = json.dumps(
+                    {
+                        "type": "meta",
+                        "conflicts": [],
+                        "context_truncated": context_truncated,
+                    }
+                )
+                yield f"data: {meta}\n\n".encode()
+        else:
+            meta = json.dumps(
+                {
+                    "type": "meta",
+                    "conflicts": [],
+                    "context_truncated": context_truncated,
+                }
             )
-            conflicts = scan.get("conflicts") if isinstance(scan, dict) else []
-            if not isinstance(conflicts, list):
-                conflicts = []
-            meta = json.dumps({"type": "meta", "conflicts": conflicts})
-            yield f"data: {meta}\n\n".encode()
-        except ApiError:
-            meta = json.dumps({"type": "meta", "conflicts": []})
             yield f"data: {meta}\n\n".encode()
 
         yield b"data: [DONE]\n\n"

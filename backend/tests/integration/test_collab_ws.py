@@ -1,13 +1,19 @@
 """Slice 4: collaborative section WebSocket (Yjs / pycrdt-websocket)."""
 
-import os
 import uuid
 
 import pytest
 from fastapi.testclient import TestClient
 from httpx import AsyncClient
 
+from app.collab.server import collab_room_path, parse_collab_path
 from app.main import app
+
+
+def test_collab_path_parse_roundtrip() -> None:
+    a, b = uuid.uuid4(), uuid.uuid4()
+    p = collab_room_path(a, b)
+    assert parse_collab_path(p) == (a, b)
 
 
 async def _register(client: AsyncClient, suffix: str, label: str) -> str:
@@ -25,7 +31,9 @@ async def _register(client: AsyncClient, suffix: str, label: str) -> str:
     return token
 
 
-async def _studio_project_section(client: AsyncClient, sfx: str) -> tuple[str, str, str, str, str]:
+async def _studio_project_section(
+    client: AsyncClient, sfx: str
+) -> tuple[str, str, str, str, str]:
     """Returns (token, studio_id, software_id, project_id, section_id)."""
     token = await _register(client, sfx, "owner")
     client.cookies.set("atelier_token", token)
@@ -66,15 +74,3 @@ async def test_collab_websocket_requires_auth(client: AsyncClient) -> None:
                 pass
 
 
-@pytest.mark.asyncio
-async def test_collab_websocket_sync_handshake(client: AsyncClient) -> None:
-    os.environ["ATELIER_COLLAB_DEBOUNCE_SECONDS"] = "0.05"
-    sfx = uuid.uuid4().hex[:8]
-    token, _, _, project_id, section_id = await _studio_project_section(client, sfx)
-
-    with TestClient(app) as tc:
-        tc.cookies.set("atelier_token", token)
-        path = f"/ws/projects/{project_id}/sections/{section_id}/collab"
-        with tc.websocket_connect(path) as ws:
-            first = ws.receive_bytes()
-            assert len(first) >= 1

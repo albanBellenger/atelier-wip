@@ -38,8 +38,8 @@ class StudioMemberResponse(BaseModel):
 
 class MemberInvite(BaseModel):
     email: EmailStr
-    role: Literal["studio_admin", "studio_member"] = "studio_member"
+    role: Literal["studio_admin", "studio_member", "studio_viewer"] = "studio_member"
 
 
 class MemberRoleUpdate(BaseModel):
-    role: Literal["studio_admin", "studio_member"]
+    role: Literal["studio_admin", "studio_member", "studio_viewer"]

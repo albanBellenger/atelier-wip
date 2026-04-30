@@ -69,14 +69,15 @@ async def test_work_orders_crud_notes_rbac(
         await _studio_project_with_sections(client, sfx)
     )
 
-    token_member = await _register(client, sfx, "member")
+    member_token = await _register(client, sfx, "member")
     client.cookies.set("atelier_token", token)
-    await client.post(
+    madd = await client.post(
         f"/studios/{studio_id}/members",
         json={"email": f"member-{sfx}@example.com", "role": "studio_member"},
     )
+    assert madd.status_code == 200, madd.text
 
-    client.cookies.set("atelier_token", token_member)
+    client.cookies.set("atelier_token", member_token)
     create = await client.post(
         f"/projects/{pid}/work-orders",
         json={
@@ -187,7 +188,7 @@ async def test_work_orders_generate_mocked(
         f"/projects/{pid}/work-orders/generate",
         json={"section_ids": [sec_a]},
     )
-    assert gen.status_code == 200, gen.text
+    assert gen.status_code == 201, gen.text
     body = gen.json()
     assert len(body) == 1
     assert body[0]["title"] == "Generated"
@@ -195,3 +196,157 @@ async def test_work_orders_generate_mocked(
 
     det = await client.get(f"/projects/{pid}/work-orders/{wid}")
     assert sec_a in det.json()["section_ids"]
+
+
+@pytest.mark.asyncio
+async def test_create_work_order_requires_section(client: AsyncClient) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _s, _sw, pid, sec_a, _sec_b = await _studio_project_with_sections(
+        client, sfx
+    )
+    client.cookies.set("atelier_token", token)
+    r = await client.post(
+        f"/projects/{pid}/work-orders",
+        json={
+            "title": "T",
+            "description": "D",
+            "section_ids": [],
+        },
+    )
+    assert r.status_code == 422
+    assert r.json()["code"] == "SECTION_REQUIRED"
+
+
+@pytest.mark.asyncio
+async def test_generate_skips_unknown_slug(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _s, _sw, pid, sec_a, _sec_b = await _studio_project_with_sections(
+        client, sfx
+    )
+    client.cookies.set("atelier_token", token)
+
+    async def fake_chat_structured(self, **kwargs):
+        return {
+            "items": [
+                {
+                    "title": "Slugs",
+                    "description": "Desc",
+                    "implementation_guide": None,
+                    "acceptance_criteria": None,
+                    "linked_section_slugs": ["nonexistent-slug"],
+                }
+            ],
+        }
+
+    monkeypatch.setattr(
+        "app.services.llm_service.LLMService.chat_structured",
+        fake_chat_structured,
+    )
+    gen = await client.post(
+        f"/projects/{pid}/work-orders/generate",
+        json={"section_ids": [sec_a]},
+    )
+    assert gen.status_code == 201, gen.text
+    body = gen.json()
+    assert len(body) == 1
+    assert body[0]["section_ids"] == []
+
+
+@pytest.mark.asyncio
+async def test_viewer_cannot_mutate_work_orders(client: AsyncClient) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, studio_id, _sw, pid, sec_a, _sec_b = await _studio_project_with_sections(
+        client, sfx
+    )
+    viewer_tok = await _register(client, sfx, "vieweru")
+    client.cookies.set("atelier_token", token)
+    addm = await client.post(
+        f"/studios/{studio_id}/members",
+        json={"email": f"vieweru-{sfx}@example.com", "role": "studio_viewer"},
+    )
+    assert addm.status_code == 200, addm.text
+    # owner creates one WO to target for PUT/DELETE
+    c = await client.post(
+        f"/projects/{pid}/work-orders",
+        json={"title": "T", "description": "D", "section_ids": [sec_a]},
+    )
+    assert c.status_code == 200, c.text
+    wid = c.json()["id"]
+
+    client.cookies.set("atelier_token", viewer_tok)
+    assert (
+        await client.post(
+            f"/projects/{pid}/work-orders",
+            json={"title": "X", "description": "Y", "section_ids": [sec_a]},
+        )
+    ).status_code == 403
+    assert (
+        await client.put(
+            f"/projects/{pid}/work-orders/{wid}",
+            json={"title": "Z"},
+        )
+    ).status_code == 403
+    assert (
+        await client.delete(f"/projects/{pid}/work-orders/{wid}")
+    ).status_code == 403
+    assert (
+        await client.post(
+            f"/projects/{pid}/work-orders/generate",
+            json={"section_ids": [sec_a]},
+        )
+    ).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_all_valid_statuses_accepted(client: AsyncClient) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, studio_id, _sw, pid, sec_a, _sec_b = await _studio_project_with_sections(
+        client, sfx
+    )
+    member_tok = await _register(client, sfx, "mstat")
+    client.cookies.set("atelier_token", token)
+    madd = await client.post(
+        f"/studios/{studio_id}/members",
+        json={"email": f"mstat-{sfx}@example.com", "role": "studio_member"},
+    )
+    assert madd.status_code == 200, madd.text
+    client.cookies.set("atelier_token", member_tok)
+    c = await client.post(
+        f"/projects/{pid}/work-orders",
+        json={"title": "S", "description": "D", "section_ids": [sec_a]},
+    )
+    assert c.status_code == 200, c.text
+    wid = c.json()["id"]
+    for st, expect in [
+        ("in_review", "in_review"),
+        ("done", "done"),
+        ("archived", "archived"),
+    ]:
+        p = await client.put(
+            f"/projects/{pid}/work-orders/{wid}",
+            json={"status": st},
+        )
+        assert p.status_code == 200, p.text
+        assert p.json()["status"] == expect
+
+
+@pytest.mark.asyncio
+async def test_delete_removes_work_order_sections(client: AsyncClient) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _st, _sw, pid, sec_a, _sec_b = await _studio_project_with_sections(
+        client, sfx
+    )
+    client.cookies.set("atelier_token", token)
+    c = await client.post(
+        f"/projects/{pid}/work-orders",
+        json={"title": "T", "description": "D", "section_ids": [sec_a]},
+    )
+    assert c.status_code == 200, c.text
+    wid = c.json()["id"]
+    d = await client.delete(f"/projects/{pid}/work-orders/{wid}")
+    assert d.status_code == 204
+    lst = await client.get(f"/projects/{pid}/work-orders")
+    assert lst.status_code == 200
+    assert all(row["id"] != wid for row in lst.json())

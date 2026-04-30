@@ -247,7 +247,7 @@ class StudioService:
                 code="NOT_FOUND",
                 message="Member not found in this studio",
             )
-        if current == "studio_admin" and body.role == "studio_member":
+        if current == "studio_admin" and body.role in ("studio_member", "studio_viewer"):
             n_admins = await self.db.scalar(
                 select(func.count())
                 .select_from(StudioMember)

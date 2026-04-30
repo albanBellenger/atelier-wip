@@ -729,7 +729,7 @@ export async function getPrivateThread(
 ): Promise<PrivateThreadDetail> {
   return request<PrivateThreadDetail>(
     'GET',
-    `/projects/${projectId}/sections/${sectionId}/private-thread`,
+    `/projects/${projectId}/sections/${sectionId}/thread`,
   )
 }
 
@@ -744,7 +744,7 @@ export async function streamPrivateThreadReply(
 ): Promise<void> {
   const r = await fetch(
     base() +
-      `/projects/${projectId}/sections/${sectionId}/private-thread/messages/stream`,
+      `/projects/${projectId}/sections/${sectionId}/thread/messages`,
     {
       method: 'POST',
       credentials: 'include',

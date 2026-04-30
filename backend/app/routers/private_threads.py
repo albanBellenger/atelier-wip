@@ -19,7 +19,7 @@ from app.services.llm_service import LLMService
 from app.services.private_thread_service import PrivateThreadService
 
 router = APIRouter(
-    prefix="/projects/{project_id}/sections/{section_id}/private-thread",
+    prefix="/projects/{project_id}/sections/{section_id}/thread",
     tags=["private-thread"],
 )
 
@@ -54,7 +54,7 @@ async def get_private_thread(
     )
 
 
-@router.post("/messages/stream")
+@router.post("/messages")
 # SlowAPIASGIMiddleware replays http.response.start before every body chunk when wrapping
 # send(); multi-chunk StreamingResponse then violates ASGI ordering. Exempt uses raw send.
 @limiter.exempt

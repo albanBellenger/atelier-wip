@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import structlog
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import delete, select
@@ -31,7 +32,11 @@ from app.schemas.work_order import (
 )
 from app.services.llm_service import WORK_ORDER_BATCH_JSON_SCHEMA, LLMService
 
-VALID_STATUSES = frozenset({"backlog", "in_progress", "in_review", "done"})
+log = structlog.get_logger("atelier.work_order")
+
+VALID_STATUSES = frozenset(
+    {"backlog", "in_progress", "in_review", "done", "archived"}
+)
 
 
 class WorkOrderService:
@@ -459,11 +464,12 @@ class WorkOrderService:
                     continue
                 sec = slug_to_section.get(slug.strip())
                 if sec is None:
-                    raise ApiError(
-                        status_code=422,
-                        code="INVALID_SLUG_IN_LLM_OUTPUT",
-                        message=f"Unknown section slug in LLM output: {slug!r}",
+                    log.warning(
+                        "llm_work_order_unknown_section_slug",
+                        project_id=str(project_id),
+                        slug=slug,
                     )
+                    continue
                 if sec.id in linked:
                     continue
                 linked.add(sec.id)
