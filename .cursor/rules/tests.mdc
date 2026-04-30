@@ -1,9 +1,6 @@
-# ─────────────────────────────────────────────────────────────
-# FILE: .cursor/rules/tests.mdc
-# ─────────────────────────────────────────────────────────────
 ---
 description: Rules for all test files (pytest, Jest, Playwright)
-globs: ["**/tests/**/*.py", "frontend/src/**/*.test.{ts,tsx}", "e2e/**/*.spec.ts"]
+globs: "**/tests/**/*.py, frontend/src/**/*.test.ts, frontend/src/**/*.test.tsx, e2e/**/*.spec.ts"
 alwaysApply: false
 ---
 
@@ -20,12 +17,13 @@ alwaysApply: false
 ## Integration test must-haves (every route)
 
 Every integration test file must cover:
-- ✅ Happy path (correct role + valid data)
-- ✅ Missing auth → 401
-- ✅ Wrong role → 403
-- ✅ Cross-studio violation → 403
-- ✅ Invalid input → 422
-- ✅ Not found → 404
+
+- Happy path (correct role + valid data)
+- Missing auth → 401
+- Wrong role → 403
+- Cross-studio violation → 403
+- Invalid input → 422
+- Not found → 404
 
 ## LLM test assertions — never assert string length
 

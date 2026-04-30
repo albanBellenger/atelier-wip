@@ -1,9 +1,6 @@
-# ─────────────────────────────────────────────────────────────
-# FILE: .cursor/rules/backend.mdc
-# ─────────────────────────────────────────────────────────────
 ---
 description: Rules for all FastAPI backend code
-globs: ["backend/**/*.py"]
+globs: "backend/**/*.py"
 alwaysApply: false
 ---
 
@@ -13,7 +10,7 @@ alwaysApply: false
 - All business logic lives in `backend/app/services/`
 - Return Pydantic response schemas — never return ORM models directly
 - Use `Depends()` for all RBAC checks — never check roles inline
-- Use `select(Column1, Column2)` — never `select(Model)` (no SELECT *)
+- Use `select(Column1, Column2)` — never `select(Model)` (no `SELECT *`)
 - All DB access via `AsyncSession` from `Depends(get_db)`
 - Raise `HTTPException` with structured body: `{"detail": "...", "code": "..."}`
 

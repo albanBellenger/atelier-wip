@@ -1,16 +1,15 @@
-# Atelier — Cursor Project Rules
-# File: .cursor/rules/atelier-cursor-rules.mdc
-
 ---
 description: Core rules for all Atelier development. Apply to every file in the monorepo.
-globs: ["**/*"]
 alwaysApply: true
 ---
+
+# Atelier — Cursor Project Rules
 
 ## Project Identity
 
 You are working on **Atelier** — a collaborative software specification platform.
 The canonical architecture is defined in:
+
 - `docs/atelier-functional-requirements.md`
 - `docs/atelier-technical-architecture.md`
 
@@ -48,6 +47,7 @@ Never submit a PR with implementation code that has no corresponding test. Never
 ## Backend Rules (Python / FastAPI)
 
 ### General
+
 - Python 3.12+. Use type hints everywhere — no untyped functions.
 - Use `async`/`await` throughout. No synchronous database or HTTP calls in route handlers.
 - All route handlers must be thin — business logic lives in service classes, never in routers.
@@ -56,7 +56,9 @@ Never submit a PR with implementation code that has no corresponding test. Never
 - All database access goes through the SQLAlchemy async session dependency (`get_db`). Never import the engine directly in a service.
 
 ### RBAC — never skip this
+
 Every protected route must use the appropriate FastAPI dependency:
+
 - `get_current_user` — for any authenticated route
 - `require_studio_member(studio_id)` — for member-level actions
 - `require_studio_admin(studio_id)` — for admin-level actions
@@ -66,23 +68,29 @@ Every protected route must use the appropriate FastAPI dependency:
 Never perform manual role checks inside route handlers — always use the dependency chain.
 
 ### LLM calls — always use LLMService
+
 Never call an LLM provider SDK directly in a route or service.
 Always go through `LLMService`:
+
 - `chat_stream()` — for user-facing conversational calls (threads, chat)
 - `chat_structured()` — for structured generation (Work Orders, conflict analysis, drift detection)
 
 `chat_structured()` must always receive an `output_schema` dict. Never parse free-text LLM output with regex or string splitting.
 
 ### File downloads — never use presigned URLs
+
 All artifact downloads must stream through FastAPI. Never generate presigned MinIO URLs for client consumption. MinIO is strictly private.
 
 ### Error handling
+
 Use the global exception handler pattern. Never return raw Python exceptions or unstructured error strings. All errors return:
+
 ```json
 { "detail": "...", "code": "ERROR_CODE" }
 ```
 
 ### Migrations
+
 Every schema change requires a new Alembic migration. Never modify an existing migration. Never edit the database schema directly.
 
 ---
@@ -90,14 +98,18 @@ Every schema change requires a new Alembic migration. Never modify an existing m
 ## Database Rules
 
 ### Yjs state — always dual-write
+
 When persisting section content after a Yjs update, you must write both:
+
 - `sections.yjs_state` — the full binary `Uint8Array` Yjs document state (CRDT source of truth)
 - `sections.content` — plain text Markdown extracted from the Yjs doc (RAG source of truth)
 
 Never save only plain text — this destroys the Yjs CRDT vector clocks and breaks offline merge.
 
 ### Vector indexes — always HNSW
+
 All pgvector indexes must use HNSW, not IVFFlat:
+
 ```sql
 -- CORRECT
 CREATE INDEX ON artifact_chunks USING hnsw (embedding vector_cosine_ops);
@@ -109,6 +121,7 @@ CREATE INDEX ON artifact_chunks USING ivfflat (embedding vector_cosine_ops);
 IVFFlat requires centroid training on pre-existing data. HNSW works correctly from an empty table.
 
 ### Cascades
+
 All foreign keys to `studios`, `software`, `projects`, and `sections` must have `ON DELETE CASCADE`. Never leave orphaned records.
 
 ---
@@ -116,12 +129,14 @@ All foreign keys to `studios`, `software`, `projects`, and `sections` must have 
 ## Frontend Rules (React / TypeScript)
 
 ### General
+
 - TypeScript strict mode. No `any` types. No `// @ts-ignore`.
 - All API calls go through `src/services/api.ts`. Never call `fetch` directly in a component.
 - All WebSocket connections go through `src/services/ws.ts`.
 - Use React Query for all server state. No `useEffect` + `fetch` patterns.
 
 ### RBAC on the frontend
+
 Use the `useStudioAccess()` hook to determine permissions. Never hardcode role checks in components.
 Unauthorised UI elements must be **absent from the DOM**, not just hidden with CSS.
 
@@ -135,11 +150,13 @@ return <EditButton style={{ display: canEdit ? 'block' : 'none' }} />
 ```
 
 ### Component structure
+
 - One component per file. No barrel exports that re-export everything.
 - Co-locate component tests: `ComponentName.tsx` + `ComponentName.test.tsx` in the same directory.
 - No inline styles. Use Tailwind utility classes only.
 
 ### Streaming LLM responses
+
 Use the `useStream()` hook for all SSE-streamed LLM responses. Never manually manage `EventSource` in a component.
 
 ---
@@ -147,11 +164,13 @@ Use the `useStream()` hook for all SSE-streamed LLM responses. Never manually ma
 ## Testing Rules
 
 ### Backend
+
 - `backend/tests/unit/` — pure logic, no DB, no HTTP, no real LLM. All external deps mocked.
 - `backend/tests/integration/` — real test DB (rolled-back transaction per test), real FastAPI via httpx.
 - `backend/tests/llm/` — real LLM API calls, tagged `@pytest.mark.llm`. Run nightly only.
 
 Every integration test must cover:
+
 - Happy path (correct role + valid data)
 - Missing auth → 401
 - Wrong role → 403
@@ -160,7 +179,9 @@ Every integration test must cover:
 - Not found → 404
 
 ### LLM test assertions — never assert string lengths
+
 Because structured output is enforced via `chat_structured()`, tests must validate:
+
 - Key presence (`assert isinstance(wo["title"], str) and wo["title"]`)
 - Semantic relevance (keyword matching against known fixture content)
 - Status/type correctness
@@ -168,11 +189,13 @@ Because structured output is enforced via `chat_structured()`, tests must valida
 Never assert `len(string) < N` — this is a flap risk.
 
 ### Frontend
+
 - All component tests use MSW to intercept HTTP calls. Never mock `fetch` directly.
 - Test user interactions with `@testing-library/user-event`, not `fireEvent`.
 - Every component test must include a "viewer cannot perform privileged action" case.
 
 ### E2E (Playwright)
+
 - Always use the Page Object Model (`e2e/pages/`). Never write raw `page.click()` calls in spec files.
 - E2E tests use a deterministic LLM proxy — never hit the real LLM API in E2E.
 - Always clean up test state in `afterEach` or use isolated test DB snapshots.

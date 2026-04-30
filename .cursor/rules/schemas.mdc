@@ -1,9 +1,6 @@
-# ─────────────────────────────────────────────────────────────
-# FILE: .cursor/rules/schemas.mdc
-# ─────────────────────────────────────────────────────────────
 ---
 description: Rules for Pydantic schema files
-globs: ["backend/app/schemas/**/*.py"]
+globs: "backend/app/schemas/**/*.py"
 alwaysApply: false
 ---
 
@@ -19,6 +16,6 @@ alwaysApply: false
 ## Naming convention
 
 - `{Entity}Create` — POST request body
-- `{Entity}Update` — PUT/PATCH request body  
+- `{Entity}Update` — PUT/PATCH request body
 - `{Entity}Response` — API response
 - `{Entity}ListResponse` — paginated list response

@@ -1,9 +1,6 @@
-# ─────────────────────────────────────────────────────────────
-# FILE: .cursor/rules/frontend.mdc
-# ─────────────────────────────────────────────────────────────
 ---
 description: Rules for all React/TypeScript frontend code
-globs: ["frontend/src/**/*.{ts,tsx}"]
+globs: "frontend/src/**/*.ts, frontend/src/**/*.tsx"
 alwaysApply: false
 ---
 
@@ -24,6 +21,7 @@ alwaysApply: false
 
 - Use `useStudioAccess()` for all permission checks
 - Unauthorised elements must be absent from DOM — not hidden with CSS:
+
   ```tsx
   // CORRECT
   {canEdit && <EditButton />}
