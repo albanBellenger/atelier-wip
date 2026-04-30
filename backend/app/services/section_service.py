@@ -4,12 +4,47 @@ import re
 import unicodedata
 import uuid
 
+from pycrdt import Doc, Text
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
 from app.models import Section
 from app.schemas.section import SectionCreate, SectionResponse, SectionUpdate
+
+# Shared Y.Text map key — must match frontend `YDOC_TEXT_FIELD` and collab persistence.
+SECTION_YJS_TEXT_FIELD = "codemirror"
+
+
+def snapshot_from_yjs_update_bytes(blob: bytes | None) -> str | None:
+    """Decode plaintext from Yjs update bytes; None if blob missing or invalid."""
+    if not blob:
+        return None
+    try:
+        doc = Doc()
+        doc.apply_update(bytes(blob))
+        if SECTION_YJS_TEXT_FIELD not in doc:
+            return ""
+        # After apply_update(), ``doc[key]`` can be None; ``get(..., type=Text)`` resolves the Text.
+        shared = doc.get(SECTION_YJS_TEXT_FIELD, type=Text)
+        return str(shared)
+    except ValueError:
+        return None
+
+
+def effective_section_plaintext(
+    content: str | None, yjs_state: bytes | None
+) -> str:
+    """Plaintext for API responses: DB column, or Yjs when empty / legacy ``\"None\"``."""
+    snap = content or ""
+    if snap == "None":
+        snap = ""
+    if snap.strip() != "":
+        return snap
+    extracted = snapshot_from_yjs_update_bytes(yjs_state)
+    if extracted is not None:
+        return extracted
+    return snap
 
 
 def slugify_title(title: str) -> str:
@@ -55,10 +90,7 @@ class SectionService:
         return (m + 1) if m is not None else 0
 
     def _to_response(self, s: Section) -> SectionResponse:
-        # Plaintext snapshot; collab historically wrote str(None) when pycrdt had no Text.
-        snap = s.content or ""
-        if snap == "None":
-            snap = ""
+        snap = effective_section_plaintext(s.content, s.yjs_state)
         return SectionResponse(
             id=s.id,
             project_id=s.project_id,

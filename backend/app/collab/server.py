@@ -15,11 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.websockets import WebSocketDisconnect
 
 from app.models import Section
+from app.services.section_service import SECTION_YJS_TEXT_FIELD
 
 log = logging.getLogger("atelier.collab")
 
 # Must match y-codemirror.next + yCollab default shared text field name.
-YDOC_TEXT_FIELD = "codemirror"
+YDOC_TEXT_FIELD = SECTION_YJS_TEXT_FIELD
 
 _collab_server: WebsocketServer | None = None
 
@@ -212,15 +213,15 @@ class AtelierWebsocketServer(WebsocketServer):
         snapshot = doc.get_update()
         text: str | None = None
         if YDOC_TEXT_FIELD in doc:
-            shared = doc[YDOC_TEXT_FIELD]
-            if isinstance(shared, Text):
+            try:
+                shared = doc.get(YDOC_TEXT_FIELD, type=Text)
                 text = str(shared)
-            else:
+            except Exception:
                 log.warning(
-                    "collab: %r is not a pycrdt Text after merge (got %s); "
+                    "collab: could not read %r as pycrdt Text; "
                     "skipping plaintext snapshot update (yjs_state still saved)",
                     YDOC_TEXT_FIELD,
-                    type(shared).__name__,
+                    exc_info=True,
                 )
         else:
             text = ""
