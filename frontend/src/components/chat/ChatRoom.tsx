@@ -3,10 +3,7 @@ import type { ReactElement } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChatMessageRow } from '../../services/api'
 import { getProjectChat } from '../../services/api'
-import {
-  atelierTokenForWebSocket,
-  projectChatWebSocketUrl,
-} from '../../services/ws'
+import { openProjectChatWebSocket } from '../../services/ws'
 
 type WsPayload =
   | { type: 'user_message'; id: string; user_id: string; content: string }
@@ -51,12 +48,9 @@ export function ChatRoom({ projectId }: ChatRoomProps): ReactElement {
 
   useEffect(() => {
     if (!projectId) return undefined
-    const token = atelierTokenForWebSocket()
-    const url = new URL(projectChatWebSocketUrl(projectId))
-    if (token) url.searchParams.set('token', token)
     setWsStatus('connecting')
     setWsError(null)
-    const ws = new WebSocket(url.toString())
+    const ws = openProjectChatWebSocket(projectId)
     wsRef.current = ws
     ws.onopen = () => {
       // StrictMode mounts effects twice in dev; ignore stale socket lifecycle.

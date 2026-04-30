@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import * as api from '../../services/api'
@@ -52,7 +53,8 @@ describe('TokenUsageReportPanel', () => {
       </QueryClientProvider>,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /apply filters/i }))
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /apply filters/i }))
 
     await waitFor(() => {
       expect(screen.getByTestId('usage-chart')).toBeInTheDocument()
@@ -68,7 +70,7 @@ describe('TokenUsageReportPanel', () => {
     )
     expect(dailyTicks.length).toBeGreaterThan(0)
 
-    fireEvent.click(screen.getByTestId('granularity-weekly'))
+    await user.click(screen.getByTestId('granularity-weekly'))
 
     await waitFor(() => {
       const wChart = screen.getByTestId('usage-chart')

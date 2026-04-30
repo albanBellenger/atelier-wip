@@ -56,3 +56,11 @@ export function projectChatWebSocketUrl(projectId: string): string {
   const base = collabWebSocketBaseUrl()
   return `${base}/projects/${projectId}/chat`
 }
+
+/** Opens project chat WebSocket (same-origin `/ws` proxy, optional `?token=`). */
+export function openProjectChatWebSocket(projectId: string): WebSocket {
+  const token = atelierTokenForWebSocket()
+  const url = new URL(projectChatWebSocketUrl(projectId))
+  if (token) url.searchParams.set('token', token)
+  return new WebSocket(url.toString())
+}

@@ -10,7 +10,7 @@ alwaysApply: false
 - All business logic lives in `backend/app/services/`
 - Return Pydantic response schemas — never return ORM models directly
 - Use `Depends()` for all RBAC checks — never check roles inline
-- Use `select(Column1, Column2)` — never `select(Model)` (no `SELECT *`)
+- Never use literal `SELECT *` or raw SQL without an explicit column list. In SQLAlchemy 2, `select(Model)` is an ORM row load (all mapped columns for that entity), which is fine when you need the full entity; prefer `select(Model.col1, Model.col2, ...)` when you only need specific columns (clarity and less I/O).
 - All DB access via `AsyncSession` from `Depends(get_db)`
 - Raise `HTTPException` with structured body: `{"detail": "...", "code": "..."}`
 

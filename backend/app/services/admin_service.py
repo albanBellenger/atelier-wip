@@ -2,7 +2,6 @@
 
 from uuid import UUID
 
-import httpx
 from fastapi import BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,7 +17,7 @@ from app.services.embedding_pipeline import (
     enqueue_sections_missing_embeddings_after_config,
 )
 from app.services.embedding_service import EmbeddingService, embedding_configured
-from app.openai_compat_urls import chat_completions_url
+from app.services.llm_service import LLMService
 
 
 def _mask(s: str | None) -> bool:
@@ -99,70 +98,7 @@ class AdminService:
 
     async def test_llm(self) -> AdminConnectivityResult:
         """Minimal chat completion against stored LLM config (OpenAI-compatible)."""
-        row = await self.get_or_create()
-        model = (row.llm_model or "").strip()
-        key = (row.llm_api_key or "").strip()
-        prov = (row.llm_provider or "").strip().lower()
-        if not model or not key:
-            return AdminConnectivityResult(
-                ok=False,
-                message="Configure LLM model and API key before testing.",
-                detail=None,
-            )
-        if prov and prov != "openai":
-            return AdminConnectivityResult(
-                ok=False,
-                message="Set LLM provider to 'openai' (or leave empty) for OpenAI-compatible APIs.",
-                detail=f"Got llm_provider={prov!r}",
-            )
-        chat_url = chat_completions_url(row.llm_api_base_url)
-        body = {
-            "model": model,
-            "messages": [{"role": "user", "content": 'Reply with exactly the word "OK".'}],
-            "max_tokens": 32,
-        }
-        headers = {
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-        }
-        try:
-            async with httpx.AsyncClient(timeout=45.0) as client:
-                r = await client.post(
-                    chat_url,
-                    headers=headers,
-                    json=body,
-                )
-        except httpx.HTTPError as e:
-            return AdminConnectivityResult(
-                ok=False,
-                message="LLM request failed (network or timeout).",
-                detail=str(e)[:800],
-            )
-        if r.status_code >= 400:
-            return AdminConnectivityResult(
-                ok=False,
-                message="LLM provider returned an error.",
-                detail=r.text[:800],
-            )
-        try:
-            data = r.json()
-        except Exception:
-            return AdminConnectivityResult(
-                ok=False,
-                message="Unexpected LLM response body.",
-                detail=r.text[:400],
-            )
-        choices = data.get("choices") or []
-        preview = ""
-        if choices:
-            preview = (
-                (choices[0].get("message") or {}).get("content") or ""
-            ).strip()
-        return AdminConnectivityResult(
-            ok=True,
-            message="LLM connection succeeded.",
-            detail=preview[:500] if preview else None,
-        )
+        return await LLMService(self.db).admin_connectivity_probe()
 
     async def test_embedding(self) -> AdminConnectivityResult:
         """Single-vector embedding using stored embedding config."""

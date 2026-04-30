@@ -52,7 +52,7 @@ Never submit a PR with implementation code that has no corresponding test. Never
 - Use `async`/`await` throughout. No synchronous database or HTTP calls in route handlers.
 - All route handlers must be thin — business logic lives in service classes, never in routers.
 - Use Pydantic v2 for all request/response schemas. Never return raw SQLAlchemy models from endpoints.
-- Never use `SELECT *` — always select explicit columns.
+- Never use literal `SELECT *` (or raw SQL without naming columns). With SQLAlchemy, use `select(Model)` when loading full ORM entities, or `select(Model.col1, ...)` when a partial column load is enough.
 - All database access goes through the SQLAlchemy async session dependency (`get_db`). Never import the engine directly in a service.
 
 ### RBAC — never skip this
