@@ -3,24 +3,47 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 
 import structlog
 
 from app.database import async_session_factory
+from app.exceptions import ApiError
 from app.services.drift_service import DriftService
 
 log = structlog.get_logger("atelier.drift_pipeline")
 
+
+def _drift_concurrency_limit() -> int:
+    raw = os.environ.get("DRIFT_CONCURRENCY", "3")
+    try:
+        n = int(raw)
+    except ValueError:
+        return 3
+    return max(1, n)
+
+
 _DRIFT_DEBOUNCE_S = 5.0
+_DRIFT_CONCURRENCY = _drift_concurrency_limit()
+_drift_semaphore = asyncio.Semaphore(_DRIFT_CONCURRENCY)
 _pending_drift: dict[uuid.UUID, asyncio.Task[None]] = {}
+
+
+def _retry_after_hint(exc: ApiError) -> str | None:
+    hdrs = getattr(exc, "headers", None)
+    if not hdrs:
+        return None
+    v = hdrs.get("Retry-After") or hdrs.get("retry-after")
+    return str(v) if v is not None else None
 
 
 async def _run_drift_after_quiet(section_id: uuid.UUID) -> None:
     task = asyncio.current_task()
     try:
         await asyncio.sleep(_DRIFT_DEBOUNCE_S)
-        await enqueue_drift_check(section_id)
+        async with _drift_semaphore:
+            await enqueue_drift_check(section_id)
     except asyncio.CancelledError:
         return
     finally:
@@ -33,6 +56,16 @@ async def enqueue_drift_check(section_id: uuid.UUID) -> None:
         try:
             await DriftService(session).run_after_section_change(section_id)
             await session.commit()
+        except ApiError as e:
+            await session.rollback()
+            if e.status_code == 429:
+                log.warning(
+                    "drift_check_rate_limited",
+                    section_id=str(section_id),
+                    retry_after=_retry_after_hint(e),
+                )
+                raise
+            log.exception("drift_check_failed", section_id=str(section_id))
         except Exception:
             await session.rollback()
             log.exception("drift_check_failed", section_id=str(section_id))
