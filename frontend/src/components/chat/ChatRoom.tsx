@@ -27,6 +27,7 @@ export function ChatRoom({ projectId }: ChatRoomProps): ReactElement {
     'closed',
   )
   const [streamBuf, setStreamBuf] = useState('')
+  const [wsError, setWsError] = useState<string | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
 
   const historyQ = useQuery({
@@ -54,14 +55,21 @@ export function ChatRoom({ projectId }: ChatRoomProps): ReactElement {
     const url = new URL(projectChatWebSocketUrl(projectId))
     if (token) url.searchParams.set('token', token)
     setWsStatus('connecting')
+    setWsError(null)
     const ws = new WebSocket(url.toString())
     wsRef.current = ws
-    ws.onopen = () => setWsStatus('open')
+    ws.onopen = () => {
+      // StrictMode mounts effects twice in dev; ignore stale socket lifecycle.
+      if (wsRef.current !== ws) return
+      setWsStatus('open')
+    }
     ws.onclose = () => {
-      setWsStatus('closed')
+      if (wsRef.current !== ws) return
       wsRef.current = null
+      setWsStatus('closed')
     }
     ws.onmessage = (ev) => {
+      if (wsRef.current !== ws) return
       let msg: WsPayload
       try {
         msg = JSON.parse(ev.data as string) as WsPayload
@@ -77,22 +85,32 @@ export function ChatRoom({ projectId }: ChatRoomProps): ReactElement {
         void qc.invalidateQueries({ queryKey: ['projectChat', projectId] })
         return
       }
+      if (msg.type === 'error') {
+        setWsError(msg.message)
+        return
+      }
       if (msg.type === 'user_message') {
         void qc.invalidateQueries({ queryKey: ['projectChat', projectId] })
       }
     }
     return () => {
       ws.close()
-      wsRef.current = null
+      if (wsRef.current === ws) {
+        wsRef.current = null
+      }
     }
   }, [projectId, qc])
 
   function send(): void {
     const text = draft.trim()
-    if (!text || wsRef.current?.readyState !== WebSocket.OPEN) return
-    wsRef.current.send(
-      JSON.stringify({ type: 'user_message', content: text }),
-    )
+    const ws = wsRef.current
+    if (!text) return
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      setWsError('Not connected — wait for live or refresh the page.')
+      return
+    }
+    setWsError(null)
+    ws.send(JSON.stringify({ type: 'user_message', content: text }))
     setDraft('')
   }
 
@@ -137,6 +155,11 @@ export function ChatRoom({ projectId }: ChatRoomProps): ReactElement {
             </div>
             <div className="whitespace-pre-wrap">{streamBuf}</div>
           </div>
+        ) : null}
+        {wsError ? (
+          <p className="text-sm text-amber-400" role="alert">
+            {wsError}
+          </p>
         ) : null}
         <div ref={bottomRef} />
       </div>

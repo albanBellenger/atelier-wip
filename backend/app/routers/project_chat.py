@@ -76,6 +76,7 @@ async def project_chat_websocket(
 ) -> None:
     close_on_fail = {401: 4401, 403: 4403}
 
+    user_id: UUID
     async with async_session_factory() as session:
         try:
             token = await _ws_user_token(websocket)
@@ -85,6 +86,8 @@ async def project_chat_websocket(
                 await session.commit()
                 await websocket.close(code=4403)
                 return
+            # Read PK while session is still open (commit expires instances).
+            user_id = user.id
             await session.commit()
         except ApiError as e:
             await session.rollback()
@@ -93,7 +96,6 @@ async def project_chat_websocket(
 
     await websocket.accept()
     await register(project_id, websocket)
-    user_id = pa.studio_access.user.id
 
     try:
         while True:
