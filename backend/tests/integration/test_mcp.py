@@ -201,3 +201,63 @@ async def test_mcp_key_list_pull_patch_flow(client: AsyncClient) -> None:
             json={"status": "backlog"},
         )
         assert forbidden.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_mcp_pull_includes_related_work_orders_after_dependency(
+    client: AsyncClient,
+) -> None:
+    """MCP pull lists prerequisite WO when edge_type is depends_on (FR graph)."""
+    sfx = uuid.uuid4().hex[:8]
+    token, sid, _sw, pid, sec_a, _b = await _studio_project_with_sections(
+        client, sfx
+    )
+
+    client.cookies.set("atelier_token", token)
+    mk = await client.post(
+        f"/studios/{sid}/mcp-keys",
+        json={"label": "dep", "access_level": "editor"},
+    )
+    assert mk.status_code == 200
+    secret = mk.json()["secret"]
+
+    wo = await client.post(
+        f"/projects/{pid}/work-orders",
+        json={
+            "title": "Prereq",
+            "description": "P",
+            "status": "backlog",
+            "section_ids": [sec_a],
+        },
+    )
+    assert wo.status_code == 200
+    wid_pre = wo.json()["id"]
+
+    wo2 = await client.post(
+        f"/projects/{pid}/work-orders",
+        json={
+            "title": "Dependent",
+            "description": "D",
+            "status": "backlog",
+            "section_ids": [sec_a],
+        },
+    )
+    assert wo2.status_code == 200
+    wid_dep = wo2.json()["id"]
+
+    dep = await client.post(
+        f"/projects/{pid}/work-orders/{wid_dep}/dependencies/{wid_pre}",
+    )
+    assert dep.status_code == 201
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as ac:
+        pull = await ac.get(
+            f"/mcp/v1/work-orders/{wid_dep}",
+            headers={"Authorization": f"Bearer {secret}"},
+        )
+    assert pull.status_code == 200
+    related = pull.json().get("related_work_orders") or []
+    titles = {x.get("title") for x in related}
+    assert "Prereq" in titles

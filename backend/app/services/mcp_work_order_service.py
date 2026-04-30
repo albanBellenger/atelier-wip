@@ -169,7 +169,7 @@ class McpWorkOrderService:
                 await self.db.execute(
                     select(GraphEdge).where(
                         GraphEdge.project_id == pr.id,
-                        GraphEdge.edge_type == "depends",
+                        GraphEdge.edge_type == "depends_on",
                     )
                 )
             )

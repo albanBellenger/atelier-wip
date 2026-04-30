@@ -19,6 +19,7 @@ import {
 } from '../services/api'
 import type { SectionSummary } from '../services/api'
 import { ListSkeleton } from '../components/ui/ListSkeleton'
+import { showPublishSuccessToast } from '../components/ui/Toast'
 
 export function ProjectPage(): ReactElement {
   const { studioId, softwareId, projectId } = useParams<{
@@ -104,8 +105,8 @@ export function ProjectPage(): ReactElement {
     onSuccess: (data) => {
       setPublishOpen(false)
       setCommitMsg('')
-      setSaveMsg(`Published (${data.files_committed} files). Open commit link from toast.`)
-      window.alert(`Commit: ${data.commit_url}`)
+      setSaveMsg(`Published (${data.files_committed} files).`)
+      showPublishSuccessToast(data.files_committed, data.commit_url)
     },
   })
 

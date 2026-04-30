@@ -376,3 +376,81 @@ async def test_stream_meta_context_truncated_true_when_budget_tight(
                     meta = j
     assert meta is not None
     assert meta.get("context_truncated") is True
+
+
+@pytest.mark.asyncio
+async def test_reset_thread_clears_history(
+    client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _sid, pid, section_id, email = await _project_section(client, sfx)
+    await _promote_tool_admin(db_session, email)
+    client.cookies.set("atelier_token", token)
+    await client.put(
+        "/admin/config",
+        json={
+            "llm_provider": "openai",
+            "llm_model": "gpt-4o-mini",
+            "llm_api_key": "sk-test",
+        },
+    )
+
+    async def fake_rag(self, *a, **k):
+        return RAGContext(text="ctx", truncated=False)
+
+    async def fake_stream(self, *a, **k) -> AsyncIterator[str]:
+        yield "ok"
+
+    async def fake_structured(self, *a, **k):
+        return {"conflicts": []}
+
+    monkeypatch.setattr("app.services.rag_service.RAGService.build_context", fake_rag)
+    monkeypatch.setattr("app.services.llm_service.LLMService.chat_stream", fake_stream)
+    monkeypatch.setattr(
+        "app.services.llm_service.LLMService.chat_structured", fake_structured
+    )
+
+    r = await client.post(
+        f"/projects/{pid}/sections/{section_id}/thread/messages",
+        json={"content": "hello"},
+    )
+    assert r.status_code == 200, r.text
+
+    g1 = await client.get(f"/projects/{pid}/sections/{section_id}/thread")
+    assert g1.status_code == 200
+    assert len(g1.json()["messages"]) >= 1
+
+    d = await client.delete(f"/projects/{pid}/sections/{section_id}/thread")
+    assert d.status_code == 204
+
+    g2 = await client.get(f"/projects/{pid}/sections/{section_id}/thread")
+    assert g2.status_code == 200
+    assert g2.json()["messages"] == []
+
+
+@pytest.mark.asyncio
+async def test_viewer_cannot_reset_thread(
+    client: AsyncClient, db_session,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, studio_id, pid, section_id, _email = await _project_section(client, sfx)
+    vtok = await _register(client, sfx, "viewer")
+    client.cookies.set("atelier_token", token)
+    await client.post(
+        f"/studios/{studio_id}/members",
+        json={"email": f"viewer-{sfx}@example.com", "role": "studio_viewer"},
+    )
+    client.cookies.set("atelier_token", vtok)
+    r = await client.delete(f"/projects/{pid}/sections/{section_id}/thread")
+    assert r.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_reset_thread_idempotent_204_when_missing(
+    client: AsyncClient,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _sid, pid, section_id, _ = await _project_section(client, sfx)
+    client.cookies.set("atelier_token", token)
+    r = await client.delete(f"/projects/{pid}/sections/{section_id}/thread")
+    assert r.status_code == 204

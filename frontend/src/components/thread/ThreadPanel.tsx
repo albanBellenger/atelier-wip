@@ -3,6 +3,7 @@ import type { ReactElement } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import {
   getPrivateThread,
+  resetPrivateThread,
   streamPrivateThreadReply,
   type PrivateThreadMessage,
 } from '../../services/api'
@@ -25,6 +26,16 @@ export function ThreadPanel(props: {
     queryKey: ['privateThread', projectId, sectionId],
     queryFn: () => getPrivateThread(projectId, sectionId),
     enabled: Boolean(projectId && sectionId),
+  })
+
+  const resetMut = useMutation({
+    meta: { skipGlobalToast: true },
+    mutationFn: () => resetPrivateThread(projectId, sectionId),
+    onSuccess: () => {
+      void qc.invalidateQueries({
+        queryKey: ['privateThread', projectId, sectionId],
+      })
+    },
   })
 
   useEffect(() => {
@@ -75,11 +86,21 @@ export function ThreadPanel(props: {
 
   return (
     <aside className="flex h-[min(70vh,560px)] flex-col rounded-xl border border-zinc-800 bg-zinc-900/60">
-      <div className="border-b border-zinc-800 px-3 py-2">
-        <h2 className="text-sm font-semibold text-zinc-200">Private thread</h2>
-        <p className="text-xs text-zinc-500">
-          RAG-backed assistant (streaming). Conflicts scanned after reply.
-        </p>
+      <div className="flex items-start justify-between gap-2 border-b border-zinc-800 px-3 py-2">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-zinc-200">Private thread</h2>
+          <p className="text-xs text-zinc-500">
+            RAG-backed assistant (streaming). Conflicts scanned after reply.
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={resetMut.isPending}
+          className="shrink-0 text-xs text-zinc-500 hover:text-zinc-300 disabled:opacity-50"
+          onClick={() => resetMut.mutate()}
+        >
+          New thread
+        </button>
       </div>
       <ContextTruncationBanner visible={contextTruncated} />
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-2 text-sm">

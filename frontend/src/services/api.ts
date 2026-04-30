@@ -943,6 +943,7 @@ export type WorkOrderStatus =
   | 'in_progress'
   | 'in_review'
   | 'done'
+  | 'archived'
 
 export interface WorkOrder {
   id: string
@@ -1134,6 +1135,16 @@ export async function getPrivateThread(
 ): Promise<PrivateThreadDetail> {
   return request<PrivateThreadDetail>(
     'GET',
+    `/projects/${projectId}/sections/${sectionId}/thread`,
+  )
+}
+
+export async function resetPrivateThread(
+  projectId: string,
+  sectionId: string,
+): Promise<void> {
+  return request<void>(
+    'DELETE',
     `/projects/${projectId}/sections/${sectionId}/thread`,
   )
 }

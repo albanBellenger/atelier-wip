@@ -536,7 +536,7 @@ class WorkOrderService:
             source_id=prerequisite_id,
             target_type="work_order",
             target_id=dependent_id,
-            edge_type="depends",
+            edge_type="depends_on",
         )
         await self.db.flush()
 
@@ -555,7 +555,7 @@ class WorkOrderService:
                 GraphEdge.source_id == prerequisite_id,
                 GraphEdge.target_type == "work_order",
                 GraphEdge.target_id == dependent_id,
-                GraphEdge.edge_type == "depends",
+                GraphEdge.edge_type == "depends_on",
             )
         )
         row = r.scalar_one_or_none()

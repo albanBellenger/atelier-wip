@@ -79,4 +79,4 @@ async def test_get_graph_dependency_edge(client: AsyncClient) -> None:
     assert "section" in types
     assert "work_order" in types
     edge_types = {e["edge_type"] for e in body["edges"]}
-    assert "depends" in edge_types
+    assert "depends_on" in edge_types

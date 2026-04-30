@@ -61,6 +61,7 @@ const STATUSES = [
   'in_progress',
   'in_review',
   'done',
+  'archived',
 ] as const
 
 const STATUS_LABEL: Record<string, string> = {
@@ -68,6 +69,7 @@ const STATUS_LABEL: Record<string, string> = {
   in_progress: 'In progress',
   in_review: 'In review',
   done: 'Done',
+  archived: 'Archived',
 }
 
 function DraggableCard(props: {
@@ -130,12 +132,21 @@ function DraggableCard(props: {
 function ReadOnlyWoCard(props: {
   wo: WorkOrder
   onOpen: () => void
+  deemphasized?: boolean
 }): ReactElement {
-  const { wo, onOpen } = props
+  const { wo, onOpen, deemphasized = false } = props
   return (
-    <div className="rounded-lg border border-zinc-700 bg-zinc-900/80 p-2 text-left text-sm shadow-sm">
+    <div
+      className={`rounded-lg border border-zinc-700 bg-zinc-900/80 p-2 text-left text-sm shadow-sm ${
+        deemphasized ? 'opacity-40' : ''
+      }`}
+    >
       <button type="button" className="w-full text-left" onClick={() => onOpen()}>
-        <span className="line-clamp-2 font-medium text-zinc-100">
+        <span
+          className={`line-clamp-2 font-medium text-zinc-100 ${
+            deemphasized ? 'line-through' : ''
+          }`}
+        >
           {wo.title}
         </span>
         {wo.phase && (
@@ -170,6 +181,21 @@ function StatusColumn(props: {
         isOver ? 'border-violet-500 ring-1 ring-violet-500/40' : 'border-zinc-800'
       }`}
     >
+      <h3 className="mb-2 shrink-0 px-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+        {title}
+      </h3>
+      <div className="flex flex-col gap-2">{children}</div>
+    </div>
+  )
+}
+
+function StaticStatusColumn(props: {
+  title: string
+  children: React.ReactNode
+}): ReactElement {
+  const { title, children } = props
+  return (
+    <div className="flex min-h-[200px] flex-1 flex-col rounded-xl border border-zinc-800 bg-zinc-900/40 p-2">
       <h3 className="mb-2 shrink-0 px-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">
         {title}
       </h3>
@@ -288,8 +314,9 @@ export function WorkOrdersPage(): ReactElement {
       m[s] = []
     }
     for (const w of orders) {
-      if (m[w.status]) {
-        m[w.status].push(w)
+      const bucket = m[w.status]
+      if (bucket) {
+        bucket.push(w)
       } else {
         m.backlog.push(w)
       }
@@ -328,6 +355,9 @@ export function WorkOrdersPage(): ReactElement {
     }
     const w = orders.find((o) => o.id === wid)
     if (!w || w.status === targetStatus) {
+      return
+    }
+    if (w.status === 'archived' || targetStatus === 'archived') {
       return
     }
     updateMut.mutate({ id: wid, body: { status: targetStatus } })
@@ -550,21 +580,37 @@ export function WorkOrdersPage(): ReactElement {
             >
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
                 <div className="flex min-w-0 flex-1 flex-wrap gap-2 lg:flex-nowrap">
-                  {STATUSES.map((st) => (
-                    <StatusColumn
-                      key={st}
-                      status={st}
-                      title={STATUS_LABEL[st] ?? st}
-                    >
-                      {(byStatus[st] ?? []).map((wo) => (
-                        <DraggableCard
-                          key={wo.id}
-                          wo={wo}
-                          onOpen={() => setSelectedId(wo.id)}
-                        />
-                      ))}
-                    </StatusColumn>
-                  ))}
+                  {STATUSES.map((st) =>
+                    st === 'archived' ? (
+                      <StaticStatusColumn
+                        key={st}
+                        title={STATUS_LABEL[st] ?? st}
+                      >
+                        {(byStatus[st] ?? []).map((wo) => (
+                          <ReadOnlyWoCard
+                            key={wo.id}
+                            wo={wo}
+                            deemphasized
+                            onOpen={() => setSelectedId(wo.id)}
+                          />
+                        ))}
+                      </StaticStatusColumn>
+                    ) : (
+                      <StatusColumn
+                        key={st}
+                        status={st}
+                        title={STATUS_LABEL[st] ?? st}
+                      >
+                        {(byStatus[st] ?? []).map((wo) => (
+                          <DraggableCard
+                            key={wo.id}
+                            wo={wo}
+                            onOpen={() => setSelectedId(wo.id)}
+                          />
+                        ))}
+                      </StatusColumn>
+                    ),
+                  )}
                 </div>
                 {detailPanel}
               </div>
@@ -579,21 +625,37 @@ export function WorkOrdersPage(): ReactElement {
           ) : (
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
               <div className="flex min-w-0 flex-1 flex-wrap gap-2 lg:flex-nowrap">
-                {STATUSES.map((st) => (
-                  <StatusColumn
-                    key={st}
-                    status={st}
-                    title={STATUS_LABEL[st] ?? st}
-                  >
-                    {(byStatus[st] ?? []).map((wo) => (
-                      <ReadOnlyWoCard
-                        key={wo.id}
-                        wo={wo}
-                        onOpen={() => setSelectedId(wo.id)}
-                      />
-                    ))}
-                  </StatusColumn>
-                ))}
+                {STATUSES.map((st) =>
+                  st === 'archived' ? (
+                    <StaticStatusColumn
+                      key={st}
+                      title={STATUS_LABEL[st] ?? st}
+                    >
+                      {(byStatus[st] ?? []).map((wo) => (
+                        <ReadOnlyWoCard
+                          key={wo.id}
+                          wo={wo}
+                          deemphasized
+                          onOpen={() => setSelectedId(wo.id)}
+                        />
+                      ))}
+                    </StaticStatusColumn>
+                  ) : (
+                    <StatusColumn
+                      key={st}
+                      status={st}
+                      title={STATUS_LABEL[st] ?? st}
+                    >
+                      {(byStatus[st] ?? []).map((wo) => (
+                        <ReadOnlyWoCard
+                          key={wo.id}
+                          wo={wo}
+                          onOpen={() => setSelectedId(wo.id)}
+                        />
+                      ))}
+                    </StatusColumn>
+                  ),
+                )}
               </div>
               {detailPanel}
             </div>
@@ -617,11 +679,17 @@ export function WorkOrdersPage(): ReactElement {
                   {orders.map((wo) => (
                     <tr
                       key={wo.id}
-                      className="cursor-pointer border-b border-zinc-800/80 hover:bg-zinc-900/50"
+                      className={`cursor-pointer border-b border-zinc-800/80 hover:bg-zinc-900/50 ${
+                        wo.status === 'archived' ? 'opacity-40' : ''
+                      }`}
                       onClick={() => setSelectedId(wo.id)}
                     >
                       <td className="p-3 font-medium text-zinc-100">
-                        {wo.title}
+                        {wo.status === 'archived' ? (
+                          <span className="line-through">{wo.title}</span>
+                        ) : (
+                          wo.title
+                        )}
                         {wo.is_stale && (
                           <span className="ml-2 text-xs text-amber-400">
                             (stale)
@@ -780,6 +848,7 @@ function DetailForm(props: {
 
   const [title, setTitle] = useState(detail.title)
   const [description, setDescription] = useState(detail.description)
+  const [status, setStatus] = useState(detail.status)
   const [phase, setPhase] = useState(detail.phase ?? '')
   const [phaseOrder, setPhaseOrder] = useState(
     detail.phase_order != null ? String(detail.phase_order) : '',
@@ -852,6 +921,21 @@ function DetailForm(props: {
         disabled={readOnly}
         onChange={(e) => setPhaseOrder(e.target.value)}
       />
+      <label className="block text-xs text-zinc-500">Status</label>
+      <select
+        className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+        value={status}
+        disabled={readOnly}
+        onChange={(e) => setStatus(e.target.value)}
+        aria-label="Work order status"
+      >
+        {STATUSES.map((s) => (
+          <option key={s} value={s}>
+            {STATUS_LABEL[s]}
+          </option>
+        ))}
+      </select>
+      <label className="block text-xs text-zinc-500">Assignee</label>
       <select
         className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
         value={assigneeId}
@@ -892,6 +976,7 @@ function DetailForm(props: {
             body: {
               title: title.trim(),
               description: description.trim(),
+              status: status.trim(),
               phase: phase.trim() || null,
               phase_order: (() => {
                 const t = phaseOrder.trim()

@@ -84,6 +84,22 @@ class PrivateThreadService:
         )
         return list(r.scalars().all())
 
+    async def reset_thread(
+        self, *, user_id: uuid.UUID, section_id: uuid.UUID
+    ) -> None:
+        """Remove the user's private thread for this section and all messages (idempotent)."""
+        r = await self.db.execute(
+            select(PrivateThread).where(
+                PrivateThread.user_id == user_id,
+                PrivateThread.section_id == section_id,
+            )
+        )
+        th = r.scalar_one_or_none()
+        if th is None:
+            return
+        await self.db.delete(th)
+        await self.db.flush()
+
     async def stream_assistant(
         self,
         *,

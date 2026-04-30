@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,6 +31,23 @@ def _ensure_project(pa: ProjectAccess, project_id: UUID) -> None:
             code="NOT_FOUND",
             message="Project not found.",
         )
+
+
+@router.delete("", status_code=204)
+async def reset_private_thread(
+    project_id: UUID,
+    section_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    pa: ProjectAccess = Depends(require_project_member),
+) -> Response:
+    _ensure_project(pa, project_id)
+    svc = PrivateThreadService(session)
+    await svc.require_section_in_project(project_id, section_id)
+    await svc.reset_thread(
+        user_id=pa.studio_access.user.id,
+        section_id=section_id,
+    )
+    return Response(status_code=204)
 
 
 @router.get("", response_model=PrivateThreadDetail)
