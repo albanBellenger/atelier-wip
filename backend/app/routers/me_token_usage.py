@@ -5,11 +5,13 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import Response
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import get_current_user
-from app.models import User
+from app.exceptions import ApiError
+from app.models import StudioMember, User
 from app.schemas.token_usage_report import (
     TokenUsageReportOut,
     TokenUsageRowOut,
@@ -38,6 +40,18 @@ async def me_token_usage(
     limit: int = Query(100, ge=1, le=5000),
     offset: int = Query(0, ge=0),
 ):
+    memberships = (
+        await session.execute(
+            select(StudioMember).where(StudioMember.user_id == user.id).limit(1)
+        )
+    ).scalar_one_or_none()
+    if memberships is None and not user.is_tool_admin:
+        raise ApiError(
+            status_code=403,
+            code="FORBIDDEN",
+            message="Viewer access does not include token usage.",
+        )
+
     svc = TokenUsageQueryService(session)
     csv_mode = _wants_csv(request)
     lim = 500_000 if csv_mode else limit

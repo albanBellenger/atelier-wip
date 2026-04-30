@@ -1,6 +1,15 @@
 import { useMutation } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import {
+  Bar,
+  BarChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
+
 import {
   type TokenUsageQueryParams,
   type TokenUsageReport,
@@ -16,6 +25,43 @@ import {
 
 type Mode = 'admin' | 'studio' | 'me'
 
+type Granularity = 'day' | 'week' | 'month'
+
+function utcWeekStartKey(d: Date): string {
+  const t = new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()),
+  )
+  const day = t.getUTCDay()
+  const diff = day === 0 ? -6 : 1 - day
+  t.setUTCDate(t.getUTCDate() + diff)
+  return t.toISOString().slice(0, 10)
+}
+
+function aggregateUsageByGranularity(
+  rows: TokenUsageRow[],
+  granularity: Granularity,
+): { label: string; tokens: number }[] {
+  const map = new Map<string, number>()
+  for (const r of rows) {
+    const d = new Date(r.created_at)
+    let key: string
+    if (granularity === 'day') {
+      key = d.toISOString().slice(0, 10)
+    } else if (granularity === 'week') {
+      key = utcWeekStartKey(d)
+    } else {
+      key = d.toISOString().slice(0, 7)
+    }
+    const v = r.input_tokens + r.output_tokens
+    map.set(key, (map.get(key) ?? 0) + v)
+  }
+  const keys = [...map.keys()].sort()
+  return keys.map((k) => ({
+    label: k,
+    tokens: map.get(k) ?? 0,
+  }))
+}
+
 export function TokenUsageReportPanel(props: {
   mode: Mode
   studioId?: string
@@ -30,6 +76,13 @@ export function TokenUsageReportPanel(props: {
   const [limit, setLimit] = useState(100)
   const [offset, setOffset] = useState(0)
   const [report, setReport] = useState<TokenUsageReport | null>(null)
+  const [chartGranularity, setChartGranularity] =
+    useState<Granularity>('day')
+
+  const chartData = useMemo(() => {
+    if (!report?.rows?.length) return []
+    return aggregateUsageByGranularity(report.rows, chartGranularity)
+  }, [report, chartGranularity])
 
   function buildParams(): TokenUsageQueryParams {
     const p: TokenUsageQueryParams = { limit, offset }
@@ -78,6 +131,84 @@ export function TokenUsageReportPanel(props: {
 
   return (
     <div className="space-y-6">
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+        {report ? (
+          <>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm font-medium text-zinc-300">
+                Usage trend (UTC)
+              </p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  data-testid="granularity-daily"
+                  className={`rounded px-3 py-1 text-xs ${
+                    chartGranularity === 'day'
+                      ? 'bg-violet-600 text-white'
+                      : 'border border-zinc-600 text-zinc-300 hover:bg-zinc-800'
+                  }`}
+                  onClick={() => setChartGranularity('day')}
+                >
+                  Daily
+                </button>
+                <button
+                  type="button"
+                  data-testid="granularity-weekly"
+                  className={`rounded px-3 py-1 text-xs ${
+                    chartGranularity === 'week'
+                      ? 'bg-violet-600 text-white'
+                      : 'border border-zinc-600 text-zinc-300 hover:bg-zinc-800'
+                  }`}
+                  onClick={() => setChartGranularity('week')}
+                >
+                  Weekly
+                </button>
+                <button
+                  type="button"
+                  data-testid="granularity-monthly"
+                  className={`rounded px-3 py-1 text-xs ${
+                    chartGranularity === 'month'
+                      ? 'bg-violet-600 text-white'
+                      : 'border border-zinc-600 text-zinc-300 hover:bg-zinc-800'
+                  }`}
+                  onClick={() => setChartGranularity('month')}
+                >
+                  Monthly
+                </button>
+              </div>
+            </div>
+            <div data-testid="usage-chart" className="w-full min-w-0 overflow-x-auto">
+              <ResponsiveContainer width={720} height={256}>
+                <BarChart data={chartData} margin={{ bottom: 8, left: 0 }}>
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fill: '#a1a1aa', fontSize: 10 }}
+                    interval={0}
+                    angle={-35}
+                    textAnchor="end"
+                    height={56}
+                  />
+                  <YAxis tick={{ fill: '#a1a1aa', fontSize: 10 }} width={44} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#18181b',
+                      border: '1px solid #3f3f46',
+                      borderRadius: '8px',
+                    }}
+                    labelStyle={{ color: '#e4e4e7' }}
+                  />
+                  <Bar dataKey="tokens" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-zinc-500">
+            Usage trend (UTC) — appears here above filters after you load data.
+          </p>
+        )}
+      </div>
+
       <div className="grid gap-4 rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 text-sm sm:grid-cols-2 lg:grid-cols-3">
         <label className="flex flex-col gap-1">
           <span className="text-xs text-zinc-500">Software ID</span>

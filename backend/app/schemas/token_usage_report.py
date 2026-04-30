@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TokenUsageRowOut(BaseModel):
@@ -26,7 +26,9 @@ class TokenUsageRowOut(BaseModel):
 class TokenUsageTotalsOut(BaseModel):
     input_tokens: int
     output_tokens: int
-    estimated_cost_usd: Decimal
+    estimated_cost_usd: Decimal = Field(
+        default_factory=lambda: Decimal("0"),
+    )
 
 
 class TokenUsageReportOut(BaseModel):

@@ -9,8 +9,9 @@ from app.database import get_db
 from app.deps import (
     SoftwareAccess,
     StudioAccess,
+    StudioSoftwareListAccess,
     get_software_in_studio,
-    get_studio_access,
+    get_studio_software_list_access,
     require_software_admin_in_studio,
     require_software_editor_in_studio,
     require_studio_admin,
@@ -25,9 +26,12 @@ router = APIRouter(prefix="/studios/{studio_id}/software", tags=["software"])
 @router.get("", response_model=list[SoftwareResponse])
 async def list_software(
     session: AsyncSession = Depends(get_db),
-    access: StudioAccess = Depends(get_studio_access),
+    list_access: StudioSoftwareListAccess = Depends(get_studio_software_list_access),
 ) -> list[SoftwareResponse]:
-    return await SoftwareService(session).list_software(access)
+    return await SoftwareService(session).list_software(
+        list_access.studio_access,
+        allowed_software_ids=list_access.allowed_software_ids,
+    )
 
 
 @router.post("", response_model=SoftwareResponse)

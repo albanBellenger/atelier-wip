@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from fastapi import Depends, Request
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -122,6 +122,14 @@ class StudioAccess:
         return self.membership.role in ("studio_admin", "studio_member")
 
 
+@dataclass(frozen=True)
+class StudioSoftwareListAccess:
+    """Listing software under GET /studios/{id}/software (members or cross-studio grantees)."""
+
+    studio_access: StudioAccess
+    allowed_software_ids: frozenset[UUID] | None
+
+
 async def resolve_studio_access(
     session: AsyncSession,
     user: User,
@@ -168,30 +176,29 @@ async def resolve_studio_access_for_software(
         if e.error_code != "NOT_STUDIO_MEMBER":
             raise
 
-    grants = (
-        await session.execute(
-            select(CrossStudioAccess).where(
-                CrossStudioAccess.target_software_id == software.id,
-                CrossStudioAccess.status == "approved",
-            )
+    result = await session.execute(
+        select(CrossStudioAccess)
+        .join(
+            StudioMember,
+            and_(
+                StudioMember.studio_id == CrossStudioAccess.requesting_studio_id,
+                StudioMember.user_id == user.id,
+            ),
         )
-    ).scalars().all()
-    for grant in grants:
-        m = (
-            await session.execute(
-                select(StudioMember).where(
-                    StudioMember.studio_id == grant.requesting_studio_id,
-                    StudioMember.user_id == user.id,
-                )
-            )
-        ).scalar_one_or_none()
-        if m is not None:
-            return StudioAccess(
-                user=user,
-                studio_id=studio_id,
-                membership=None,
-                cross_studio_grant=grant,
-            )
+        .where(
+            CrossStudioAccess.target_software_id == software.id,
+            CrossStudioAccess.status == "approved",
+        )
+        .limit(1)
+    )
+    grant = result.scalar_one_or_none()
+    if grant is not None:
+        return StudioAccess(
+            user=user,
+            studio_id=studio_id,
+            membership=None,
+            cross_studio_grant=grant,
+        )
     raise ApiError(
         status_code=403,
         code="NOT_STUDIO_MEMBER",
@@ -205,6 +212,94 @@ async def get_studio_access(
     user: User = Depends(get_current_user),
 ) -> StudioAccess:
     return await resolve_studio_access(session, user, studio_id)
+
+
+async def get_studio_software_list_access(
+    studio_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> StudioSoftwareListAccess:
+    """Allow studio members, tool admins, or cross-studio grantees (filtered software only)."""
+    studio = await session.get(Studio, studio_id)
+    if studio is None:
+        raise ApiError(
+            status_code=404,
+            code="NOT_FOUND",
+            message="Studio not found",
+        )
+    row = await session.execute(
+        select(StudioMember).where(
+            StudioMember.studio_id == studio_id,
+            StudioMember.user_id == user.id,
+        )
+    )
+    membership = row.scalar_one_or_none()
+    if membership is not None or user.is_tool_admin:
+        access = await resolve_studio_access(session, user, studio_id)
+        return StudioSoftwareListAccess(
+            studio_access=access,
+            allowed_software_ids=None,
+        )
+
+    id_result = await session.execute(
+        select(Software.id)
+        .join(
+            CrossStudioAccess,
+            CrossStudioAccess.target_software_id == Software.id,
+        )
+        .join(
+            StudioMember,
+            and_(
+                StudioMember.studio_id == CrossStudioAccess.requesting_studio_id,
+                StudioMember.user_id == user.id,
+            ),
+        )
+        .where(
+            Software.studio_id == studio_id,
+            CrossStudioAccess.status == "approved",
+        )
+        .distinct()
+    )
+    allowed_ids = frozenset(id_result.scalars().all())
+    if not allowed_ids:
+        raise ApiError(
+            status_code=403,
+            code="NOT_STUDIO_MEMBER",
+            message="Not a member of this studio",
+        )
+    grant = (
+        await session.execute(
+            select(CrossStudioAccess)
+            .join(
+                StudioMember,
+                and_(
+                    StudioMember.studio_id == CrossStudioAccess.requesting_studio_id,
+                    StudioMember.user_id == user.id,
+                ),
+            )
+            .where(
+                CrossStudioAccess.target_software_id.in_(allowed_ids),
+                CrossStudioAccess.status == "approved",
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if grant is None:
+        raise ApiError(
+            status_code=403,
+            code="NOT_STUDIO_MEMBER",
+            message="Not a member of this studio",
+        )
+    access = StudioAccess(
+        user=user,
+        studio_id=studio_id,
+        membership=None,
+        cross_studio_grant=grant,
+    )
+    return StudioSoftwareListAccess(
+        studio_access=access,
+        allowed_software_ids=allowed_ids,
+    )
 
 
 @dataclass(frozen=True)
@@ -421,6 +516,24 @@ async def get_project_access_artifact_download(
     return await fetch_project_access_for_artifact_download(
         session, user, project_id
     )
+
+
+async def require_outline_manager(
+    pa: ProjectAccess = Depends(get_project_access),
+) -> ProjectAccess:
+    if pa.studio_access.cross_studio_grant is not None:
+        raise ApiError(
+            status_code=403,
+            code="FORBIDDEN",
+            message="Cross-studio access cannot manage the project outline.",
+        )
+    if not pa.studio_access.is_studio_admin:
+        raise ApiError(
+            status_code=403,
+            code="FORBIDDEN",
+            message="Studio admin access required",
+        )
+    return pa
 
 
 async def require_project_member(

@@ -199,3 +199,229 @@ async def test_cross_studio_external_editor_patch_not_publish(
 
     pub = await client.post(f"/projects/{proj_id}/publish", json={})
     assert pub.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_cross_studio_viewer_studio_software_list_filtered(
+    client: AsyncClient,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token_ta = await _register(client, sfx, "tasw")
+    client.cookies.set("atelier_token", token_ta)
+    studio_a = (
+        await client.post("/studios", json={"name": f"LASW{sfx}", "description": ""})
+    ).json()["id"]
+    sw_granted = (
+        await client.post(
+            f"/studios/{studio_a}/software",
+            json={"name": f"GW{sfx}", "description": ""},
+        )
+    ).json()["id"]
+    sw_other = (
+        await client.post(
+            f"/studios/{studio_a}/software",
+            json={"name": f"OW{sfx}", "description": ""},
+        )
+    ).json()["id"]
+
+    token_b = await _register(client, sfx, "adminSw")
+    client.cookies.set("atelier_token", token_b)
+    studio_b = (
+        await client.post("/studios", json={"name": f"LBSW{sfx}", "description": ""})
+    ).json()["id"]
+
+    token_m = await _register(client, sfx, "viewerSw")
+    client.cookies.set("atelier_token", token_b)
+    inv = await client.post(
+        f"/studios/{studio_b}/members",
+        json={"email": f"viewerSw-{sfx}@example.com", "role": "studio_member"},
+    )
+    assert inv.status_code == 200
+
+    req = await client.post(
+        f"/studios/{studio_b}/cross-studio-request",
+        json={"target_software_id": sw_granted, "requested_access_level": "viewer"},
+    )
+    assert req.status_code == 200
+    grant_id = req.json()["id"]
+
+    client.cookies.set("atelier_token", token_ta)
+    apr = await client.put(
+        f"/admin/cross-studio/{grant_id}",
+        json={"decision": "approve", "access_level": "viewer"},
+    )
+    assert apr.status_code == 200
+
+    client.cookies.set("atelier_token", token_m)
+    lst = await client.get(f"/studios/{studio_a}/software")
+    assert lst.status_code == 200
+    ids = {item["id"] for item in lst.json()}
+    assert sw_granted in ids
+    assert sw_other not in ids
+
+    client.cookies.set("atelier_token", token_ta)
+    studio_other = (
+        await client.post("/studios", json={"name": f"NOGR{sfx}", "description": ""})
+    ).json()["id"]
+    client.cookies.set("atelier_token", token_m)
+    denied = await client.get(f"/studios/{studio_other}/software")
+    assert denied.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_cross_studio_external_editor_outline_forbidden(
+    client: AsyncClient,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token_ta = await _register(client, sfx, "taol")
+    client.cookies.set("atelier_token", token_ta)
+    studio_a = (
+        await client.post("/studios", json={"name": f"AOL{sfx}", "description": ""})
+    ).json()["id"]
+    sw_id = (
+        await client.post(
+            f"/studios/{studio_a}/software",
+            json={"name": f"SWOL{sfx}", "description": ""},
+        )
+    ).json()["id"]
+    proj_id = (
+        await client.post(
+            f"/software/{sw_id}/projects",
+            json={"name": f"POL{sfx}", "description": ""},
+        )
+    ).json()["id"]
+    sec_id = (
+        await client.post(
+            f"/projects/{proj_id}/sections",
+            json={"title": "Keep"},
+        )
+    ).json()["id"]
+    sec_extra = (
+        await client.post(
+            f"/projects/{proj_id}/sections",
+            json={"title": "RemoveMe"},
+        )
+    ).json()["id"]
+
+    token_b = await _register(client, sfx, "adminbol")
+    client.cookies.set("atelier_token", token_b)
+    studio_b = (
+        await client.post("/studios", json={"name": f"BOL{sfx}", "description": ""})
+    ).json()["id"]
+
+    token_m = await _register(client, sfx, "exted")
+    client.cookies.set("atelier_token", token_b)
+    inv = await client.post(
+        f"/studios/{studio_b}/members",
+        json={"email": f"exted-{sfx}@example.com", "role": "studio_member"},
+    )
+    assert inv.status_code == 200
+
+    req = await client.post(
+        f"/studios/{studio_b}/cross-studio-request",
+        json={
+            "target_software_id": sw_id,
+            "requested_access_level": "external_editor",
+        },
+    )
+    assert req.status_code == 200
+    grant_id = req.json()["id"]
+
+    client.cookies.set("atelier_token", token_ta)
+    apr = await client.put(
+        f"/admin/cross-studio/{grant_id}",
+        json={"decision": "approve", "access_level": "external_editor"},
+    )
+    assert apr.status_code == 200
+
+    client.cookies.set("atelier_token", token_m)
+    del_sec = await client.delete(f"/projects/{proj_id}/sections/{sec_extra}")
+    assert del_sec.status_code == 403
+
+    sec_list = await client.get(f"/projects/{proj_id}/sections")
+    assert sec_list.status_code == 200
+    order_ids = [s["id"] for s in sec_list.json()]
+    ro = await client.post(
+        f"/projects/{proj_id}/sections/reorder",
+        json={"section_ids": order_ids},
+    )
+    assert ro.status_code == 403
+
+    token_v = await _register(client, sfx, "viewol")
+    client.cookies.set("atelier_token", token_b)
+    inv_v = await client.post(
+        f"/studios/{studio_b}/members",
+        json={"email": f"viewol-{sfx}@example.com", "role": "studio_member"},
+    )
+    assert inv_v.status_code == 200
+    req_v = await client.post(
+        f"/studios/{studio_b}/cross-studio-request",
+        json={"target_software_id": sw_id, "requested_access_level": "viewer"},
+    )
+    assert req_v.status_code == 200
+    gid_v = req_v.json()["id"]
+    client.cookies.set("atelier_token", token_ta)
+    await client.put(
+        f"/admin/cross-studio/{gid_v}",
+        json={"decision": "approve", "access_level": "viewer"},
+    )
+
+    client.cookies.set("atelier_token", token_v)
+    vdel = await client.delete(f"/projects/{proj_id}/sections/{sec_id}")
+    assert vdel.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_me_token_usage_requires_home_studio_membership(
+    client: AsyncClient,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    tool_admin_token = await _register(client, sfx, "firstuser")
+    lonely = await _register(client, sfx, "lonely")
+    client.cookies.set("atelier_token", lonely)
+    denied = await client.get("/me/token-usage")
+    assert denied.status_code == 403
+
+    token_ta = await _register(client, sfx, "tametu")
+    client.cookies.set("atelier_token", token_ta)
+    studio_a = (
+        await client.post("/studios", json={"name": f"AMET{sfx}", "description": ""})
+    ).json()["id"]
+    sw_id = (
+        await client.post(
+            f"/studios/{studio_a}/software",
+            json={"name": f"SWMET{sfx}", "description": ""},
+        )
+    ).json()["id"]
+
+    token_b = await _register(client, sfx, "adminmet")
+    client.cookies.set("atelier_token", token_b)
+    studio_b = (
+        await client.post("/studios", json={"name": f"BMET{sfx}", "description": ""})
+    ).json()["id"]
+
+    token_m = await _register(client, sfx, "membermet")
+    client.cookies.set("atelier_token", token_b)
+    inv = await client.post(
+        f"/studios/{studio_b}/members",
+        json={"email": f"membermet-{sfx}@example.com", "role": "studio_member"},
+    )
+    assert inv.status_code == 200
+
+    req = await client.post(
+        f"/studios/{studio_b}/cross-studio-request",
+        json={"target_software_id": sw_id, "requested_access_level": "viewer"},
+    )
+    assert req.status_code == 200
+    grant_id = req.json()["id"]
+
+    client.cookies.set("atelier_token", tool_admin_token)
+    apr = await client.put(
+        f"/admin/cross-studio/{grant_id}",
+        json={"decision": "approve", "access_level": "viewer"},
+    )
+    assert apr.status_code == 200
+
+    client.cookies.set("atelier_token", token_m)
+    ok = await client.get("/me/token-usage")
+    assert ok.status_code == 200

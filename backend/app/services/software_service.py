@@ -39,7 +39,12 @@ class SoftwareService:
             updated_at=s.updated_at,
         )
 
-    async def list_software(self, access: StudioAccess) -> list[SoftwareResponse]:
+    async def list_software(
+        self,
+        access: StudioAccess,
+        *,
+        allowed_software_ids: frozenset[uuid.UUID] | None = None,
+    ) -> list[SoftwareResponse]:
         q = (
             select(
                 Software.id,
@@ -57,6 +62,8 @@ class SoftwareService:
             .where(Software.studio_id == access.studio_id)
             .order_by(Software.name)
         )
+        if allowed_software_ids is not None:
+            q = q.where(Software.id.in_(allowed_software_ids))
         rows = (await self.db.execute(q)).all()
         return [
             SoftwareResponse(

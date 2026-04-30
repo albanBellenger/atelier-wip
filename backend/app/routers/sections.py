@@ -9,8 +9,8 @@ from app.database import get_db
 from app.deps import (
     ProjectAccess,
     get_project_access,
+    require_outline_manager,
     require_project_member,
-    require_project_studio_admin,
 )
 from app.schemas.section import (
     SectionCreate,
@@ -37,7 +37,7 @@ async def create_section(
     project_id: UUID,
     body: SectionCreate,
     session: AsyncSession = Depends(get_db),
-    _pa=Depends(require_project_studio_admin),
+    _pa=Depends(require_outline_manager),
 ) -> SectionResponse:
     return await SectionService(session).create_section(project_id, body)
 
@@ -47,7 +47,7 @@ async def reorder_sections(
     project_id: UUID,
     body: SectionReorder,
     session: AsyncSession = Depends(get_db),
-    _pa=Depends(require_project_studio_admin),
+    _pa=Depends(require_outline_manager),
 ) -> list[SectionResponse]:
     return await SectionService(session).reorder_sections(
         project_id, body.section_ids
@@ -85,7 +85,7 @@ async def delete_section(
     project_id: UUID,
     section_id: UUID,
     session: AsyncSession = Depends(get_db),
-    pa: ProjectAccess = Depends(require_project_studio_admin),
+    pa: ProjectAccess = Depends(require_outline_manager),
 ) -> Response:
     await SectionService(session).delete_section(
         project_id,

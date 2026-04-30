@@ -95,7 +95,11 @@ class TokenUsageQueryService:
         tin = int(row[0] or 0)
         tout = int(row[1] or 0)
         cost_raw = row[2]
-        cost = Decimal(str(cost_raw)) if cost_raw is not None else Decimal("0")
+        cost: Decimal
+        if cost_raw is None:
+            cost = Decimal("0")
+        else:
+            cost = Decimal(str(cost_raw))
         return tin, tout, cost
 
     async def list_rows(

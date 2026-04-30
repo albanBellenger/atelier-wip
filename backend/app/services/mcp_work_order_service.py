@@ -26,17 +26,31 @@ class McpWorkOrderService:
     ) -> WorkOrder:
         wo = await self.db.get(WorkOrder, work_order_id)
         if wo is None:
-            raise ApiError(404, "NOT_FOUND", "Work order not found")
+            raise ApiError(
+                status_code=404, code="NOT_FOUND", message="Work order not found"
+            )
         pr = await self.db.get(Project, wo.project_id)
         if pr is None:
-            raise ApiError(404, "NOT_FOUND", "Project not found")
+            raise ApiError(
+                status_code=404, code="NOT_FOUND", message="Project not found"
+            )
         sw = await self.db.get(Software, pr.software_id)
         if sw is None or sw.studio_id != studio_id:
-            raise ApiError(403, "FORBIDDEN", "Work order not in this studio")
+            raise ApiError(
+                status_code=403,
+                code="FORBIDDEN",
+                message="Work order not in this studio",
+            )
         return wo
 
     async def list_for_studio(
-        self, studio_id: uuid.UUID, *, project_id: uuid.UUID | None
+        self,
+        studio_id: uuid.UUID,
+        *,
+        project_id: uuid.UUID | None = None,
+        status: str | None = None,
+        assignee_id: uuid.UUID | None = None,
+        phase: str | None = None,
     ) -> list[dict[str, Any]]:
         q = (
             select(WorkOrder)
@@ -48,7 +62,46 @@ class McpWorkOrderService:
         )
         if project_id is not None:
             q = q.where(WorkOrder.project_id == project_id)
+        if status is not None:
+            q = q.where(WorkOrder.status == status)
+        if assignee_id is not None:
+            q = q.where(WorkOrder.assignee_id == assignee_id)
+        if phase is not None:
+            q = q.where(WorkOrder.phase == phase)
         rows = list((await self.db.execute(q)).scalars().unique().all())
+
+        sw_id: uuid.UUID | None = None
+        proj_for_ctx: uuid.UUID | None = None
+        if rows:
+            first_pr = await self.db.get(Project, rows[0].project_id)
+            if first_pr is not None:
+                sw_chk = await self.db.get(Software, first_pr.software_id)
+                if sw_chk is not None and sw_chk.studio_id == studio_id:
+                    sw_id = first_pr.software_id
+                    proj_for_ctx = first_pr.id
+        elif project_id is not None:
+            pr_only = await self.db.get(Project, project_id)
+            if pr_only is not None:
+                sw_chk = await self.db.get(Software, pr_only.software_id)
+                if sw_chk is not None and sw_chk.studio_id == studio_id:
+                    sw_id = pr_only.software_id
+                    proj_for_ctx = project_id
+
+        ctx = TokenContext(
+            studio_id=studio_id,
+            software_id=sw_id,
+            project_id=proj_for_ctx,
+            user_id=None,
+        )
+        await record_usage(
+            self.db,
+            ctx,
+            call_type="mcp",
+            model="mcp_list_work_orders",
+            input_tokens=0,
+            output_tokens=0,
+        )
+
         return [
             {
                 "id": str(w.id),
@@ -65,9 +118,15 @@ class McpWorkOrderService:
     ) -> dict[str, Any]:
         wo = await self._ensure_wo_in_studio(studio_id, work_order_id)
         pr = await self.db.get(Project, wo.project_id)
-        assert pr is not None
+        if pr is None:
+            raise ApiError(
+                status_code=404, code="NOT_FOUND", message="Project not found"
+            )
         sw = await self.db.get(Software, pr.software_id)
-        assert sw is not None
+        if sw is None:
+            raise ApiError(
+                status_code=404, code="NOT_FOUND", message="Software not found"
+            )
 
         ctx = TokenContext(
             studio_id=studio_id,

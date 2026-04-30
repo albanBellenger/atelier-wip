@@ -28,25 +28,20 @@ class McpNoteCreate(BaseModel):
 @router.get("/work-orders")
 async def mcp_list_work_orders(
     project_id: UUID | None = Query(None),
+    status: str | None = Query(None),
+    assignee_id: UUID | None = Query(None),
+    phase: str | None = Query(None),
     session: AsyncSession = Depends(get_db),
     auth: McpAuth = Depends(require_mcp_api_key),
 ):
     svc = McpWorkOrderService(session)
-    items = await svc.list_for_studio(auth.studio_id, project_id=project_id)
-    session.add(
-        TokenUsage(
-            studio_id=auth.studio_id,
-            software_id=None,
-            project_id=project_id,
-            user_id=None,
-            call_type="mcp",
-            model="mcp_list_work_orders",
-            input_tokens=0,
-            output_tokens=0,
-            estimated_cost_usd=None,
-        )
+    items = await svc.list_for_studio(
+        auth.studio_id,
+        project_id=project_id,
+        status=status,
+        assignee_id=assignee_id,
+        phase=phase,
     )
-    await session.flush()
     return {"work_orders": items}
 
 
@@ -71,7 +66,10 @@ async def mcp_patch_work_order(
     svc = McpWorkOrderService(session)
     wo = await svc._ensure_wo_in_studio(auth.studio_id, work_order_id)
     pr = await session.get(Project, wo.project_id)
-    assert pr is not None
+    if pr is None:
+        raise ApiError(
+            status_code=404, code="NOT_FOUND", message="Project not found"
+        )
     st = body.status.strip().lower()
     if st not in VALID_STATUSES:
         raise ApiError(
@@ -107,7 +105,10 @@ async def mcp_post_note(
     svc = McpWorkOrderService(session)
     wo = await svc._ensure_wo_in_studio(auth.studio_id, work_order_id)
     pr = await session.get(Project, wo.project_id)
-    assert pr is not None
+    if pr is None:
+        raise ApiError(
+            status_code=404, code="NOT_FOUND", message="Project not found"
+        )
     note = WorkOrderNote(
         id=uuid.uuid4(),
         work_order_id=wo.id,
