@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 from httpx import AsyncClient
 
+from app.database import engine
 from app.main import app
 from tests.integration.test_work_orders import _studio_project_with_sections
 
@@ -55,59 +56,69 @@ async def test_project_chat_websocket_persists_messages() -> None:
         yield "Hello"
         yield " world"
 
-    with TestClient(app) as tc:
-        tc.post(
-            "/auth/register",
-            json={
-                "email": f"ws-{sfx}@example.com",
-                "password": "securepass123",
-                "display_name": "wsuser",
-            },
-        )
-        tok = tc.cookies.get("atelier_token")
-        assert tok
-        cr = tc.post("/studios", json={"name": f"Ws{sfx}", "description": "d"})
-        assert cr.status_code == 200
-        studio_id = cr.json()["id"]
-        sw = tc.post(
-            f"/studios/{studio_id}/software",
-            json={"name": "SW", "description": None},
-        )
-        assert sw.status_code == 200
-        software_id = sw.json()["id"]
-        pr = tc.post(
-            f"/software/{software_id}/projects",
-            json={"name": "Pchat", "description": None},
-        )
-        assert pr.status_code == 200
-        local_pid = pr.json()["id"]
+    # TestClient runs the ASGI app on a worker thread with its own event loop. Other
+    # integration tests use httpx.AsyncClient on pytest's loop; background tasks
+    # (embedding/drift) use the global engine on that same loop. asyncpg connections
+    # are loop-bound — reusing the shared pool across both loops causes
+    # "Future ... attached to a different loop". Reset the pool around TestClient.
+    await engine.dispose()
 
-        with (
-            patch(
-                "app.services.llm_service.LLMService.chat_stream",
-                fake_stream,
-            ),
-            patch(
-                "app.services.llm_service.LLMService.ensure_openai_llm_ready",
-                new_callable=AsyncMock,
-            ),
-        ):
-            with tc.websocket_connect(
-                f"/ws/projects/{local_pid}/chat?token={tok}"
-            ) as ws:
-                ws.send_json({"type": "user_message", "content": "Say hi"})
-                seen_done = False
-                for _ in range(50):
-                    raw = ws.receive_text()
-                    msg = json.loads(raw)
-                    if msg.get("type") == "assistant_done":
-                        seen_done = True
-                        assert "Hello world" in (msg.get("content") or "")
-                        break
-                assert seen_done
+    try:
+        with TestClient(app) as tc:
+            tc.post(
+                "/auth/register",
+                json={
+                    "email": f"ws-{sfx}@example.com",
+                    "password": "securepass123",
+                    "display_name": "wsuser",
+                },
+            )
+            tok = tc.cookies.get("atelier_token")
+            assert tok
+            cr = tc.post("/studios", json={"name": f"Ws{sfx}", "description": "d"})
+            assert cr.status_code == 200
+            studio_id = cr.json()["id"]
+            sw = tc.post(
+                f"/studios/{studio_id}/software",
+                json={"name": "SW", "description": None},
+            )
+            assert sw.status_code == 200
+            software_id = sw.json()["id"]
+            pr = tc.post(
+                f"/software/{software_id}/projects",
+                json={"name": "Pchat", "description": None},
+            )
+            assert pr.status_code == 200
+            local_pid = pr.json()["id"]
 
-        hist = tc.get(f"/projects/{local_pid}/chat")
-        assert hist.status_code == 200
-        messages = hist.json()["messages"]
-        roles = [m["role"] for m in messages]
-        assert "user" in roles and roles.count("assistant") >= 1
+            with (
+                patch(
+                    "app.services.llm_service.LLMService.chat_stream",
+                    fake_stream,
+                ),
+                patch(
+                    "app.services.llm_service.LLMService.ensure_openai_llm_ready",
+                    new_callable=AsyncMock,
+                ),
+            ):
+                with tc.websocket_connect(
+                    f"/ws/projects/{local_pid}/chat?token={tok}"
+                ) as ws:
+                    ws.send_json({"type": "user_message", "content": "Say hi"})
+                    seen_done = False
+                    for _ in range(50):
+                        raw = ws.receive_text()
+                        msg = json.loads(raw)
+                        if msg.get("type") == "assistant_done":
+                            seen_done = True
+                            assert "Hello world" in (msg.get("content") or "")
+                            break
+                    assert seen_done
+
+            hist = tc.get(f"/projects/{local_pid}/chat")
+            assert hist.status_code == 200
+            messages = hist.json()["messages"]
+            roles = [m["role"] for m in messages]
+            assert "user" in roles and roles.count("assistant") >= 1
+    finally:
+        await engine.dispose()
