@@ -838,7 +838,9 @@ async def check_work_order_drift(work_order_id: UUID):
 ### Private Thread (SSE)
 ```
 POST /projects/{pid}/sections/{sid}/thread/messages
-  JSON: { content, current_section_plaintext?, include_git_history? }
+  JSON: { content, current_section_plaintext?, include_git_history?,
+          selection_from?, selection_to?, selected_plaintext?,
+          include_selection_in_context?, thread_intent? }
         │
         ▼
 RAGService.build_context(query, project_id, section_id,
@@ -848,12 +850,16 @@ RAGService.build_context(query, project_id, section_id,
 LLMService.chat_stream() + TokenTracker
         │
    text/event-stream (type: token — main reply, then optional token chunks for
-   "Conflicts and gaps" appendix; type: meta — findings[], conflicts[], context_truncated)
+   "Conflicts and gaps" appendix; type: meta — findings[], conflicts[],
+   context_truncated, patch_proposal?)
         │
         ▼
 ThreadPanel.tsx — useStream() → streamPrivateThreadReply → privateThreadSse.consumePrivateThreadSseBody
-→ tokens appended live to assistant bubble; persisted assistant message includes appendix
+→ tokens appended live to assistant bubble; persisted assistant message includes appendix;
+  patch_proposal (if any) is shown with preview; Apply writes to Yjs only after user confirmation
 ```
+
+`thread_intent` defaults to `ask` (chat only). For `append` | `replace_selection` | `edit`, the server runs an additional structured LLM call after the main reply and attaches the result as `patch_proposal` on the final `meta` event. Selection bounds are validated against the same plaintext snapshot used for RAG when provided. `replace_selection` requires `current_section_plaintext` and selection offsets matching that snapshot.
 
 ### Project Chat (WebSocket broadcast)
 ```
@@ -996,7 +1002,7 @@ ENCRYPTION_KEY=changeme-32-byte-fernet-key
 ### Slice 6 — LLM & RAG
 - LLMService + TokenTracker (every call recorded)
 - RAGService (smart context assembly, pgvector search; optional live `current_section_plaintext` override; optional GitLab commit list when `include_git_history` is true)
-- Private thread endpoints with SSE streaming; post-reply structured scan for conflicts and gaps (appended to stored assistant content and streamed as trailing tokens)
+- Private thread endpoints with SSE streaming; post-reply structured scan for conflicts and gaps (appended to stored assistant content and streamed as trailing tokens); optional selection-in-context and `thread_intent` with structured `patch_proposal` on `meta` (confirm-before-apply in ThreadPanel)
 - ThreadPanel sidebar (`useStream` hook + shared SSE parser in `privateThreadSse.ts`)
 
 ### Slice 7 — Work Orders

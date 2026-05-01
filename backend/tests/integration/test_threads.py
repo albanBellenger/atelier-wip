@@ -131,6 +131,7 @@ async def test_stream_sse_envelope_format(
     assert meta[0].get("findings") == []
     assert "context_truncated" in meta[0]
     assert meta[0].get("context_truncated") is False
+    assert meta[0].get("patch_proposal") is None
     assert _last_nonempty_line(body) == "data: [DONE]"
 
 
@@ -553,3 +554,138 @@ async def test_reset_thread_idempotent_204_when_missing(
     client.cookies.set("atelier_token", token)
     r = await client.delete(f"/projects/{pid}/sections/{section_id}/thread")
     assert r.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_replace_selection_422_without_plaintext_override(
+    client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _sid, pid, section_id, email = await _project_section(client, sfx)
+    await _promote_tool_admin(db_session, email)
+    client.cookies.set("atelier_token", token)
+    await client.put(
+        "/admin/config",
+        json={
+            "llm_provider": "openai",
+            "llm_model": "gpt-4o-mini",
+            "llm_api_key": "sk-test",
+        },
+    )
+
+    async def fake_rag(self, *a, **k):
+        return RAGContext(text="ctx", truncated=False)
+
+    monkeypatch.setattr("app.services.rag_service.RAGService.build_context", fake_rag)
+
+    patch_r = await client.patch(
+        f"/projects/{pid}/sections/{section_id}",
+        json={"content": "abcd"},
+    )
+    assert patch_r.status_code == 200
+
+    r = await client.post(
+        f"/projects/{pid}/sections/{section_id}/thread/messages",
+        json={
+            "content": "replace foo",
+            "thread_intent": "replace_selection",
+            "selection_from": 0,
+            "selection_to": 1,
+            "selected_plaintext": "a",
+        },
+    )
+    assert r.status_code == 422, r.text
+
+
+@pytest.mark.asyncio
+async def test_replace_selection_422_without_selection_bounds(
+    client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _sid, pid, section_id, email = await _project_section(client, sfx)
+    await _promote_tool_admin(db_session, email)
+    client.cookies.set("atelier_token", token)
+    await client.put(
+        "/admin/config",
+        json={
+            "llm_provider": "openai",
+            "llm_model": "gpt-4o-mini",
+            "llm_api_key": "sk-test",
+        },
+    )
+
+    async def fake_rag(self, *a, **k):
+        return RAGContext(text="ctx", truncated=False)
+
+    monkeypatch.setattr("app.services.rag_service.RAGService.build_context", fake_rag)
+
+    r = await client.post(
+        f"/projects/{pid}/sections/{section_id}/thread/messages",
+        json={
+            "content": "replace foo",
+            "thread_intent": "replace_selection",
+            "current_section_plaintext": "hello",
+        },
+    )
+    assert r.status_code == 422, r.text
+
+
+@pytest.mark.asyncio
+async def test_stream_meta_patch_proposal_append(
+    client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _sid, pid, section_id, email = await _project_section(client, sfx)
+    await _promote_tool_admin(db_session, email)
+    client.cookies.set("atelier_token", token)
+    await client.put(
+        "/admin/config",
+        json={
+            "llm_provider": "openai",
+            "llm_model": "gpt-4o-mini",
+            "llm_api_key": "sk-test",
+        },
+    )
+
+    async def fake_rag(self, *a, **k):
+        return RAGContext(text="ctx", truncated=False)
+
+    async def fake_stream(self, *a, **k) -> AsyncIterator[str]:
+        yield "done"
+
+    async def fake_structured(self, *a, **k) -> dict[str, object]:
+        ct = k.get("call_type")
+        if ct == "thread_conflict_scan":
+            return {"findings": []}
+        if ct == "thread_patch_append":
+            return {"markdown_to_append": "\n## New heading\n"}
+        return {}
+
+    monkeypatch.setattr("app.services.rag_service.RAGService.build_context", fake_rag)
+    monkeypatch.setattr("app.services.llm_service.LLMService.chat_stream", fake_stream)
+    monkeypatch.setattr(
+        "app.services.llm_service.LLMService.chat_structured", fake_structured
+    )
+
+    r = await client.post(
+        f"/projects/{pid}/sections/{section_id}/thread/messages",
+        json={
+            "content": "add a heading",
+            "thread_intent": "append",
+            "current_section_plaintext": "# Title\n",
+        },
+    )
+    assert r.status_code == 200, r.text
+    meta = None
+    for line in r.text.splitlines():
+        if line.startswith("data: "):
+            p = line[6:].strip()
+            if p.startswith("{"):
+                j = json.loads(p)
+                if j.get("type") == "meta":
+                    meta = j
+    assert meta is not None
+    pp = meta.get("patch_proposal")
+    assert isinstance(pp, dict)
+    assert pp.get("intent") == "append"
+    assert "markdown_to_append" in pp

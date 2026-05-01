@@ -201,7 +201,9 @@ A Project is a scoped workstream within a Software — e.g. "v2.0 Redesign", "Pa
 - Not visible to other participants
 - LLM helps write, refine, and improve section content
 - LLM has access to the full smart context (Software Definition, project outline, current section, relevant other sections, relevant artifact chunks)
+- Optional **editor selection** may be sent with each message (offsets + excerpt): when enabled, it is injected into context as a short “selected excerpt” block so the model can answer in Cursor-like selection scope
 - LLM automatically flags conflicts and gaps inline at the end of every response
+- Optional **thread intent** (`ask`, `append`, `replace_selection`, `edit`): after the streamed reply, the server may return a structured **`patch_proposal`** in the stream metadata; the client shows a preview and the user must **confirm (Apply)** before any change is written to the collaborative editor (no silent auto-apply)
 - Members can start a new thread (clear history) at any time
 - Responses stream token by token
 
