@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
 from app.models import Artifact, ArtifactChunk, Project, Section, SectionChunk, Software
+from app.schemas.context_preview import ContextBlockOut, ContextPreviewOut
 from app.schemas.token_context import TokenContext
 from app.security.field_encryption import decrypt_secret, fernet_configured
 from app.services.embedding_service import EmbeddingService
@@ -39,6 +40,23 @@ SOFTWARE_DEF_SUMMARY_SCHEMA: dict[str, Any] = {
 class RAGContext:
     text: str
     truncated: bool  # True when mandatory block exceeded the budget and was adjusted
+
+
+@dataclass(frozen=True)
+class _RAGAssembly:
+    """Intermediate result shared by build_context and build_context_with_blocks."""
+
+    parts: list[str]
+    truncated_early: bool
+    mandatory_truncated: bool
+    chunks_meta: list[tuple[float, str, str]]
+    token_budget: int
+    budget_chars: int
+    def_block: str
+    rag_extra: list[str]
+    outline_plain: str
+    outline_trimmed: bool
+    current_section_id: uuid.UUID | None
 
 
 def _unified_chunk_fill(
@@ -167,7 +185,7 @@ class RAGService:
             block = block[: max(0, max_chars - 4)] + "\n…\n"
         return block
 
-    async def build_context(
+    async def _assemble_rag_parts(
         self,
         query: str,
         project_id: uuid.UUID,
@@ -176,8 +194,7 @@ class RAGService:
         token_budget: int = 6000,
         current_section_plaintext_override: str | None = None,
         include_git_history: bool = False,
-    ) -> RAGContext:
-        """Assemble labelled context string within approximate token budget."""
+    ) -> _RAGAssembly:
         project = await self.db.get(Project, project_id)
         if project is None:
             raise ApiError(
@@ -232,7 +249,9 @@ class RAGService:
         def_section = "## Software definition\n" + def_block
         outline_section = "## Project outline\n" + outline
 
-        # Project-wide chat (Slice 10): no single "current section" — outline + RAG only.
+        outline_trimmed = False
+        mandatory_truncated = False
+
         if current_section_id is None:
             parts = [def_section, outline_section]
             context_was_truncated = False
@@ -243,15 +262,17 @@ class RAGService:
                     "\n…" if allowed_outline < len(outline) else ""
                 )
                 context_was_truncated = True
+                outline_trimmed = allowed_outline < len(outline)
         else:
             current_header = "## Current section\n"
-            parts, context_was_truncated = _mandatory_parts_with_overflow(
+            parts, mandatory_truncated = _mandatory_parts_with_overflow(
                 def_section,
                 outline_section,
                 current_header,
                 current_body,
                 budget_chars,
             )
+            context_was_truncated = mandatory_truncated
 
         if include_git_history:
             remaining = budget_chars - sum(len(p) for p in parts)
@@ -313,9 +334,148 @@ class RAGService:
         if rag_extra:
             parts.append("## Retrieved chunks\n" + "\n".join(rag_extra))
 
-        out = "\n\n".join(parts)
-        if len(out) > budget_chars:
+        return _RAGAssembly(
+            parts=parts,
+            truncated_early=context_was_truncated,
+            mandatory_truncated=mandatory_truncated,
+            chunks_meta=chunks_meta,
+            token_budget=token_budget,
+            budget_chars=budget_chars,
+            def_block=def_block,
+            rag_extra=rag_extra,
+            outline_plain=outline,
+            outline_trimmed=outline_trimmed,
+            current_section_id=current_section_id,
+        )
+
+    @staticmethod
+    def _approx_tokens(text: str) -> int:
+        return max(0, len(text) // 4)
+
+    def _preview_blocks_from_assembly(self, asm: _RAGAssembly) -> list[ContextBlockOut]:
+        parts = asm.parts
+        blocks: list[ContextBlockOut] = []
+        soft_def_trunc = len(asm.def_block) > SOFT_DEF_TOKEN_CAP * 4
+        blocks.append(
+            ContextBlockOut(
+                label="Software definition",
+                kind="software_def",
+                body=parts[0],
+                tokens=self._approx_tokens(parts[0]),
+                relevance=None,
+                truncated=soft_def_trunc,
+            )
+        )
+        outline_trunc = asm.outline_trimmed
+        blocks.append(
+            ContextBlockOut(
+                label="Project outline",
+                kind="outline",
+                body=parts[1],
+                tokens=self._approx_tokens(parts[1]),
+                relevance=None,
+                truncated=outline_trunc,
+            )
+        )
+        idx = 2
+        if asm.current_section_id is not None:
+            cur_body = parts[idx]
+            blocks.append(
+                ContextBlockOut(
+                    label="Current section",
+                    kind="current_section",
+                    body=cur_body,
+                    tokens=self._approx_tokens(cur_body),
+                    relevance=None,
+                    truncated=asm.mandatory_truncated,
+                )
+            )
+            idx += 1
+        while idx < len(parts) and parts[idx].startswith("## Recent git history"):
+            g = parts[idx]
+            blocks.append(
+                ContextBlockOut(
+                    label="Recent git history",
+                    kind="git_history",
+                    body=g,
+                    tokens=self._approx_tokens(g),
+                    relevance=None,
+                    truncated=g.rstrip().endswith("…") or "\n…\n" in g[-6:],
+                )
+            )
+            idx += 1
+        if idx < len(parts) and parts[idx].startswith("## Retrieved chunks"):
+            retrieved = parts[idx]
+            blocks.append(
+                ContextBlockOut(
+                    label="Retrieved chunks",
+                    kind="retrieved_header",
+                    body=retrieved,
+                    tokens=self._approx_tokens(retrieved),
+                    relevance=None,
+                    truncated=False,
+                )
+            )
+            idx += 1
+        return blocks
+
+    async def build_context_with_blocks(
+        self,
+        query: str,
+        project_id: uuid.UUID,
+        current_section_id: uuid.UUID | None,
+        *,
+        token_budget: int = 6000,
+        current_section_plaintext_override: str | None = None,
+        include_git_history: bool = False,
+    ) -> ContextPreviewOut:
+        """Structured RAG preview; same retrieval path as :meth:`build_context`."""
+        asm = await self._assemble_rag_parts(
+            query,
+            project_id,
+            current_section_id,
+            token_budget=token_budget,
+            current_section_plaintext_override=current_section_plaintext_override,
+            include_git_history=include_git_history,
+        )
+        blocks = self._preview_blocks_from_assembly(asm)
+        out = "\n\n".join(asm.parts)
+        overflow: str | None = None
+        if len(out) > asm.budget_chars:
+            overflow = "hard_character_cap"
+        elif asm.truncated_early:
+            overflow = "mandatory_or_git_trim"
+        total_tokens = sum(b.tokens for b in blocks)
+        return ContextPreviewOut(
+            blocks=blocks,
+            total_tokens=total_tokens,
+            budget_tokens=asm.token_budget,
+            overflow_strategy_applied=overflow,
+        )
+
+    async def build_context(
+        self,
+        query: str,
+        project_id: uuid.UUID,
+        current_section_id: uuid.UUID | None,
+        *,
+        token_budget: int = 6000,
+        current_section_plaintext_override: str | None = None,
+        include_git_history: bool = False,
+    ) -> RAGContext:
+        """Assemble labelled context string within approximate token budget."""
+        asm = await self._assemble_rag_parts(
+            query,
+            project_id,
+            current_section_id,
+            token_budget=token_budget,
+            current_section_plaintext_override=current_section_plaintext_override,
+            include_git_history=include_git_history,
+        )
+        out = "\n\n".join(asm.parts)
+        context_was_truncated = asm.truncated_early
+        if len(out) > asm.budget_chars:
             context_was_truncated = True
-            out = out[:budget_chars] + "\n…"
+            out = out[: asm.budget_chars] + "\n…"
 
         return RAGContext(text=out, truncated=context_was_truncated)

@@ -50,6 +50,41 @@ def test_no_truncation_when_within_budget() -> None:
 
 
 @pytest.mark.asyncio
+async def test_rag_build_context_matches_joined_preview_blocks(
+    db_session: AsyncSession,
+) -> None:
+    """Structured preview uses the same assembly path as build_context."""
+    studio = await create_studio(db_session)
+    sw = await create_software(db_session, studio.id, definition="def-small")
+    pr = await create_project(db_session, sw.id)
+    await create_section(
+        db_session, pr.id, title="T", slug="t", order=0, content="Hello body"
+    )
+    sec2 = await create_section(
+        db_session, pr.id, title="U", slug="u", order=1, content="Second"
+    )
+    rag = RAGService(db_session)
+    ctx = await rag.build_context(
+        query="hello",
+        project_id=pr.id,
+        current_section_id=sec2.id,
+        token_budget=6000,
+    )
+    prev = await rag.build_context_with_blocks(
+        "hello",
+        pr.id,
+        sec2.id,
+        token_budget=6000,
+    )
+    joined = "\n\n".join(b.body for b in prev.blocks)
+    assert ctx.text == joined
+    assert prev.budget_tokens == 6000
+    assert prev.blocks[0].kind == "software_def"
+    assert prev.blocks[1].kind == "outline"
+    assert any(b.kind == "current_section" for b in prev.blocks)
+
+
+@pytest.mark.asyncio
 async def test_rag_build_context_prefers_plaintext_override(
     db_session: AsyncSession,
 ) -> None:

@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -12,12 +12,14 @@ from app.deps import (
     require_outline_manager,
     require_project_member,
 )
+from app.schemas.context_preview import ContextPreviewOut
 from app.schemas.section import (
     SectionCreate,
     SectionReorder,
     SectionResponse,
     SectionUpdate,
 )
+from app.services.rag_service import RAGService
 from app.services.section_service import SectionService
 
 router = APIRouter(prefix="/projects/{project_id}/sections", tags=["sections"])
@@ -51,6 +53,25 @@ async def reorder_sections(
 ) -> list[SectionResponse]:
     return await SectionService(session).reorder_sections(
         project_id, body.section_ids
+    )
+
+
+@router.get("/{section_id}/context-preview", response_model=ContextPreviewOut)
+async def get_section_context_preview(
+    project_id: UUID,
+    section_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    _pa=Depends(get_project_access),
+    q: str = Query("", max_length=8000, description="RAG query for chunk retrieval"),
+    token_budget: int = Query(6000, ge=100, le=50_000),
+    include_git_history: bool = Query(False),
+) -> ContextPreviewOut:
+    return await RAGService(session).build_context_with_blocks(
+        q,
+        project_id,
+        section_id,
+        token_budget=token_budget,
+        include_git_history=include_git_history,
     )
 
 

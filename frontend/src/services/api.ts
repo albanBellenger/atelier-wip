@@ -821,6 +821,58 @@ export interface Section {
   updated_at: string
 }
 
+export type ContextBlockKind =
+  | 'software_def'
+  | 'outline'
+  | 'current_section'
+  | 'other_section'
+  | 'artifact_chunk'
+  | 'git_history'
+  | 'retrieved_header'
+
+export interface ContextBlock {
+  label: string
+  kind: ContextBlockKind
+  tokens: number
+  relevance: number | null
+  truncated: boolean
+  body: string
+}
+
+export interface ContextPreview {
+  blocks: ContextBlock[]
+  total_tokens: number
+  budget_tokens: number
+  overflow_strategy_applied: string | null
+}
+
+export async function getContextPreview(
+  projectId: string,
+  sectionId: string,
+  opts?: {
+    q?: string
+    tokenBudget?: number
+    includeGitHistory?: boolean
+  },
+): Promise<ContextPreview> {
+  const sp = new URLSearchParams()
+  if (opts?.q != null && opts.q !== '') {
+    sp.set('q', opts.q)
+  }
+  if (opts?.tokenBudget != null) {
+    sp.set('token_budget', String(opts.tokenBudget))
+  }
+  if (opts?.includeGitHistory === true) {
+    sp.set('include_git_history', 'true')
+  }
+  const qs = sp.toString()
+  const suffix = qs ? `?${qs}` : ''
+  return request<ContextPreview>(
+    'GET',
+    `/projects/${projectId}/sections/${sectionId}/context-preview${suffix}`,
+  )
+}
+
 export async function listSections(projectId: string): Promise<Section[]> {
   return request<Section[]>('GET', `/projects/${projectId}/sections`)
 }

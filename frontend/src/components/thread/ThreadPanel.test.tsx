@@ -1,15 +1,27 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import * as Y from 'yjs'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi, afterEach } from 'vitest'
 
+import type { YjsCollab } from '../../hooks/useYjsCollab'
 import * as api from '../../services/api'
 import { ThreadPanel } from './ThreadPanel'
 
-describe('ThreadPanel new thread', () => {
+const { streamSpy } = vi.hoisted(() => ({
+  streamSpy: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('../../hooks/useStream', () => ({
+  useStream: () => ({ streamPrivateThread: streamSpy }),
+}))
+
+describe('ThreadPanel', () => {
   afterEach(() => {
     vi.restoreAllMocks()
+    streamSpy.mockReset()
+    streamSpy.mockResolvedValue(undefined)
   })
 
   it('New thread calls reset, refetches empty messages', async () => {
@@ -58,6 +70,8 @@ describe('ThreadPanel new thread', () => {
             sectionTitle="Intro"
             projectHref="/studios/s1/software/sw1/projects/p1"
             collab={null}
+            editorSelection={null}
+            onClearEditorSelection={() => {}}
           />
         </QueryClientProvider>
       </MemoryRouter>,
@@ -75,6 +89,204 @@ describe('ThreadPanel new thread', () => {
     })
     await waitFor(() => {
       expect(screen.queryByText('first')).not.toBeInTheDocument()
+    })
+  })
+
+  it('Send includes selection bounds when include selection is on', async () => {
+    const user = userEvent.setup()
+    HTMLElement.prototype.scrollIntoView = vi.fn()
+    streamSpy.mockClear()
+
+    vi.spyOn(api, 'getPrivateThread').mockResolvedValue({
+      thread_id: 'th-1',
+      messages: [],
+    })
+
+    const ydoc = new Y.Doc()
+    const ytext = ydoc.getText('t')
+    ytext.insert(0, 'abcdef')
+    const collab = {
+      ydoc,
+      provider: {} as YjsCollab['provider'],
+      ytext,
+      awareness: {} as YjsCollab['awareness'],
+    }
+
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <ThreadPanel
+            projectId="p1"
+            sectionId="sec1"
+            sectionTitle="Intro"
+            projectHref="/studios/s1/software/sw1/projects/p1"
+            collab={collab}
+            editorSelection={{ from: 1, to: 3, text: 'bc' }}
+            onClearEditorSelection={() => {}}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('Selection: 2 chars')).toBeInTheDocument()
+    })
+
+    await user.type(screen.getByPlaceholderText(/Ask about/), 'hello')
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => {
+      expect(streamSpy).toHaveBeenCalled()
+    })
+    const [, , payload] = streamSpy.mock.calls[0] as [
+      string,
+      string,
+      Record<string, unknown>,
+      unknown,
+    ]
+    expect(payload.selection_from).toBe(1)
+    expect(payload.selection_to).toBe(3)
+    expect(payload.selected_plaintext).toBe('bc')
+    expect(payload.current_section_plaintext).toBe('abcdef')
+  })
+
+  it('Apply is disabled when document drifted after proposal', async () => {
+    const user = userEvent.setup()
+    HTMLElement.prototype.scrollIntoView = vi.fn()
+    streamSpy.mockImplementation(
+      async (
+        _p: string,
+        _s: string,
+        _payload: unknown,
+        handlers: {
+          onToken: (t: string) => void
+          onMeta: (m: { patch_proposal?: Record<string, unknown> }) => void
+        },
+      ) => {
+        handlers.onToken('ok')
+        handlers.onMeta({
+          findings: [],
+          patch_proposal: {
+            intent: 'append',
+            markdown_to_append: 'tail',
+          },
+        })
+      },
+    )
+
+    vi.spyOn(api, 'getPrivateThread').mockResolvedValue({
+      thread_id: 'th-1',
+      messages: [],
+    })
+
+    const ydoc = new Y.Doc()
+    const ytext = ydoc.getText('t')
+    ytext.insert(0, 'snap')
+    const collab = {
+      ydoc,
+      provider: {} as YjsCollab['provider'],
+      ytext,
+      awareness: {} as YjsCollab['awareness'],
+    }
+
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <ThreadPanel
+            projectId="p1"
+            sectionId="sec1"
+            sectionTitle="Intro"
+            projectHref="/studios/s1/software/sw1/projects/p1"
+            collab={collab}
+            editorSelection={null}
+            onClearEditorSelection={() => {}}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await user.selectOptions(screen.getByLabelText('Intent'), 'append')
+    await user.type(screen.getByPlaceholderText(/Ask about/), 'go')
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Patch proposal')).toBeInTheDocument()
+    })
+
+    await act(async () => {
+      ytext.delete(0, ytext.length)
+      ytext.insert(0, 'changed')
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Apply to editor' })).toBeDisabled()
+    })
+  })
+
+  it('Context tab fetches context preview', async () => {
+    const user = userEvent.setup()
+    HTMLElement.prototype.scrollIntoView = vi.fn()
+    vi.spyOn(api, 'getPrivateThread').mockResolvedValue({
+      thread_id: 'th-1',
+      messages: [],
+    })
+    const previewSpy = vi.spyOn(api, 'getContextPreview').mockResolvedValue({
+      blocks: [
+        {
+          label: 'Software definition',
+          kind: 'software_def',
+          tokens: 1,
+          relevance: null,
+          truncated: false,
+          body: 'x',
+        },
+      ],
+      total_tokens: 1,
+      budget_tokens: 6000,
+      overflow_strategy_applied: null,
+    })
+
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <ThreadPanel
+            projectId="p1"
+            sectionId="sec1"
+            sectionTitle="Intro"
+            projectHref="/studios/s1/software/sw1/projects/p1"
+            collab={null}
+            editorSelection={null}
+            onClearEditorSelection={() => {}}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await user.click(screen.getByRole('tab', { name: 'Context' }))
+
+    await waitFor(() => {
+      expect(previewSpy).toHaveBeenCalledWith(
+        'p1',
+        'sec1',
+        expect.objectContaining({ includeGitHistory: false }),
+      )
+    })
+    await waitFor(() => {
+      expect(
+        screen.getByTestId('context-block-kind-software_def'),
+      ).toBeInTheDocument()
     })
   })
 })
