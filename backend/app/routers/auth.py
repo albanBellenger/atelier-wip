@@ -11,7 +11,7 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.main import limiter
 from app.models import User
-from app.schemas.auth import MeResponse, UserCreate, UserLogin
+from app.schemas.auth import MeResponse, UserCreate, UserLogin, UserProfilePatch
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -81,3 +81,12 @@ async def me(
     user: User = Depends(get_current_user),
 ) -> MeResponse:
     return await AuthService(session).me(user)
+
+
+@router.patch("/me", response_model=MeResponse)
+async def patch_me(
+    body: UserProfilePatch,
+    session: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> MeResponse:
+    return await AuthService(session).patch_profile(user, body)

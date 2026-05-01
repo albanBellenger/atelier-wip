@@ -80,6 +80,12 @@ class MeResponse(BaseModel):
     cross_studio_grants: list[CrossStudioGrantPublic] = []
 
 
+class UserProfilePatch(BaseModel):
+    """PATCH /auth/me — v1: display name only."""
+
+    display_name: str = Field(min_length=1, max_length=255)
+
+
 class AdminConfigResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

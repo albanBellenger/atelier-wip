@@ -48,6 +48,7 @@ describe('ProjectPage publish success', () => {
           slug: 'intro',
           order: 0,
           status: 'ready',
+          updated_at: '2026-05-01T12:00:00.000Z',
         },
       ],
     })
@@ -135,6 +136,7 @@ describe('ProjectPage outline status pills (Slice A)', () => {
           slug: 'intro',
           order: 0,
           status: 'ready',
+          updated_at: '2026-05-01T12:00:00.000Z',
         },
         {
           id: 'sec2',
@@ -142,6 +144,7 @@ describe('ProjectPage outline status pills (Slice A)', () => {
           slug: 'api',
           order: 1,
           status: 'gaps',
+          updated_at: '2026-05-01T11:00:00.000Z',
         },
       ],
     })

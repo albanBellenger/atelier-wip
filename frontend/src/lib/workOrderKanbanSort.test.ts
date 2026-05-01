@@ -21,6 +21,8 @@ function wo(
     is_stale: false,
     stale_reason: null,
     created_by: null,
+    updated_by_id: null,
+    updated_by_display_name: null,
     created_at: '',
     updated_at: '',
     section_ids: [],

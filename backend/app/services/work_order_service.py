@@ -44,11 +44,20 @@ class WorkOrderService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    async def _assignee_names(self, ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
+    async def _user_display_names(self, ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:
         if not ids:
             return {}
         r = await self.db.execute(select(User.id, User.display_name).where(User.id.in_(ids)))
         return {row[0]: row[1] for row in r.all()}
+
+    def _user_ids_for_work_orders(self, rows: list[WorkOrder]) -> set[uuid.UUID]:
+        out: set[uuid.UUID] = set()
+        for w in rows:
+            if w.assignee_id is not None:
+                out.add(w.assignee_id)
+            if w.updated_by_id is not None:
+                out.add(w.updated_by_id)
+        return out
 
     def _to_response(
         self,
@@ -56,6 +65,7 @@ class WorkOrderService:
         *,
         section_ids: list[uuid.UUID],
         assignee_name: str | None,
+        updated_by_name: str | None = None,
     ) -> WorkOrderResponse:
         return WorkOrderResponse(
             id=wo.id,
@@ -72,6 +82,8 @@ class WorkOrderService:
             is_stale=wo.is_stale,
             stale_reason=wo.stale_reason,
             created_by=wo.created_by,
+            updated_by_id=wo.updated_by_id,
+            updated_by_display_name=updated_by_name,
             created_at=wo.created_at,
             updated_at=wo.updated_at,
             section_ids=section_ids,
@@ -109,13 +121,13 @@ class WorkOrderService:
             return []
         woids = [w.id for w in rows]
         sec_map = await self._section_ids_for_work_orders(woids)
-        aid = {w.assignee_id for w in rows if w.assignee_id}
-        names = await self._assignee_names(aid)
+        names = await self._user_display_names(self._user_ids_for_work_orders(list(rows)))
         return [
             self._to_response(
                 w,
                 section_ids=sec_map.get(w.id, []),
                 assignee_name=names.get(w.assignee_id) if w.assignee_id else None,
+                updated_by_name=names.get(w.updated_by_id) if w.updated_by_id else None,
             )
             for w in rows
         ]
@@ -152,13 +164,14 @@ class WorkOrderService:
                 message="Work order not found.",
             )
         sec_map = await self._section_ids_for_work_orders([wo.id])
-        names = await self._assignee_names(
-            {wo.assignee_id} if wo.assignee_id else set()
+        names = await self._user_display_names(
+            self._user_ids_for_work_orders([wo]),
         )
         base = self._to_response(
             wo,
             section_ids=sec_map.get(wo.id, []),
             assignee_name=names.get(wo.assignee_id) if wo.assignee_id else None,
+            updated_by_name=names.get(wo.updated_by_id) if wo.updated_by_id else None,
         )
         if not detail:
             return base
@@ -204,13 +217,12 @@ class WorkOrderService:
         await self.db.flush()
         await self.db.refresh(wo)
         sec_map = await self._section_ids_for_work_orders([wo.id])
-        names = await self._assignee_names(
-            {wo.assignee_id} if wo.assignee_id else set()
-        )
+        names = await self._user_display_names(self._user_ids_for_work_orders([wo]))
         return self._to_response(
             wo,
             section_ids=sec_map.get(wo.id, []),
             assignee_name=names.get(wo.assignee_id) if wo.assignee_id else None,
+            updated_by_name=names.get(wo.updated_by_id) if wo.updated_by_id else None,
         )
 
     async def _set_sections(
@@ -241,9 +253,20 @@ class WorkOrderService:
         project_id: uuid.UUID,
         work_order_id: uuid.UUID,
         body: WorkOrderUpdate,
+        *,
+        actor_id: uuid.UUID,
     ) -> WorkOrderResponse:
         wo = await self._get_wo(project_id, work_order_id)
         data = body.model_dump(exclude_unset=True)
+        if not data:
+            sec_map = await self._section_ids_for_work_orders([wo.id])
+            names = await self._user_display_names(self._user_ids_for_work_orders([wo]))
+            return self._to_response(
+                wo,
+                section_ids=sec_map.get(wo.id, []),
+                assignee_name=names.get(wo.assignee_id) if wo.assignee_id else None,
+                updated_by_name=names.get(wo.updated_by_id) if wo.updated_by_id else None,
+            )
         if "status" in data and data["status"] is not None:
             if data["status"] not in VALID_STATUSES:
                 raise ApiError(
@@ -251,44 +274,71 @@ class WorkOrderService:
                     code="INVALID_STATUS",
                     message=f"status must be one of: {', '.join(sorted(VALID_STATUSES))}",
                 )
+        mutated = False
         if "title" in data and data["title"] is not None:
-            wo.title = str(data["title"]).strip()
+            new_t = str(data["title"]).strip()
+            if new_t != wo.title:
+                wo.title = new_t
+                mutated = True
         if "description" in data and data["description"] is not None:
-            wo.description = str(data["description"]).strip()
+            new_d = str(data["description"]).strip()
+            if new_d != wo.description:
+                wo.description = new_d
+                mutated = True
         if "implementation_guide" in data:
-            wo.implementation_guide = (
+            new_ig = (
                 str(data["implementation_guide"]).strip()
                 if data["implementation_guide"]
                 else None
             )
+            if new_ig != wo.implementation_guide:
+                wo.implementation_guide = new_ig
+                mutated = True
         if "acceptance_criteria" in data:
-            wo.acceptance_criteria = (
+            new_ac = (
                 str(data["acceptance_criteria"]).strip()
                 if data["acceptance_criteria"]
                 else None
             )
+            if new_ac != wo.acceptance_criteria:
+                wo.acceptance_criteria = new_ac
+                mutated = True
         if "status" in data and data["status"] is not None:
-            wo.status = data["status"]
+            if data["status"] != wo.status:
+                wo.status = data["status"]
+                mutated = True
         if "phase" in data:
-            wo.phase = (
-                str(data["phase"]).strip() if data["phase"] is not None else None
-            )
+            new_ph = str(data["phase"]).strip() if data["phase"] is not None else None
+            if new_ph != wo.phase:
+                wo.phase = new_ph
+                mutated = True
         if "phase_order" in data:
-            wo.phase_order = data["phase_order"]
+            if data["phase_order"] != wo.phase_order:
+                wo.phase_order = data["phase_order"]
+                mutated = True
         if "assignee_id" in data:
-            wo.assignee_id = data["assignee_id"]
+            if data["assignee_id"] != wo.assignee_id:
+                wo.assignee_id = data["assignee_id"]
+                mutated = True
         if "section_ids" in data and data["section_ids"] is not None:
-            await self._set_sections(wo.id, project_id, data["section_ids"])
+            prev_sec = sorted(
+                (await self._section_ids_for_work_orders([wo.id])).get(wo.id, [])
+            )
+            new_sec = sorted(data["section_ids"])
+            if new_sec != prev_sec:
+                await self._set_sections(wo.id, project_id, data["section_ids"])
+                mutated = True
+        if mutated:
+            wo.updated_by_id = actor_id
         await self.db.flush()
         await self.db.refresh(wo)
         sec_map = await self._section_ids_for_work_orders([wo.id])
-        names = await self._assignee_names(
-            {wo.assignee_id} if wo.assignee_id else set()
-        )
+        names = await self._user_display_names(self._user_ids_for_work_orders([wo]))
         return self._to_response(
             wo,
             section_ids=sec_map.get(wo.id, []),
             assignee_name=names.get(wo.assignee_id) if wo.assignee_id else None,
+            updated_by_name=names.get(wo.updated_by_id) if wo.updated_by_id else None,
         )
 
     async def delete(self, project_id: uuid.UUID, work_order_id: uuid.UUID) -> None:
@@ -353,13 +403,12 @@ class WorkOrderService:
         await self.db.flush()
         await self.db.refresh(wo)
         sec_map = await self._section_ids_for_work_orders([wo.id])
-        names = await self._assignee_names(
-            {wo.assignee_id} if wo.assignee_id else set()
-        )
+        names = await self._user_display_names(self._user_ids_for_work_orders([wo]))
         return self._to_response(
             wo,
             section_ids=sec_map.get(wo.id, []),
             assignee_name=names.get(wo.assignee_id) if wo.assignee_id else None,
+            updated_by_name=names.get(wo.updated_by_id) if wo.updated_by_id else None,
         )
 
     async def generate_work_orders(
@@ -504,13 +553,13 @@ class WorkOrderService:
 
         woids = [w.id for w in created]
         sec_map = await self._section_ids_for_work_orders(woids)
-        aid = {w.assignee_id for w in created if w.assignee_id}
-        names = await self._assignee_names(aid)
+        names = await self._user_display_names(self._user_ids_for_work_orders(created))
         return [
             self._to_response(
                 w,
                 section_ids=sec_map.get(w.id, []),
                 assignee_name=names.get(w.assignee_id) if w.assignee_id else None,
+                updated_by_name=names.get(w.updated_by_id) if w.updated_by_id else None,
             )
             for w in created
         ]

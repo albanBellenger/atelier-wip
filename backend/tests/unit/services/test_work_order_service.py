@@ -46,6 +46,7 @@ async def test_list_work_orders_with_assignee_filter() -> None:
     wo.stale_reason = None
     wo.created_by = None
     wo.created_at = now
+    wo.updated_by_id = None
     wo.updated_at = now
 
     ex = MagicMock()
@@ -238,7 +239,7 @@ async def test_update_rejects_invalid_status() -> None:
     body = WorkOrderUpdate(status="bogus")
     with pytest.raises(ApiError) as e:
         await WorkOrderService(db).update(
-            wo.project_id, wo.id, body
+            wo.project_id, wo.id, body, actor_id=uuid.uuid4()
         )
     assert e.value.error_code == "INVALID_STATUS"
 
@@ -265,6 +266,7 @@ async def test_list_filters_phase_and_stale() -> None:
     wo.stale_reason = "x"
     wo.created_by = None
     wo.created_at = now
+    wo.updated_by_id = None
     wo.updated_at = now
 
     ex = MagicMock()

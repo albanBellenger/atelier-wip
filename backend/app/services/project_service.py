@@ -100,6 +100,7 @@ class ProjectService:
                     slug=s.slug,
                     order=s.order,
                     status=status_map[s.id],
+                    updated_at=s.updated_at,
                 )
                 for s in ordered
             ]

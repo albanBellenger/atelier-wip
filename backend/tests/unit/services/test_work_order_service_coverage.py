@@ -44,6 +44,7 @@ def _wo_mock(
     wo.stale_reason = None
     wo.created_by = None
     wo.created_at = now
+    wo.updated_by_id = None
     wo.updated_at = now
     return wo
 
@@ -58,10 +59,10 @@ async def test_section_ids_for_work_orders_empty_input() -> None:
 
 
 @pytest.mark.asyncio
-async def test_assignee_names_empty_ids() -> None:
+async def test_user_display_names_empty_ids() -> None:
     db = MagicMock()
     db.execute = AsyncMock()
-    out = await WorkOrderService(db)._assignee_names(set())
+    out = await WorkOrderService(db)._user_display_names(set())
     assert out == {}
     db.execute.assert_not_called()
 
@@ -338,7 +339,8 @@ async def test_update_all_scalar_fields() -> None:
         assignee_id=aid,
         section_ids=[sid],
     )
-    out = await WorkOrderService(db).update(pid, wid, body)
+    actor = uuid.uuid4()
+    out = await WorkOrderService(db).update(pid, wid, body, actor_id=actor)
     assert out.title == "new"
     assert wo.implementation_guide is None
     assert wo.acceptance_criteria is None
@@ -346,6 +348,7 @@ async def test_update_all_scalar_fields() -> None:
     assert wo.phase == "np"
     assert wo.phase_order == 9
     assert wo.assignee_id == aid
+    assert wo.updated_by_id == actor
 
 
 @pytest.mark.asyncio
@@ -373,7 +376,7 @@ async def test_update_phase_explicit_none() -> None:
     db.refresh = AsyncMock()
     db.execute = AsyncMock(return_value=sec_map_ex)
     await WorkOrderService(db).update(
-        pid, wid, WorkOrderUpdate(phase=None, description=None)
+        pid, wid, WorkOrderUpdate(phase=None, description=None), actor_id=uuid.uuid4()
     )
     assert wo.phase is None
 

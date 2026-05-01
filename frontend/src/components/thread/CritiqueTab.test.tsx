@@ -42,6 +42,8 @@ describe('CritiqueTab', () => {
         is_stale: false,
         stale_reason: null,
         created_by: null,
+        updated_by_id: null,
+        updated_by_display_name: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         section_ids: ['sec1'],

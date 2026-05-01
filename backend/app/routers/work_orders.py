@@ -151,7 +151,10 @@ async def update_work_order(
 ) -> WorkOrderResponse:
     _ensure_project(pa, project_id)
     return await WorkOrderService(session).update(
-        project_id, work_order_id, body
+        project_id,
+        work_order_id,
+        body,
+        actor_id=pa.studio_access.user.id,
     )
 
 

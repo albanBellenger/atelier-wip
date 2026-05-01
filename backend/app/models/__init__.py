@@ -6,6 +6,7 @@ from app.models.cross_studio import CrossStudioAccess
 from app.models.graph import GraphEdge
 from app.models.messaging import ChatMessage, Issue, PrivateThread, ThreadMessage
 from app.models.mcp import McpKey, TokenUsage
+from app.models.notification import Notification
 from app.models.project import Artifact, ArtifactChunk, Project, Section, SectionChunk
 from app.models.software import Software
 from app.models.studio import Studio, StudioMember
@@ -22,6 +23,7 @@ __all__ = [
     "GraphEdge",
     "Issue",
     "McpKey",
+    "Notification",
     "PrivateThread",
     "Project",
     "Section",

@@ -86,6 +86,8 @@ class WorkOrderResponse(BaseModel):
     is_stale: bool
     stale_reason: str | None
     created_by: UUID | None
+    updated_by_id: UUID | None = None
+    updated_by_display_name: str | None = None
     created_at: datetime
     updated_at: datetime
     section_ids: list[UUID] = Field(default_factory=list)

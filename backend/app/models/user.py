@@ -26,3 +26,6 @@ class User(Base):
 
     studio_memberships = relationship("StudioMember", back_populates="user")
     mcp_keys = relationship("McpKey", back_populates="user")
+    notifications = relationship(
+        "Notification", back_populates="user", cascade="all, delete-orphan"
+    )

@@ -12,7 +12,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useStudioAccess } from '../hooks/useStudioAccess'
 import {
   addWorkOrderNote,
@@ -223,6 +223,8 @@ export function WorkOrdersPage(): ReactElement {
   const [genSelected, setGenSelected] = useState<Set<string>>(new Set())
   const [activeDrag, setActiveDrag] = useState<WorkOrder | null>(null)
 
+  const [searchParams, setSearchParams] = useSearchParams()
+
   const profileQ = useQuery({
     queryKey: ['auth', 'me'],
     queryFn: () => me(),
@@ -236,6 +238,20 @@ export function WorkOrdersPage(): ReactElement {
   }, [profileQ.isError, navigate])
 
   const access = useStudioAccess(profileQ.data, sid, sfid)
+
+  useEffect(() => {
+    if (!profileQ.isSuccess) {
+      return
+    }
+    if (searchParams.get('generate') === '1') {
+      if (access.isStudioEditor) {
+        setGenOpen(true)
+      }
+      const next = new URLSearchParams(searchParams)
+      next.delete('generate')
+      setSearchParams(next, { replace: true })
+    }
+  }, [profileQ.isSuccess, searchParams, access.isStudioEditor, setSearchParams])
 
   const ordersQ = useQuery({
     queryKey: ['workOrders', pid, filters],

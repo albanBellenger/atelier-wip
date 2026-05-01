@@ -24,6 +24,8 @@ function makeArchivedWo(): WorkOrder {
     is_stale: false,
     stale_reason: null,
     created_by: null,
+    updated_by_id: null,
+    updated_by_display_name: null,
     created_at: t,
     updated_at: t,
     section_ids: [],

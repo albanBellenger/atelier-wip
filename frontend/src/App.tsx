@@ -5,6 +5,8 @@ import { AdminSettingsPage } from './pages/AdminSettingsPage'
 import { AdminTokenUsagePage } from './pages/AdminTokenUsagePage'
 import { AuthPage } from './pages/AuthPage'
 import { HomePage } from './pages/HomePage'
+import { MeProfilePage } from './pages/MeProfilePage'
+import { NotificationSettingsPage } from './pages/NotificationSettingsPage'
 import { ArtifactsPage } from './pages/ArtifactsPage'
 import { WorkOrdersPage } from './pages/WorkOrdersPage'
 import { IssuesPage } from './pages/IssuesPage'
@@ -24,6 +26,11 @@ function App(): ReactElement {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/auth" element={<AuthPage />} />
+        <Route path="/me/profile" element={<MeProfilePage />} />
+        <Route
+          path="/me/notifications"
+          element={<NotificationSettingsPage />}
+        />
         <Route path="/admin/settings" element={<AdminSettingsPage />} />
         <Route path="/admin/cross-studio" element={<AdminCrossStudioPage />} />
         <Route path="/admin/token-usage" element={<AdminTokenUsagePage />} />

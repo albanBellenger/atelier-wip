@@ -19,6 +19,7 @@ from app.schemas.auth import (
     MeResponse,
     StudioMembershipPublic,
     UserCreate,
+    UserProfilePatch,
     UserPublic,
 )
 from app.security.jwt import create_access_token, decode_access_token
@@ -116,6 +117,26 @@ class AuthService:
             studios=studios,
             cross_studio_grants=cross_studio_grants,
         )
+
+    async def patch_profile(self, user: User, body: UserProfilePatch) -> MeResponse:
+        row = await self.db.execute(select(User).where(User.id == user.id))
+        db_user = row.scalar_one()
+        name = body.display_name.strip()
+        if not name:
+            raise ApiError(
+                status_code=422,
+                code="VALIDATION_ERROR",
+                message="Display name cannot be empty.",
+            )
+        if len(name) > 255:
+            raise ApiError(
+                status_code=422,
+                code="VALIDATION_ERROR",
+                message="Display name is too long.",
+            )
+        db_user.display_name = name
+        await self.db.flush()
+        return await self.me(db_user)
 
     async def get_user_from_token(self, token: str) -> User:
         try:

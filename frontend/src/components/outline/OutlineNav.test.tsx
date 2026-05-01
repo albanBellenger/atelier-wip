@@ -34,6 +34,7 @@ describe('OutlineNav section status pills (Slice A)', () => {
     slug: id,
     order: 0,
     status,
+    updated_at: '2026-05-01T12:00:00.000Z',
   })
 
   it('renders ready pill (emerald)', () => {

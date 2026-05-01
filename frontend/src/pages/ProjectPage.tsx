@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
-import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ChatRoom } from '../components/chat/ChatRoom'
 import { KnowledgeGraph } from '../components/graph/KnowledgeGraph'
 import { OutlineNav } from '../components/outline/OutlineNav'
@@ -51,6 +51,8 @@ export function ProjectPage(): ReactElement {
 
   const access = useStudioAccess(profile, sid, sfid)
 
+  const [searchParams, setSearchParams] = useSearchParams()
+
   const projectQ = useQuery({
     queryKey: ['project', sfid, pid],
     queryFn: () => getProject(sfid, pid),
@@ -87,15 +89,61 @@ export function ProjectPage(): ReactElement {
     enabled: Boolean(pid && selectedSectionId && access.isMember),
   })
 
-  const [projectView, setProjectView] = useState<
-    'outline' | 'graph' | 'chat'
-  >('outline')
   const [projectName, setProjectName] = useState('')
   const [projectDescription, setProjectDescription] = useState('')
   const [projectFormSyncKey, setProjectFormSyncKey] = useState('')
   const [saveMsg, setSaveMsg] = useState<string | null>(null)
   const [publishOpen, setPublishOpen] = useState(false)
   const [commitMsg, setCommitMsg] = useState('')
+
+  const tabRaw = searchParams.get('tab')
+  const projectView: 'outline' | 'graph' | 'chat' =
+    tabRaw === 'graph' || tabRaw === 'chat' ? tabRaw : 'outline'
+
+  const setProjectTab = useCallback(
+    (next: 'outline' | 'graph' | 'chat') => {
+      const nextParams = new URLSearchParams(searchParams)
+      if (next === 'outline') {
+        nextParams.delete('tab')
+      } else {
+        nextParams.set('tab', next)
+      }
+      setSearchParams(nextParams, { replace: true })
+    },
+    [searchParams, setSearchParams],
+  )
+
+  useEffect(() => {
+    if (profilePending || !profile) {
+      return
+    }
+    if (tabRaw === 'chat' && !access.isStudioEditor) {
+      const next = new URLSearchParams(searchParams)
+      next.delete('tab')
+      setSearchParams(next, { replace: true })
+    }
+  }, [
+    profilePending,
+    profile,
+    tabRaw,
+    access.isStudioEditor,
+    searchParams,
+    setSearchParams,
+  ])
+
+  useEffect(() => {
+    if (profilePending || !profile) {
+      return
+    }
+    if (searchParams.get('publish') === '1') {
+      if (access.canPublish) {
+        setPublishOpen(true)
+      }
+      const next = new URLSearchParams(searchParams)
+      next.delete('publish')
+      setSearchParams(next, { replace: true })
+    }
+  }, [profilePending, profile, searchParams, access.canPublish, setSearchParams])
 
   const publishMut = useMutation({
     mutationFn: () =>
@@ -293,7 +341,7 @@ export function ProjectPage(): ReactElement {
             <div className="mt-6 flex flex-wrap gap-2 border-b border-zinc-800 pb-2">
               <button
                 type="button"
-                onClick={() => setProjectView('outline')}
+                onClick={() => setProjectTab('outline')}
                 className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
                   projectView === 'outline'
                     ? 'bg-zinc-800 text-zinc-100'
@@ -304,7 +352,7 @@ export function ProjectPage(): ReactElement {
               </button>
               <button
                 type="button"
-                onClick={() => setProjectView('graph')}
+                onClick={() => setProjectTab('graph')}
                 className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
                   projectView === 'graph'
                     ? 'bg-zinc-800 text-zinc-100'
@@ -316,7 +364,7 @@ export function ProjectPage(): ReactElement {
               {access.isStudioEditor ? (
                 <button
                   type="button"
-                  onClick={() => setProjectView('chat')}
+                  onClick={() => setProjectTab('chat')}
                   className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
                     projectView === 'chat'
                       ? 'bg-zinc-800 text-zinc-100'

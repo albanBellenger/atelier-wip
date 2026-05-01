@@ -96,6 +96,70 @@ export async function me(): Promise<MeResponse> {
   return request<MeResponse>('GET', '/auth/me')
 }
 
+export interface UserProfilePatchBody {
+  display_name: string
+}
+
+export async function patchMeProfile(
+  body: UserProfilePatchBody,
+): Promise<MeResponse> {
+  return request<MeResponse>('PATCH', '/auth/me', body)
+}
+
+export interface NotificationRow {
+  id: string
+  kind: string
+  title: string
+  body: string
+  read_at: string | null
+  created_at: string
+  studio_id?: string | null
+  software_id?: string | null
+  project_id?: string | null
+  section_id?: string | null
+}
+
+export interface NotificationListResponse {
+  items: NotificationRow[]
+  next_cursor: string | null
+}
+
+export interface MarkAllReadResponse {
+  updated: number
+}
+
+export async function listMeNotifications(params?: {
+  limit?: number
+  cursor?: string | null
+}): Promise<NotificationListResponse> {
+  const sp = new URLSearchParams()
+  if (params?.limit !== undefined) sp.set('limit', String(params.limit))
+  if (params?.cursor) sp.set('cursor', params.cursor)
+  const q = sp.toString()
+  return request<NotificationListResponse>(
+    'GET',
+    `/me/notifications${q ? `?${q}` : ''}`,
+  )
+}
+
+export async function patchMeNotificationRead(
+  notificationId: string,
+  read: boolean,
+): Promise<NotificationRow> {
+  return request<NotificationRow>(
+    'PATCH',
+    `/me/notifications/${notificationId}`,
+    { read },
+  )
+}
+
+export async function postMeNotificationsMarkAllRead(): Promise<MarkAllReadResponse> {
+  return request<MarkAllReadResponse>(
+    'POST',
+    '/me/notifications/mark-all-read',
+  )
+}
+
 function appendTokenUsageParams(
   sp: URLSearchParams,
   params: TokenUsageQueryParams | undefined,
@@ -436,7 +500,10 @@ export async function listMembers(
 
 export async function addMember(
   studioId: string,
-  body: { email: string; role: 'studio_admin' | 'studio_member' },
+  body: {
+    email: string
+    role: 'studio_admin' | 'studio_member' | 'studio_viewer'
+  },
 ): Promise<StudioMember> {
   return request<StudioMember>('POST', `/studios/${studioId}/members`, body)
 }
@@ -454,7 +521,7 @@ export async function removeMember(
 export async function updateMemberRole(
   studioId: string,
   userId: string,
-  role: 'studio_admin' | 'studio_member',
+  role: 'studio_admin' | 'studio_member' | 'studio_viewer',
 ): Promise<StudioMember> {
   return request<StudioMember>(
     'PATCH',
@@ -572,6 +639,7 @@ export interface SectionSummary {
   slug: string
   order: number
   status: SectionStatus
+  updated_at: string
 }
 
 export interface Project {
@@ -751,6 +819,49 @@ export async function runProjectAnalyze(
   return request<{ issues_created: number }>(
     'POST',
     `/projects/${projectId}/analyze`,
+  )
+}
+
+export type AttentionKind = 'conflict' | 'gap' | 'drift' | 'update'
+
+export interface AttentionLinks {
+  issue_id: string | null
+  work_order_id: string | null
+  section_id: string | null
+}
+
+export interface AttentionItem {
+  id: string
+  kind: AttentionKind
+  title: string
+  subtitle: string
+  description: string
+  occurred_at: string
+  links: AttentionLinks
+}
+
+export interface AttentionCounts {
+  all: number
+  conflict: number
+  drift: number
+  gap: number
+  update: number
+}
+
+export interface ProjectAttentionResponse {
+  studio_id: string
+  software_id: string
+  project_id: string
+  counts: AttentionCounts
+  items: AttentionItem[]
+}
+
+export async function getProjectAttention(
+  projectId: string,
+): Promise<ProjectAttentionResponse> {
+  return request<ProjectAttentionResponse>(
+    'GET',
+    `/projects/${projectId}/attention`,
   )
 }
 
@@ -1052,6 +1163,8 @@ export interface WorkOrder {
   is_stale: boolean
   stale_reason: string | null
   created_by: string | null
+  updated_by_id: string | null
+  updated_by_display_name: string | null
   created_at: string
   updated_at: string
   section_ids: string[]

@@ -51,6 +51,7 @@ async def test_project_detail_includes_section_status_shape(
     for s in sections:
         assert "status" in s, f"missing status on section: {s!r}"
         assert s["status"] in ("ready", "gaps", "conflict", "empty")
+        assert "updated_at" in s and s["updated_at"]
 
 
 @pytest.mark.asyncio

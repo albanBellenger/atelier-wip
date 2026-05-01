@@ -25,6 +25,7 @@ class SectionSummary(BaseModel):
     slug: str
     order: int
     status: Literal["ready", "gaps", "conflict", "empty"]
+    updated_at: datetime
 
 
 class ProjectResponse(BaseModel):
