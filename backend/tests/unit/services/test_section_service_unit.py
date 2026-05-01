@@ -178,6 +178,9 @@ async def test_update_section_content_schedules_embedding(
     )
     db = AsyncMock()
     db.get = AsyncMock(return_value=sec)
+    ex = MagicMock()
+    ex.scalars.return_value.all.return_value = []
+    db.execute = AsyncMock(return_value=ex)
     emb: list[uuid.UUID] = []
     drift: list[uuid.UUID] = []
 

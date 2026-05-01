@@ -68,5 +68,5 @@ def test_section_service_to_response_uses_effective_plaintext() -> None:
         created_at = now
         updated_at = now
 
-    r = svc._to_response(FakeSec())  # noqa: SLF001
+    r = svc._to_response(FakeSec(), status="ready")  # noqa: SLF001
     assert r.content == "x"

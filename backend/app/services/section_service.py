@@ -5,12 +5,13 @@ import unicodedata
 import uuid
 
 from pycrdt import Doc, Text
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
-from app.models import Section
+from app.models import Issue, Section, WorkOrder, WorkOrderSection
 from app.schemas.section import SectionCreate, SectionResponse, SectionUpdate
+from app.services.section_status import SectionStatusLiteral, rollup_section_status
 
 # Shared Y.Text map key — must match frontend `YDOC_TEXT_FIELD` and collab persistence.
 SECTION_YJS_TEXT_FIELD = "codemirror"
@@ -89,7 +90,7 @@ class SectionService:
         m = r.scalar_one_or_none()
         return (m + 1) if m is not None else 0
 
-    def _to_response(self, s: Section) -> SectionResponse:
+    def _to_response(self, s: Section, *, status: SectionStatusLiteral) -> SectionResponse:
         snap = effective_section_plaintext(s.content, s.yjs_state)
         return SectionResponse(
             id=s.id,
@@ -98,9 +99,80 @@ class SectionService:
             slug=s.slug,
             order=s.order,
             content=snap,
+            status=status,
             created_at=s.created_at,
             updated_at=s.updated_at,
         )
+
+    async def batch_section_statuses(
+        self, project_id: uuid.UUID, sections: list[Section]
+    ) -> dict[uuid.UUID, SectionStatusLiteral]:
+        """Open issues + stale work orders for these sections (batched, no per-section queries)."""
+        if not sections:
+            return {}
+        ids = [s.id for s in sections]
+        id_set = frozenset(ids)
+
+        iss_rows = (
+            await self.db.execute(
+                select(Issue).where(
+                    Issue.project_id == project_id,
+                    Issue.status == "open",
+                    or_(
+                        Issue.section_a_id.in_(ids),
+                        Issue.section_b_id.in_(ids),
+                    ),
+                )
+            )
+        ).scalars().all()
+
+        pair_by: dict[uuid.UUID, bool] = {i: False for i in ids}
+        gap_by: dict[uuid.UUID, bool] = {i: False for i in ids}
+        for iss in iss_rows:
+            if iss.section_b_id is not None:
+                if iss.section_a_id and iss.section_a_id in id_set:
+                    pair_by[iss.section_a_id] = True
+                if iss.section_b_id in id_set:
+                    pair_by[iss.section_b_id] = True
+            else:
+                if iss.section_a_id and iss.section_a_id in id_set:
+                    gap_by[iss.section_a_id] = True
+
+        stale_ids = (
+            await self.db.execute(
+                select(WorkOrderSection.section_id)
+                .join(WorkOrder, WorkOrderSection.work_order_id == WorkOrder.id)
+                .where(
+                    WorkOrder.project_id == project_id,
+                    WorkOrderSection.section_id.in_(ids),
+                    WorkOrder.is_stale.is_(True),
+                )
+                .distinct()
+            )
+        ).scalars().all()
+        stale_by = {sid: True for sid in stale_ids}
+
+        out: dict[uuid.UUID, SectionStatusLiteral] = {}
+        for s in sections:
+            snap = effective_section_plaintext(s.content, s.yjs_state)
+            out[s.id] = rollup_section_status(
+                effective_plaintext=snap,
+                has_open_pair_conflict=pair_by.get(s.id, False),
+                has_open_section_gap=gap_by.get(s.id, False),
+                has_stale_linked_work_order=stale_by.get(s.id, False),
+            )
+        return out
+
+    async def compute_status(self, section_id: uuid.UUID) -> SectionStatusLiteral:
+        s = await self.db.get(Section, section_id)
+        if s is None:
+            raise ApiError(
+                status_code=404,
+                code="NOT_FOUND",
+                message="Section not found",
+            )
+        m = await self.batch_section_statuses(s.project_id, [s])
+        return m[section_id]
 
     async def list_sections(self, project_id: uuid.UUID) -> list[SectionResponse]:
         q = (
@@ -108,8 +180,9 @@ class SectionService:
             .where(Section.project_id == project_id)
             .order_by(Section.order)
         )
-        rows = (await self.db.execute(q)).scalars().all()
-        return [self._to_response(s) for s in rows]
+        rows = list((await self.db.execute(q)).scalars().all())
+        status_map = await self.batch_section_statuses(project_id, rows)
+        return [self._to_response(s, status=status_map[s.id]) for s in rows]
 
     async def reorder_sections(
         self,
@@ -166,7 +239,8 @@ class SectionService:
         self.db.add(sec)
         await self.db.commit()
         await self.db.refresh(sec)
-        return self._to_response(sec)
+        st = await self.batch_section_statuses(project_id, [sec])
+        return self._to_response(sec, status=st[sec.id])
 
     async def get_section(self, project_id: uuid.UUID, section_id: uuid.UUID) -> SectionResponse:
         s = await self.db.get(Section, section_id)
@@ -176,7 +250,8 @@ class SectionService:
                 code="NOT_FOUND",
                 message="Section not found",
             )
-        return self._to_response(s)
+        st = await self.batch_section_statuses(project_id, [s])
+        return self._to_response(s, status=st[s.id])
 
     async def update_section(
         self,
@@ -234,7 +309,8 @@ class SectionService:
 
             schedule_section_embedding(section_id)
             schedule_drift_check(section_id)
-        return self._to_response(s)
+        st = await self.batch_section_statuses(project_id, [s])
+        return self._to_response(s, status=st[s.id])
 
     async def delete_section(
         self,

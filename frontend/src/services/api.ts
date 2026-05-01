@@ -564,11 +564,14 @@ export interface ProjectUpdateBody {
   description?: string | null
 }
 
+export type SectionStatus = 'ready' | 'gaps' | 'conflict' | 'empty'
+
 export interface SectionSummary {
   id: string
   title: string
   slug: string
   order: number
+  status: SectionStatus
 }
 
 export interface Project {
@@ -1158,6 +1161,11 @@ export interface PrivateThreadStreamPayload {
   content: string
   current_section_plaintext?: string
   include_git_history?: boolean
+  selection_from?: number
+  selection_to?: number
+  selected_plaintext?: string
+  include_selection_in_context?: boolean
+  thread_intent?: 'ask' | 'append' | 'replace_selection' | 'edit'
 }
 
 export async function streamPrivateThreadReply(

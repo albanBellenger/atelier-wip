@@ -16,7 +16,47 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { ReactElement } from 'react'
-import type { SectionSummary } from '../../services/api'
+import type { SectionStatus, SectionSummary } from '../../services/api'
+
+function SectionStatusPill(props: { status: SectionStatus }): ReactElement {
+  const { status } = props
+  const palette: Record<
+    SectionStatus,
+    { dot: string; ring: string; label: string }
+  > = {
+    ready: {
+      dot: 'bg-emerald-500',
+      ring: 'ring-emerald-500/40',
+      label: 'Ready',
+    },
+    gaps: {
+      dot: 'bg-amber-500',
+      ring: 'ring-amber-500/40',
+      label: 'Gaps',
+    },
+    conflict: {
+      dot: 'bg-red-500',
+      ring: 'ring-red-500/40',
+      label: 'Conflict',
+    },
+    empty: {
+      dot: 'bg-zinc-500',
+      ring: 'ring-zinc-500/30',
+      label: 'Empty',
+    },
+  }
+  const p = palette[status]
+  return (
+    <span
+      data-testid={`section-status-pill-${status}`}
+      title={p.label}
+      className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-200 ring-1 ring-inset ${p.ring}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${p.dot}`} aria-hidden />
+      {p.label}
+    </span>
+  )
+}
 
 function OutlineRowReadOnly(props: {
   section: SectionSummary
@@ -33,6 +73,7 @@ function OutlineRowReadOnly(props: {
       }`}
     >
       <span className="w-6" />
+      <SectionStatusPill status={section.status} />
       <button
         type="button"
         className="min-w-0 flex-1 truncate text-left hover:underline"
@@ -90,6 +131,7 @@ function SortableRow(props: {
       ) : (
         <span className="w-6" />
       )}
+      <SectionStatusPill status={section.status} />
       <button
         type="button"
         className="min-w-0 flex-1 truncate text-left hover:underline"

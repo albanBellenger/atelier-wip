@@ -47,6 +47,7 @@ describe('ProjectPage publish success', () => {
           title: 'Intro',
           slug: 'intro',
           order: 0,
+          status: 'ready',
         },
       ],
     })
@@ -99,5 +100,73 @@ describe('ProjectPage publish success', () => {
     expect(link).toHaveAttribute('rel', 'noreferrer')
 
     expect(window.alert).not.toHaveBeenCalled()
+  })
+})
+
+describe('ProjectPage outline status pills (Slice A)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('shows section status pills when API returns section.status', async () => {
+    vi.spyOn(api, 'me').mockResolvedValue({
+      user: {
+        id: 'u1',
+        email: 'a@b.com',
+        display_name: 'A',
+        is_tool_admin: false,
+      },
+      studios: [
+        { studio_id: 's1', studio_name: 'S', role: 'studio_member' },
+      ],
+    })
+    vi.spyOn(api, 'getProject').mockResolvedValue({
+      id: 'p1',
+      software_id: 'sw1',
+      name: 'Proj',
+      description: null,
+      created_at: '',
+      updated_at: '',
+      sections: [
+        {
+          id: 'sec1',
+          title: 'Intro',
+          slug: 'intro',
+          order: 0,
+          status: 'ready',
+        },
+        {
+          id: 'sec2',
+          title: 'API',
+          slug: 'api',
+          order: 1,
+          status: 'gaps',
+        },
+      ],
+    })
+
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    render(
+      <MemoryRouter
+        initialEntries={['/studios/s1/software/sw1/projects/p1']}
+      >
+        <QueryClientProvider client={qc}>
+          <Routes>
+            <Route
+              path="/studios/:studioId/software/:softwareId/projects/:projectId"
+              element={<ProjectPage />}
+            />
+          </Routes>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('section-status-pill-ready')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('section-status-pill-gaps')).toBeInTheDocument()
   })
 })

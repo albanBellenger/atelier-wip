@@ -1,6 +1,7 @@
 """Project API schemas."""
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -23,6 +24,7 @@ class SectionSummary(BaseModel):
     title: str
     slug: str
     order: int
+    status: Literal["ready", "gaps", "conflict", "empty"]
 
 
 class ProjectResponse(BaseModel):

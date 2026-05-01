@@ -14,6 +14,7 @@ from app.schemas.project import (
     ProjectUpdate,
     SectionSummary,
 )
+from app.services.section_service import SectionService
 
 
 class ProjectService:
@@ -89,12 +90,16 @@ class ProjectService:
         section_summaries: list[SectionSummary] | None = None
         if include_sections and p.sections is not None:
             ordered = sorted(p.sections, key=lambda s: s.order)
+            status_map = await SectionService(self.db).batch_section_statuses(
+                p.id, ordered
+            )
             section_summaries = [
                 SectionSummary(
                     id=s.id,
                     title=s.title,
                     slug=s.slug,
                     order=s.order,
+                    status=status_map[s.id],
                 )
                 for s in ordered
             ]

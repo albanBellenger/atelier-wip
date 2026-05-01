@@ -1,6 +1,7 @@
 """Section API schemas."""
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -31,5 +32,6 @@ class SectionResponse(BaseModel):
     slug: str
     order: int
     content: str
+    status: Literal["ready", "gaps", "conflict", "empty"]
     created_at: datetime
     updated_at: datetime
