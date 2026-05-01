@@ -1,8 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
-import { useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { SplitEditor } from '../components/editor/SplitEditor'
+import {
+  SplitEditor,
+  type EditorSelectionState,
+} from '../components/editor/SplitEditor'
 import { ThreadPanel } from '../components/thread/ThreadPanel'
 import { colorsForUser, useYjsCollab } from '../hooks/useYjsCollab'
 import { useStudioAccess } from '../hooks/useStudioAccess'
@@ -60,6 +63,17 @@ export function SectionPage(): ReactElement {
     sectionQ.data ? pid : undefined,
     sectionQ.data ? secid : undefined,
     collabUser,
+  )
+
+  const [editorSelection, setEditorSelection] = useState<
+    EditorSelectionState | null
+  >(null)
+
+  const onEditorSelectionChange = useCallback(
+    (sel: EditorSelectionState | null) => {
+      setEditorSelection(sel)
+    },
+    [],
   )
 
   if (!sid || !sfid || !pid || !secid) {
@@ -125,7 +139,10 @@ export function SectionPage(): ReactElement {
                 {!collab ? (
                   <p className="text-zinc-500">Connecting editor…</p>
                 ) : (
-                  <SplitEditor collab={collab} />
+                  <SplitEditor
+                    collab={collab}
+                    onSelectionChange={onEditorSelectionChange}
+                  />
                 )}
               </div>
               <ThreadPanel
@@ -134,6 +151,8 @@ export function SectionPage(): ReactElement {
                 sectionTitle={sectionQ.data.title}
                 projectHref={projectHref}
                 collab={collab}
+                editorSelection={editorSelection}
+                onClearEditorSelection={() => setEditorSelection(null)}
               />
             </div>
           </>

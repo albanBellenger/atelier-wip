@@ -87,6 +87,11 @@ async def stream_private_thread_reply(
     # stream body runs; ApiError inside the iterator surfaces as a 500 / runtime error.
     await LLMService(session).ensure_openai_llm_ready()
     svc = PrivateThreadService(session)
+    await svc.assert_thread_stream_request_valid(
+        project_id=project_id,
+        section_id=section_id,
+        body=body,
+    )
 
     async def gen():
         async for chunk in svc.stream_assistant(
@@ -96,6 +101,12 @@ async def stream_private_thread_reply(
             content=body.content,
             current_section_plaintext=body.current_section_plaintext,
             include_git_history=body.include_git_history,
+            selection_from=body.selection_from,
+            selection_to=body.selection_to,
+            selected_plaintext=body.selected_plaintext,
+            include_selection_in_context=body.include_selection_in_context,
+            thread_intent=body.thread_intent,
+            command=body.command,
         ):
             yield chunk
 

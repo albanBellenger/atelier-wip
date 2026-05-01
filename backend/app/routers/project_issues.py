@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,6 +34,10 @@ async def list_project_issues(
     project_id: UUID,
     session: AsyncSession = Depends(get_db),
     pa: ProjectAccess = Depends(require_project_issues_readable),
+    section_id: UUID | None = Query(
+        None,
+        description="When set, only issues touching this section (section_a or section_b).",
+    ),
 ) -> list[IssueResponse]:
     _ensure_project(pa, project_id)
     if not pa.studio_access.is_studio_member:
@@ -43,6 +47,10 @@ async def list_project_issues(
             message="Not a member of this studio.",
         )
     stmt = select(Issue).where(Issue.project_id == project_id)
+    if section_id is not None:
+        stmt = stmt.where(
+            or_(Issue.section_a_id == section_id, Issue.section_b_id == section_id)
+        )
     if not pa.studio_access.is_studio_admin:
         uid = pa.studio_access.user.id
         stmt = stmt.where(

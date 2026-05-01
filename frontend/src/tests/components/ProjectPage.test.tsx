@@ -56,6 +56,7 @@ describe('ProjectPage publish success', () => {
       project_id: 'p1',
       title: 'Intro',
       slug: 'intro',
+      order: 0,
       content: 'Hi',
       created_at: '',
       updated_at: '',

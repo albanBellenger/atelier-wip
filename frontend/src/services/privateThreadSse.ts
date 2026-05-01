@@ -4,6 +4,7 @@ export interface PrivateThreadStreamMeta {
   findings: { finding_type: string; description: string }[]
   conflicts: { description: string }[]
   context_truncated?: boolean
+  patch_proposal?: Record<string, unknown> | null
 }
 
 export async function consumePrivateThreadSseBody(
@@ -39,6 +40,7 @@ export async function consumePrivateThreadSseBody(
             findings?: { finding_type: string; description: string }[]
             conflicts?: { description: string }[]
             context_truncated?: boolean
+            patch_proposal?: Record<string, unknown> | null
           }
           if (j.type === 'token' && j.text) {
             handlers.onToken(j.text)
@@ -48,6 +50,10 @@ export async function consumePrivateThreadSseBody(
               findings: Array.isArray(j.findings) ? j.findings : [],
               conflicts: Array.isArray(j.conflicts) ? j.conflicts : [],
               context_truncated: Boolean(j.context_truncated),
+              patch_proposal:
+                j.patch_proposal === undefined
+                  ? undefined
+                  : (j.patch_proposal as Record<string, unknown> | null),
             })
           }
         } catch {

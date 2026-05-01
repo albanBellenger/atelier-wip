@@ -12,6 +12,7 @@ from app.deps import (
     require_outline_manager,
     require_project_member,
 )
+from app.exceptions import ApiError
 from app.schemas.context_preview import ContextPreviewOut
 from app.schemas.section import (
     SectionCreate,
@@ -19,10 +20,21 @@ from app.schemas.section import (
     SectionResponse,
     SectionUpdate,
 )
+from app.schemas.section_improve import SectionImproveBody, SectionImproveOut
+from app.services.llm_service import LLMService
 from app.services.rag_service import RAGService
 from app.services.section_service import SectionService
 
 router = APIRouter(prefix="/projects/{project_id}/sections", tags=["sections"])
+
+
+def _ensure_project(pa: ProjectAccess, project_id: UUID) -> None:
+    if pa.project.id != project_id:
+        raise ApiError(
+            status_code=404,
+            code="NOT_FOUND",
+            message="Project not found.",
+        )
 
 
 @router.get("", response_model=list[SectionResponse])
@@ -61,11 +73,12 @@ async def get_section_context_preview(
     project_id: UUID,
     section_id: UUID,
     session: AsyncSession = Depends(get_db),
-    _pa=Depends(get_project_access),
+    pa: ProjectAccess = Depends(get_project_access),
     q: str = Query("", max_length=8000, description="RAG query for chunk retrieval"),
     token_budget: int = Query(6000, ge=100, le=50_000),
     include_git_history: bool = Query(False),
 ) -> ContextPreviewOut:
+    _ensure_project(pa, project_id)
     return await RAGService(session).build_context_with_blocks(
         q,
         project_id,
@@ -75,13 +88,34 @@ async def get_section_context_preview(
     )
 
 
+@router.post("/{section_id}/improve", response_model=SectionImproveOut)
+async def post_section_improve(
+    project_id: UUID,
+    section_id: UUID,
+    body: SectionImproveBody,
+    session: AsyncSession = Depends(get_db),
+    pa: ProjectAccess = Depends(require_project_member),
+) -> SectionImproveOut:
+    _ensure_project(pa, project_id)
+    await LLMService(session).ensure_openai_llm_ready()
+    text = await SectionService(session).improve_section_markdown(
+        project_id,
+        section_id,
+        instruction=body.instruction,
+        current_section_plaintext=body.current_section_plaintext,
+        user_id=pa.studio_access.user.id,
+    )
+    return SectionImproveOut(improved_markdown=text)
+
+
 @router.get("/{section_id}", response_model=SectionResponse)
 async def get_section(
     project_id: UUID,
     section_id: UUID,
     session: AsyncSession = Depends(get_db),
-    _pa=Depends(get_project_access),
+    pa: ProjectAccess = Depends(get_project_access),
 ) -> SectionResponse:
+    _ensure_project(pa, project_id)
     return await SectionService(session).get_section(project_id, section_id)
 
 

@@ -720,8 +720,19 @@ export interface IssueRow {
   created_at: string
 }
 
-export async function listProjectIssues(projectId: string): Promise<IssueRow[]> {
-  return request<IssueRow[]>('GET', `/projects/${projectId}/issues`)
+export async function listProjectIssues(
+  projectId: string,
+  opts?: { sectionId?: string },
+): Promise<IssueRow[]> {
+  const sp = new URLSearchParams()
+  if (opts?.sectionId) {
+    sp.set('section_id', opts.sectionId)
+  }
+  const qs = sp.toString()
+  return request<IssueRow[]>(
+    'GET',
+    `/projects/${projectId}/issues${qs ? `?${qs}` : ''}`,
+  )
 }
 
 export async function updateIssue(
@@ -870,6 +881,27 @@ export async function getContextPreview(
   return request<ContextPreview>(
     'GET',
     `/projects/${projectId}/sections/${sectionId}/context-preview${suffix}`,
+  )
+}
+
+export interface SectionImproveBody {
+  instruction?: string | null
+  current_section_plaintext?: string | null
+}
+
+export interface SectionImproveResponse {
+  improved_markdown: string
+}
+
+export async function improveSection(
+  projectId: string,
+  sectionId: string,
+  body: SectionImproveBody,
+): Promise<SectionImproveResponse> {
+  return request<SectionImproveResponse>(
+    'POST',
+    `/projects/${projectId}/sections/${sectionId}/improve`,
+    body,
   )
 }
 
@@ -1218,6 +1250,7 @@ export interface PrivateThreadStreamPayload {
   selected_plaintext?: string
   include_selection_in_context?: boolean
   thread_intent?: 'ask' | 'append' | 'replace_selection' | 'edit'
+  command?: 'none' | 'improve' | 'critique'
 }
 
 export async function streamPrivateThreadReply(

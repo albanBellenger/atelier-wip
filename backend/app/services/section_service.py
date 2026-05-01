@@ -3,18 +3,35 @@
 import re
 import unicodedata
 import uuid
+from typing import Any
 
 from pycrdt import Doc, Text
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
-from app.models import Issue, Section, WorkOrder, WorkOrderSection
+from app.models import Issue, Project, Section, Software, WorkOrder, WorkOrderSection
 from app.schemas.section import SectionCreate, SectionResponse, SectionUpdate
+from app.schemas.token_context import TokenContext
+from app.services.llm_service import LLMService
+from app.services.rag_service import RAGService
 from app.services.section_status import SectionStatusLiteral, rollup_section_status
 
 # Shared Y.Text map key — must match frontend `YDOC_TEXT_FIELD` and collab persistence.
 SECTION_YJS_TEXT_FIELD = "codemirror"
+
+SECTION_IMPROVE_SCHEMA: dict[str, Any] = {
+    "name": "section_improve",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "improved_markdown": {"type": "string"},
+        },
+        "required": ["improved_markdown"],
+    },
+}
 
 
 def snapshot_from_yjs_update_bytes(blob: bytes | None) -> str | None:
@@ -334,3 +351,85 @@ class SectionService:
             )
         await self.db.delete(s)
         await self.db.commit()
+
+    async def improve_section_markdown(
+        self,
+        project_id: uuid.UUID,
+        section_id: uuid.UUID,
+        *,
+        instruction: str | None,
+        current_section_plaintext: str | None,
+        user_id: uuid.UUID,
+    ) -> str:
+        """Return LLM-revised markdown; does not persist to the section."""
+        s = await self.db.get(Section, section_id)
+        if s is None or s.project_id != project_id:
+            raise ApiError(
+                status_code=404,
+                code="NOT_FOUND",
+                message="Section not found",
+            )
+        pr = await self.db.get(Project, project_id)
+        if pr is None:
+            raise ApiError(
+                status_code=404,
+                code="NOT_FOUND",
+                message="Project not found",
+            )
+        sw = await self.db.get(Software, pr.software_id)
+        if sw is None:
+            raise ApiError(
+                status_code=404,
+                code="NOT_FOUND",
+                message="Software not found",
+            )
+        body_text = (
+            current_section_plaintext.strip()
+            if current_section_plaintext is not None
+            else effective_section_plaintext(s.content, s.yjs_state)
+        )
+        ctx = TokenContext(
+            studio_id=sw.studio_id,
+            software_id=sw.id,
+            project_id=project_id,
+            user_id=user_id,
+        )
+        rag = await RAGService(self.db).build_context(
+            query=(instruction or "Improve this specification section.").strip()
+            + f"\n{s.title}",
+            project_id=project_id,
+            current_section_id=section_id,
+            current_section_plaintext_override=current_section_plaintext,
+        )
+        llm = LLMService(self.db)
+        user_block = (
+            f"Section title: {s.title}\n\nCurrent markdown:\n{body_text}\n"
+        )
+        if instruction and instruction.strip():
+            user_block += f"\nAuthor instruction:\n{instruction.strip()}\n"
+        raw = await llm.chat_structured(
+            system_prompt=(
+                "You revise specification markdown. Preserve intent and structure where "
+                "reasonable; remove ambiguity; do not invent requirements absent from the "
+                "input or context. Return JSON only with improved_markdown.\n\n"
+                + rag.text
+            ),
+            user_prompt=user_block,
+            json_schema=SECTION_IMPROVE_SCHEMA,
+            context=ctx,
+            call_type="section_improve",
+        )
+        if not isinstance(raw, dict):
+            raise ApiError(
+                status_code=502,
+                code="LLM_BAD_OUTPUT",
+                message="Improve response was not structured JSON.",
+            )
+        out = str(raw.get("improved_markdown") or "").strip()
+        if not out:
+            raise ApiError(
+                status_code=502,
+                code="LLM_BAD_OUTPUT",
+                message="Improve response missing improved_markdown.",
+            )
+        return out

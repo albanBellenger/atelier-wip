@@ -3,10 +3,11 @@ import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import * as Y from 'yjs'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it, vi, afterEach } from 'vitest'
+import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest'
 
 import type { YjsCollab } from '../../hooks/useYjsCollab'
 import * as api from '../../services/api'
+import type { PrivateThreadStreamMeta } from '../../services/privateThreadSse'
 import { ThreadPanel } from './ThreadPanel'
 
 const { streamSpy } = vi.hoisted(() => ({
@@ -22,6 +23,12 @@ describe('ThreadPanel', () => {
     vi.restoreAllMocks()
     streamSpy.mockReset()
     streamSpy.mockResolvedValue(undefined)
+  })
+
+  beforeEach(() => {
+    vi.spyOn(api, 'improveSection').mockResolvedValue({
+      improved_markdown: '## Proposed\n',
+    })
   })
 
   it('New thread calls reset, refetches empty messages', async () => {
@@ -164,12 +171,13 @@ describe('ThreadPanel', () => {
         _payload: unknown,
         handlers: {
           onToken: (t: string) => void
-          onMeta: (m: { patch_proposal?: Record<string, unknown> }) => void
+          onMeta: (m: PrivateThreadStreamMeta) => void
         },
       ) => {
         handlers.onToken('ok')
         handlers.onMeta({
           findings: [],
+          conflicts: [],
           patch_proposal: {
             intent: 'append',
             markdown_to_append: 'tail',
@@ -288,5 +296,95 @@ describe('ThreadPanel', () => {
         screen.getByTestId('context-block-kind-software_def'),
       ).toBeInTheDocument()
     })
+  })
+
+  it('Critique tab requests section-scoped issues and work orders', async () => {
+    const user = userEvent.setup()
+    HTMLElement.prototype.scrollIntoView = vi.fn()
+    vi.spyOn(api, 'getPrivateThread').mockResolvedValue({
+      thread_id: 'th-1',
+      messages: [],
+    })
+    const li = vi.spyOn(api, 'listProjectIssues').mockResolvedValue([])
+    const lw = vi.spyOn(api, 'listWorkOrders').mockResolvedValue([])
+
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <ThreadPanel
+            projectId="p1"
+            sectionId="sec1"
+            sectionTitle="Intro"
+            projectHref="/studios/s1/software/sw1/projects/p1"
+            collab={null}
+            editorSelection={null}
+            onClearEditorSelection={() => {}}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await user.click(screen.getByRole('tab', { name: 'Critique' }))
+
+    await waitFor(() => {
+      expect(li).toHaveBeenCalledWith('p1', { sectionId: 'sec1' })
+    })
+    await waitFor(() => {
+      expect(lw).toHaveBeenCalledWith('p1', { section_id: 'sec1' })
+    })
+  })
+
+  it('Slash /improve sends command and forces ask intent', async () => {
+    const user = userEvent.setup()
+    HTMLElement.prototype.scrollIntoView = vi.fn()
+    streamSpy.mockClear()
+    vi.spyOn(api, 'getPrivateThread').mockResolvedValue({
+      thread_id: 'th-1',
+      messages: [],
+    })
+
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <ThreadPanel
+            projectId="p1"
+            sectionId="sec1"
+            sectionTitle="Intro"
+            projectHref="/studios/s1/software/sw1/projects/p1"
+            collab={null}
+            editorSelection={null}
+            onClearEditorSelection={() => {}}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await user.type(
+      screen.getByPlaceholderText(/Ask about/),
+      '/improve tighten doc',
+    )
+    expect(screen.getByTestId('slash-command-chip')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => {
+      expect(streamSpy).toHaveBeenCalled()
+    })
+    const [, , payload] = streamSpy.mock.calls[0] as [
+      string,
+      string,
+      Record<string, unknown>,
+    ]
+    expect(payload.command).toBe('improve')
+    expect(payload.content).toBe('tighten doc')
+    expect(payload.thread_intent).toBe('ask')
   })
 })

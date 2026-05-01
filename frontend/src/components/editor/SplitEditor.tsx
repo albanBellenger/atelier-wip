@@ -7,8 +7,17 @@ import {
   keymap,
   lineNumbers,
   placeholder,
+  ViewPlugin,
+  type ViewUpdate,
 } from '@codemirror/view'
-import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MutableRefObject,
+  type ReactElement,
+} from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import * as Y from 'yjs'
@@ -56,13 +65,55 @@ function useMarkdownPreview(ytext: Y.Text | undefined): string {
   return text
 }
 
-export interface SplitEditorProps {
-  collab: YjsCollab | null
+export interface EditorSelectionState {
+  from: number
+  to: number
+  text: string
 }
 
-export function SplitEditor({ collab }: SplitEditorProps): ReactElement {
+export interface SplitEditorProps {
+  collab: YjsCollab | null
+  onSelectionChange?: (sel: EditorSelectionState | null) => void
+}
+
+function selectionExtension(
+  onChangeRef: MutableRefObject<
+    ((sel: EditorSelectionState | null) => void) | undefined
+  >,
+) {
+  return ViewPlugin.fromClass(
+    class {
+      update(update: ViewUpdate): void {
+        if (!update.selectionSet && !update.docChanged) {
+          return
+        }
+        const fn = onChangeRef.current
+        if (!fn) {
+          return
+        }
+        const m = update.state.selection.main
+        if (m.empty) {
+          fn(null)
+        } else {
+          fn({
+            from: m.from,
+            to: m.to,
+            text: update.state.sliceDoc(m.from, m.to),
+          })
+        }
+      }
+    },
+  )
+}
+
+export function SplitEditor({
+  collab,
+  onSelectionChange,
+}: SplitEditorProps): ReactElement {
   const parentRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<EditorView | null>(null)
+  const onSelRef = useRef(onSelectionChange)
+  onSelRef.current = onSelectionChange
   const preview = useMarkdownPreview(collab?.ytext)
 
   const undoManager = useMemo(() => {
@@ -91,6 +142,7 @@ export function SplitEditor({ collab }: SplitEditorProps): ReactElement {
         placeholder('Write Markdown…'),
         yCollab(collab.ytext, collab.awareness, { undoManager }),
         EditorView.lineWrapping,
+        selectionExtension(onSelRef),
       ],
     })
 

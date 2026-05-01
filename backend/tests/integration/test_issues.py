@@ -55,6 +55,18 @@ async def test_analyze_creates_issues_and_lists(
     assert up.status_code == 200
     assert up.json()["status"] == "resolved"
 
+    filtered = await client.get(
+        f"/projects/{pid}/issues",
+        params={"section_id": sec_a},
+    )
+    assert filtered.status_code == 200
+    rows_f = filtered.json()
+    assert len(rows_f) >= 1
+    assert all(
+        r["section_a_id"] == sec_a or r["section_b_id"] == sec_a
+        for r in rows_f
+    )
+
 
 @pytest.mark.asyncio
 async def test_member_cannot_update_issue_owned_by_another_actor(

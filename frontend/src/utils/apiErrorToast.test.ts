@@ -27,8 +27,10 @@ describe('showApiError', () => {
     })
     showApiError(new Error('x'))
     expect(toast.error).toHaveBeenCalledOnce()
-    expect(toast.error.mock.calls[0][0]).toBe('Failed')
-    expect(toast.error.mock.calls[0][1]).toEqual({ description: 'details' })
+    expect(vi.mocked(toast.error).mock.calls[0][0]).toBe('Failed')
+    expect(vi.mocked(toast.error).mock.calls[0][1]).toEqual({
+      description: 'details',
+    })
   })
 
   it('truncates long descriptions', () => {
@@ -39,7 +41,9 @@ describe('showApiError', () => {
       code: 'HTTP_ERROR',
     })
     showApiError(new Error('x'))
-    const opts = toast.error.mock.calls[0][1] as { description: string }
+    const opts = vi.mocked(toast.error).mock.calls[0][1] as {
+      description: string
+    }
     expect(opts.description.length).toBe(198)
     expect(opts.description.endsWith('…')).toBe(true)
   })
