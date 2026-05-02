@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.deps import get_current_user
 from app.exceptions import ApiError
-from app.models import StudioMember, User
+from app.models import Studio, StudioMember, User
 from app.schemas.token_usage_report import (
     TokenUsageReportOut,
     TokenUsageRowOut,
@@ -32,6 +32,7 @@ async def me_token_usage(
     request: Request,
     session: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
+    studio_id: UUID | None = Query(None),
     software_id: UUID | None = Query(None),
     project_id: UUID | None = Query(None),
     call_type: str | None = Query(None),
@@ -52,6 +53,32 @@ async def me_token_usage(
             message="Viewer access does not include token usage.",
         )
 
+    filter_studio_id: UUID | None = None
+    if studio_id is not None:
+        st = await session.get(Studio, studio_id)
+        if st is None:
+            raise ApiError(
+                status_code=404,
+                code="NOT_FOUND",
+                message="Studio not found.",
+            )
+        if not user.is_tool_admin:
+            row = (
+                await session.execute(
+                    select(StudioMember).where(
+                        StudioMember.studio_id == studio_id,
+                        StudioMember.user_id == user.id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if row is None:
+                raise ApiError(
+                    status_code=403,
+                    code="FORBIDDEN",
+                    message="Not a member of this studio.",
+                )
+        filter_studio_id = studio_id
+
     svc = TokenUsageQueryService(session)
     csv_mode = _wants_csv(request)
     lim = 500_000 if csv_mode else limit
@@ -60,7 +87,7 @@ async def me_token_usage(
         scope="self",
         scope_studio_id=None,
         scope_user_id=user.id,
-        studio_id=None,
+        studio_id=filter_studio_id,
         software_id=software_id,
         project_id=project_id,
         user_id=None,

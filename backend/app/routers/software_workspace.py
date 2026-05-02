@@ -73,7 +73,11 @@ async def list_software_activity(
 @router.get("/artifacts", response_model=list[SoftwareArtifactRowOut])
 async def list_software_artifacts(
     software_id: UUID,
+    for_project_id: UUID | None = Query(None, description="Scope project exclusions to this project"),
     session: AsyncSession = Depends(get_db),
     _sa: SoftwareAccess = Depends(get_software_access),
 ) -> list[SoftwareArtifactRowOut]:
-    return await ArtifactService(session).list_artifacts_for_software(software_id)
+    return await ArtifactService(session).list_artifacts_for_software(
+        software_id,
+        for_project_id=for_project_id,
+    )

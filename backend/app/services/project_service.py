@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import case, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -14,6 +15,18 @@ from app.schemas.project import (
     ProjectResponse,
     ProjectUpdate,
     SectionSummary,
+    StudioProjectListItemOut,
+)
+from app.security.field_encryption import decrypt_secret, fernet_configured
+from app.services.git_service import (
+    commit_moves,
+    list_repo_blob_paths_under_prefix,
+    moves_for_prefix_rename,
+)
+from app.services.publish_folder_slug import (
+    coerce_publish_folder_slug_for_create,
+    coerce_publish_folder_slug_for_update,
+    next_unique_publish_folder_slug,
 )
 from app.services.section_service import SectionService
 from app.services.software_activity_service import SoftwareActivityService
@@ -38,6 +51,7 @@ class ProjectService:
             software_id=p.software_id,
             name=p.name,
             description=p.description,
+            publish_folder_slug=p.publish_folder_slug,
             archived=p.archived,
             created_at=p.created_at,
             updated_at=p.updated_at,
@@ -104,6 +118,46 @@ class ProjectService:
             candidates.append(sections_max_updated)
         return max(candidates)
 
+    async def _rename_publish_folder_in_remote_git_if_needed(
+        self,
+        software: Software | None,
+        old_slug: str,
+        new_slug: str,
+    ) -> None:
+        if software is None or old_slug == new_slug:
+            return
+        if (
+            not (software.git_repo_url or "").strip()
+            or not (software.git_branch or "").strip()
+            or not software.git_token
+        ):
+            return
+        if not fernet_configured():
+            return
+        plain = decrypt_secret(software.git_token)
+        if not plain:
+            return
+        repo = software.git_repo_url.strip()
+        branch = (software.git_branch or "main").strip()
+        blobs = await list_repo_blob_paths_under_prefix(
+            repo_web_url=repo,
+            token=plain,
+            branch=branch,
+            path_prefix=old_slug,
+        )
+        if not blobs:
+            return
+        moves = moves_for_prefix_rename(old_slug, new_slug, blobs)
+        if not moves:
+            return
+        await commit_moves(
+            repo_web_url=repo,
+            token=plain,
+            branch=branch,
+            moves=moves,
+            message=f"Rename publish folder: {old_slug} → {new_slug}",
+        )
+
     async def list_projects(
         self, software_id: uuid.UUID, *, include_archived: bool = False
     ) -> list[ProjectResponse]:
@@ -125,6 +179,37 @@ class ProjectService:
             for p in rows
         ]
 
+    async def list_projects_for_studio(
+        self, studio_id: uuid.UUID, *, include_archived: bool = False
+    ) -> list[StudioProjectListItemOut]:
+        q = (
+            select(Project, Software.name)
+            .join(Software, Project.software_id == Software.id)
+            .where(Software.studio_id == studio_id)
+        )
+        if not include_archived:
+            q = q.where(Project.archived.is_(False))
+        q = q.order_by(Software.name, Project.name)
+        pairs = (await self.db.execute(q)).all()
+        ids = [p.id for p, _ in pairs]
+        dash = await self._dashboard_for_project_ids(ids)
+        out: list[StudioProjectListItemOut] = []
+        for p, sw_name in pairs:
+            base = self._to_response(
+                p,
+                work_orders_done=dash[p.id][0],
+                work_orders_total=dash[p.id][1],
+                sections_count=dash[p.id][2],
+                last_edited_at=self._last_edited(p, dash[p.id][3]),
+            )
+            out.append(
+                StudioProjectListItemOut(
+                    **base.model_dump(),
+                    software_name=str(sw_name),
+                )
+            )
+        return out
+
     async def create_project(
         self,
         software_id: uuid.UUID,
@@ -132,11 +217,16 @@ class ProjectService:
         *,
         actor_user_id: uuid.UUID | None = None,
     ) -> ProjectResponse:
+        base_slug = coerce_publish_folder_slug_for_create(
+            body.publish_folder_slug, fallback_name=body.name.strip()
+        )
+        unique_slug = await next_unique_publish_folder_slug(self.db, software_id, base_slug)
         p = Project(
             id=uuid.uuid4(),
             software_id=software_id,
             name=body.name.strip(),
             description=body.description.strip() if body.description else None,
+            publish_folder_slug=unique_slug,
         )
         self.db.add(p)
         await self.db.flush()
@@ -152,7 +242,17 @@ class ProjectService:
                 entity_type="project",
                 entity_id=p.id,
             )
-        await self.db.commit()
+        try:
+            await self.db.commit()
+        except IntegrityError as exc:
+            await self.db.rollback()
+            if "uq_projects_software_publish_folder_slug" in str(getattr(exc, "orig", exc)):
+                raise ApiError(
+                    status_code=409,
+                    code="PUBLISH_FOLDER_SLUG_TAKEN",
+                    message="That publish folder slug is already used by another project in this software.",
+                ) from exc
+            raise
         await self.db.refresh(p)
         dash = await self._dashboard_for_project_ids([p.id])
         d = dash[p.id]
@@ -239,12 +339,36 @@ class ProjectService:
                 message="Project not found",
             )
         data = body.model_dump(exclude_unset=True)
+        slug_change: tuple[str, str] | None = None
+        if "publish_folder_slug" in data and data.get("publish_folder_slug") is not None:
+            candidate = coerce_publish_folder_slug_for_update(
+                str(data["publish_folder_slug"])
+            )
+            if candidate != p.publish_folder_slug:
+                slug_change = (p.publish_folder_slug, candidate)
+        if slug_change is not None:
+            sw = await self.db.get(Software, software_id)
+            await self._rename_publish_folder_in_remote_git_if_needed(
+                sw, slug_change[0], slug_change[1]
+            )
         if "name" in data and data["name"] is not None:
             p.name = str(data["name"]).strip()
         if "description" in data:
             d = data["description"]
             p.description = str(d).strip() if d else None
-        await self.db.commit()
+        if slug_change is not None:
+            p.publish_folder_slug = slug_change[1]
+        try:
+            await self.db.commit()
+        except IntegrityError as exc:
+            await self.db.rollback()
+            if "uq_projects_software_publish_folder_slug" in str(getattr(exc, "orig", exc)):
+                raise ApiError(
+                    status_code=409,
+                    code="PUBLISH_FOLDER_SLUG_TAKEN",
+                    message="That publish folder slug is already used by another project in this software.",
+                ) from exc
+            raise
         await self.db.refresh(p)
         dash = await self._dashboard_for_project_ids([p.id])
         d = dash[p.id]

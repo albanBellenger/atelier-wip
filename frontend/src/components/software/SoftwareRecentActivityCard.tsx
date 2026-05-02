@@ -112,6 +112,9 @@ export function SoftwareRecentActivityCard({
                     <p className="mt-1 text-[11px] text-zinc-500">
                       {when ?? '—'}
                     </p>
+                    {ev.software_name ? (
+                      <p className="mt-0.5 text-[11px] text-zinc-600">{ev.software_name}</p>
+                    ) : null}
                   </div>
                 </li>
               )

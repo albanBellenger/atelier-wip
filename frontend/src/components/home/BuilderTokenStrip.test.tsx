@@ -68,4 +68,35 @@ describe('BuilderTokenStrip', () => {
       '/me/token-usage?software_id=sw-99',
     )
   })
+
+  it('honours custom heading', () => {
+    vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
+      items: [],
+      next_cursor: null,
+    })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <BuilderTokenStrip
+            report={{
+              rows: [],
+              totals: {
+                input_tokens: 0,
+                output_tokens: 0,
+                estimated_cost_usd: '0',
+              },
+            }}
+            isPending={false}
+            canSeeTokenUsage
+            billedToStudioName={null}
+            heading="Studio LLM usage"
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    expect(
+      screen.getByRole('heading', { name: /studio llm usage/i }),
+    ).toBeInTheDocument()
+  })
 })

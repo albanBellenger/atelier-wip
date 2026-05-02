@@ -1,6 +1,7 @@
 """Artifact API schemas."""
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -23,6 +24,9 @@ class MarkdownArtifactCreate(BaseModel):
     content: str = Field(default="")
 
 
+ArtifactScopeLevel = Literal["studio", "software", "project"]
+
+
 class SoftwareArtifactRowOut(BaseModel):
     """Artifact row for software-wide list (includes owning project)."""
 
@@ -35,3 +39,23 @@ class SoftwareArtifactRowOut(BaseModel):
     uploaded_by: UUID | None
     uploaded_by_display: str | None
     created_at: datetime
+    scope_level: ArtifactScopeLevel = "project"
+    excluded_at_software: datetime | None = None
+    excluded_at_project: datetime | None = None
+
+
+class StudioArtifactRowOut(SoftwareArtifactRowOut):
+    """Artifact on studio-wide aggregate list."""
+
+    software_id: UUID
+    software_name: str
+
+
+class ArtifactExclusionPatch(BaseModel):
+    artifact_id: UUID
+    excluded: bool
+
+
+class ArtifactExclusionPatchResult(BaseModel):
+    artifact_id: UUID
+    excluded: bool

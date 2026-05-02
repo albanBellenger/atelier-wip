@@ -7,7 +7,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Project, SoftwareActivityEvent, User
+from app.models import Project, Software, SoftwareActivityEvent, User
 from app.schemas.software_activity import SoftwareActivityItemOut
 
 
@@ -95,6 +95,76 @@ class SoftwareActivityService:
                     created_at=r.created_at,
                     actor_display=actor_display,
                     context_label=context_label,
+                    software_name=None,
+                )
+            )
+        return out
+
+    async def list_activity_items_out_for_studio(
+        self, studio_id: uuid.UUID, *, limit: int = 30
+    ) -> list[SoftwareActivityItemOut]:
+        lim = max(1, min(limit, 100))
+        q = (
+            select(SoftwareActivityEvent)
+            .where(SoftwareActivityEvent.studio_id == studio_id)
+            .order_by(SoftwareActivityEvent.created_at.desc())
+            .limit(lim)
+        )
+        rows = list((await self.db.execute(q)).scalars().all())
+        if not rows:
+            return []
+        actor_ids = {r.actor_user_id for r in rows if r.actor_user_id is not None}
+        project_ids = {
+            r.entity_id
+            for r in rows
+            if r.entity_type == "project" and r.entity_id is not None
+        }
+        software_ids = {r.software_id for r in rows}
+        users: dict[uuid.UUID, str] = {}
+        if actor_ids:
+            uq = select(User.id, User.display_name).where(User.id.in_(actor_ids))
+            for uid, dname in (await self.db.execute(uq)).all():
+                users[uid] = str(dname)
+        software_names: dict[uuid.UUID, str] = {}
+        if software_ids:
+            sq = select(Software.id, Software.name).where(Software.id.in_(software_ids))
+            for sid, name in (await self.db.execute(sq)).all():
+                software_names[sid] = str(name)
+        projects: dict[uuid.UUID, str] = {}
+        if project_ids:
+            pq = (
+                select(Project.id, Project.name)
+                .join(Software, Project.software_id == Software.id)
+                .where(
+                    Project.id.in_(project_ids),
+                    Software.studio_id == studio_id,
+                )
+            )
+            for pid, name in (await self.db.execute(pq)).all():
+                projects[pid] = str(name)
+        out: list[SoftwareActivityItemOut] = []
+        for r in rows:
+            actor_display = (
+                users[r.actor_user_id] if r.actor_user_id is not None else None
+            )
+            sw_name = software_names.get(r.software_id)
+            context_label: str | None = None
+            if r.entity_type == "project" and r.entity_id is not None:
+                context_label = projects.get(r.entity_id)
+            if context_label is None:
+                context_label = "Software-level"
+            out.append(
+                SoftwareActivityItemOut(
+                    id=r.id,
+                    verb=r.verb,
+                    summary=r.summary,
+                    actor_user_id=r.actor_user_id,
+                    entity_type=r.entity_type,
+                    entity_id=r.entity_id,
+                    created_at=r.created_at,
+                    actor_display=actor_display,
+                    context_label=context_label,
+                    software_name=sw_name,
                 )
             )
         return out

@@ -137,7 +137,13 @@ async def test_generate_invalid_llm_shape(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pid = uuid.uuid4()
-    pr = Project(id=pid, software_id=uuid.uuid4(), name="P", description=None)
+    pr = Project(
+        id=pid,
+        software_id=uuid.uuid4(),
+        name="P",
+        description=None,
+        publish_folder_slug="p",
+    )
     sw = Software(
         id=pr.software_id,
         studio_id=uuid.uuid4(),

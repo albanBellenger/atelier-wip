@@ -34,6 +34,7 @@ function mockProjectLandingApis(): void {
       software_id: 'sw1',
       name: 'Proj',
       description: null,
+      publish_folder_slug: 'proj',
       archived: false,
       created_at: '',
       updated_at: '',
@@ -54,6 +55,7 @@ function mockProjectLandingApis(): void {
   vi.spyOn(api, 'listWorkOrders').mockResolvedValue([])
   vi.spyOn(api, 'listProjectIssues').mockResolvedValue([])
   vi.spyOn(api, 'getSoftwareActivity').mockResolvedValue({ items: [] })
+  vi.spyOn(api, 'listSoftwareArtifacts').mockResolvedValue([])
   vi.spyOn(api, 'listMembers').mockResolvedValue([])
   vi.spyOn(api, 'getMeTokenUsage').mockResolvedValue({
     rows: [],
@@ -98,6 +100,7 @@ describe('ProjectPage publish success', () => {
       software_id: 'sw1',
       name: 'Proj',
       description: null,
+      publish_folder_slug: 'proj',
       archived: false,
       created_at: '',
       updated_at: '',
@@ -190,6 +193,7 @@ describe('ProjectPage outline status pills (Slice A)', () => {
       software_id: 'sw1',
       name: 'Proj',
       description: null,
+      publish_folder_slug: 'proj',
       archived: false,
       created_at: '',
       updated_at: '',
@@ -338,6 +342,7 @@ describe('ProjectPage landing layout', () => {
       software_id: 'sw1',
       name: 'Proj',
       description: null,
+      publish_folder_slug: 'proj',
       archived: false,
       created_at: '',
       updated_at: '',
@@ -394,6 +399,7 @@ describe('ProjectPage landing layout', () => {
       software_id: 'sw1',
       name: 'Proj',
       description: null,
+      publish_folder_slug: 'proj',
       archived: false,
       created_at: '',
       updated_at: '',
@@ -452,6 +458,7 @@ describe('ProjectPage landing layout', () => {
       software_id: 'sw1',
       name: 'Proj',
       description: null,
+      publish_folder_slug: 'proj',
       archived: false,
       created_at: '',
       updated_at: '',
@@ -487,6 +494,166 @@ describe('ProjectPage landing layout', () => {
 
     expect(
       screen.queryByRole('link', { name: 'Open project settings' }),
+    ).not.toBeInTheDocument()
+  })
+})
+
+describe('ProjectPage aggregated artifacts', () => {
+  beforeEach(() => {
+    mockProjectLandingApis()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('requests software artifacts with forProjectId and lists a row', async () => {
+    vi.spyOn(api, 'me').mockResolvedValue({
+      user: {
+        id: 'u1',
+        email: 'a@b.com',
+        display_name: 'A',
+        is_tool_admin: false,
+      },
+      studios: [
+        { studio_id: 's1', studio_name: 'S', role: 'studio_member' },
+      ],
+      cross_studio_grants: [],
+    })
+    vi.spyOn(api, 'getProject').mockResolvedValue({
+      id: 'p1',
+      software_id: 'sw1',
+      name: 'Proj',
+      description: null,
+      publish_folder_slug: 'proj',
+      archived: false,
+      created_at: '',
+      updated_at: '',
+      work_orders_done: 0,
+      work_orders_total: 0,
+      sections_count: 1,
+      last_edited_at: null,
+      sections: [
+        {
+          id: 'sec1',
+          title: 'Intro',
+          slug: 'intro',
+          order: 0,
+          status: 'ready',
+          updated_at: '',
+        },
+      ],
+    })
+
+    const listSpy = vi.mocked(api.listSoftwareArtifacts)
+    listSpy.mockResolvedValue([
+      {
+        id: 'a1',
+        project_id: 'p1',
+        project_name: 'Proj',
+        name: 'Handbook.pdf',
+        file_type: 'pdf',
+        size_bytes: 2048,
+        uploaded_by: 'u1',
+        uploaded_by_display: 'A',
+        created_at: '2026-01-01T00:00:00Z',
+        scope_level: 'software',
+        excluded_at_software: null,
+        excluded_at_project: null,
+      },
+    ])
+
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    render(
+      <MemoryRouter
+        initialEntries={['/studios/s1/software/sw1/projects/p1']}
+      >
+        <QueryClientProvider client={qc}>
+          <Routes>
+            <Route
+              path="/studios/:studioId/software/:softwareId/projects/:projectId"
+              element={<ProjectPage />}
+            />
+          </Routes>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(listSpy).toHaveBeenCalledWith('sw1', { forProjectId: 'p1' })
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('Handbook.pdf')).toBeInTheDocument()
+    })
+
+    expect(
+      screen.getByRole('heading', { name: /^artifacts$/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /^upload file$/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('does not show upload for studio viewers', async () => {
+    vi.spyOn(api, 'me').mockResolvedValue({
+      user: {
+        id: 'u1',
+        email: 'a@b.com',
+        display_name: 'A',
+        is_tool_admin: false,
+      },
+      studios: [
+        { studio_id: 's1', studio_name: 'S', role: 'studio_viewer' },
+      ],
+      cross_studio_grants: [],
+    })
+    vi.spyOn(api, 'getProject').mockResolvedValue({
+      id: 'p1',
+      software_id: 'sw1',
+      name: 'Proj',
+      description: null,
+      publish_folder_slug: 'proj',
+      archived: false,
+      created_at: '',
+      updated_at: '',
+      work_orders_done: 0,
+      work_orders_total: 0,
+      sections_count: 0,
+      last_edited_at: null,
+      sections: [],
+    })
+
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    render(
+      <MemoryRouter
+        initialEntries={['/studios/s1/software/sw1/projects/p1']}
+      >
+        <QueryClientProvider client={qc}>
+          <Routes>
+            <Route
+              path="/studios/:studioId/software/:softwareId/projects/:projectId"
+              element={<ProjectPage />}
+            />
+          </Routes>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { name: /^artifacts$/i }),
+      ).toBeInTheDocument()
+    })
+
+    expect(
+      screen.queryByRole('button', { name: /^upload file$/i }),
     ).not.toBeInTheDocument()
   })
 })

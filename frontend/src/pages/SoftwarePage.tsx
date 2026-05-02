@@ -7,12 +7,11 @@ import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
 import { BuilderTokenStrip } from '../components/home/BuilderTokenStrip'
 import { userCanSeeMeTokenUsage } from '../components/home/UserMenu'
 import { NeedsAttentionCard } from '../components/home/NeedsAttentionCard'
+import { SoftwareArtifactsSection } from '../components/software/SoftwareArtifactsSection'
 import { SoftwareBuildingTeamCard } from '../components/software/SoftwareBuildingTeamCard'
 import { SoftwareDefinitionPreviewCard } from '../components/software/SoftwareDefinitionPreviewCard'
 import { SoftwareRecentActivityCard } from '../components/software/SoftwareRecentActivityCard'
 import { SettingsGearIcon } from '../components/icons/SettingsGearIcon'
-import { formatFileByteSize } from '../lib/formatFileByteSize'
-import { formatPersonShortLabel } from '../lib/formatPersonShortLabel'
 import { formatRelativeTimeUtc } from '../lib/formatRelativeTime'
 import {
   getHostedEnvironment,
@@ -46,14 +45,6 @@ function displayRepoHostPath(url: string | null | undefined): string {
   } catch {
     return u.length > 56 ? `${u.slice(0, 53)}…` : u
   }
-}
-
-function artifactTypeBadgeClass(fileType: string): string {
-  const ft = fileType.toLowerCase()
-  if (ft === 'pdf') {
-    return 'border border-red-500/40 bg-red-950/70 text-red-200'
-  }
-  return 'border border-teal-500/40 bg-teal-950/55 text-teal-200'
 }
 
 export function SoftwarePage(): ReactElement {
@@ -611,89 +602,17 @@ export function SoftwarePage(): ReactElement {
               />
             ) : null}
 
-            <section className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 px-5 py-4">
-                <h2 className="text-[15px] font-semibold tracking-tight text-zinc-100">
-                  Software artifacts
-                  {artifactsQ.data != null ? (
-                    <span className="ml-2 font-normal text-[13px] text-zinc-500">
-                      {artifactsQ.data.length}{' '}
-                      {artifactsQ.data.length === 1 ? 'file' : 'files'}
-                    </span>
-                  ) : null}
-                </h2>
-                {access.isStudioEditor && defaultProjectId ? (
-                  <Link
-                    to={`/studios/${sid}/software/${sfid}/projects/${defaultProjectId}/artifacts`}
-                    className="rounded-md border border-zinc-600 bg-zinc-800/50 px-3 py-1.5 text-xs font-medium text-zinc-200 hover:bg-zinc-800"
-                  >
-                    + Upload
-                  </Link>
-                ) : null}
-              </div>
-              <div className="px-5 pb-5 pt-1">
-                {artifactsQ.isPending && (
-                  <p className="mt-3 text-[13px] text-zinc-500">Loading artifacts…</p>
-                )}
-                {artifactsQ.isError && (
-                  <p className="mt-3 text-[13px] text-zinc-500">
-                    Could not load artifacts.
-                  </p>
-                )}
-                {artifactsQ.data && artifactsQ.data.length === 0 ? (
-                  <p className="mt-3 text-[13px] text-zinc-500">No files uploaded yet.</p>
-                ) : null}
-                {artifactsQ.data && artifactsQ.data.length > 0 ? (
-                  <ul className="divide-y divide-zinc-800/90">
-                    {artifactsQ.data.map((row) => {
-                      const when =
-                        formatRelativeTimeUtc(row.created_at) ||
-                        new Date(row.created_at).toLocaleDateString()
-                      const uploader = formatPersonShortLabel(row.uploaded_by_display)
-                      return (
-                        <li key={row.id} className="py-4 first:pt-3">
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
-                            <div className="flex min-w-0 flex-1 gap-3">
-                              <span
-                                className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${artifactTypeBadgeClass(row.file_type)}`}
-                              >
-                                {row.file_type.toUpperCase()}
-                              </span>
-                              <div className="min-w-0 flex-1">
-                                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                                  <span className="truncate text-[14px] font-medium text-zinc-100">
-                                    {row.name}
-                                  </span>
-                                  <span className="shrink-0 tabular-nums text-[12px] text-zinc-500">
-                                    {formatFileByteSize(row.size_bytes ?? 0)}
-                                  </span>
-                                </div>
-                                <p className="mt-1 text-[11px] text-zinc-500">
-                                  {row.project_name} · {uploader} · {when}
-                                </p>
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              className="shrink-0 self-start text-[12px] font-medium text-zinc-500 hover:text-zinc-300 sm:self-center"
-                              onClick={() =>
-                                void handleArtifactDownload(
-                                  row.project_id,
-                                  row.id,
-                                  row.name,
-                                )
-                              }
-                            >
-                              Download
-                            </button>
-                          </div>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                ) : null}
-              </div>
-            </section>
+            <SoftwareArtifactsSection
+              studioId={sid}
+              softwareId={sfid}
+              defaultProjectId={defaultProjectId}
+              canStudioEditor={access.isStudioEditor}
+              isMember={access.isMember}
+              isPending={artifactsQ.isPending}
+              isError={artifactsQ.isError}
+              rows={artifactsQ.data}
+              onDownload={handleArtifactDownload}
+            />
 
             {gitHistQ.data && gitHistQ.data.commits.length > 0 ? (
               <section className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">

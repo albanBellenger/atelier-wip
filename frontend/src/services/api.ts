@@ -295,7 +295,7 @@ export async function downloadStudioTokenUsageCsv(
 }
 
 export async function getMeTokenUsage(
-  params?: Omit<TokenUsageQueryParams, 'studio_id' | 'user_id'>,
+  params?: Omit<TokenUsageQueryParams, 'user_id'>,
 ): Promise<TokenUsageReport> {
   const sp = new URLSearchParams()
   appendTokenUsageParams(sp, params)
@@ -307,7 +307,7 @@ export async function getMeTokenUsage(
 }
 
 export async function downloadMeTokenUsageCsv(
-  params?: Omit<TokenUsageQueryParams, 'studio_id' | 'user_id'>,
+  params?: Omit<TokenUsageQueryParams, 'user_id'>,
 ): Promise<Blob> {
   const sp = new URLSearchParams()
   appendTokenUsageParams(sp, params)
@@ -624,11 +624,13 @@ export async function testGitConnection(
 export interface ProjectCreateBody {
   name: string
   description?: string | null
+  publish_folder_slug?: string | null
 }
 
 export interface ProjectUpdateBody {
   name?: string | null
   description?: string | null
+  publish_folder_slug?: string | null
 }
 
 export type SectionStatus = 'ready' | 'gaps' | 'conflict' | 'empty'
@@ -647,6 +649,7 @@ export interface Project {
   software_id: string
   name: string
   description: string | null
+  publish_folder_slug: string
   archived: boolean
   created_at: string
   updated_at: string
@@ -655,6 +658,22 @@ export interface Project {
   work_orders_total: number
   sections_count: number
   last_edited_at: string | null
+}
+
+export interface StudioProjectRow extends Project {
+  software_name: string
+}
+
+export async function listStudioProjects(
+  studioId: string,
+  opts?: { includeArchived?: boolean },
+): Promise<StudioProjectRow[]> {
+  const q =
+    opts?.includeArchived === true ? '?include_archived=true' : ''
+  return request<StudioProjectRow[]>(
+    'GET',
+    `/studios/${studioId}/projects${q}`,
+  )
 }
 
 export async function listProjects(
@@ -919,6 +938,7 @@ export interface SoftwareActivityItem {
   created_at: string
   actor_display?: string | null
   context_label?: string | null
+  software_name?: string | null
 }
 
 export interface SoftwareActivityResponse {
@@ -936,6 +956,19 @@ export async function getSoftwareActivity(
   )
 }
 
+export async function getStudioActivity(
+  studioId: string,
+  opts?: { limit?: number },
+): Promise<SoftwareActivityResponse> {
+  const lim = opts?.limit != null ? `?limit=${opts.limit}` : ''
+  return request<SoftwareActivityResponse>(
+    'GET',
+    `/studios/${studioId}/activity${lim}`,
+  )
+}
+
+export type ArtifactScopeLevel = 'studio' | 'software' | 'project'
+
 export interface SoftwareArtifactRow {
   id: string
   project_id: string
@@ -946,14 +979,71 @@ export interface SoftwareArtifactRow {
   uploaded_by: string | null
   uploaded_by_display: string | null
   created_at: string
+  scope_level: ArtifactScopeLevel
+  excluded_at_software: string | null
+  excluded_at_project: string | null
+}
+
+export interface StudioArtifactRow extends SoftwareArtifactRow {
+  software_id: string
+  software_name: string
 }
 
 export async function listSoftwareArtifacts(
   softwareId: string,
+  opts?: { forProjectId?: string },
 ): Promise<SoftwareArtifactRow[]> {
+  const q =
+    opts?.forProjectId != null && opts.forProjectId !== ''
+      ? `?for_project_id=${encodeURIComponent(opts.forProjectId)}`
+      : ''
   return request<SoftwareArtifactRow[]>(
     'GET',
-    `/software/${softwareId}/artifacts`,
+    `/software/${softwareId}/artifacts${q}`,
+  )
+}
+
+export async function listStudioArtifacts(
+  studioId: string,
+): Promise<StudioArtifactRow[]> {
+  return request<StudioArtifactRow[]>(
+    'GET',
+    `/studios/${studioId}/artifacts`,
+  )
+}
+
+export interface ArtifactExclusionPatchBody {
+  artifact_id: string
+  excluded: boolean
+}
+
+export interface ArtifactExclusionPatchResult {
+  artifact_id: string
+  excluded: boolean
+}
+
+export async function patchSoftwareArtifactExclusion(
+  studioId: string,
+  softwareId: string,
+  body: ArtifactExclusionPatchBody,
+): Promise<ArtifactExclusionPatchResult> {
+  return request<ArtifactExclusionPatchResult>(
+    'PATCH',
+    `/studios/${studioId}/software/${softwareId}/artifact-exclusions`,
+    body,
+  )
+}
+
+export async function patchProjectArtifactExclusion(
+  studioId: string,
+  softwareId: string,
+  projectId: string,
+  body: ArtifactExclusionPatchBody,
+): Promise<ArtifactExclusionPatchResult> {
+  return request<ArtifactExclusionPatchResult>(
+    'PATCH',
+    `/studios/${studioId}/software/${softwareId}/projects/${projectId}/artifact-exclusions`,
+    body,
   )
 }
 

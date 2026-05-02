@@ -14,7 +14,9 @@ from app.deps import (
     get_studio_access,
     require_studio_admin,
 )
+from app.exceptions import ApiError
 from app.models import User
+from app.schemas.artifact import StudioArtifactRowOut
 from app.schemas.cross_studio import CrossStudioRequestCreate, CrossStudioRequestResult
 from app.schemas.mcp_keys import McpKeyCreateBody, McpKeyCreatedResponse, McpKeyPublic
 from app.schemas.token_usage_report import (
@@ -22,6 +24,8 @@ from app.schemas.token_usage_report import (
     TokenUsageRowOut,
     TokenUsageTotalsOut,
 )
+from app.schemas.project import StudioProjectListItemOut
+from app.schemas.software_activity import SoftwareActivityListOut
 from app.schemas.studio import (
     MemberInvite,
     MemberRoleUpdate,
@@ -30,8 +34,11 @@ from app.schemas.studio import (
     StudioResponse,
     StudioUpdate,
 )
+from app.services.artifact_service import ArtifactService
 from app.services.cross_studio_service import CrossStudioService
 from app.services.mcp_key_admin_service import McpKeyAdminService
+from app.services.project_service import ProjectService
+from app.services.software_activity_service import SoftwareActivityService
 from app.services.studio_service import StudioService
 from app.services.token_usage_query_service import TokenUsageQueryService
 
@@ -58,6 +65,57 @@ async def create_studio(
     user: User = Depends(get_current_user),
 ) -> StudioResponse:
     return await StudioService(session).create_studio(user, body)
+
+
+@router.get(
+    "/{studio_id}/projects",
+    response_model=list[StudioProjectListItemOut],
+)
+async def list_studio_projects(
+    studio_id: UUID,
+    include_archived: bool = False,
+    session: AsyncSession = Depends(get_db),
+    access: StudioAccess = Depends(get_studio_access),
+) -> list[StudioProjectListItemOut]:
+    return await ProjectService(session).list_projects_for_studio(
+        access.studio_id,
+        include_archived=include_archived,
+    )
+
+
+@router.get("/{studio_id}/activity", response_model=SoftwareActivityListOut)
+async def list_studio_activity(
+    studio_id: UUID,
+    limit: int = Query(30, ge=1, le=100),
+    session: AsyncSession = Depends(get_db),
+    access: StudioAccess = Depends(get_studio_access),
+) -> SoftwareActivityListOut:
+    if not access.can_create_project:
+        raise ApiError(
+            status_code=403,
+            code="FORBIDDEN",
+            message="Owning studio membership required.",
+        )
+    if not access.is_studio_editor:
+        raise ApiError(
+            status_code=403,
+            code="FORBIDDEN",
+            message="Studio membership required.",
+        )
+    items = await SoftwareActivityService(session).list_activity_items_out_for_studio(
+        access.studio_id,
+        limit=limit,
+    )
+    return SoftwareActivityListOut(items=items)
+
+
+@router.get("/{studio_id}/artifacts", response_model=list[StudioArtifactRowOut])
+async def list_studio_artifacts(
+    studio_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    access: StudioAccess = Depends(get_studio_access),
+) -> list[StudioArtifactRowOut]:
+    return await ArtifactService(session).list_artifacts_for_studio(access.studio_id)
 
 
 @router.get("/{studio_id}", response_model=StudioResponse)

@@ -6,12 +6,16 @@ import re
 import uuid
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
-from app.models import Artifact, Project, User
-from app.schemas.artifact import SoftwareArtifactRowOut
+from app.models import Artifact, Project, Software, User
+from app.models.artifact_exclusion import (
+    ProjectArtifactExclusion,
+    SoftwareArtifactExclusion,
+)
+from app.schemas.artifact import SoftwareArtifactRowOut, StudioArtifactRowOut
 from app.services.document_extract import (
     DocumentExtractError,
     infer_file_type_from_name,
@@ -134,17 +138,41 @@ class ArtifactService:
         return list(r.scalars().all())
 
     async def list_artifacts_for_software(
-        self, software_id: UUID
+        self,
+        software_id: UUID,
+        *,
+        for_project_id: UUID | None = None,
     ) -> list[SoftwareArtifactRowOut]:
+        sae = SoftwareArtifactExclusion
+        pae = ProjectArtifactExclusion
+        pae_project_match = (
+            for_project_id
+            if for_project_id is not None
+            else Artifact.project_id
+        )
         r = await self.db.execute(
-            select(Artifact, Project.name, User.display_name)
+            select(Artifact, Project.name, User.display_name, sae.created_at, pae.created_at)
             .join(Project, Artifact.project_id == Project.id)
+            .outerjoin(
+                sae,
+                and_(
+                    sae.artifact_id == Artifact.id,
+                    sae.software_id == software_id,
+                ),
+            )
+            .outerjoin(
+                pae,
+                and_(
+                    pae.artifact_id == Artifact.id,
+                    pae.project_id == pae_project_match,
+                ),
+            )
             .outerjoin(User, Artifact.uploaded_by == User.id)
             .where(Project.software_id == software_id)
             .order_by(Artifact.created_at.desc())
         )
         out: list[SoftwareArtifactRowOut] = []
-        for art, project_name, uploader_display in r.all():
+        for art, project_name, uploader_display, ex_sw, ex_proj in r.all():
             out.append(
                 SoftwareArtifactRowOut(
                     id=art.id,
@@ -156,9 +184,32 @@ class ArtifactService:
                     uploaded_by=art.uploaded_by,
                     uploaded_by_display=uploader_display,
                     created_at=art.created_at,
+                    scope_level="project",
+                    excluded_at_software=ex_sw,
+                    excluded_at_project=ex_proj,
                 )
             )
         return out
+
+    async def list_artifacts_for_studio(self, studio_id: UUID) -> list[StudioArtifactRowOut]:
+        sq = (
+            select(Software.id, Software.name)
+            .where(Software.studio_id == studio_id)
+            .order_by(Software.name)
+        )
+        pairs = list((await self.db.execute(sq)).all())
+        acc: list[StudioArtifactRowOut] = []
+        for sw_id, sw_name in pairs:
+            for row in await self.list_artifacts_for_software(sw_id):
+                acc.append(
+                    StudioArtifactRowOut(
+                        **row.model_dump(),
+                        software_id=sw_id,
+                        software_name=str(sw_name),
+                    )
+                )
+        acc.sort(key=lambda x: x.created_at, reverse=True)
+        return acc
 
     async def get_in_project(self, project_id: UUID, artifact_id: UUID) -> Artifact:
         art = await self.db.get(Artifact, artifact_id)

@@ -191,6 +191,9 @@ async def test_software_artifacts_lists_across_projects(
     assert all("uploaded_by_display" in row for row in body)
     assert any(row["uploaded_by_display"] == "owner" for row in body)
     for row in body:
-        assert "size_bytes" in row
+        assert "scope_level" in row
+        assert row["scope_level"] == "project"
+        assert row.get("excluded_at_software") is None
+        assert row.get("excluded_at_project") is None
         assert isinstance(row["size_bytes"], int)
         assert row["size_bytes"] > 0

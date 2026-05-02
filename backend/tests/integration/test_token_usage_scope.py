@@ -134,3 +134,48 @@ async def test_token_usage_scope_member_studio_admin_tool_admin_csv(
     assert csv_r.status_code == 200
     assert "text/csv" in (csv_r.headers.get("content-type") or "")
     assert "call_type" in csv_r.text
+
+    # --- /me/token-usage?studio_id=... (member: filter rows; outsider: 403) ---
+    other = (
+        await client.post("/studios", json={"name": f"Other{sfx}", "description": ""})
+    ).json()["id"]
+    client.cookies.set("atelier_token", token_m)
+    me_studio = await client.get(
+        "/me/token-usage", params={"studio_id": studio_a, "limit": 5000}
+    )
+    assert me_studio.status_code == 200
+    me_body = me_studio.json()
+    assert len(me_body["rows"]) == 1
+    assert me_body["rows"][0]["studio_id"] == studio_a
+
+    bad_studio = await client.get(
+        "/me/token-usage", params={"studio_id": other, "limit": 5000}
+    )
+    assert bad_studio.status_code == 403
+
+    nf = await client.get(
+        "/me/token-usage",
+        params={"studio_id": str(uuid.uuid4()), "limit": 5000},
+    )
+    assert nf.status_code == 404
+
+    client.cookies.clear()
+    anon = await client.get(
+        "/me/token-usage", params={"studio_id": studio_a, "limit": 5000}
+    )
+    assert anon.status_code == 401
+
+    client.cookies.set("atelier_token", token_m)
+    csv_me = await client.get(
+        "/me/token-usage",
+        params={"studio_id": studio_a, "limit": 5000},
+        headers={"Accept": "text/csv"},
+    )
+    assert csv_me.status_code == 200
+    assert "call_type" in csv_me.text
+
+    client.cookies.set("atelier_token", token_ta)
+    me_ta_studio = await client.get(
+        "/me/token-usage", params={"studio_id": studio_a, "limit": 5000}
+    )
+    assert me_ta_studio.status_code == 200

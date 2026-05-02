@@ -53,10 +53,10 @@ export function StudioTokenUsagePage(): ReactElement {
     <div className="min-h-screen bg-zinc-950 px-4 py-10 text-zinc-100">
       <div className="mx-auto max-w-6xl space-y-6">
         <Link
-          to={`/studios/${sid}/settings`}
+          to={`/studios/${sid}`}
           className="text-sm text-violet-400 hover:underline"
         >
-          ← Studio settings
+          ← Studio
         </Link>
         <h1 className="text-2xl font-semibold">Studio token usage</h1>
         <TokenUsageReportPanel mode="studio" studioId={sid} />

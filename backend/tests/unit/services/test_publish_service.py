@@ -30,6 +30,7 @@ async def test_build_file_map_includes_sections_readme_and_exported_wos() -> Non
         software_id=uuid.uuid4(),
         name="Alpha",
         description="desc line",
+        publish_folder_slug="alpha",
     )
     sec = Section(
         id=uuid.uuid4(),
@@ -59,11 +60,11 @@ async def test_build_file_map_includes_sections_readme_and_exported_wos() -> Non
     db.execute = AsyncMock(side_effect=[ex1, ex2])
 
     files = await PublishService(db).build_file_map(pid)
-    assert files["sections/intro.md"].strip() == "spec body"
+    assert files["alpha/sections/intro.md"].strip() == "spec body"
     assert "work-orders/" in "".join(files.keys())
-    assert files[f"work-orders/{wid}.md"].startswith("# Task")
-    assert "Alpha" in files["README.md"]
-    assert "| Intro |" in files["README.md"]
+    assert files[f"alpha/work-orders/{wid}.md"].startswith("# Task")
+    assert "Alpha" in files["alpha/README.md"]
+    assert "| Intro |" in files["alpha/README.md"]
 
 
 @pytest.mark.asyncio
@@ -74,6 +75,7 @@ async def test_build_file_map_skips_done_work_orders() -> None:
         software_id=uuid.uuid4(),
         name="P",
         description=None,
+        publish_folder_slug="p",
     )
     wo = WorkOrder(
         id=uuid.uuid4(),
@@ -93,7 +95,7 @@ async def test_build_file_map_skips_done_work_orders() -> None:
     ex2.scalars.return_value.unique.return_value.all.return_value = [wo]
     db.execute = AsyncMock(side_effect=[ex1, ex2])
     files = await PublishService(db).build_file_map(pid)
-    assert not any(k.startswith("work-orders/") for k in files)
+    assert not any(k.startswith("p/work-orders/") for k in files)
 
 
 @pytest.mark.asyncio

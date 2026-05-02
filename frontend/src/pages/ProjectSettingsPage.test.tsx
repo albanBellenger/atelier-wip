@@ -74,6 +74,7 @@ describe('ProjectSettingsPage', () => {
         software_id: 'sw1',
         name: 'My project',
         description: null,
+        publish_folder_slug: 'my-project',
         archived: false,
         created_at: '',
         updated_at: '',
@@ -89,6 +90,7 @@ describe('ProjectSettingsPage', () => {
       software_id: 'sw1',
       name: 'My project',
       description: 'Hello',
+      publish_folder_slug: 'my-project',
       archived: false,
       created_at: '',
       updated_at: '2026-01-02T00:00:00Z',
@@ -98,11 +100,13 @@ describe('ProjectSettingsPage', () => {
       last_edited_at: null,
       sections: [],
     })
+    vi.spyOn(api, 'listSoftwareArtifacts').mockResolvedValue([])
     const updateSpy = vi.spyOn(api, 'updateProject').mockResolvedValue({
       id: 'p1',
       software_id: 'sw1',
       name: 'My project X',
       description: 'Hello',
+      publish_folder_slug: 'my-project',
       archived: false,
       created_at: '',
       updated_at: '2026-01-03T00:00:00Z',
@@ -132,6 +136,7 @@ describe('ProjectSettingsPage', () => {
       expect(updateSpy).toHaveBeenCalledWith('sw1', 'p1', {
         name: 'My project X',
         description: 'Hello',
+        publish_folder_slug: 'my-project',
       })
     })
   })
@@ -159,6 +164,7 @@ describe('ProjectSettingsPage', () => {
         software_id: 'sw1',
         name: 'P',
         description: null,
+        publish_folder_slug: 'p',
         archived: false,
         created_at: '',
         updated_at: '',
@@ -174,6 +180,7 @@ describe('ProjectSettingsPage', () => {
       software_id: 'sw1',
       name: 'P',
       description: null,
+      publish_folder_slug: 'p',
       archived: false,
       created_at: '',
       updated_at: '',
@@ -183,6 +190,22 @@ describe('ProjectSettingsPage', () => {
       last_edited_at: null,
       sections: [],
     })
+    vi.spyOn(api, 'listSoftwareArtifacts').mockResolvedValue([
+      {
+        id: 'a1',
+        project_id: 'p1',
+        project_name: 'P',
+        name: 'Doc',
+        file_type: 'md',
+        size_bytes: 5,
+        uploaded_by: 'u2',
+        uploaded_by_display: 'Viewer',
+        created_at: '2026-01-01T00:00:00Z',
+        scope_level: 'project',
+        excluded_at_software: null,
+        excluded_at_project: null,
+      },
+    ])
 
     renderPage()
 
@@ -192,5 +215,97 @@ describe('ProjectSettingsPage', () => {
     expect(
       screen.queryByRole('button', { name: /save project/i }),
     ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('switch', { name: /exclude doc from project context/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('studio member can toggle project-scope artifact exclusion', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
+      items: [],
+      next_cursor: null,
+    })
+    vi.spyOn(api, 'me').mockResolvedValue({
+      user: {
+        id: 'um',
+        email: 'm@b.com',
+        display_name: 'Member',
+        is_tool_admin: false,
+      },
+      studios: [{ studio_id: 's1', studio_name: 'S', role: 'studio_member' }],
+      cross_studio_grants: [],
+    })
+    vi.spyOn(api, 'getSoftware').mockResolvedValue(softwareRow)
+    vi.spyOn(api, 'listSoftware').mockResolvedValue([softwareRow])
+    mockListProjectsNav([
+      {
+        id: 'p1',
+        software_id: 'sw1',
+        name: 'P',
+        description: null,
+        publish_folder_slug: 'p',
+        archived: false,
+        created_at: '',
+        updated_at: '',
+        sections: null,
+        work_orders_done: 0,
+        work_orders_total: 0,
+        sections_count: 0,
+        last_edited_at: null,
+      },
+    ])
+    vi.spyOn(api, 'getProject').mockResolvedValue({
+      id: 'p1',
+      software_id: 'sw1',
+      name: 'P',
+      description: null,
+      publish_folder_slug: 'p',
+      archived: false,
+      created_at: '',
+      updated_at: '',
+      work_orders_done: 0,
+      work_orders_total: 0,
+      sections_count: 0,
+      last_edited_at: null,
+      sections: [],
+    })
+    vi.spyOn(api, 'listSoftwareArtifacts').mockResolvedValue([
+      {
+        id: 'a1',
+        project_id: 'p1',
+        project_name: 'P',
+        name: 'Doc',
+        file_type: 'md',
+        size_bytes: 8,
+        uploaded_by: 'um',
+        uploaded_by_display: 'Member',
+        created_at: '2026-01-01T00:00:00Z',
+        scope_level: 'project',
+        excluded_at_software: null,
+        excluded_at_project: null,
+      },
+    ])
+    const patchSpy = vi.spyOn(api, 'patchProjectArtifactExclusion').mockResolvedValue({
+      artifact_id: 'a1',
+      excluded: true,
+    })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Doc')).toBeInTheDocument()
+    })
+    const sw = screen.getByRole('switch', {
+      name: /exclude doc from project context/i,
+    })
+    await user.click(sw)
+
+    await waitFor(() => {
+      expect(patchSpy).toHaveBeenCalledWith('s1', 'sw1', 'p1', {
+        artifact_id: 'a1',
+        excluded: true,
+      })
+    })
   })
 })

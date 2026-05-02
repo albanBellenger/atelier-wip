@@ -13,6 +13,8 @@ export type SoftwareBuildingTeamCardProps = {
   showManageLink: boolean
   /** Defaults to "Building this software" (software landing). Use "Building this project" on project page. */
   buildingHeading?: string
+  /** Link target for "Manage →" (default: studio settings). */
+  manageHref?: string
   /** When set, members whose `user_id` is listed show a small online indicator on the avatar. */
   presenceOnlineUserIds?: readonly string[]
 }
@@ -80,9 +82,11 @@ export function SoftwareBuildingTeamCard({
   studioId,
   showManageLink,
   buildingHeading = 'Building this software',
+  manageHref,
   presenceOnlineUserIds,
 }: SoftwareBuildingTeamCardProps): ReactElement {
   const heading = buildingHeading
+  const manageTo = manageHref ?? `/studios/${studioId}/settings`
   const count = members.length
   const rows = sortMembersFlat(members)
   const presence = presenceOnlineUserIds
@@ -108,7 +112,7 @@ export function SoftwareBuildingTeamCard({
           ) : null}
           {enabled && showManageLink ? (
             <Link
-              to={`/studios/${studioId}`}
+              to={manageTo}
               className="text-[12px] font-medium text-zinc-400 hover:text-zinc-200"
             >
               Manage →

@@ -4,14 +4,17 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
+import { ArtifactExclusionPanel } from '../components/software/ArtifactExclusionPanel'
 import { SettingsGearIcon } from '../components/icons/SettingsGearIcon'
 import { useStudioAccess } from '../hooks/useStudioAccess'
 import {
   deleteSoftware,
   getSoftware,
   listSoftware,
+  listSoftwareArtifacts,
   logout as logoutApi,
   me,
+  patchSoftwareArtifactExclusion,
   testGitConnection,
   updateSoftware,
 } from '../services/api'
@@ -54,6 +57,34 @@ export function SoftwareSettingsPage(): ReactElement {
     queryKey: ['software', sid],
     queryFn: () => listSoftware(sid),
     enabled: Boolean(sid && access.isMember),
+  })
+
+  const artifactsQ = useQuery({
+    queryKey: ['software', sfid, 'artifacts', 'settings'],
+    queryFn: () => listSoftwareArtifacts(sfid),
+    enabled: Boolean(sfid && access.isMember),
+  })
+
+  const [savingArtifactId, setSavingArtifactId] = useState<string | null>(null)
+  const patchSoftwareExclusionMut = useMutation({
+    mutationFn: ({
+      artifactId,
+      excluded,
+    }: {
+      artifactId: string
+      excluded: boolean
+    }) =>
+      patchSoftwareArtifactExclusion(sid, sfid, {
+        artifact_id: artifactId,
+        excluded,
+      }),
+    onMutate: ({ artifactId }) => {
+      setSavingArtifactId(artifactId)
+    },
+    onSettled: () => {
+      setSavingArtifactId(null)
+      void qc.invalidateQueries({ queryKey: ['software', sfid, 'artifacts'] })
+    },
   })
 
   const headerTrailingCrumb = useMemo(() => {
@@ -283,6 +314,23 @@ export function SoftwareSettingsPage(): ReactElement {
                 </>
               )}
             </div>
+
+            <ArtifactExclusionPanel
+              title="Artifact visibility (software scope)"
+              description="Excluded files remain in their projects but are omitted from software-wide views and inherited context where supported."
+              rows={artifactsQ.data ?? []}
+              isPending={artifactsQ.isPending}
+              isError={artifactsQ.isError}
+              mode="software"
+              canEdit={access.isStudioEditor && !access.isCrossStudioViewer}
+              isSavingId={savingArtifactId}
+              onToggleExcluded={(artifactId, nextExcluded) => {
+                patchSoftwareExclusionMut.mutate({
+                  artifactId,
+                  excluded: nextExcluded,
+                })
+              }}
+            />
 
             <section className="mt-10 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
               <h2 className="text-sm font-medium text-zinc-300">

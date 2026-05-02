@@ -82,6 +82,7 @@ describe('SoftwarePage', () => {
         software_id: 'sw1',
         name: 'P1',
         description: null,
+        publish_folder_slug: 'p1',
         archived: false,
         created_at: '2026-01-01T00:00:00Z',
         updated_at: '2026-01-01T00:00:00Z',
@@ -132,7 +133,7 @@ describe('SoftwarePage', () => {
       screen.getByRole('heading', { name: /software artifacts/i }),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('link', { name: /^\+ upload$/i }),
+      screen.getByRole('button', { name: /^upload file$/i }),
     ).toBeInTheDocument()
     expect(
       screen.queryByRole('link', { name: /software settings/i }),
@@ -195,6 +196,7 @@ describe('SoftwarePage', () => {
         software_id: 'sw1',
         name: 'P1',
         description: null,
+        publish_folder_slug: 'p1',
         archived: false,
         created_at: '2026-01-01T00:00:00Z',
         updated_at: '2026-01-01T00:00:00Z',
@@ -231,7 +233,7 @@ describe('SoftwarePage', () => {
     })
     expect(
       screen.getByRole('link', { name: /^manage →$/i }),
-    ).toHaveAttribute('href', '/studios/s1')
+    ).toHaveAttribute('href', '/studios/s1/settings')
     expect(
       screen.getByRole('link', { name: /^edit$/i }),
     ).toHaveAttribute('href', '/studios/s1/software/sw1/settings')
@@ -269,6 +271,7 @@ describe('SoftwarePage', () => {
         software_id: 'sw1',
         name: 'Active only',
         description: 'Still going',
+        publish_folder_slug: 'active-only',
         archived: false,
         created_at: '2026-01-01T00:00:00Z',
         updated_at: '2026-01-01T00:00:00Z',
@@ -283,6 +286,7 @@ describe('SoftwarePage', () => {
         software_id: 'sw1',
         name: 'Z archived',
         description: 'Old',
+        publish_folder_slug: 'z-archived',
         archived: true,
         created_at: '2026-01-01T00:00:00Z',
         updated_at: '2026-01-01T00:00:00Z',
@@ -362,6 +366,7 @@ describe('SoftwarePage', () => {
         software_id: 'sw1',
         name: 'P1',
         description: null,
+        publish_folder_slug: 'p1',
         archived: false,
         created_at: '2026-01-01T00:00:00Z',
         updated_at: '2026-01-01T00:00:00Z',
@@ -430,7 +435,7 @@ describe('SoftwarePage', () => {
     expect(
       screen.getByRole('heading', { name: /software artifacts/i }),
     ).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: /^\+ upload$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^upload file$/i })).not.toBeInTheDocument()
     expect(
       screen.queryByRole('link', { name: /software settings/i }),
     ).not.toBeInTheDocument()
@@ -440,5 +445,85 @@ describe('SoftwarePage', () => {
     expect(
       screen.getByText(/Activity is available to members who can manage projects/i),
     ).toBeInTheDocument()
+  })
+
+  it('shows artifact scope badge on software artifacts list', async () => {
+    vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
+      items: [],
+      next_cursor: null,
+    })
+    vi.spyOn(api, 'listSoftwareArtifacts').mockResolvedValue([
+      {
+        id: 'a1',
+        project_id: 'p1',
+        project_name: 'P1',
+        name: 'Handbook',
+        file_type: 'pdf',
+        size_bytes: 100,
+        uploaded_by: 'u1',
+        uploaded_by_display: 'Member',
+        created_at: '2026-01-01T00:00:00Z',
+        scope_level: 'software',
+        excluded_at_software: null,
+        excluded_at_project: null,
+      },
+    ])
+    vi.spyOn(api, 'me').mockResolvedValue(memberMe)
+    vi.spyOn(api, 'getSoftware').mockResolvedValue({
+      id: 'sw1',
+      studio_id: 's1',
+      name: 'My SW',
+      description: 'Desc',
+      definition: '# Context\nYou are assisting.',
+      git_provider: 'gitlab',
+      git_repo_url: 'https://gitlab.example.com/g/r',
+      git_branch: 'main',
+      git_token_set: true,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    })
+    vi.spyOn(api, 'listProjects').mockResolvedValue([
+      {
+        id: 'p1',
+        software_id: 'sw1',
+        name: 'P1',
+        description: null,
+        publish_folder_slug: 'p1',
+        archived: false,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+        sections: null,
+        work_orders_done: 0,
+        work_orders_total: 0,
+        sections_count: 0,
+        last_edited_at: null,
+      },
+    ])
+    vi.spyOn(api, 'getSoftwareAttention').mockResolvedValue({
+      studio_id: 's1',
+      software_id: 'sw1',
+      counts: { all: 0, conflict: 0, drift: 0, gap: 0, update: 0 },
+      items: [],
+    })
+    vi.spyOn(api, 'getSoftwareActivity').mockResolvedValue({ items: [] })
+    vi.spyOn(api, 'getMeTokenUsage').mockResolvedValue({
+      rows: [],
+      totals: {
+        input_tokens: 1000,
+        output_tokens: 500,
+        estimated_cost_usd: '0.01',
+      },
+    })
+    vi.spyOn(api, 'getSoftwareGitHistory').mockResolvedValue({ commits: [] })
+    vi.spyOn(api, 'listMembers').mockResolvedValue([])
+    vi.spyOn(api, 'listSoftware').mockResolvedValue([mockSoftwareRow('sw1', 'My SW')])
+
+    renderSoftware()
+
+    await waitFor(() => {
+      expect(screen.getByText('Handbook')).toBeInTheDocument()
+    })
+    const row = screen.getByText('Handbook').closest('li')
+    expect(row?.innerHTML).toContain('border-violet-500/40')
   })
 })

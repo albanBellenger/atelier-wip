@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
+import { ArtifactExclusionPanel } from '../components/software/ArtifactExclusionPanel'
 import { SettingsGearIcon } from '../components/icons/SettingsGearIcon'
 import { useStudioAccess } from '../hooks/useStudioAccess'
 import {
@@ -11,8 +12,10 @@ import {
   getSoftware,
   listProjects,
   listSoftware,
+  listSoftwareArtifacts,
   logout as logoutApi,
   me,
+  patchProjectArtifactExclusion,
   updateProject,
 } from '../services/api'
 
@@ -70,6 +73,34 @@ export function ProjectSettingsPage(): ReactElement {
     enabled: Boolean(sfid && access.isMember),
   })
 
+  const artifactsQ = useQuery({
+    queryKey: ['software', sfid, 'artifacts', 'projectSettings', pid],
+    queryFn: () => listSoftwareArtifacts(sfid, { forProjectId: pid }),
+    enabled: Boolean(sfid && pid && access.isMember),
+  })
+
+  const [savingArtifactId, setSavingArtifactId] = useState<string | null>(null)
+  const patchProjectExclusionMut = useMutation({
+    mutationFn: ({
+      artifactId,
+      excluded,
+    }: {
+      artifactId: string
+      excluded: boolean
+    }) =>
+      patchProjectArtifactExclusion(sid, sfid, pid, {
+        artifact_id: artifactId,
+        excluded,
+      }),
+    onMutate: ({ artifactId }) => {
+      setSavingArtifactId(artifactId)
+    },
+    onSettled: () => {
+      setSavingArtifactId(null)
+      void qc.invalidateQueries({ queryKey: ['software', sfid, 'artifacts'] })
+    },
+  })
+
   const headerTrailingCrumb = useMemo(() => {
     if (!swQ.data || !projectQ.data) return undefined
     const swRows = studioSoftwareListQ.data ?? []
@@ -116,16 +147,18 @@ export function ProjectSettingsPage(): ReactElement {
 
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
+  const [publishFolderSlug, setPublishFolderSlug] = useState('')
   const [msg, setMsg] = useState<string | null>(null)
   const [formSyncKey, setFormSyncKey] = useState('')
   const proj = projectQ.data
   const serverSyncKey = proj
-    ? `${proj.id}:${proj.updated_at ?? ''}:${proj.name}:${proj.description ?? ''}`
+    ? `${proj.id}:${proj.updated_at ?? ''}:${proj.name}:${proj.description ?? ''}:${proj.publish_folder_slug ?? ''}`
     : ''
   if (proj && serverSyncKey !== formSyncKey) {
     setFormSyncKey(serverSyncKey)
     setName(proj.name)
     setDescription(proj.description ?? '')
+    setPublishFolderSlug(proj.publish_folder_slug ?? '')
     setMsg(null)
   }
 
@@ -134,6 +167,7 @@ export function ProjectSettingsPage(): ReactElement {
       updateProject(sfid, pid, {
         name: name.trim(),
         description: description.trim() || null,
+        publish_folder_slug: publishFolderSlug.trim(),
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['project', sfid, pid] })
@@ -227,7 +261,7 @@ export function ProjectSettingsPage(): ReactElement {
               Project settings
             </h1>
             <p className="mt-1 text-sm text-zinc-500">
-              Name and description for{' '}
+              Name, publish folder, and description for{' '}
               <span className="text-zinc-300">{proj.name}</span>.
             </p>
 
@@ -256,9 +290,30 @@ export function ProjectSettingsPage(): ReactElement {
                       setMsg(null)
                     }}
                   />
+                  <label className="block text-xs font-medium text-zinc-500">
+                    Publish folder slug (GitLab export root)
+                  </label>
+                  <input
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 font-mono text-sm text-zinc-100"
+                    value={publishFolderSlug}
+                    onChange={(e) => {
+                      setPublishFolderSlug(e.target.value)
+                      setMsg(null)
+                    }}
+                    aria-label="Publish folder slug for Git export"
+                  />
+                  <p className="text-xs text-zinc-500">
+                    Letters, numbers, underscores, and hyphens only. Changing this
+                    renames the folder in the connected GitLab repo when Git is
+                    configured on the software.
+                  </p>
                   <button
                     type="button"
-                    disabled={!name.trim() || saveMut.isPending}
+                    disabled={
+                      !name.trim() ||
+                      !publishFolderSlug.trim() ||
+                      saveMut.isPending
+                    }
                     className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
                     onClick={() => saveMut.mutate()}
                   >
@@ -273,12 +328,35 @@ export function ProjectSettingsPage(): ReactElement {
                   <p className="w-full rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-sm whitespace-pre-wrap text-zinc-300">
                     {description || '—'}
                   </p>
+                  <p className="text-xs font-medium text-zinc-500">
+                    Publish folder slug (GitLab export root)
+                  </p>
+                  <p className="w-full rounded-lg border border-zinc-800 bg-zinc-950/40 px-3 py-2 font-mono text-sm text-zinc-100">
+                    {publishFolderSlug || '—'}
+                  </p>
                   <p className="text-xs text-zinc-500">
                     Only studio admins can edit project details.
                   </p>
                 </>
               )}
             </div>
+
+            <ArtifactExclusionPanel
+              title="Artifact visibility (this project)"
+              description="Exclude inherited or sibling-project artifacts from this project’s context. Your own project files can also be excluded from project-scoped use."
+              rows={artifactsQ.data ?? []}
+              isPending={artifactsQ.isPending}
+              isError={artifactsQ.isError}
+              mode="project"
+              canEdit={access.isStudioEditor && !access.isCrossStudioViewer}
+              isSavingId={savingArtifactId}
+              onToggleExcluded={(artifactId, nextExcluded) => {
+                patchProjectExclusionMut.mutate({
+                  artifactId,
+                  excluded: nextExcluded,
+                })
+              }}
+            />
           </>
         )}
       </div>

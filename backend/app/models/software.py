@@ -40,3 +40,8 @@ class Software(Base):
         back_populates="software",
         cascade="all, delete-orphan",
     )
+    artifact_exclusions = relationship(
+        "SoftwareArtifactExclusion",
+        back_populates="software",
+        cascade="all, delete-orphan",
+    )

@@ -12,6 +12,7 @@ import { userCanSeeMeTokenUsage } from '../components/home/UserMenu'
 import { ProjectOutlineCard } from '../components/project/ProjectOutlineCard'
 import { ProjectSyncStatusCard } from '../components/project/ProjectSyncStatusCard'
 import { ProjectWorkOrderKanbanPreview } from '../components/project/ProjectWorkOrderKanbanPreview'
+import { ProjectAggregatedArtifactsSection } from '../components/software/ProjectAggregatedArtifactsSection'
 import { SoftwareBuildingTeamCard } from '../components/software/SoftwareBuildingTeamCard'
 import { SoftwareRecentActivityCard } from '../components/software/SoftwareRecentActivityCard'
 import { SettingsGearIcon } from '../components/icons/SettingsGearIcon'
@@ -22,6 +23,7 @@ import { formatRelativeTimeUtc } from '../lib/formatRelativeTime'
 import {
   createSection,
   deleteSection,
+  downloadArtifactBlob,
   getProject,
   getProjectAttention,
   getProjectGraph,
@@ -30,6 +32,7 @@ import {
   getMeTokenUsage,
   listMembers,
   listSoftware,
+  listSoftwareArtifacts,
   listWorkOrders,
   listProjectIssues,
   logout as logoutApi,
@@ -308,6 +311,15 @@ export function ProjectPage(): ReactElement {
     retry: false,
   })
 
+  const projectAggregatedArtifactsQ = useQuery({
+    queryKey: ['software', sfid, 'artifacts', 'projectPage', pid],
+    queryFn: () => listSoftwareArtifacts(sfid, { forProjectId: pid }),
+    enabled: Boolean(
+      sfid && pid && access.isMember && projectView === 'outline',
+    ),
+    retry: false,
+  })
+
   const projectIssuesQ = useQuery({
     queryKey: ['projectIssues', pid],
     queryFn: () => listProjectIssues(pid),
@@ -422,6 +434,23 @@ export function ProjectPage(): ReactElement {
       void navigate(`/studios/${nextStudioId}`)
     },
     [navigate],
+  )
+
+  const handleArtifactDownload = useCallback(
+    async (artifactProjectId: string, artifactId: string, filename: string) => {
+      try {
+        const blob = await downloadArtifactBlob(artifactProjectId, artifactId)
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename || 'download'
+        a.click()
+        URL.revokeObjectURL(url)
+      } catch {
+        /* keep minimal */
+      }
+    },
+    [],
   )
 
   const proj = projectQ.data
@@ -751,6 +780,18 @@ export function ProjectPage(): ReactElement {
                     projectId={pid}
                     workOrders={workOrdersQ.data ?? []}
                     sectionsById={sectionsById}
+                  />
+
+                  <ProjectAggregatedArtifactsSection
+                    studioId={sid}
+                    softwareId={sfid}
+                    projectId={pid}
+                    isMember={access.isMember}
+                    canStudioEditor={access.isStudioEditor}
+                    isPending={projectAggregatedArtifactsQ.isPending}
+                    isError={projectAggregatedArtifactsQ.isError}
+                    rows={projectAggregatedArtifactsQ.data}
+                    onDownload={handleArtifactDownload}
                   />
                 </div>
 

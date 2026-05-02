@@ -1,0 +1,91 @@
+import type { ReactElement } from 'react'
+import { Link } from 'react-router-dom'
+
+import type { Software } from '../../services/api'
+
+export function StudioSoftwareSection(props: {
+  studioId: string
+  software: Software[] | undefined
+  isPending: boolean
+  canCreateSoftware: boolean
+  newSoftwareName: string
+  onNewSoftwareNameChange: (v: string) => void
+  onCreateSoftware: () => void
+  createPending: boolean
+}): ReactElement {
+  const {
+    studioId,
+    software,
+    isPending,
+    canCreateSoftware,
+    newSoftwareName,
+    onNewSoftwareNameChange,
+    onCreateSoftware,
+    createPending,
+  } = props
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 px-5 py-4">
+        <h2 className="text-[15px] font-semibold tracking-tight text-zinc-100">
+          Software
+          {software != null ? (
+            <span className="ml-2 font-normal text-[13px] text-zinc-500">
+              {software.length} {software.length === 1 ? 'product' : 'products'}
+            </span>
+          ) : null}
+        </h2>
+      </div>
+      <div className="px-5 pb-5 pt-1">
+        {isPending ? (
+          <p className="mt-3 text-[13px] text-zinc-500">Loading software…</p>
+        ) : null}
+        {software && software.length === 0 ? (
+          <p className="mt-3 text-[13px] text-zinc-500">No software yet.</p>
+        ) : null}
+        {software && software.length > 0 ? (
+          <ul className="mt-3 divide-y divide-zinc-800/90">
+            {software.map((sw) => (
+              <li key={sw.id} className="py-3 first:pt-2">
+                <Link
+                  to={`/studios/${studioId}/software/${sw.id}`}
+                  className="group flex flex-col gap-1 rounded-lg px-2 py-2 transition-colors hover:bg-zinc-800/40"
+                >
+                  <span className="text-[15px] font-semibold text-zinc-100 group-hover:text-white">
+                    {sw.name}
+                  </span>
+                  {sw.description ? (
+                    <span className="line-clamp-2 text-[13px] text-zinc-400">
+                      {sw.description}
+                    </span>
+                  ) : null}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {canCreateSoftware ? (
+          <div className="mt-4 flex flex-wrap gap-2 border-t border-zinc-800/80 pt-4">
+            <input
+              className="min-w-[12rem] flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-[13px] text-zinc-100 placeholder:text-zinc-600"
+              placeholder="New software name"
+              value={newSoftwareName}
+              onChange={(e) => onNewSoftwareNameChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') onCreateSoftware()
+              }}
+            />
+            <button
+              type="button"
+              disabled={createPending || !newSoftwareName.trim()}
+              className="rounded-lg bg-violet-600 px-4 py-2 text-[12px] font-semibold text-white hover:bg-violet-500 disabled:opacity-50"
+              onClick={() => onCreateSoftware()}
+            >
+              Add software
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  )
+}

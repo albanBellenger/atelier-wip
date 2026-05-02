@@ -23,6 +23,13 @@ from app.models.base import Base
 
 class Project(Base):
     __tablename__ = "projects"
+    __table_args__ = (
+        UniqueConstraint(
+            "software_id",
+            "publish_folder_slug",
+            name="uq_projects_software_publish_folder_slug",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -32,6 +39,7 @@ class Project(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    publish_folder_slug: Mapped[str] = mapped_column(String(128), nullable=False)
     archived: Mapped[bool] = mapped_column(
         Boolean, server_default="false", nullable=False
     )
@@ -49,6 +57,11 @@ class Project(Base):
     graph_edges = relationship("GraphEdge", back_populates="project", cascade="all, delete-orphan")
     chat_messages = relationship("ChatMessage", back_populates="project", cascade="all, delete-orphan")
     issues = relationship("Issue", back_populates="project", cascade="all, delete-orphan")
+    artifact_exclusions = relationship(
+        "ProjectArtifactExclusion",
+        back_populates="project",
+        cascade="all, delete-orphan",
+    )
 
 
 class Section(Base):
@@ -105,6 +118,16 @@ class Artifact(Base):
 
     project = relationship("Project", back_populates="artifacts")
     chunks = relationship("ArtifactChunk", back_populates="artifact", cascade="all, delete-orphan")
+    software_exclusions = relationship(
+        "SoftwareArtifactExclusion",
+        back_populates="artifact",
+        cascade="all, delete-orphan",
+    )
+    project_exclusions = relationship(
+        "ProjectArtifactExclusion",
+        back_populates="artifact",
+        cascade="all, delete-orphan",
+    )
 
 
 class ArtifactChunk(Base):

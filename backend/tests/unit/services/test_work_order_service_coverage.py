@@ -471,7 +471,13 @@ async def test_generate_project_not_found() -> None:
 @pytest.mark.asyncio
 async def test_generate_software_not_found() -> None:
     pid = uuid.uuid4()
-    pr = Project(id=pid, software_id=uuid.uuid4(), name="P", description=None)
+    pr = Project(
+        id=pid,
+        software_id=uuid.uuid4(),
+        name="P",
+        description=None,
+        publish_folder_slug="p",
+    )
     db = MagicMock()
     db.get = AsyncMock(side_effect=[pr, None])
     with pytest.raises(ApiError) as e:
@@ -486,7 +492,13 @@ async def test_generate_software_not_found() -> None:
 @pytest.mark.asyncio
 async def test_generate_invalid_section() -> None:
     pid = uuid.uuid4()
-    pr = Project(id=pid, software_id=uuid.uuid4(), name="P", description=None)
+    pr = Project(
+        id=pid,
+        software_id=uuid.uuid4(),
+        name="P",
+        description=None,
+        publish_folder_slug="p",
+    )
     sw = Software(
         id=pr.software_id,
         studio_id=uuid.uuid4(),
@@ -512,7 +524,13 @@ async def test_generate_success_with_graph_and_skips(
     pid = uuid.uuid4()
     uid = uuid.uuid4()
     sec_id = uuid.uuid4()
-    pr = Project(id=pid, software_id=uuid.uuid4(), name="P", description=None)
+    pr = Project(
+        id=pid,
+        software_id=uuid.uuid4(),
+        name="P",
+        description=None,
+        publish_folder_slug="p",
+    )
     sw = Software(
         id=pr.software_id,
         studio_id=uuid.uuid4(),
@@ -607,7 +625,13 @@ async def test_generate_empty_items_list_records_usage_paths(
 ) -> None:
     """All LLM items skipped → empty created; still exercises tail sec_map + assignee."""
     pid = uuid.uuid4()
-    pr = Project(id=pid, software_id=uuid.uuid4(), name="P", description=None)
+    pr = Project(
+        id=pid,
+        software_id=uuid.uuid4(),
+        name="P",
+        description=None,
+        publish_folder_slug="p",
+    )
     sw = Software(
         id=pr.software_id,
         studio_id=uuid.uuid4(),

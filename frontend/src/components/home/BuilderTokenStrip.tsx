@@ -19,6 +19,8 @@ export type BuilderTokenStripProps = {
   detailReportHref?: string
   /** Outer section vertical padding; default matches the home dashboard card. */
   sectionPaddingClass?: 'p-5' | 'p-6'
+  /** Card title (default: Your LLM usage). */
+  heading?: string
 }
 
 function budgetToneClass(pct: number): string {
@@ -40,12 +42,13 @@ export function BuilderTokenStrip({
   billedToStudioName,
   detailReportHref = '/me/token-usage',
   sectionPaddingClass = 'p-6',
+  heading = 'Your LLM usage',
 }: BuilderTokenStripProps): ReactElement {
   const shell = `rounded-2xl border border-zinc-800 bg-zinc-900/40 ${sectionPaddingClass}`
   if (!canSeeTokenUsage) {
     return (
       <section className={shell}>
-        <h3 className="text-[13px] font-medium text-zinc-200">Your LLM usage</h3>
+        <h3 className="text-[13px] font-medium text-zinc-200">{heading}</h3>
         <p className="mt-2 text-[12px] text-zinc-500">
           Token usage is available once you belong to a studio or are a tool
           administrator.
@@ -67,7 +70,7 @@ export function BuilderTokenStrip({
     return (
       <section className={shell}>
         <div className="flex items-baseline justify-between">
-          <h3 className="text-[13px] font-medium text-zinc-200">Your LLM usage</h3>
+          <h3 className="text-[13px] font-medium text-zinc-200">{heading}</h3>
           <Link
             to={detailReportHref}
             className="text-[11px] text-zinc-400 hover:text-zinc-200"
@@ -99,7 +102,7 @@ export function BuilderTokenStrip({
     <section className={shell}>
       <div className="flex items-baseline justify-between gap-2">
         <div className="min-w-0">
-          <h3 className="text-[13px] font-medium text-zinc-200">Your LLM usage</h3>
+          <h3 className="text-[13px] font-medium text-zinc-200">{heading}</h3>
           <p className="mt-1 text-[11px] text-zinc-500">{billingLine}</p>
         </div>
         <Link

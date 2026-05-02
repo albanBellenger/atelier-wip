@@ -205,3 +205,167 @@ async def list_commits(
             }
         )
     return out
+
+
+def moves_for_prefix_rename(
+    old_prefix: str, new_prefix: str, blob_paths: list[str]
+) -> list[tuple[str, str]]:
+    """Build (previous_path, file_path) pairs for GitLab move actions; deepest paths first."""
+    op = old_prefix.replace("\\", "/").strip("/")
+    np = new_prefix.replace("\\", "/").strip("/")
+    out: list[tuple[str, str]] = []
+    for p in blob_paths:
+        pn = p.replace("\\", "/").strip("/")
+        if pn == op:
+            out.append((pn, np))
+        elif pn.startswith(op + "/"):
+            rest = pn[len(op) + 1 :]
+            out.append((pn, f"{np}/{rest}"))
+    out.sort(key=lambda t: len(t[0]), reverse=True)
+    return out
+
+
+async def list_repo_blob_paths_under_prefix(
+    *,
+    repo_web_url: str,
+    token: str,
+    branch: str,
+    path_prefix: str,
+) -> list[str]:
+    """
+    List blob paths under path_prefix on ref branch (recursive repository tree API).
+    Returns normalized slash-separated paths from repo root.
+    """
+    origin, project_path = parse_gitlab_web_url(repo_web_url)
+    if not origin or not project_path:
+        raise ValueError("Invalid Git repository URL")
+    enc_p = _enc_project_path(project_path)
+    prefix = path_prefix.replace("\\", "/").strip("/")
+    url = f"{origin}/api/v4/projects/{enc_p}/repository/tree"
+    headers = {"PRIVATE-TOKEN": token.strip()}
+    br = branch.strip() or "main"
+    paths_out: list[str] = []
+    page = 1
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            while True:
+                params: dict[str, Any] = {
+                    "path": prefix,
+                    "ref": br,
+                    "recursive": True,
+                    "per_page": 100,
+                    "page": page,
+                }
+                r = await client.get(url, headers=headers, params=params)
+                if r.status_code == 404:
+                    return []
+                if r.status_code != 200:
+                    log.warning(
+                        "gitlab_tree_http_error status=%s body=%s",
+                        r.status_code,
+                        r.text[:300],
+                    )
+                    raise ApiError(
+                        status_code=502,
+                        code="GITLAB_ERROR",
+                        message="GitLab returned an error.",
+                    )
+                rows = r.json()
+                if not isinstance(rows, list) or not rows:
+                    break
+                for row in rows:
+                    if not isinstance(row, dict):
+                        continue
+                    if row.get("type") != "blob":
+                        continue
+                    pth = row.get("path")
+                    if isinstance(pth, str) and pth:
+                        paths_out.append(pth.replace("\\", "/").strip("/"))
+                if len(rows) < 100:
+                    break
+                page += 1
+    except httpx.TimeoutException as e:
+        log.warning("gitlab_tree_timeout: %s", type(e).__name__)
+        raise ApiError(
+            status_code=504,
+            code="GITLAB_TRANSPORT_ERROR",
+            message="GitLab did not respond in time.",
+        ) from e
+    except httpx.RequestError as e:
+        log.warning("gitlab_tree_transport: %s", type(e).__name__)
+        raise ApiError(
+            status_code=502,
+            code="GITLAB_TRANSPORT_ERROR",
+            message="Could not reach GitLab.",
+        ) from e
+    return paths_out
+
+
+async def commit_moves(
+    *,
+    repo_web_url: str,
+    token: str,
+    branch: str,
+    moves: list[tuple[str, str]],
+    message: str,
+) -> tuple[str, str | None]:
+    """GitLab commit with move actions only. moves: (previous_path, new_path)."""
+    if not moves:
+        return "", None
+    origin, project_path = parse_gitlab_web_url(repo_web_url)
+    if not origin or not project_path:
+        raise ValueError("Invalid Git repository URL")
+    enc_p = _enc_project_path(project_path)
+    post_url = f"{origin}/api/v4/projects/{enc_p}/repository/commits"
+    headers = {"PRIVATE-TOKEN": token.strip()}
+    br = branch.strip() or "main"
+    actions: list[dict[str, Any]] = []
+    for prev_path, new_path in moves:
+        p1 = prev_path.replace("\\", "/").strip("/")
+        p2 = new_path.replace("\\", "/").strip("/")
+        actions.append(
+            {
+                "action": "move",
+                "previous_path": p1,
+                "file_path": p2,
+            }
+        )
+    body = {
+        "branch": br,
+        "commit_message": message.strip() or "Rename paths",
+        "actions": actions,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            r = await client.post(post_url, headers=headers, json=body)
+    except httpx.TimeoutException as e:
+        log.warning("gitlab_commit_moves_timeout: %s", type(e).__name__)
+        raise ApiError(
+            status_code=504,
+            code="GITLAB_TRANSPORT_ERROR",
+            message="GitLab did not respond in time.",
+        ) from e
+    except httpx.RequestError as e:
+        log.warning("gitlab_commit_moves_transport: %s", type(e).__name__)
+        raise ApiError(
+            status_code=502,
+            code="GITLAB_TRANSPORT_ERROR",
+            message="Could not reach GitLab.",
+        ) from e
+    if r.status_code not in (200, 201):
+        detail = r.text[:500]
+        log.warning(
+            "gitlab_commit_moves_http_error status=%s body=%s",
+            r.status_code,
+            detail[:500],
+        )
+        raise ApiError(
+            status_code=502,
+            code="GITLAB_ERROR",
+            message="GitLab returned an error.",
+        )
+    data = r.json()
+    web_url = str(data.get("web_url") or "")
+    sha = data.get("id") or data.get("short_id")
+    short_sha = str(sha)[:12] if sha else None
+    return web_url, short_sha

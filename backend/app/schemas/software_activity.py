@@ -18,6 +18,7 @@ class SoftwareActivityItemOut(BaseModel):
     created_at: datetime
     actor_display: str | None = None
     context_label: str | None = None
+    software_name: str | None = None
 
 
 class SoftwareActivityListOut(BaseModel):

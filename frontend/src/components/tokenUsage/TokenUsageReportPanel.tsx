@@ -1,6 +1,7 @@
 import { useMutation } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Bar,
   BarChart,
@@ -67,8 +68,11 @@ export function TokenUsageReportPanel(props: {
   studioId?: string
 }): ReactElement {
   const { mode, studioId } = props
+  const [searchParams] = useSearchParams()
+  const urlFiltersApplied = useRef(false)
   const [softwareId, setSoftwareId] = useState('')
   const [projectId, setProjectId] = useState('')
+  const [studioFilterId, setStudioFilterId] = useState('')
   const [userId, setUserId] = useState('')
   const [callType, setCallType] = useState('')
   const [dateFrom, setDateFrom] = useState('')
@@ -79,6 +83,17 @@ export function TokenUsageReportPanel(props: {
   const [chartGranularity, setChartGranularity] =
     useState<Granularity>('day')
 
+  useEffect(() => {
+    if (urlFiltersApplied.current || mode !== 'me') return
+    urlFiltersApplied.current = true
+    const sw = searchParams.get('software_id')?.trim() ?? ''
+    const pj = searchParams.get('project_id')?.trim() ?? ''
+    const st = searchParams.get('studio_id')?.trim() ?? ''
+    if (sw) setSoftwareId(sw)
+    if (pj) setProjectId(pj)
+    if (st) setStudioFilterId(st)
+  }, [mode, searchParams])
+
   const chartData = useMemo(() => {
     if (!report?.rows?.length) return []
     return aggregateUsageByGranularity(report.rows, chartGranularity)
@@ -88,6 +103,7 @@ export function TokenUsageReportPanel(props: {
     const p: TokenUsageQueryParams = { limit, offset }
     if (softwareId.trim()) p.software_id = softwareId.trim()
     if (projectId.trim()) p.project_id = projectId.trim()
+    if (mode === 'me' && studioFilterId.trim()) p.studio_id = studioFilterId.trim()
     if (mode === 'admin' && userId.trim()) p.user_id = userId.trim()
     if (callType.trim()) p.call_type = callType.trim()
     if (dateFrom.trim()) p.date_from = dateFrom.trim()
@@ -228,6 +244,17 @@ export function TokenUsageReportPanel(props: {
             placeholder="UUID"
           />
         </label>
+        {mode === 'me' ? (
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-zinc-500">Studio ID</span>
+            <input
+              className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-xs"
+              value={studioFilterId}
+              onChange={(e) => setStudioFilterId(e.target.value)}
+              placeholder="UUID"
+            />
+          </label>
+        ) : null}
         {mode === 'admin' ? (
           <label className="flex flex-col gap-1">
             <span className="text-xs text-zinc-500">User ID</span>

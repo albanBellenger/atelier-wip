@@ -78,7 +78,7 @@ describe('SoftwareBuildingTeamCard', () => {
     expect(screen.getByText('VO')).toBeInTheDocument()
 
     const manage = screen.getByRole('link', { name: /manage/i })
-    expect(manage).toHaveAttribute('href', '/studios/s1')
+    expect(manage).toHaveAttribute('href', '/studios/s1/settings')
   })
 
   it('uses custom buildingHeading for project context', () => {

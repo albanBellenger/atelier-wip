@@ -1,19 +1,35 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { useStudioAccess } from '../hooks/useStudioAccess'
+
+import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
+import { BuilderTokenStrip } from '../components/home/BuilderTokenStrip'
+import { userCanSeeMeTokenUsage } from '../components/home/UserMenu'
+import { SettingsGearIcon } from '../components/icons/SettingsGearIcon'
+import { StudioArtifactsSection } from '../components/studio/StudioArtifactsSection'
+import { StudioProjectsSection } from '../components/studio/StudioProjectsSection'
+import { StudioSoftwareSection } from '../components/studio/StudioSoftwareSection'
+import { SoftwareBuildingTeamCard } from '../components/software/SoftwareBuildingTeamCard'
+import { SoftwareRecentActivityCard } from '../components/software/SoftwareRecentActivityCard'
 import {
-  addMember,
-  deleteStudio,
+  getHostedEnvironment,
+  hostedEnvironmentLabel,
+} from '../lib/hostedEnvironment'
+import { useStudioAccess } from '../hooks/useStudioAccess'
+import { APP_VERSION } from '../version'
+import {
+  createSoftware,
+  downloadArtifactBlob,
+  getMeTokenUsage,
   getStudio,
+  getStudioActivity,
   listMembers,
   listSoftware,
+  listStudioArtifacts,
+  listStudioProjects,
+  logout as logoutApi,
   me,
-  removeMember,
-  updateMemberRole,
-  updateStudio,
-  createSoftware,
 } from '../services/api'
 
 export function StudioPage(): ReactElement {
@@ -21,6 +37,8 @@ export function StudioPage(): ReactElement {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const sid = studioId ?? ''
+  const hostedEnv = getHostedEnvironment()
+  const hostedEnvLabel = hostedEnvironmentLabel(hostedEnv)
 
   const {
     data: profile,
@@ -58,88 +76,102 @@ export function StudioPage(): ReactElement {
     enabled: Boolean(sid && access.isMember),
   })
 
-  const [studioName, setStudioName] = useState('')
-  const [studioDesc, setStudioDesc] = useState('')
-  const [memberEmail, setMemberEmail] = useState('')
-  const [memberRole, setMemberRole] = useState<'studio_admin' | 'studio_member'>(
-    'studio_member',
+  const studioProjectsQ = useQuery({
+    queryKey: ['studio', sid, 'projects'],
+    queryFn: () => listStudioProjects(sid, { includeArchived: true }),
+    enabled: Boolean(sid && access.isMember),
+    retry: false,
+  })
+
+  const activityFeedEnabled = Boolean(
+    sid && access.isMember && access.canCreateProject,
   )
-  const [swName, setSwName] = useState('')
-  const [msg, setMsg] = useState<string | null>(null)
 
-  const [studioFormSyncKey, setStudioFormSyncKey] = useState('')
-  const st = studioQ.data
-  const studioServerKey = st
-    ? `${st.id}:${st.name}:${st.description ?? ''}`
-    : ''
-  if (st && studioServerKey !== studioFormSyncKey) {
-    setStudioFormSyncKey(studioServerKey)
-    setStudioName(st.name)
-    setStudioDesc(st.description ?? '')
-  }
+  const canListStudioTeam = Boolean(
+    sid && (access.role != null || access.isToolAdmin),
+  )
 
-  const updateMut = useMutation({
-    mutationFn: () =>
-      updateStudio(sid, {
-        name: studioName.trim(),
-        description: studioDesc.trim() || null,
+  const activityQ = useQuery({
+    queryKey: ['studio', sid, 'activity'],
+    queryFn: () => getStudioActivity(sid, { limit: 20 }),
+    enabled: Boolean(sid && access.isMember && activityFeedEnabled),
+    retry: false,
+  })
+
+  const tokenReportQ = useQuery({
+    queryKey: ['me', 'token-usage', 'studio', sid],
+    queryFn: () =>
+      getMeTokenUsage({
+        studio_id: sid,
+        limit: 5000,
+        offset: 0,
       }),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['studio', sid] })
-      setMsg('Saved studio.')
-    },
+    enabled: Boolean(
+      sid && access.isMember && profile && userCanSeeMeTokenUsage(profile),
+    ),
+    retry: false,
   })
 
-  const addMut = useMutation({
-    mutationFn: () =>
-      addMember(sid, {
-        email: memberEmail.trim(),
-        role: memberRole,
-      }),
-    onSuccess: () => {
-      setMemberEmail('')
-      void qc.invalidateQueries({ queryKey: ['members', sid] })
-      void qc.invalidateQueries({ queryKey: ['auth', 'me'] })
-      setMsg('Member added.')
-    },
+  const billedToStudioName =
+    profile?.studios.find((s) => s.studio_id === sid)?.studio_name ??
+    profile?.studios[0]?.studio_name ??
+    null
+
+  const artifactsQ = useQuery({
+    queryKey: ['studio', sid, 'artifacts'],
+    queryFn: () => listStudioArtifacts(sid),
+    enabled: Boolean(sid && access.isMember),
+    retry: false,
   })
 
-  const removeMut = useMutation({
-    mutationFn: (userId: string) => removeMember(sid, userId),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['members', sid] })
-      void qc.invalidateQueries({ queryKey: ['auth', 'me'] })
-      setMsg('Member removed.')
-    },
-  })
-
-  const roleMut = useMutation({
-    mutationFn: (vars: { userId: string; role: 'studio_admin' | 'studio_member' }) =>
-      updateMemberRole(sid, vars.userId, vars.role),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['members', sid] })
-      void qc.invalidateQueries({ queryKey: ['auth', 'me'] })
-      setMsg('Role updated.')
-    },
-  })
+  const [newSoftwareName, setNewSoftwareName] = useState('')
 
   const createSwMut = useMutation({
-    mutationFn: () => createSoftware(sid, { name: swName.trim() }),
+    mutationFn: () => createSoftware(sid, { name: newSoftwareName.trim() }),
     onSuccess: (newSw) => {
+      setNewSoftwareName('')
       void qc.invalidateQueries({ queryKey: ['software', sid] })
+      void qc.invalidateQueries({ queryKey: ['studio', sid, 'projects'] })
       void navigate(`/studios/${sid}/software/${newSw.id}`)
-      setSwName('')
     },
   })
 
-  const deleteMut = useMutation({
-    mutationFn: () => deleteStudio(sid),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['studios'] })
-      void qc.invalidateQueries({ queryKey: ['auth', 'me'] })
-      navigate('/studios')
+  const handleLogout = useCallback(async () => {
+    try {
+      await logoutApi()
+    } catch {
+      /* still leave */
+    }
+    void navigate('/auth', { replace: true })
+  }, [navigate])
+
+  const handleStudioChange = useCallback(
+    (nextStudioId: string) => {
+      void navigate(`/studios/${nextStudioId}`)
     },
-  })
+    [navigate],
+  )
+
+  const handleArtifactDownload = useCallback(
+    async (projectId: string, artifactId: string, filename: string) => {
+      try {
+        const blob = await downloadArtifactBlob(projectId, artifactId)
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename || 'download'
+        a.click()
+        URL.revokeObjectURL(url)
+      } catch {
+        /* keep minimal */
+      }
+    },
+    [],
+  )
+
+  const headerTrailingCrumb = studioQ.data
+    ? { label: studioQ.data.name }
+    : undefined
 
   if (!sid) {
     void navigate('/studios', { replace: true })
@@ -154,7 +186,7 @@ export function StudioPage(): ReactElement {
     )
   }
 
-  if (profilePending) {
+  if (profilePending || !profile) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-zinc-950 text-zinc-400">
         Loading…
@@ -174,24 +206,15 @@ export function StudioPage(): ReactElement {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 px-4 py-10 text-zinc-100">
-      <div className="mx-auto max-w-2xl">
-        <div className="mb-6 flex flex-wrap items-center gap-4">
-          <Link to="/studios" className="text-sm text-violet-400 hover:underline">
-            ← Studios
-          </Link>
-          <Link to="/" className="text-sm text-zinc-500 hover:text-zinc-300">
-            Home
-          </Link>
-          {access.isStudioAdmin ? (
-            <Link
-              to={`/studios/${sid}/settings`}
-              className="text-sm text-violet-400 hover:underline"
-            >
-              Settings
-            </Link>
-          ) : null}
-        </div>
+    <div className="min-h-screen bg-[#0a0a0b] px-8 pb-16 pt-8 font-sans text-zinc-100">
+      <div className="mx-auto max-w-[1240px]">
+        <BuilderHomeHeader
+          profile={profile}
+          studioId={sid}
+          onStudioChange={handleStudioChange}
+          onLogout={() => void handleLogout()}
+          trailingCrumb={headerTrailingCrumb}
+        />
 
         {studioQ.isPending && <p className="text-zinc-500">Loading…</p>}
         {studioQ.isError && (
@@ -200,175 +223,129 @@ export function StudioPage(): ReactElement {
 
         {studioQ.data && (
           <>
-            <h1 className="text-2xl font-semibold">{studioQ.data.name}</h1>
-            {msg && <p className="mt-2 text-sm text-emerald-400">{msg}</p>}
-
-            {access.isStudioAdmin && (
-              <div className="mt-6 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
-                <h2 className="mb-3 text-sm font-medium text-zinc-300">
-                  Studio settings
-                </h2>
-                <input
-                  className="mb-2 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
-                  value={studioName}
-                  onChange={(e) => setStudioName(e.target.value)}
-                />
-                <textarea
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
-                  rows={2}
-                  placeholder="Description"
-                  value={studioDesc}
-                  onChange={(e) => setStudioDesc(e.target.value)}
-                />
-                <button
-                  type="button"
-                  className="mt-3 rounded-lg bg-zinc-700 px-3 py-1.5 text-sm hover:bg-zinc-600"
-                  onClick={() => updateMut.mutate()}
-                >
-                  Save
-                </button>
-              </div>
-            )}
-
-            <section className="mt-10">
-              <h2 className="text-lg font-medium">Software</h2>
-              <ul className="mt-3 space-y-2">
-                {softwareQ.data?.map((sw) => (
-                  <li key={sw.id}>
+            <section className="relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/40 p-7">
+              <div
+                aria-hidden
+                className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-500/40 to-transparent"
+              />
+              <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-500">
+                    Studio
+                  </div>
+                  <h1 className="mt-2 font-serif text-[40px] font-medium leading-[1.05] tracking-[-0.02em] text-zinc-100">
+                    {studioQ.data.name}
+                  </h1>
+                  {studioQ.data.description ? (
+                    <p className="mt-3 max-w-2xl text-[14px] leading-relaxed text-zinc-400">
+                      {studioQ.data.description}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="flex shrink-0 flex-row flex-wrap items-center justify-start gap-2 lg:justify-end">
+                  {profile && userCanSeeMeTokenUsage(profile) ? (
                     <Link
-                      className="block rounded-lg border border-zinc-800 px-4 py-3 hover:border-zinc-600"
-                      to={`/studios/${sid}/software/${sw.id}`}
+                      to={`/me/token-usage?studio_id=${encodeURIComponent(sid)}`}
+                      className="inline-flex items-center justify-center rounded-md border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-[12px] font-medium text-zinc-300 hover:bg-zinc-800"
                     >
-                      {sw.name}
+                      Token usage
                     </Link>
-                  </li>
-                ))}
-              </ul>
-              {access.isStudioAdmin && (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <input
-                    className="flex-1 min-w-[12rem] rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
-                    placeholder="New software name"
-                    value={swName}
-                    onChange={(e) => setSwName(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500"
-                    onClick={() => {
-                      if (!swName.trim()) return
-                      createSwMut.mutate()
-                    }}
-                  >
-                    Add software
-                  </button>
+                  ) : null}
+                  {access.isStudioAdmin ? (
+                    <Link
+                      to={`/studios/${sid}/settings`}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-[12px] font-medium text-zinc-300 hover:bg-zinc-800"
+                    >
+                      <SettingsGearIcon />
+                      Studio settings
+                    </Link>
+                  ) : null}
                 </div>
-              )}
-            </section>
-
-            <section className="mt-10">
-              <h2 className="text-lg font-medium">Members</h2>
-              <ul className="mt-3 space-y-2">
-                {membersQ.data?.map((m) => (
-                  <li
-                    key={m.user_id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-800 px-4 py-2 text-sm"
-                  >
-                    <span>
-                      {m.display_name}{' '}
-                      <span className="text-zinc-500">({m.email})</span> —{' '}
-                      <span className="text-zinc-400">{m.role}</span>
-                    </span>
-                    {access.isStudioAdmin && (
-                      <span className="flex gap-2">
-                        <button
-                          type="button"
-                          className="text-xs text-violet-400 hover:underline"
-                          onClick={() =>
-                            roleMut.mutate({
-                              userId: m.user_id,
-                              role:
-                                m.role === 'studio_admin'
-                                  ? 'studio_member'
-                                  : 'studio_admin',
-                            })
-                          }
-                        >
-                          Toggle admin
-                        </button>
-                        <button
-                          type="button"
-                          className="text-xs text-red-400 hover:underline"
-                          onClick={() => {
-                            if (
-                              confirm(`Remove ${m.email} from this studio?`)
-                            )
-                              removeMut.mutate(m.user_id)
-                          }}
-                        >
-                          Remove
-                        </button>
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-
-              {access.isStudioAdmin && (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <input
-                    type="email"
-                    className="flex-1 min-w-[12rem] rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
-                    placeholder="user@example.com"
-                    value={memberEmail}
-                    onChange={(e) => setMemberEmail(e.target.value)}
-                  />
-                  <select
-                    className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
-                    value={memberRole}
-                    onChange={(e) =>
-                      setMemberRole(
-                        e.target.value as 'studio_admin' | 'studio_member',
-                      )
-                    }
-                  >
-                    <option value="studio_member">Member</option>
-                    <option value="studio_admin">Admin</option>
-                  </select>
-                  <button
-                    type="button"
-                    className="rounded-lg bg-zinc-700 px-4 py-2 text-sm hover:bg-zinc-600"
-                    onClick={() => {
-                      if (!memberEmail.trim()) return
-                      addMut.mutate()
-                    }}
-                  >
-                    Invite
-                  </button>
-                </div>
-              )}
-            </section>
-
-            {access.isStudioAdmin && (
-              <div className="mt-12 border-t border-zinc-800 pt-8">
-                <button
-                  type="button"
-                  className="text-sm text-red-400 hover:underline"
-                  onClick={() => {
-                    if (
-                      confirm(
-                        'Delete this studio and all software and projects under it?',
-                      )
-                    )
-                      deleteMut.mutate()
-                  }}
-                >
-                  Delete studio
-                </button>
               </div>
-            )}
+            </section>
+
+            <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
+              <div className="flex min-w-0 flex-col gap-10">
+                <StudioSoftwareSection
+                  studioId={sid}
+                  software={softwareQ.data}
+                  isPending={softwareQ.isPending}
+                  canCreateSoftware={access.isStudioAdmin}
+                  newSoftwareName={newSoftwareName}
+                  onNewSoftwareNameChange={setNewSoftwareName}
+                  onCreateSoftware={() => {
+                    if (!newSoftwareName.trim()) return
+                    createSwMut.mutate()
+                  }}
+                  createPending={createSwMut.isPending}
+                />
+                <StudioProjectsSection
+                  studioId={sid}
+                  projects={studioProjectsQ.data}
+                  isPending={studioProjectsQ.isPending}
+                />
+                <StudioArtifactsSection
+                  isMember={access.isMember}
+                  isPending={artifactsQ.isPending}
+                  isError={artifactsQ.isError}
+                  rows={artifactsQ.data}
+                  onDownload={handleArtifactDownload}
+                />
+              </div>
+              <aside className="min-w-0 lg:sticky lg:top-6 lg:self-start">
+                <SoftwareRecentActivityCard
+                  enabled={activityFeedEnabled}
+                  isPending={activityQ.isPending}
+                  isError={activityQ.isError}
+                  items={activityQ.data?.items ?? []}
+                  subtitle="Across all software in this studio"
+                />
+                <SoftwareBuildingTeamCard
+                  enabled={canListStudioTeam}
+                  isPending={membersQ.isPending}
+                  isError={membersQ.isError}
+                  members={membersQ.data ?? []}
+                  currentUserId={profile.user.id}
+                  studioId={sid}
+                  showManageLink={access.isStudioAdmin}
+                  buildingHeading="Building this studio"
+                />
+                <div className="mt-6 min-w-0">
+                  <BuilderTokenStrip
+                    report={tokenReportQ.data}
+                    isPending={tokenReportQ.isPending}
+                    canSeeTokenUsage={userCanSeeMeTokenUsage(profile)}
+                    billedToStudioName={billedToStudioName}
+                    heading="Studio LLM usage"
+                    detailReportHref={`/me/token-usage?studio_id=${encodeURIComponent(sid)}`}
+                    sectionPaddingClass="p-5"
+                  />
+                </div>
+              </aside>
+            </div>
           </>
         )}
+
+        <footer className="mt-16 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-zinc-800/60 pt-6 text-[11px] text-zinc-600">
+          <span>Atelier · Builder workspace</span>
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono">
+            <Link
+              to="/changelog"
+              className="text-zinc-500 hover:text-zinc-300 hover:underline focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
+            >
+              v{APP_VERSION}
+            </Link>
+            <span className="select-none font-sans text-zinc-700" aria-hidden>
+              ·
+            </span>
+            <span
+              className="rounded border border-zinc-700/70 px-1.5 py-px text-[10px] font-sans font-normal uppercase tracking-wider text-zinc-500"
+              title={`Hosted environment: ${hostedEnvLabel}`}
+            >
+              {hostedEnvLabel}
+            </span>
+          </span>
+        </footer>
       </div>
     </div>
   )

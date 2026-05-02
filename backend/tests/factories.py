@@ -98,12 +98,15 @@ async def create_project(
     *,
     name: str | None = None,
     description: str | None = None,
+    publish_folder_slug: str | None = None,
 ) -> Project:
+    slug = publish_folder_slug or f"p-{uuid.uuid4().hex[:12]}"
     pr = Project(
         id=uuid.uuid4(),
         software_id=software_id,
         name=name or "LLM Test Project",
         description=description,
+        publish_folder_slug=slug,
     )
     session.add(pr)
     await session.flush()

@@ -24,13 +24,17 @@ log = structlog.get_logger("atelier.publish")
 _EXPORT_WO = frozenset({"backlog", "in_progress", "in_review"})
 
 
-def _safe_section_path(s: Section) -> str:
+def _publish_root(project: Project) -> str:
+    return project.publish_folder_slug.replace("\\", "/").strip("/")
+
+
+def _safe_section_path(root: str, s: Section) -> str:
     raw = (s.slug or "").strip()
     if not raw or not re.match(r"^[\w\-]+$", raw):
         raw = re.sub(r"[^\w\-]+", "-", (s.title or "section").lower()).strip("-")[
             :80
         ] or "section"
-    return f"sections/{raw}.md"
+    return f"{root}/sections/{raw}.md"
 
 
 def _wo_markdown(w: WorkOrder) -> str:
@@ -78,10 +82,11 @@ class PublishService:
         )
         sections = list(sec_row.scalars().all())
 
+        root = _publish_root(project)
         files: dict[str, str] = {}
         toc_rows: list[str] = []
         for s in sections:
-            rel = _safe_section_path(s)
+            rel = _safe_section_path(root, s)
             files[rel] = (s.content or "").rstrip() + "\n"
             toc_rows.append(f"| {s.title} | `{rel}` |")
 
@@ -95,7 +100,7 @@ class PublishService:
             st = (w.status or "").lower().strip()
             if st not in _EXPORT_WO:
                 continue
-            path = f"work-orders/{w.id}.md"
+            path = f"{root}/work-orders/{w.id}.md"
             files[path] = _wo_markdown(w)
 
         readme = [
@@ -112,7 +117,7 @@ class PublishService:
             f"_Exported at {datetime.now(timezone.utc).isoformat()}_",
             "",
         ]
-        files["README.md"] = "\n".join(readme)
+        files[f"{root}/README.md"] = "\n".join(readme)
         return files
 
     async def publish(

@@ -8,9 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import (
+    ProjectAccess,
     SoftwareAccess,
     StudioAccess,
     StudioSoftwareListAccess,
+    get_project_access_nested,
     get_software_in_studio,
     get_studio_software_list_access,
     require_software_admin_in_studio,
@@ -18,6 +20,10 @@ from app.deps import (
     require_studio_admin,
 )
 from app.exceptions import ApiError
+from app.schemas.artifact import (
+    ArtifactExclusionPatch,
+    ArtifactExclusionPatchResult,
+)
 from app.schemas.publish import GitCommitItem, GitHistoryResponse
 from app.schemas.software import (
     GitTestResult,
@@ -26,6 +32,7 @@ from app.schemas.software import (
     SoftwareTokenUsageSummaryOut,
     SoftwareUpdate,
 )
+from app.services.artifact_exclusion_service import ArtifactExclusionService
 from app.services.software_service import SoftwareService
 from app.services.token_usage_query_service import TokenUsageQueryService
 
@@ -179,3 +186,87 @@ async def test_git_connection(
     sa: SoftwareAccess = Depends(require_software_admin_in_studio),
 ) -> GitTestResult:
     return await SoftwareService(session).test_git(sa.studio_access, software_id)
+
+
+@router.patch(
+    "/{software_id}/artifact-exclusions",
+    response_model=ArtifactExclusionPatchResult,
+)
+async def patch_software_artifact_exclusion(
+    studio_id: UUID,
+    software_id: UUID,
+    body: ArtifactExclusionPatch,
+    session: AsyncSession = Depends(get_db),
+    sa: SoftwareAccess = Depends(require_software_editor_in_studio),
+) -> ArtifactExclusionPatchResult:
+    if sa.software.id != software_id or sa.software.studio_id != studio_id:
+        raise ApiError(
+            status_code=404,
+            code="NOT_FOUND",
+            message="Software not found.",
+        )
+    if sa.studio_access.is_cross_studio_viewer:
+        raise ApiError(
+            status_code=403,
+            code="FORBIDDEN",
+            message="Cannot manage artifact exclusions with viewer access.",
+        )
+    excluded = await ArtifactExclusionService(session).set_software_exclusion(
+        studio_id=studio_id,
+        software_id=software_id,
+        artifact_id=body.artifact_id,
+        excluded=body.excluded,
+        user_id=sa.studio_access.user.id,
+    )
+    return ArtifactExclusionPatchResult(
+        artifact_id=body.artifact_id,
+        excluded=excluded,
+    )
+
+
+@router.patch(
+    "/{software_id}/projects/{project_id}/artifact-exclusions",
+    response_model=ArtifactExclusionPatchResult,
+)
+async def patch_project_artifact_exclusion(
+    studio_id: UUID,
+    software_id: UUID,
+    project_id: UUID,
+    body: ArtifactExclusionPatch,
+    session: AsyncSession = Depends(get_db),
+    pa: ProjectAccess = Depends(get_project_access_nested),
+) -> ArtifactExclusionPatchResult:
+    if (
+        pa.software.id != software_id
+        or pa.project.id != project_id
+        or pa.software.studio_id != studio_id
+    ):
+        raise ApiError(
+            status_code=404,
+            code="NOT_FOUND",
+            message="Project not found.",
+        )
+    if not pa.studio_access.is_studio_editor:
+        raise ApiError(
+            status_code=403,
+            code="FORBIDDEN",
+            message="Studio membership required",
+        )
+    if pa.studio_access.is_cross_studio_viewer:
+        raise ApiError(
+            status_code=403,
+            code="FORBIDDEN",
+            message="Cannot manage artifact exclusions with viewer access.",
+        )
+    excluded = await ArtifactExclusionService(session).set_project_exclusion(
+        studio_id=studio_id,
+        software_id=software_id,
+        project_id=project_id,
+        artifact_id=body.artifact_id,
+        excluded=body.excluded,
+        user_id=pa.studio_access.user.id,
+    )
+    return ArtifactExclusionPatchResult(
+        artifact_id=body.artifact_id,
+        excluded=excluded,
+    )

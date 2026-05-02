@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
 import * as api from '../../services/api'
@@ -48,9 +49,11 @@ describe('TokenUsageReportPanel', () => {
     })
 
     render(
-      <QueryClientProvider client={qc}>
-        <TokenUsageReportPanel mode="admin" />
-      </QueryClientProvider>,
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <TokenUsageReportPanel mode="admin" />
+        </QueryClientProvider>
+      </MemoryRouter>,
     )
 
     const user = userEvent.setup()
@@ -79,5 +82,37 @@ describe('TokenUsageReportPanel', () => {
       )
       expect(weeklyTicks.length).toBeLessThan(dailyTicks.length)
     })
+  })
+
+  it('pre-fills studio_id from URL for me mode and sends it on load', async () => {
+    const report: api.TokenUsageReport = {
+      rows: [],
+      totals: {
+        input_tokens: 0,
+        output_tokens: 0,
+        estimated_cost_usd: '0',
+      },
+    }
+    const getMe = vi.spyOn(api, 'getMeTokenUsage').mockResolvedValue(report)
+    const qc = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    render(
+      <MemoryRouter initialEntries={['/me/token-usage?studio_id=st-99']}>
+        <QueryClientProvider client={qc}>
+          <TokenUsageReportPanel mode="me" />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /apply filters/i }))
+    await waitFor(() => {
+      expect(getMe).toHaveBeenCalled()
+    })
+    const arg = getMe.mock.calls[0]?.[0] as { studio_id?: string } | undefined
+    expect(arg?.studio_id).toBe('st-99')
   })
 })

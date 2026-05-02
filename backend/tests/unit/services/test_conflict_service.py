@@ -57,6 +57,7 @@ async def test_run_conflict_analysis_returns_zero_on_llm_api_error(
         software_id=software_id,
         name="P",
         description=None,
+        publish_folder_slug="p",
     )
     sw = Software(
         id=software_id,
@@ -120,6 +121,7 @@ async def test_run_conflict_analysis_creates_pair_issue_and_edges(
         software_id=software_id,
         name="P",
         description=None,
+        publish_folder_slug="p",
     )
     sw = Software(
         id=software_id,
@@ -190,7 +192,13 @@ async def test_run_conflict_analysis_skips_malformed_findings(
         order=0,
         content="x",
     )
-    pr = Project(id=pid, software_id=software_id, name="P", description=None)
+    pr = Project(
+        id=pid,
+        software_id=software_id,
+        name="P",
+        description=None,
+        publish_folder_slug="p",
+    )
     sw = Software(
         id=software_id, studio_id=studio_id, name="S", description="d", definition="d"
     )
