@@ -10,7 +10,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
-from app.models import Artifact
+from app.models import Artifact, Project, User
+from app.schemas.artifact import SoftwareArtifactRowOut
 from app.services.document_extract import (
     DocumentExtractError,
     infer_file_type_from_name,
@@ -78,6 +79,7 @@ class ArtifactService:
             uploaded_by=uploaded_by,
             name=label or safe,
             file_type=ft,
+            size_bytes=len(raw),
             storage_path=storage_path,
         )
         self.db.add(art)
@@ -116,6 +118,7 @@ class ArtifactService:
             uploaded_by=uploaded_by,
             name=display_name,
             file_type="md",
+            size_bytes=len(raw),
             storage_path=storage_path,
         )
         self.db.add(art)
@@ -129,6 +132,33 @@ class ArtifactService:
             .order_by(Artifact.created_at.desc())
         )
         return list(r.scalars().all())
+
+    async def list_artifacts_for_software(
+        self, software_id: UUID
+    ) -> list[SoftwareArtifactRowOut]:
+        r = await self.db.execute(
+            select(Artifact, Project.name, User.display_name)
+            .join(Project, Artifact.project_id == Project.id)
+            .outerjoin(User, Artifact.uploaded_by == User.id)
+            .where(Project.software_id == software_id)
+            .order_by(Artifact.created_at.desc())
+        )
+        out: list[SoftwareArtifactRowOut] = []
+        for art, project_name, uploader_display in r.all():
+            out.append(
+                SoftwareArtifactRowOut(
+                    id=art.id,
+                    project_id=art.project_id,
+                    project_name=project_name,
+                    name=art.name,
+                    file_type=art.file_type,
+                    size_bytes=art.size_bytes,
+                    uploaded_by=art.uploaded_by,
+                    uploaded_by_display=uploader_display,
+                    created_at=art.created_at,
+                )
+            )
+        return out
 
     async def get_in_project(self, project_id: UUID, artifact_id: UUID) -> Artifact:
         art = await self.db.get(Artifact, artifact_id)

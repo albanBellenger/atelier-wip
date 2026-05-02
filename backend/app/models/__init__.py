@@ -9,6 +9,7 @@ from app.models.mcp import McpKey, TokenUsage
 from app.models.notification import Notification
 from app.models.project import Artifact, ArtifactChunk, Project, Section, SectionChunk
 from app.models.software import Software
+from app.models.software_activity import SoftwareActivityEvent
 from app.models.studio import Studio, StudioMember
 from app.models.user import User
 from app.models.work_order import WorkOrder, WorkOrderNote, WorkOrderSection
@@ -29,6 +30,7 @@ __all__ = [
     "Section",
     "SectionChunk",
     "Software",
+    "SoftwareActivityEvent",
     "Studio",
     "StudioMember",
     "ThreadMessage",

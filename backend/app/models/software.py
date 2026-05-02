@@ -35,3 +35,8 @@ class Software(Base):
 
     studio = relationship("Studio", back_populates="software_list")
     projects = relationship("Project", back_populates="software", cascade="all, delete-orphan")
+    activity_events = relationship(
+        "SoftwareActivityEvent",
+        back_populates="software",
+        cascade="all, delete-orphan",
+    )

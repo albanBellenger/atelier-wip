@@ -647,13 +647,23 @@ export interface Project {
   software_id: string
   name: string
   description: string | null
+  archived: boolean
   created_at: string
   updated_at: string
   sections: SectionSummary[] | null
+  work_orders_done: number
+  work_orders_total: number
+  sections_count: number
+  last_edited_at: string | null
 }
 
-export async function listProjects(softwareId: string): Promise<Project[]> {
-  return request<Project[]>('GET', `/software/${softwareId}/projects`)
+export async function listProjects(
+  softwareId: string,
+  opts?: { includeArchived?: boolean },
+): Promise<Project[]> {
+  const q =
+    opts?.includeArchived === true ? '?include_archived=true' : ''
+  return request<Project[]>('GET', `/software/${softwareId}/projects${q}`)
 }
 
 export async function createProject(
@@ -682,6 +692,18 @@ export async function updateProject(
     'PUT',
     `/software/${softwareId}/projects/${projectId}`,
     body,
+  )
+}
+
+export async function patchProjectArchived(
+  softwareId: string,
+  projectId: string,
+  archived: boolean,
+): Promise<Project> {
+  return request<Project>(
+    'PATCH',
+    `/software/${softwareId}/projects/${projectId}`,
+    { archived },
   )
 }
 
@@ -862,6 +884,94 @@ export async function getProjectAttention(
   return request<ProjectAttentionResponse>(
     'GET',
     `/projects/${projectId}/attention`,
+  )
+}
+
+export interface SoftwareAttentionRow {
+  project_id: string
+  project_name: string
+  item: AttentionItem
+}
+
+export interface SoftwareAttentionResponse {
+  studio_id: string
+  software_id: string
+  counts: AttentionCounts
+  items: SoftwareAttentionRow[]
+}
+
+export async function getSoftwareAttention(
+  softwareId: string,
+): Promise<SoftwareAttentionResponse> {
+  return request<SoftwareAttentionResponse>(
+    'GET',
+    `/software/${softwareId}/attention`,
+  )
+}
+
+export interface SoftwareActivityItem {
+  id: string
+  verb: string
+  summary: string
+  actor_user_id: string | null
+  entity_type: string | null
+  entity_id: string | null
+  created_at: string
+  actor_display?: string | null
+  context_label?: string | null
+}
+
+export interface SoftwareActivityResponse {
+  items: SoftwareActivityItem[]
+}
+
+export async function getSoftwareActivity(
+  softwareId: string,
+  opts?: { limit?: number },
+): Promise<SoftwareActivityResponse> {
+  const lim = opts?.limit != null ? `?limit=${opts.limit}` : ''
+  return request<SoftwareActivityResponse>(
+    'GET',
+    `/software/${softwareId}/activity${lim}`,
+  )
+}
+
+export interface SoftwareArtifactRow {
+  id: string
+  project_id: string
+  project_name: string
+  name: string
+  file_type: string
+  size_bytes: number
+  uploaded_by: string | null
+  uploaded_by_display: string | null
+  created_at: string
+}
+
+export async function listSoftwareArtifacts(
+  softwareId: string,
+): Promise<SoftwareArtifactRow[]> {
+  return request<SoftwareArtifactRow[]>(
+    'GET',
+    `/software/${softwareId}/artifacts`,
+  )
+}
+
+export interface SoftwareTokenUsageSummary {
+  input_tokens: number
+  output_tokens: number
+  estimated_cost_usd: string
+  period_start: string
+  period_end: string
+}
+
+export async function getSoftwareTokenUsageSummary(
+  studioId: string,
+  softwareId: string,
+): Promise<SoftwareTokenUsageSummary> {
+  return request<SoftwareTokenUsageSummary>(
+    'GET',
+    `/studios/${studioId}/software/${softwareId}/token-usage/summary`,
   )
 }
 
@@ -1077,6 +1187,7 @@ export interface ArtifactItem {
   project_id: string
   name: string
   file_type: string
+  size_bytes: number
   uploaded_by: string | null
   created_at: string
 }

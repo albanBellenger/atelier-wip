@@ -1,8 +1,9 @@
 """Software routes under a studio."""
 
+from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -16,9 +17,17 @@ from app.deps import (
     require_software_editor_in_studio,
     require_studio_admin,
 )
+from app.exceptions import ApiError
 from app.schemas.publish import GitCommitItem, GitHistoryResponse
-from app.schemas.software import GitTestResult, SoftwareCreate, SoftwareResponse, SoftwareUpdate
+from app.schemas.software import (
+    GitTestResult,
+    SoftwareCreate,
+    SoftwareResponse,
+    SoftwareTokenUsageSummaryOut,
+    SoftwareUpdate,
+)
 from app.services.software_service import SoftwareService
+from app.services.token_usage_query_service import TokenUsageQueryService
 
 router = APIRouter(prefix="/studios/{studio_id}/software", tags=["software"])
 
@@ -84,6 +93,69 @@ async def delete_software(
 ) -> Response:
     await SoftwareService(session).delete_software(sa.studio_access, software_id)
     return Response(status_code=204)
+
+
+@router.get("/{software_id}/token-usage/summary", response_model=SoftwareTokenUsageSummaryOut)
+async def software_token_usage_summary(
+    studio_id: UUID,
+    software_id: UUID,
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    session: AsyncSession = Depends(get_db),
+    sa: SoftwareAccess = Depends(get_software_in_studio),
+) -> SoftwareTokenUsageSummaryOut:
+    if not sa.studio_access.is_studio_member:
+        raise ApiError(
+            status_code=403,
+            code="FORBIDDEN",
+            message="Studio membership required.",
+        )
+    today = datetime.now(timezone.utc).date()
+    if date_from is None or date_to is None:
+        period_start = date(today.year, today.month, 1)
+        if today.month == 12:
+            period_end = date(today.year, 12, 31)
+        else:
+            nxt = date(today.year, today.month + 1, 1)
+            period_end = nxt - timedelta(days=1)
+        date_from = date_from or period_start
+        date_to = date_to or period_end
+
+    svc = TokenUsageQueryService(session)
+    cross = sa.studio_access.cross_studio_grant is not None
+    if cross:
+        tin, tout, cost = await svc.totals_for_filtered(
+            scope="self",
+            scope_studio_id=None,
+            scope_user_id=sa.studio_access.user.id,
+            studio_id=None,
+            software_id=software_id,
+            project_id=None,
+            user_id=None,
+            call_type=None,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    else:
+        tin, tout, cost = await svc.totals_for_filtered(
+            scope="studio",
+            scope_studio_id=sa.software.studio_id,
+            scope_user_id=None,
+            studio_id=None,
+            software_id=software_id,
+            project_id=None,
+            user_id=None,
+            call_type=None,
+            date_from=date_from,
+            date_to=date_to,
+        )
+    return SoftwareTokenUsageSummaryOut(
+        input_tokens=tin,
+        output_tokens=tout,
+        estimated_cost_usd=cost,
+        period_start=date_from,
+        period_end=date_to,
+    )
 
 
 @router.get("/{software_id}/history", response_model=GitHistoryResponse)

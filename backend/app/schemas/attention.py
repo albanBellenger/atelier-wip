@@ -40,3 +40,16 @@ class AttentionListOut(BaseModel):
     project_id: UUID
     counts: AttentionCountsOut
     items: list[AttentionItemOut]
+
+
+class SoftwareAttentionItemOut(BaseModel):
+    project_id: UUID
+    project_name: str
+    item: AttentionItemOut
+
+
+class SoftwareAttentionListOut(BaseModel):
+    studio_id: UUID
+    software_id: UUID
+    counts: AttentionCountsOut
+    items: list[SoftwareAttentionItemOut]

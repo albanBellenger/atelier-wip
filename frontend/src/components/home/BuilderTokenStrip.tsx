@@ -15,6 +15,10 @@ export type BuilderTokenStripProps = {
   isPending: boolean
   canSeeTokenUsage: boolean
   billedToStudioName: string | null
+  /** Defaults to ``/me/token-usage`` (e.g. pass ``?software_id=…`` for software-scoped report). */
+  detailReportHref?: string
+  /** Outer section vertical padding; default matches the home dashboard card. */
+  sectionPaddingClass?: 'p-5' | 'p-6'
 }
 
 function budgetToneClass(pct: number): string {
@@ -34,10 +38,13 @@ export function BuilderTokenStrip({
   isPending,
   canSeeTokenUsage,
   billedToStudioName,
+  detailReportHref = '/me/token-usage',
+  sectionPaddingClass = 'p-6',
 }: BuilderTokenStripProps): ReactElement {
+  const shell = `rounded-2xl border border-zinc-800 bg-zinc-900/40 ${sectionPaddingClass}`
   if (!canSeeTokenUsage) {
     return (
-      <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
+      <section className={shell}>
         <h3 className="text-[13px] font-medium text-zinc-200">Your LLM usage</h3>
         <p className="mt-2 text-[12px] text-zinc-500">
           Token usage is available once you belong to a studio or are a tool
@@ -58,11 +65,11 @@ export function BuilderTokenStrip({
 
   if (isPending || !report) {
     return (
-      <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
+      <section className={shell}>
         <div className="flex items-baseline justify-between">
           <h3 className="text-[13px] font-medium text-zinc-200">Your LLM usage</h3>
           <Link
-            to="/me/token-usage"
+            to={detailReportHref}
             className="text-[11px] text-zinc-400 hover:text-zinc-200"
           >
             Detailed report →
@@ -89,14 +96,14 @@ export function BuilderTokenStrip({
   )
 
   return (
-    <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6">
+    <section className={shell}>
       <div className="flex items-baseline justify-between gap-2">
         <div className="min-w-0">
           <h3 className="text-[13px] font-medium text-zinc-200">Your LLM usage</h3>
           <p className="mt-1 text-[11px] text-zinc-500">{billingLine}</p>
         </div>
         <Link
-          to="/me/token-usage"
+          to={detailReportHref}
           className="shrink-0 text-[11px] text-zinc-400 hover:text-zinc-200"
         >
           Detailed report →

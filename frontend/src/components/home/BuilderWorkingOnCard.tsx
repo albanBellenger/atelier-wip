@@ -40,12 +40,13 @@ export function BuilderWorkingOnCard({
 }: BuilderWorkingOnCardProps): ReactElement {
   const [projectOpen, setProjectOpen] = useState(false)
   const nSections = sectionCount
+  const softwareLandingPath = `/studios/${studioId}/software/${software.id}`
   const continuePath =
     project && sectionId
       ? `/studios/${studioId}/software/${software.id}/projects/${project.id}/sections/${sectionId}`
       : project
         ? `/studios/${studioId}/software/${software.id}/projects/${project.id}`
-        : `/studios/${studioId}/software/${software.id}`
+        : softwareLandingPath
   const chatPath = project
     ? `/studios/${studioId}/software/${software.id}/projects/${project.id}`
     : `/studios/${studioId}/software/${software.id}`
@@ -73,8 +74,13 @@ export function BuilderWorkingOnCard({
           <div className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">
             Currently building
           </div>
-          <h2 className="mt-2 truncate font-serif text-[26px] font-medium tracking-[-0.015em] text-zinc-100">
-            {software.name}
+          <h2 className="mt-2 font-serif text-[26px] font-medium tracking-[-0.015em]">
+            <Link
+              to={softwareLandingPath}
+              className="block truncate text-zinc-100 hover:text-violet-300 focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
+            >
+              {software.name}
+            </Link>
           </h2>
           {project ? (
             <div className="relative mt-2">

@@ -4,6 +4,8 @@ import { AdminCrossStudioPage } from './pages/AdminCrossStudioPage'
 import { AdminSettingsPage } from './pages/AdminSettingsPage'
 import { AdminTokenUsagePage } from './pages/AdminTokenUsagePage'
 import { AuthPage } from './pages/AuthPage'
+import { ChangelogPage } from './pages/ChangelogPage'
+import { DocsUserGuidePage } from './pages/DocsUserGuidePage'
 import { HomePage } from './pages/HomePage'
 import { MeProfilePage } from './pages/MeProfilePage'
 import { NotificationSettingsPage } from './pages/NotificationSettingsPage'
@@ -12,8 +14,10 @@ import { WorkOrdersPage } from './pages/WorkOrdersPage'
 import { IssuesPage } from './pages/IssuesPage'
 import { MeTokenUsagePage } from './pages/MeTokenUsagePage'
 import { ProjectPage } from './pages/ProjectPage'
+import { ProjectSettingsPage } from './pages/ProjectSettingsPage'
 import { SectionPage } from './pages/SectionPage'
 import { SoftwarePage } from './pages/SoftwarePage'
+import { SoftwareSettingsPage } from './pages/SoftwareSettingsPage'
 import { StudioPage } from './pages/StudioPage'
 import { StudioTokenUsagePage } from './pages/StudioTokenUsagePage'
 import { McpServerSettingsPage } from './pages/McpServerSettingsPage'
@@ -25,6 +29,8 @@ function App(): ReactElement {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<HomePage />} />
+        <Route path="/changelog" element={<ChangelogPage />} />
+        <Route path="/docs/builder" element={<DocsUserGuidePage />} />
         <Route path="/auth" element={<AuthPage />} />
         <Route path="/me/profile" element={<MeProfilePage />} />
         <Route
@@ -47,6 +53,10 @@ function App(): ReactElement {
         />
         <Route path="/studios/:studioId" element={<StudioPage />} />
         <Route
+          path="/studios/:studioId/software/:softwareId/settings"
+          element={<SoftwareSettingsPage />}
+        />
+        <Route
           path="/studios/:studioId/software/:softwareId"
           element={<SoftwarePage />}
         />
@@ -57,6 +67,10 @@ function App(): ReactElement {
         <Route
           path="/studios/:studioId/software/:softwareId/projects/:projectId/issues"
           element={<IssuesPage />}
+        />
+        <Route
+          path="/studios/:studioId/software/:softwareId/projects/:projectId/settings"
+          element={<ProjectSettingsPage />}
         />
         <Route
           path="/studios/:studioId/software/:softwareId/projects/:projectId"

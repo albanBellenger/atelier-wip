@@ -3,30 +3,34 @@ import type { ReactElement } from 'react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
-import type { AttentionItem, AttentionKind, AuthErrorBody } from '../../services/api'
-import { getProjectAttention } from '../../services/api'
+import type {
+  AttentionItem,
+  AttentionKind,
+  AuthErrorBody,
+  SoftwareAttentionRow,
+} from '../../services/api'
+import { getProjectAttention, getSoftwareAttention } from '../../services/api'
 import { formatRelativeTimeUtc } from '../../lib/formatRelativeTime'
 
 export type NeedsAttentionFilter = 'all' | AttentionKind
 
-export type NeedsAttentionCardProps = {
+export type NeedsAttentionCardProjectProps = {
+  variant?: 'project'
   studioId: string
   softwareId: string
   projectId: string
 }
 
-function pillTone(kind: AttentionKind): string {
-  switch (kind) {
-    case 'conflict':
-      return 'border-red-500/50 text-red-300'
-    case 'drift':
-      return 'border-amber-500/50 text-amber-300'
-    case 'gap':
-      return 'border-violet-500/50 text-violet-300'
-    case 'update':
-      return 'border-emerald-500/50 text-emerald-300'
-  }
+export type NeedsAttentionCardSoftwareProps = {
+  variant: 'software'
+  studioId: string
+  softwareId: string
+  issuesProjectId: string | null
 }
+
+export type NeedsAttentionCardProps =
+  | NeedsAttentionCardProjectProps
+  | NeedsAttentionCardSoftwareProps
 
 function pillLabel(kind: AttentionKind): string {
   switch (kind) {
@@ -38,6 +42,59 @@ function pillLabel(kind: AttentionKind): string {
       return 'Gap'
     case 'update':
       return 'Update'
+  }
+}
+
+function pillClass(kind: AttentionKind): string {
+  switch (kind) {
+    case 'conflict':
+      return 'border-rose-500/40 bg-rose-950/70 text-rose-200'
+    case 'drift':
+      return 'border-amber-500/40 bg-amber-950/50 text-amber-200'
+    case 'gap':
+      return 'border-violet-500/40 bg-violet-950/60 text-violet-200'
+    case 'update':
+      return 'border-emerald-500/40 bg-emerald-950/50 text-emerald-200'
+  }
+}
+
+function AttentionKindIcon({ kind }: { kind: AttentionKind }): ReactElement {
+  const cls = 'h-3 w-3 shrink-0'
+  switch (kind) {
+    case 'conflict':
+      return (
+        <svg className={cls} viewBox="0 0 12 12" fill="currentColor" aria-hidden>
+          <path d="M6 1L11 10H1L6 1z" />
+        </svg>
+      )
+    case 'drift':
+      return (
+        <svg className={cls} viewBox="0 0 12 12" fill="none" aria-hidden>
+          <path
+            d="M2 9c2.5-1 3-4 5.5-4.5M8 3.5c-1.5 1.2-1.8 3.5-4 5"
+            stroke="currentColor"
+            strokeWidth="1.2"
+            strokeLinecap="round"
+          />
+        </svg>
+      )
+    case 'gap':
+      return (
+        <span className={`${cls} font-bold leading-none`} aria-hidden>
+          ?
+        </span>
+      )
+    case 'update':
+      return (
+        <svg className={cls} viewBox="0 0 12 12" fill="none" aria-hidden>
+          <path
+            d="M3 6h6M6 3v6"
+            stroke="currentColor"
+            strokeWidth="1.2"
+            strokeLinecap="round"
+          />
+        </svg>
+      )
   }
 }
 
@@ -57,11 +114,150 @@ function rowHref(
   return `${base}/issues`
 }
 
-export function NeedsAttentionCard({
+function AttentionRow({
   studioId,
   softwareId,
   projectId,
-}: NeedsAttentionCardProps): ReactElement {
+  item,
+  line1,
+  line2,
+}: {
+  studioId: string
+  softwareId: string
+  projectId: string
+  item: AttentionItem
+  line1: string
+  line2: string
+}): ReactElement {
+  const href = rowHref(studioId, softwareId, projectId, item)
+  const when = formatRelativeTimeUtc(item.occurred_at)
+  return (
+    <li className="border-b border-zinc-800 last:border-b-0">
+      <Link
+        to={href}
+        className="flex gap-4 px-5 py-4 transition-colors hover:bg-zinc-800/30"
+      >
+        <div className="shrink-0 pt-0.5">
+          <span
+            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${pillClass(item.kind)}`}
+          >
+            <AttentionKindIcon kind={item.kind} />
+            {pillLabel(item.kind)}
+          </span>
+        </div>
+        <div className="min-w-0 flex-1 text-left">
+          <p className="text-[12px] text-zinc-500">{line1}</p>
+          <p className="mt-0.5 text-[13px] leading-snug text-zinc-100">{line2}</p>
+        </div>
+        {when ? (
+          <span className="shrink-0 pt-0.5 text-[11px] text-zinc-500">{when}</span>
+        ) : (
+          <span className="shrink-0 pt-0.5 text-[11px] text-zinc-600">—</span>
+        )}
+      </Link>
+    </li>
+  )
+}
+
+export function NeedsAttentionCard(props: NeedsAttentionCardProps): ReactElement {
+  if (props.variant === 'software') {
+    return <NeedsAttentionSoftware {...props} />
+  }
+  return <NeedsAttentionProject {...props} />
+}
+
+function issuesListHref(
+  studioId: string,
+  softwareId: string,
+  projectId: string | null,
+): string | null {
+  if (!projectId) return null
+  return `/studios/${studioId}/software/${softwareId}/projects/${projectId}/issues`
+}
+
+function NeedsAttentionSoftware({
+  studioId,
+  softwareId,
+  issuesProjectId,
+}: NeedsAttentionCardSoftwareProps): ReactElement {
+  const q = useQuery({
+    queryKey: ['software', softwareId, 'attention'],
+    queryFn: () => getSoftwareAttention(softwareId),
+    enabled: Boolean(studioId && softwareId),
+  })
+
+  const rows = useMemo(() => q.data?.items ?? [], [q.data?.items])
+  const shown = rows.slice(0, 12)
+
+  const err = q.error as AuthErrorBody | null
+  const forbidden = Boolean(q.isError && err?.code === 'FORBIDDEN')
+  const allHref = issuesListHref(studioId, softwareId, issuesProjectId)
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 px-5 py-4">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-2">
+          <h2 className="text-[15px] font-semibold tracking-tight text-zinc-100">
+            Needs attention
+          </h2>
+          <span className="text-[12px] text-zinc-500">across all projects</span>
+        </div>
+        {allHref && !forbidden ? (
+          <Link
+            to={allHref}
+            className="shrink-0 text-[12px] text-zinc-500 transition-colors hover:text-zinc-300"
+          >
+            View all issues →
+          </Link>
+        ) : null}
+      </div>
+
+      <div>
+        {q.isPending ? (
+          <p className="px-5 py-6 text-[13px] text-zinc-500">Loading…</p>
+        ) : forbidden ? (
+          <p className="px-5 py-6 text-[13px] text-zinc-500">
+            Attention summary is not available for your access level.
+          </p>
+        ) : q.isError ? (
+          <p className="px-5 py-6 text-[13px] text-zinc-500">
+            Could not load attention items.
+          </p>
+        ) : shown.length === 0 ? (
+          <p className="px-5 py-6 text-[13px] text-zinc-500">
+            Nothing needs your attention right now.
+          </p>
+        ) : (
+          <ul>
+            {shown.map((row: SoftwareAttentionRow) => {
+              const line1 = row.project_name
+              const line2 = [row.item.title, row.item.description]
+                .filter(Boolean)
+                .join(' — ')
+              return (
+                <AttentionRow
+                  key={`${row.project_id}-${row.item.id}`}
+                  studioId={studioId}
+                  softwareId={softwareId}
+                  projectId={row.project_id}
+                  item={row.item}
+                  line1={line1}
+                  line2={line2 || row.item.title || '—'}
+                />
+              )
+            })}
+          </ul>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function NeedsAttentionProject({
+  studioId,
+  softwareId,
+  projectId,
+}: NeedsAttentionCardProjectProps): ReactElement {
   const [filter, setFilter] = useState<NeedsAttentionFilter>('all')
 
   const q = useQuery({
@@ -145,37 +341,21 @@ export function NeedsAttentionCard({
             Nothing needs your attention right now.
           </p>
         ) : (
-          <ul className="divide-y divide-zinc-800/90">
-            {filtered.map((item) => (
-              <li key={item.id} className="flex gap-3 py-4 first:pt-0">
-                <div className="shrink-0 pt-0.5">
-                  <span
-                    className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${pillTone(item.kind)}`}
-                  >
-                    {pillLabel(item.kind)}
-                  </span>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <Link
-                    to={rowHref(studioId, softwareId, projectId, item)}
-                    className="group block text-left"
-                  >
-                    <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <span className="font-mono text-[13px] text-zinc-100 group-hover:text-violet-300">
-                        {item.title}
-                      </span>
-                      <span className="shrink-0 text-[11px] text-zinc-500">
-                        {formatRelativeTimeUtc(item.occurred_at)}
-                      </span>
-                    </div>
-                    <p className="mt-0.5 text-[11px] text-zinc-500">{item.subtitle}</p>
-                    <p className="mt-1 text-[12px] leading-snug text-zinc-400">
-                      {item.description}
-                    </p>
-                  </Link>
-                </div>
-              </li>
-            ))}
+          <ul className="overflow-hidden rounded-lg border border-zinc-800/80">
+            {filtered.map((item) => {
+              const line2 = [item.subtitle, item.description].filter(Boolean).join(' — ')
+              return (
+                <AttentionRow
+                  key={item.id}
+                  studioId={studioId}
+                  softwareId={softwareId}
+                  projectId={projectId}
+                  item={item}
+                  line1={item.title}
+                  line2={line2 || '—'}
+                />
+              )
+            })}
           </ul>
         )}
       </div>

@@ -19,4 +19,11 @@ describe('formatRelativeTimeUtc', () => {
     expect(formatRelativeTimeUtc('2026-05-01T10:00:00.000Z')).toBe('4h ago')
     vi.useRealTimers()
   })
+
+  it('formats one calendar day as yesterday', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-05-02T14:00:00.000Z'))
+    expect(formatRelativeTimeUtc('2026-05-01T14:00:00.000Z')).toBe('yesterday')
+    vi.useRealTimers()
+  })
 })

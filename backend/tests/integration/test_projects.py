@@ -95,3 +95,66 @@ async def test_projects_crud_and_rbac(client: AsyncClient) -> None:
     assert post_out.status_code == 403
     gf = await client.get(f"/software/{software_id}/projects")
     assert gf.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_list_projects_includes_dashboard_aggregates(
+    client: AsyncClient,
+) -> None:
+    """List response includes work order and section rollups for the software dashboard."""
+    sfx = uuid.uuid4().hex[:8]
+    token, _studio_id, software_id = await _studio_with_software(client, sfx)
+    client.cookies.set("atelier_token", token)
+
+    pr = await client.post(
+        f"/software/{software_id}/projects",
+        json={"name": "DashProj", "description": "A project for dashboard counts"},
+    )
+    assert pr.status_code == 200, pr.text
+    pid = pr.json()["id"]
+    assert pr.json()["work_orders_total"] == 0
+    assert pr.json()["sections_count"] == 0
+
+    sec = await client.post(
+        f"/projects/{pid}/sections",
+        json={"title": "S1", "slug": f"s1-{sfx}"},
+    )
+    assert sec.status_code == 200, sec.text
+    sec2 = await client.post(
+        f"/projects/{pid}/sections",
+        json={"title": "S2", "slug": f"s2-{sfx}"},
+    )
+    assert sec2.status_code == 200, sec2.text
+    sid = sec.json()["id"]
+
+    wo1 = await client.post(
+        f"/projects/{pid}/work-orders",
+        json={
+            "title": "WO backlog",
+            "description": "d",
+            "status": "backlog",
+            "section_ids": [sid],
+        },
+    )
+    assert wo1.status_code == 200, wo1.text
+    wo2 = await client.post(
+        f"/projects/{pid}/work-orders",
+        json={
+            "title": "WO done",
+            "description": "d",
+            "status": "done",
+            "section_ids": [sid],
+        },
+    )
+    assert wo2.status_code == 200, wo2.text
+
+    listed = await client.get(f"/software/{software_id}/projects")
+    assert listed.status_code == 200, listed.text
+    rows = listed.json()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["id"] == pid
+    assert row["sections_count"] == 2
+    assert row["work_orders_total"] == 2
+    assert row["work_orders_done"] == 1
+    assert row["last_edited_at"] is not None

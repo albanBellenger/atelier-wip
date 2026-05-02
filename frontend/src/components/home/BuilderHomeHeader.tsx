@@ -6,11 +6,35 @@ import { NotificationBell } from './NotificationBell'
 import { UserMenu } from './UserMenu'
 import type { MeResponse } from '../../services/api'
 
+export type BuilderHomeHeaderSoftwareSwitcher = {
+  currentSoftwareId: string
+  softwareOptions: { id: string; name: string }[]
+  onSoftwareSelect: (softwareId: string) => void
+}
+
+export type BuilderHomeHeaderProjectSwitcher = {
+  currentProjectId: string
+  projectOptions: { id: string; name: string }[]
+  onProjectSelect: (projectId: string) => void
+}
+
+export type BuilderHomeHeaderTrailingCrumb = {
+  label: string
+  /** When present and ``softwareOptions`` has 2+ items, the crumb is a switcher (same pattern as studio). */
+  softwareSwitcher?: BuilderHomeHeaderSoftwareSwitcher
+  /** Optional segment after software: ``Studio / Software / {projectLabel}``. */
+  projectLabel?: string
+  /** When present and ``projectOptions`` has 2+ items, the project segment is a switcher (same pattern as software). */
+  projectSwitcher?: BuilderHomeHeaderProjectSwitcher
+}
+
 export type BuilderHomeHeaderProps = {
   profile: MeResponse
   studioId: string | null
   onStudioChange: (studioId: string) => void
   onLogout: () => void
+  /** Optional third segment after studio (e.g. software name on the software page). */
+  trailingCrumb?: BuilderHomeHeaderTrailingCrumb
 }
 
 export function BuilderHomeHeader({
@@ -18,9 +42,43 @@ export function BuilderHomeHeader({
   studioId,
   onStudioChange,
   onLogout,
+  trailingCrumb,
 }: BuilderHomeHeaderProps): ReactElement {
   const [studioOpen, setStudioOpen] = useState(false)
+  const [softwareOpen, setSoftwareOpen] = useState(false)
+  const [projectOpen, setProjectOpen] = useState(false)
   const current = profile.studios.find((s) => s.studio_id === studioId)
+
+  const softwareSwitcher = trailingCrumb?.softwareSwitcher
+  const showSoftwareSwitcher = Boolean(
+    softwareSwitcher &&
+      softwareSwitcher.softwareOptions.length > 1,
+  )
+  const softwareButtonLabel = (() => {
+    if (!trailingCrumb) return ''
+    if (!softwareSwitcher || !showSoftwareSwitcher) return trailingCrumb.label
+    return (
+      softwareSwitcher.softwareOptions.find(
+        (o) => o.id === softwareSwitcher.currentSoftwareId,
+      )?.name ?? trailingCrumb.label
+    )
+  })()
+
+  const projectSwitcher = trailingCrumb?.projectSwitcher
+  const showProjectSwitcher = Boolean(
+    projectSwitcher && projectSwitcher.projectOptions.length > 1,
+  )
+  const projectButtonLabel = (() => {
+    if (!trailingCrumb?.projectLabel?.trim()) return ''
+    if (!projectSwitcher || !showProjectSwitcher) {
+      return trailingCrumb.projectLabel
+    }
+    return (
+      projectSwitcher.projectOptions.find(
+        (o) => o.id === projectSwitcher.currentProjectId,
+      )?.name ?? trailingCrumb.projectLabel
+    )
+  })()
 
   return (
     <header className="flex items-center justify-between gap-6 pb-10">
@@ -48,9 +106,12 @@ export function BuilderHomeHeader({
           </svg>
         </div>
         <div className="flex min-w-0 items-baseline gap-2">
-          <span className="shrink-0 text-[15px] font-semibold tracking-tight text-zinc-100">
+          <Link
+            to="/"
+            className="shrink-0 text-[15px] font-semibold tracking-tight text-zinc-100 hover:text-zinc-50 focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
+          >
             Atelier
-          </span>
+          </Link>
           <span className="shrink-0 text-zinc-700">/</span>
           <div className="relative min-w-0">
             <button
@@ -132,6 +193,174 @@ export function BuilderHomeHeader({
               </div>
             ) : null}
           </div>
+          {trailingCrumb ? (
+            <>
+              <span className="shrink-0 text-zinc-700">/</span>
+              {showSoftwareSwitcher && softwareSwitcher ? (
+                <div className="relative min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => setSoftwareOpen((o) => !o)}
+                    onBlur={() =>
+                      setTimeout(() => setSoftwareOpen(false), 120)
+                    }
+                    className="group flex max-w-full items-center gap-2 rounded-md border border-transparent px-2 py-1 text-left text-[15px] font-semibold text-zinc-100 hover:border-zinc-800 hover:bg-zinc-900/60"
+                    title={softwareButtonLabel}
+                  >
+                    <span className="truncate">{softwareButtonLabel}</span>
+                    <svg
+                      width="10"
+                      height="10"
+                      viewBox="0 0 10 10"
+                      fill="none"
+                      className="shrink-0 text-zinc-500 group-hover:text-zinc-300"
+                      aria-hidden
+                    >
+                      <path
+                        d="M2 4l3 3 3-3"
+                        stroke="currentColor"
+                        strokeWidth="1.3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                  {softwareOpen ? (
+                    <div className="absolute left-0 top-[calc(100%+4px)] z-30 max-h-72 w-72 overflow-y-auto overflow-x-hidden rounded-lg border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/40">
+                      <div className="border-b border-zinc-800/80 px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-zinc-500">
+                        Switch software
+                      </div>
+                      <ul className="py-1">
+                        {softwareSwitcher.softwareOptions.map((sw) => (
+                          <li key={sw.id}>
+                            <button
+                              type="button"
+                              onMouseDown={() => {
+                                softwareSwitcher.onSoftwareSelect(sw.id)
+                                setSoftwareOpen(false)
+                              }}
+                              aria-current={
+                                sw.id === softwareSwitcher.currentSoftwareId
+                                  ? 'true'
+                                  : undefined
+                              }
+                              className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-zinc-900 ${
+                                sw.id === softwareSwitcher.currentSoftwareId
+                                  ? 'bg-zinc-900/70 text-zinc-100'
+                                  : 'text-zinc-300'
+                              }`}
+                            >
+                              <span className="min-w-0 truncate">{sw.name}</span>
+                              {sw.id === softwareSwitcher.currentSoftwareId ? (
+                                <span
+                                  className="h-2 w-2 shrink-0 rounded-full bg-violet-500"
+                                  aria-hidden
+                                />
+                              ) : null}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <span
+                  className="min-w-0 truncate text-[15px] font-semibold tracking-tight text-zinc-100"
+                  title={trailingCrumb.label}
+                >
+                  {trailingCrumb.label}
+                </span>
+              )}
+              {trailingCrumb.projectLabel &&
+              trailingCrumb.projectLabel.trim().length > 0 ? (
+                <>
+                  <span className="shrink-0 text-zinc-700">/</span>
+                  {showProjectSwitcher && projectSwitcher ? (
+                    <div className="relative min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => setProjectOpen((o) => !o)}
+                        onBlur={() =>
+                          setTimeout(() => setProjectOpen(false), 120)
+                        }
+                        className="group flex max-w-full min-w-0 items-center gap-2 rounded-md border border-transparent px-2 py-1 text-left text-[15px] font-semibold text-zinc-200 hover:border-zinc-800 hover:bg-zinc-900/60"
+                        title={projectButtonLabel}
+                      >
+                        <span className="min-w-0 max-w-[min(28rem,45vw)] truncate">
+                          {projectButtonLabel}
+                        </span>
+                        <svg
+                          width="10"
+                          height="10"
+                          viewBox="0 0 10 10"
+                          fill="none"
+                          className="shrink-0 text-zinc-500 group-hover:text-zinc-300"
+                          aria-hidden
+                        >
+                          <path
+                            d="M2 4l3 3 3-3"
+                            stroke="currentColor"
+                            strokeWidth="1.3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </button>
+                      {projectOpen ? (
+                        <div className="absolute left-0 top-[calc(100%+4px)] z-30 max-h-72 w-72 overflow-y-auto overflow-x-hidden rounded-lg border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/40">
+                          <div className="border-b border-zinc-800/80 px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-zinc-500">
+                            Switch project
+                          </div>
+                          <ul className="py-1">
+                            {projectSwitcher.projectOptions.map((p) => (
+                              <li key={p.id}>
+                                <button
+                                  type="button"
+                                  onMouseDown={() => {
+                                    projectSwitcher.onProjectSelect(p.id)
+                                    setProjectOpen(false)
+                                  }}
+                                  aria-current={
+                                    p.id === projectSwitcher.currentProjectId
+                                      ? 'true'
+                                      : undefined
+                                  }
+                                  className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-zinc-900 ${
+                                    p.id === projectSwitcher.currentProjectId
+                                      ? 'bg-zinc-900/70 text-zinc-100'
+                                      : 'text-zinc-300'
+                                  }`}
+                                >
+                                  <span className="min-w-0 truncate">
+                                    {p.name}
+                                  </span>
+                                  {p.id ===
+                                  projectSwitcher.currentProjectId ? (
+                                    <span
+                                      className="h-2 w-2 shrink-0 rounded-full bg-violet-500"
+                                      aria-hidden
+                                    />
+                                  ) : null}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <span
+                      className="min-w-0 max-w-[min(28rem,45vw)] truncate text-[15px] font-semibold tracking-tight text-zinc-200"
+                      title={trailingCrumb.projectLabel}
+                    >
+                      {trailingCrumb.projectLabel}
+                    </span>
+                  )}
+                </>
+              ) : null}
+            </>
+          ) : null}
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-4 text-sm">

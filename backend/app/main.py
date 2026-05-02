@@ -40,6 +40,7 @@ from app.routers import (
     projects,
     sections,
     software,
+    software_workspace,
     studios,
     work_orders,
 )
@@ -157,6 +158,7 @@ def create_app() -> FastAPI:
     app.include_router(studios.router)
     app.include_router(mcp_api.router)
     app.include_router(software.router)
+    app.include_router(software_workspace.router)
     app.include_router(projects.router)
     app.include_router(project_graph.router)
     app.include_router(project_publish.router)

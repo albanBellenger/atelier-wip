@@ -1,6 +1,7 @@
 """Software product schemas."""
 
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -39,3 +40,11 @@ class SoftwareResponse(BaseModel):
 class GitTestResult(BaseModel):
     ok: bool
     message: str
+
+
+class SoftwareTokenUsageSummaryOut(BaseModel):
+    input_tokens: int
+    output_tokens: int
+    estimated_cost_usd: Decimal
+    period_start: date
+    period_end: date

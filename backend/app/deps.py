@@ -596,6 +596,25 @@ async def require_project_studio_admin_nested(
     return pa
 
 
+async def require_project_home_editor_nested(
+    pa: ProjectAccess = Depends(get_project_access_nested),
+) -> ProjectAccess:
+    """Owning studio editor/member (excludes cross-studio grants)."""
+    if not pa.studio_access.can_create_project:
+        raise ApiError(
+            status_code=403,
+            code="FORBIDDEN",
+            message="Owning studio membership required",
+        )
+    if not pa.studio_access.is_studio_editor:
+        raise ApiError(
+            status_code=403,
+            code="FORBIDDEN",
+            message="Studio membership required",
+        )
+    return pa
+
+
 async def require_studio_admin(
     access: StudioAccess = Depends(get_studio_access),
 ) -> StudioAccess:

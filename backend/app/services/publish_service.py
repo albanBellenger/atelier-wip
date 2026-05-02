@@ -184,6 +184,17 @@ class PublishService:
                 project.id,
                 context_user_id=actor,
             )
+            from app.services.software_activity_service import SoftwareActivityService
+
+            await SoftwareActivityService(self.db).record(
+                software_id=software.id,
+                studio_id=software.studio_id,
+                actor_user_id=actor,
+                verb="published",
+                summary=f"Published {project.name} to GitLab",
+                entity_type="project",
+                entity_id=project.id,
+            )
             await self.db.commit()
         except Exception:
             await self.db.rollback()

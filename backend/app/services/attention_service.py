@@ -17,6 +17,8 @@ from app.schemas.attention import (
     AttentionLinksOut,
     AttentionKind,
     AttentionListOut,
+    SoftwareAttentionItemOut,
+    SoftwareAttentionListOut,
 )
 
 _ATTENTION_MAX_ITEMS = 50
@@ -239,6 +241,63 @@ class AttentionService:
             project_id=project_id,
             counts=counts,
             items=[x[2] for x in trimmed],
+        )
+
+    async def list_software_attention(
+        self,
+        *,
+        software_id: uuid.UUID,
+        user_id: uuid.UUID,
+        is_studio_admin: bool,
+    ) -> SoftwareAttentionListOut:
+        sw = await self.db.get(Software, software_id)
+        if sw is None:
+            raise ApiError(
+                status_code=404,
+                code="NOT_FOUND",
+                message="Software not found.",
+            )
+        studio_id = sw.studio_id
+        projects = list(
+            (
+                await self.db.execute(
+                    select(Project).where(Project.software_id == software_id)
+                )
+            ).scalars().all()
+        )
+        merged: list[SoftwareAttentionItemOut] = []
+        for p in projects:
+            sub = await self.list_project_attention(
+                project_id=p.id,
+                user_id=user_id,
+                is_studio_admin=is_studio_admin,
+            )
+            for it in sub.items:
+                merged.append(
+                    SoftwareAttentionItemOut(
+                        project_id=p.id,
+                        project_name=p.name,
+                        item=it,
+                    )
+                )
+        merged.sort(key=lambda w: w.item.occurred_at, reverse=True)
+
+        def count_kind(k: AttentionKind) -> int:
+            return sum(1 for w in merged if w.item.kind == k)
+
+        counts = AttentionCountsOut(
+            all=len(merged),
+            conflict=count_kind("conflict"),
+            drift=count_kind("drift"),
+            gap=count_kind("gap"),
+            update=count_kind("update"),
+        )
+        trimmed = merged[:_ATTENTION_MAX_ITEMS]
+        return SoftwareAttentionListOut(
+            studio_id=studio_id,
+            software_id=software_id,
+            counts=counts,
+            items=trimmed,
         )
 
     async def _display_names(self, ids: set[uuid.UUID]) -> dict[uuid.UUID, str]:

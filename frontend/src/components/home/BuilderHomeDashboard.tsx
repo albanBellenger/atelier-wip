@@ -24,7 +24,12 @@ import {
   type MeResponse,
 } from '../../services/api'
 import { formatRelativeTimeUtc } from '../../lib/formatRelativeTime'
+import {
+  getHostedEnvironment,
+  hostedEnvironmentLabel,
+} from '../../lib/hostedEnvironment'
 import { useStudioAccess } from '../../hooks/useStudioAccess'
+import { APP_VERSION } from '../../version'
 
 const LS_STUDIO = 'atelier:home:studioId'
 const LS_SOFTWARE = 'atelier:home:softwareId'
@@ -40,6 +45,8 @@ export function BuilderHomeDashboard({
   onLogout,
 }: BuilderHomeDashboardProps): ReactElement {
   const navigate = useNavigate()
+  const hostedEnv = getHostedEnvironment()
+  const hostedEnvLabel = hostedEnvironmentLabel(hostedEnv)
   const [studioId, setStudioId] = useState<string | null>(null)
   const [softwareId, setSoftwareId] = useState<string | null>(null)
   const [projectId, setProjectId] = useState<string | null>(null)
@@ -357,6 +364,7 @@ export function BuilderHomeDashboard({
                 ) : null}
                 {software && project && studioId ? (
                   <NeedsAttentionCard
+                    variant="project"
                     studioId={studioId}
                     softwareId={software.id}
                     projectId={project.id}
@@ -456,9 +464,25 @@ export function BuilderHomeDashboard({
           </div>
         ) : null}
 
-        <footer className="mt-16 flex items-center justify-between border-t border-zinc-800/60 pt-6 text-[11px] text-zinc-600">
+        <footer className="mt-16 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-zinc-800/60 pt-6 text-[11px] text-zinc-600">
           <span>Atelier · Builder workspace</span>
-          <span className="font-mono">v0.1</span>
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono">
+            <Link
+              to="/changelog"
+              className="text-zinc-500 hover:text-zinc-300 hover:underline focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
+            >
+              v{APP_VERSION}
+            </Link>
+            <span className="select-none font-sans text-zinc-700" aria-hidden>
+              ·
+            </span>
+            <span
+              className="rounded border border-zinc-700/70 px-1.5 py-px text-[10px] font-sans font-normal uppercase tracking-wider text-zinc-500"
+              title={`Hosted environment: ${hostedEnvLabel}`}
+            >
+              {hostedEnvLabel}
+            </span>
+          </span>
         </footer>
       </div>
     </div>

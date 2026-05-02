@@ -17,6 +17,10 @@ class ProjectUpdate(BaseModel):
     description: str | None = None
 
 
+class ProjectArchivePatch(BaseModel):
+    archived: bool
+
+
 class SectionSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -35,6 +39,11 @@ class ProjectResponse(BaseModel):
     software_id: UUID
     name: str
     description: str | None
+    archived: bool
     created_at: datetime
     updated_at: datetime
     sections: list[SectionSummary] | None = None
+    work_orders_done: int = 0
+    work_orders_total: int = 0
+    sections_count: int = 0
+    last_edited_at: datetime | None = None

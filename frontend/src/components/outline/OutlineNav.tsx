@@ -166,6 +166,8 @@ export function OutlineNav(props: {
   newTitle: string
   onNewTitleChange: (v: string) => void
   onAddSection: () => void
+  /** When false, the built-in ``Outline`` heading is omitted (e.g. project landing card supplies its own). */
+  showHeading?: boolean
 }): ReactElement {
   const {
     sections,
@@ -177,6 +179,7 @@ export function OutlineNav(props: {
     newTitle,
     onNewTitleChange,
     onAddSection,
+    showHeading = true,
   } = props
 
   const sensors = useSensors(
@@ -241,7 +244,9 @@ export function OutlineNav(props: {
 
   return (
     <div className="space-y-3">
-      <h2 className="text-sm font-medium text-zinc-300">Outline</h2>
+      {showHeading ? (
+        <h2 className="text-sm font-medium text-zinc-300">Outline</h2>
+      ) : null}
 
       {isStudioAdmin && (
         <div className="flex gap-2">

@@ -146,10 +146,12 @@ async def test_artifacts_upload_list_download_delete(
     assert up.status_code == 200, up.text
     aid = up.json()["id"]
     assert up.json()["file_type"] == "md"
+    assert up.json()["size_bytes"] == len(md_bytes)
 
     listed = await client.get(f"/projects/{pid}/artifacts")
     assert listed.status_code == 200
     assert len(listed.json()) == 1
+    assert listed.json()[0]["size_bytes"] == len(md_bytes)
 
     dl = await client.get(f"/projects/{pid}/artifacts/{aid}/download")
     assert dl.status_code == 200

@@ -47,7 +47,12 @@ describe('NeedsAttentionCard', () => {
     render(
       <MemoryRouter>
         <QueryClientProvider client={qc}>
-          <NeedsAttentionCard studioId="s1" softwareId="sw1" projectId="p1" />
+          <NeedsAttentionCard
+            variant="project"
+            studioId="s1"
+            softwareId="sw1"
+            projectId="p1"
+          />
         </QueryClientProvider>
       </MemoryRouter>,
     )
@@ -56,12 +61,12 @@ describe('NeedsAttentionCard', () => {
       expect(spy).toHaveBeenCalledWith('p1')
     })
     expect(await screen.findByText('Needs your attention')).toBeInTheDocument()
-    expect(screen.getByText('Mismatch.')).toBeInTheDocument()
-    expect(screen.getByText('Spec changed.')).toBeInTheDocument()
+    expect(screen.getByText(/Mismatch\./)).toBeInTheDocument()
+    expect(screen.getByText(/Spec changed\./)).toBeInTheDocument()
 
     await user.click(screen.getByRole('tab', { name: /Conflicts 1/i }))
-    expect(screen.getByText('Mismatch.')).toBeInTheDocument()
-    expect(screen.queryByText('Spec changed.')).not.toBeInTheDocument()
+    expect(screen.getByText(/Mismatch\./)).toBeInTheDocument()
+    expect(screen.queryByText(/Spec changed\./)).not.toBeInTheDocument()
   })
 
   it('shows access message when API returns forbidden', async () => {
@@ -74,13 +79,71 @@ describe('NeedsAttentionCard', () => {
     render(
       <MemoryRouter>
         <QueryClientProvider client={qc}>
-          <NeedsAttentionCard studioId="s1" softwareId="sw1" projectId="p1" />
+          <NeedsAttentionCard
+            variant="project"
+            studioId="s1"
+            softwareId="sw1"
+            projectId="p1"
+          />
         </QueryClientProvider>
       </MemoryRouter>,
     )
 
     expect(
       await screen.findByText(/not available for your access level/i),
+    ).toBeInTheDocument()
+  })
+
+  it('software variant lists cross-project rows and links to issues', async () => {
+    const softwareAttention: api.SoftwareAttentionResponse = {
+      studio_id: 's1',
+      software_id: 'sw1',
+      counts: { all: 1, conflict: 1, drift: 0, gap: 0, update: 0 },
+      items: [
+        {
+          project_id: 'p99',
+          project_name: 'Payment Module',
+          item: {
+            id: 'issue:x',
+            kind: 'conflict',
+            title: 'Data Model',
+            subtitle: 'On publish',
+            description: 'Section defines User.tier as enum.',
+            occurred_at: '2026-05-01T12:00:00.000Z',
+            links: { issue_id: 'i1', work_order_id: null, section_id: 'sec1' },
+          },
+        },
+      ],
+    }
+    const spy = vi.spyOn(api, 'getSoftwareAttention').mockResolvedValue(softwareAttention)
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <NeedsAttentionCard
+            variant="software"
+            studioId="s1"
+            softwareId="sw1"
+            issuesProjectId="p99"
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(spy).toHaveBeenCalledWith('sw1')
+    })
+    expect(await screen.findByRole('heading', { name: /needs attention/i })).toBeInTheDocument()
+    expect(screen.getByText('across all projects')).toBeInTheDocument()
+    const viewAll = screen.getByRole('link', { name: /view all issues/i })
+    expect(viewAll).toHaveAttribute(
+      'href',
+      '/studios/s1/software/sw1/projects/p99/issues',
+    )
+    expect(screen.getByText('Payment Module')).toBeInTheDocument()
+    expect(
+      screen.getByText(/Data Model — Section defines User\.tier as enum\./),
     ).toBeInTheDocument()
   })
 })

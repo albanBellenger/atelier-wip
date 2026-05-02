@@ -12,6 +12,7 @@ export function formatRelativeTimeUtc(
   const h = Math.floor(min / 60)
   if (h < 24) return `${h}h ago`
   const d = Math.floor(h / 24)
+  if (d === 1) return 'yesterday'
   if (d < 14) return `${d}d ago`
   return new Date(t).toLocaleDateString(undefined, {
     month: 'short',

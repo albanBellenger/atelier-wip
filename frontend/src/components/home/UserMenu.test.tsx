@@ -57,6 +57,10 @@ describe('UserMenu', () => {
       'href',
       '/me/profile',
     )
+    expect(screen.getByRole('link', { name: /documentation/i })).toHaveAttribute(
+      'href',
+      '/docs/builder',
+    )
     expect(screen.getByRole('link', { name: /token usage/i })).toHaveAttribute(
       'href',
       '/me/token-usage',
@@ -76,6 +80,10 @@ describe('UserMenu', () => {
       screen.getByRole('button', { name: /open menu for alex builder/i }),
     )
     expect(screen.queryByRole('link', { name: /^token usage$/i })).toBeNull()
+    expect(screen.getByRole('link', { name: /documentation/i })).toHaveAttribute(
+      'href',
+      '/docs/builder',
+    )
   })
 
   it('calls onLogout when Logout pressed', async () => {

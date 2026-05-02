@@ -144,6 +144,9 @@ async def test_publish_success_commits_and_returns_result(
     db = AsyncMock()
     db.commit = AsyncMock()
     db.rollback = AsyncMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    pa.software.studio_id = uuid.uuid4()
 
     async def fake_build(self, project_id):
         return {"README.md": "# x\n"}

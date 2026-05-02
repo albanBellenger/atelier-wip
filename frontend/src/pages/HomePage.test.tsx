@@ -34,6 +34,9 @@ describe('HomePage', () => {
       </MemoryRouter>,
     )
     expect(await screen.findByText('Atelier · Builder workspace')).toBeInTheDocument()
+    const versionLink = await screen.findByRole('link', { name: /^v0\.1$/i })
+    expect(versionLink).toHaveAttribute('href', '/changelog')
+    expect(screen.getByTitle(/^Hosted environment:/)).toBeInTheDocument()
     expect(
       await screen.findByText(/no software in this studio yet/i),
     ).toBeInTheDocument()
@@ -105,18 +108,28 @@ describe('HomePage', () => {
         software_id: 'sw1',
         name: 'v2',
         description: null,
+        archived: false,
         created_at: '',
         updated_at: '',
         sections: null,
+        work_orders_done: 0,
+        work_orders_total: 0,
+        sections_count: 0,
+        last_edited_at: null,
       },
       {
         id: 'p2',
         software_id: 'sw1',
         name: 'Other proj',
         description: null,
+        archived: false,
         created_at: '',
         updated_at: '',
         sections: null,
+        work_orders_done: 0,
+        work_orders_total: 0,
+        sections_count: 0,
+        last_edited_at: null,
       },
     ])
     vi.spyOn(api, 'getProject').mockResolvedValue({
@@ -124,8 +137,13 @@ describe('HomePage', () => {
       software_id: 'sw1',
       name: 'v2',
       description: null,
+      archived: false,
       created_at: '',
       updated_at: '',
+      work_orders_done: 0,
+      work_orders_total: 0,
+      sections_count: 1,
+      last_edited_at: '2026-05-01T12:00:00.000Z',
       sections: [
         {
           id: 'sec1',
