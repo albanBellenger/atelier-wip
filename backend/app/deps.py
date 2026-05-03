@@ -577,6 +577,34 @@ async def ensure_user_can_download_artifact(
     )
 
 
+async def user_can_view_artifact_chunk_previews(
+    session: AsyncSession,
+    user: User,
+    artifact: Artifact,
+) -> bool:
+    """Editors (home studio or cross-studio external_editor) may see chunk text; viewers may not."""
+    scope = artifact.scope_level or "project"
+    if scope == "project":
+        if artifact.project_id is None:
+            return False
+        pa = await fetch_project_access(session, user, artifact.project_id)
+        return pa.studio_access.is_studio_editor
+    if scope == "studio":
+        if artifact.library_studio_id is None:
+            return False
+        sa = await resolve_studio_access(session, user, artifact.library_studio_id)
+        return sa.is_studio_editor
+    if scope == "software":
+        if artifact.library_software_id is None:
+            return False
+        sw = await session.get(Software, artifact.library_software_id)
+        if sw is None:
+            return False
+        sa = await resolve_studio_access_for_software(session, user, sw)
+        return sa.is_studio_editor
+    return False
+
+
 async def get_project_access(
     project_id: UUID,
     session: AsyncSession = Depends(get_db),

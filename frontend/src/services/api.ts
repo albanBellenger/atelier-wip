@@ -987,6 +987,8 @@ export async function getStudioActivity(
   )
 }
 
+export type EmbeddingStatus = 'pending' | 'embedded' | 'failed' | 'skipped'
+
 export type ArtifactScopeLevel = 'studio' | 'software' | 'project'
 
 export interface SoftwareArtifactRow {
@@ -1002,6 +1004,10 @@ export interface SoftwareArtifactRow {
   scope_level: ArtifactScopeLevel
   excluded_at_software: string | null
   excluded_at_project: string | null
+  embedding_status?: EmbeddingStatus | null
+  embedded_at?: string | null
+  chunk_count?: number | null
+  extracted_char_count?: number | null
 }
 
 export interface StudioArtifactRow extends SoftwareArtifactRow {
@@ -1404,10 +1410,53 @@ export interface ArtifactItem {
   size_bytes: number
   uploaded_by: string | null
   created_at: string
+  embedding_status?: EmbeddingStatus | null
+  embedded_at?: string | null
+  chunk_count?: number | null
+  extracted_char_count?: number | null
 }
 
 export async function listArtifacts(projectId: string): Promise<ArtifactItem[]> {
   return request<ArtifactItem[]>('GET', `/projects/${projectId}/artifacts`)
+}
+
+export interface ChunkPreview {
+  chunk_index: number
+  content: string
+  content_length: number
+}
+
+export interface ArtifactDetail {
+  id: string
+  project_id: string | null
+  scope_level: ArtifactScopeLevel
+  name: string
+  file_type: string
+  size_bytes: number
+  uploaded_by: string | null
+  created_at: string
+  embedding_status: EmbeddingStatus | null
+  embedded_at: string | null
+  chunk_count: number | null
+  extracted_char_count: number | null
+  embedding_error: string | null
+  chunk_previews: ChunkPreview[]
+}
+
+export async function getArtifactDetail(
+  projectId: string,
+  artifactId: string,
+): Promise<ArtifactDetail> {
+  return request<ArtifactDetail>(
+    'GET',
+    `/projects/${projectId}/artifacts/${artifactId}`,
+  )
+}
+
+export async function getArtifactDetailById(
+  artifactId: string,
+): Promise<ArtifactDetail> {
+  return request<ArtifactDetail>('GET', `/artifacts/${artifactId}`)
 }
 
 export async function uploadArtifact(

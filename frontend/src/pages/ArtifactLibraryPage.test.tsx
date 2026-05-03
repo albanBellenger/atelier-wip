@@ -76,6 +76,10 @@ describe('ArtifactLibraryPage', () => {
         excluded_at_project: null,
         software_id: 'sw1',
         software_name: 'SW',
+        embedding_status: 'embedded',
+        embedded_at: '2026-01-02T01:00:00Z',
+        chunk_count: 4,
+        extracted_char_count: 900,
       },
     ])
 
@@ -84,6 +88,7 @@ describe('ArtifactLibraryPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Spec.pdf')).toBeInTheDocument()
     })
+    expect(screen.getByText('Indexed')).toBeInTheDocument()
     expect(api.listArtifactLibrary).toHaveBeenCalledWith('s1', {
       softwareId: undefined,
     })
@@ -125,6 +130,69 @@ describe('ArtifactLibraryPage', () => {
     })
   })
 
+  it('shows embedding badges for pending and embedded rows', async () => {
+    vi.spyOn(api, 'me').mockResolvedValue(editorMe)
+    vi.spyOn(api, 'getStudio').mockResolvedValue({
+      id: 's1',
+      name: 'Studio One',
+      description: null,
+      logo_path: null,
+      created_at: '2026-01-01T00:00:00Z',
+    })
+    vi.spyOn(api, 'listSoftware').mockResolvedValue([])
+    vi.spyOn(api, 'listStudioProjects').mockResolvedValue([])
+    vi.spyOn(api, 'listArtifactLibrary').mockResolvedValue([
+      {
+        id: 'a-p',
+        project_id: 'p1',
+        project_name: 'P1',
+        name: 'Slow.pdf',
+        file_type: 'pdf',
+        size_bytes: 100,
+        uploaded_by: 'u1',
+        uploaded_by_display: 'Editor',
+        created_at: '2026-01-02T00:00:00Z',
+        scope_level: 'project',
+        excluded_at_software: null,
+        excluded_at_project: null,
+        software_id: 'sw1',
+        software_name: 'SW',
+        embedding_status: 'pending',
+        embedded_at: null,
+        chunk_count: null,
+        extracted_char_count: null,
+      },
+      {
+        id: 'a-e',
+        project_id: 'p1',
+        project_name: 'P1',
+        name: 'Fast.md',
+        file_type: 'md',
+        size_bytes: 50,
+        uploaded_by: 'u1',
+        uploaded_by_display: 'Editor',
+        created_at: '2026-01-02T00:00:00Z',
+        scope_level: 'project',
+        excluded_at_software: null,
+        excluded_at_project: null,
+        software_id: 'sw1',
+        software_name: 'SW',
+        embedding_status: 'embedded',
+        embedded_at: '2026-01-02T02:00:00Z',
+        chunk_count: 2,
+        extracted_char_count: 80,
+      },
+    ])
+
+    renderLibrary()
+
+    await waitFor(() => {
+      expect(screen.getByText('Slow.pdf')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Indexing…')).toBeInTheDocument()
+    expect(screen.getByText('Indexed')).toBeInTheDocument()
+  })
+
   it('does not show upload controls for a studio viewer', async () => {
     vi.spyOn(api, 'me').mockResolvedValue(viewerMe)
     vi.spyOn(api, 'getStudio').mockResolvedValue({
@@ -136,7 +204,28 @@ describe('ArtifactLibraryPage', () => {
     })
     vi.spyOn(api, 'listSoftware').mockResolvedValue([])
     vi.spyOn(api, 'listStudioProjects').mockResolvedValue([])
-    vi.spyOn(api, 'listArtifactLibrary').mockResolvedValue([])
+    vi.spyOn(api, 'listArtifactLibrary').mockResolvedValue([
+      {
+        id: 'a1',
+        project_id: 'p1',
+        project_name: 'P1',
+        name: 'Readme.md',
+        file_type: 'md',
+        size_bytes: 40,
+        uploaded_by: 'u1',
+        uploaded_by_display: 'Viewer',
+        created_at: '2026-01-02T00:00:00Z',
+        scope_level: 'project',
+        excluded_at_software: null,
+        excluded_at_project: null,
+        software_id: 'sw1',
+        software_name: 'SW',
+        embedding_status: 'embedded',
+        embedded_at: '2026-01-02T01:00:00Z',
+        chunk_count: 1,
+        extracted_char_count: 20,
+      },
+    ])
 
     renderLibrary()
 
@@ -145,6 +234,10 @@ describe('ArtifactLibraryPage', () => {
         screen.getByText(/view only — uploads require studio editor access/i),
       ).toBeInTheDocument()
     })
+    await waitFor(() => {
+      expect(screen.getByText('Readme.md')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Indexed')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /^upload$/i })).not.toBeInTheDocument()
   })
 })

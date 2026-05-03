@@ -39,6 +39,10 @@ def _noop_embed_tasks_rbac(monkeypatch: pytest.MonkeyPatch) -> None:
         "app.services.embedding_pipeline.enqueue_artifact_embedding",
         noop,
     )
+    monkeypatch.setattr(
+        "app.services.embedding_pipeline.embed_artifact_in_upload_session",
+        noop,
+    )
 
 
 @pytest.fixture(autouse=True)

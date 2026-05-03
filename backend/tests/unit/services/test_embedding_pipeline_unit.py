@@ -13,7 +13,17 @@ from app.services import embedding_pipeline as ep
 
 @pytest.mark.asyncio
 async def test_enqueue_artifact_embedding_skips_when_not_configured() -> None:
+    aid = uuid.uuid4()
+    art = types.SimpleNamespace(
+        id=aid,
+        embedding_status="pending",
+        embedding_error=None,
+        extracted_char_count=None,
+        chunk_count=None,
+        embedded_at=None,
+    )
     mock_session = AsyncMock()
+    mock_session.get = AsyncMock(return_value=art)
     mock_cm = MagicMock()
     mock_cm.__aenter__ = AsyncMock(return_value=mock_session)
     mock_cm.__aexit__ = AsyncMock(return_value=None)
@@ -21,9 +31,10 @@ async def test_enqueue_artifact_embedding_skips_when_not_configured() -> None:
     with patch.object(ep, "async_session_factory", return_value=mock_cm):
         with patch.object(ep, "embedding_configured", new_callable=AsyncMock) as m_ec:
             m_ec.return_value = False
-            await ep.enqueue_artifact_embedding(uuid.uuid4())
+            await ep.enqueue_artifact_embedding(aid)
 
-    mock_session.commit.assert_not_called()
+    assert art.embedding_status == "skipped"
+    mock_session.commit.assert_awaited()
 
 
 @pytest.mark.asyncio
@@ -64,9 +75,11 @@ async def test_run_artifact_embedding_inserts_chunks_md() -> None:
     storage.get_bytes = AsyncMock(
         return_value=b"# Title\n\nBody text here for chunking. " * 5
     )
-    mock_session = MagicMock()
+    mock_session = AsyncMock()
     mock_session.get = AsyncMock(return_value=row)
     mock_session.execute = AsyncMock()
+    mock_session.flush = AsyncMock()
+    mock_session.add = MagicMock()
     mock_emb = MagicMock()
     mock_emb.embed_batch = AsyncMock(
         return_value=[[0.1] * 1536] * 2
@@ -86,8 +99,14 @@ async def test_run_artifact_embedding_inserts_chunks_md() -> None:
 async def test_run_artifact_embedding_empty_chunks_flushes() -> None:
     aid = uuid.uuid4()
     row = types.SimpleNamespace(
+        id=aid,
         file_type="md",
         storage_path="p",
+        extracted_char_count=None,
+        chunk_count=None,
+        embedding_status="pending",
+        embedded_at=None,
+        embedding_error=None,
     )
     storage = MagicMock()
     storage.get_bytes = AsyncMock(return_value=b"x")
@@ -105,6 +124,9 @@ async def test_run_artifact_embedding_empty_chunks_flushes() -> None:
 
     mock_emb.embed_batch.assert_not_called()
     mock_session.flush.assert_awaited_once()
+    assert row.chunk_count == 0
+    assert row.embedding_status == "embedded"
+    assert row.extracted_char_count == 1
 
 
 @pytest.mark.asyncio

@@ -6,7 +6,6 @@ from uuid import UUID
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -22,11 +21,16 @@ from app.deps import (
     get_project_access,
     get_project_access_artifact_download,
     require_project_member,
+    user_can_view_artifact_chunk_previews,
 )
 from app.exceptions import ApiError
-from app.schemas.artifact import ArtifactResponse, MarkdownArtifactCreate
+from app.schemas.artifact import (
+    ArtifactDetailResponse,
+    ArtifactResponse,
+    MarkdownArtifactCreate,
+)
+from app.services import embedding_pipeline as embed_pipeline
 from app.services.artifact_service import ArtifactService
-from app.services.embedding_pipeline import enqueue_artifact_embedding
 from app.storage.minio_storage import get_storage_client
 
 router = APIRouter(prefix="/projects/{project_id}/artifacts", tags=["artifacts"])
@@ -40,7 +44,6 @@ def _content_type(file_type: str) -> str:
 @router.post("", response_model=ArtifactResponse)
 async def upload_artifact(
     project_id: UUID,
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     name: str | None = Form(None),
     session: AsyncSession = Depends(get_db),
@@ -79,7 +82,7 @@ async def upload_artifact(
             message="Could not store file.",
         ) from exc
 
-    background_tasks.add_task(enqueue_artifact_embedding, art.id)
+    await embed_pipeline.embed_artifact_in_upload_session(session, art.id)
     return ArtifactResponse.model_validate(art)
 
 
@@ -87,7 +90,6 @@ async def upload_artifact(
 async def create_markdown_artifact(
     project_id: UUID,
     body: MarkdownArtifactCreate,
-    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db),
     pa: ProjectAccess = Depends(require_project_member),
 ) -> ArtifactResponse:
@@ -117,7 +119,7 @@ async def create_markdown_artifact(
             message="Could not store file.",
         ) from exc
 
-    background_tasks.add_task(enqueue_artifact_embedding, art.id)
+    await embed_pipeline.embed_artifact_in_upload_session(session, art.id)
     return ArtifactResponse.model_validate(art)
 
 
@@ -135,6 +137,27 @@ async def list_artifacts(
         )
     rows = await ArtifactService(session).list_artifacts(project_id)
     return [ArtifactResponse.model_validate(a) for a in rows]
+
+
+@router.get("/{artifact_id}", response_model=ArtifactDetailResponse)
+async def get_artifact_detail(
+    project_id: UUID,
+    artifact_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    pa: ProjectAccess = Depends(get_project_access_artifact_download),
+) -> ArtifactDetailResponse:
+    if pa.project.id != project_id:
+        raise ApiError(
+            status_code=404,
+            code="NOT_FOUND",
+            message="Project not found.",
+        )
+    svc = ArtifactService(session)
+    art = await svc.get_in_project(project_id, artifact_id)
+    include = await user_can_view_artifact_chunk_previews(
+        session, pa.studio_access.user, art
+    )
+    return await svc.build_artifact_detail(art, include_chunk_previews=include)
 
 
 @router.get("/{artifact_id}/download")

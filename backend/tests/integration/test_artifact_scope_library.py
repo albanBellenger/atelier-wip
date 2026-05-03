@@ -42,6 +42,10 @@ def _noop_embed_tasks(monkeypatch: pytest.MonkeyPatch) -> None:
         noop,
     )
     monkeypatch.setattr(
+        "app.services.embedding_pipeline.embed_artifact_in_upload_session",
+        noop,
+    )
+    monkeypatch.setattr(
         "app.services.embedding_pipeline.enqueue_section_embedding",
         noop,
     )

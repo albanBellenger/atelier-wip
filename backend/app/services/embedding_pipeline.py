@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from datetime import datetime, timezone
 
 import structlog
 from sqlalchemy import delete, exists, select
@@ -19,6 +20,59 @@ from app.storage.minio_storage import get_storage_client
 log = structlog.get_logger("atelier.embed_pipeline")
 
 
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+async def _persist_artifact_embedding_failure(
+    artifact_id: uuid.UUID, message: str
+) -> None:
+    msg = message[:500]
+    try:
+        async with async_session_factory() as session:
+            art = await session.get(Artifact, artifact_id)
+            if art is None:
+                return
+            art.embedding_status = "failed"
+            art.embedding_error = msg
+            await session.commit()
+    except Exception:
+        log.exception(
+            "artifact_embedding_status_write_failed",
+            artifact_id=str(artifact_id),
+        )
+
+
+async def embed_artifact_in_upload_session(
+    session: AsyncSession, artifact_id: uuid.UUID
+) -> None:
+    """Index artifact text in the request DB session (after MinIO put_bytes succeeds).
+
+    Uses a savepoint so failed embedding rolls back partial ``artifact_chunks`` writes
+    while keeping the artifact row. Commits with the route's normal ``get_db`` commit.
+    """
+    art = await session.get(Artifact, artifact_id)
+    if art is None:
+        return
+    if not await embedding_configured(session):
+        art.embedding_status = "skipped"
+        art.embedding_error = None
+        art.extracted_char_count = None
+        art.chunk_count = None
+        art.embedded_at = None
+        await session.flush()
+        return
+    try:
+        async with session.begin_nested():
+            await run_artifact_embedding(session, artifact_id)
+    except Exception as exc:
+        log.exception("artifact_embedding_failed", artifact_id=str(artifact_id))
+        await session.refresh(art)
+        art.embedding_status = "failed"
+        art.embedding_error = str(exc)[:500]
+        await session.flush()
+
+
 async def run_artifact_embedding(session: AsyncSession, artifact_id: uuid.UUID) -> None:
     storage = get_storage_client()
     row = await session.get(Artifact, artifact_id)
@@ -29,9 +83,15 @@ async def run_artifact_embedding(session: AsyncSession, artifact_id: uuid.UUID) 
         text = extract_pdf_text(raw)
     else:
         text = extract_md_text(raw)
+    extracted_len = len(text)
     chunks = chunk_text(text)
     await session.execute(delete(ArtifactChunk).where(ArtifactChunk.artifact_id == artifact_id))
+    row.extracted_char_count = extracted_len
     if not chunks:
+        row.chunk_count = 0
+        row.embedding_status = "embedded"
+        row.embedded_at = _utcnow()
+        row.embedding_error = None
         await session.flush()
         return
     emb = EmbeddingService(session)
@@ -45,6 +105,11 @@ async def run_artifact_embedding(session: AsyncSession, artifact_id: uuid.UUID) 
                 embedding=vec,
             )
         )
+    row.chunk_count = len(chunks)
+    row.embedding_status = "embedded"
+    row.embedded_at = _utcnow()
+    row.embedding_error = None
+    await session.flush()
 
 
 async def run_section_embedding(session: AsyncSession, section_id: uuid.UUID) -> None:
@@ -71,16 +136,25 @@ async def run_section_embedding(session: AsyncSession, section_id: uuid.UUID) ->
 
 
 async def enqueue_artifact_embedding(artifact_id: uuid.UUID) -> None:
-    """Run artifact embedding on the current event loop (e.g. FastAPI BackgroundTasks)."""
+    """Run artifact embedding in a fresh session (background task / scripts)."""
     async with async_session_factory() as session:
         try:
             if not await embedding_configured(session):
+                art = await session.get(Artifact, artifact_id)
+                if art is not None:
+                    art.embedding_status = "skipped"
+                    art.embedding_error = None
+                    art.extracted_char_count = None
+                    art.chunk_count = None
+                    art.embedded_at = None
+                    await session.commit()
                 return
             await run_artifact_embedding(session, artifact_id)
             await session.commit()
-        except Exception:
+        except Exception as exc:
             await session.rollback()
             log.exception("artifact_embedding_failed", artifact_id=str(artifact_id))
+            await _persist_artifact_embedding_failure(artifact_id, str(exc))
 
 
 def schedule_artifact_embedding(artifact_id: uuid.UUID) -> None:

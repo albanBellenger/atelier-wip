@@ -10,13 +10,15 @@ from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
-from app.models import Artifact, Project, Software, User
+from app.models import Artifact, ArtifactChunk, Project, Software, User
 from app.models.artifact_exclusion import (
     ProjectArtifactExclusion,
     SoftwareArtifactExclusion,
 )
 from app.schemas.artifact import (
+    ArtifactDetailResponse,
     ArtifactScopeLevel,
+    ChunkPreview,
     SoftwareArtifactRowOut,
     StudioArtifactRowOut,
 )
@@ -41,12 +43,91 @@ def _safe_filename(name: str, file_type: str) -> str:
     return base[:220]
 
 
+def _embedding_row_fields(art: Artifact) -> dict[str, object]:
+    return {
+        "embedding_status": art.embedding_status,
+        "embedded_at": art.embedded_at,
+        "chunk_count": art.chunk_count,
+        "extracted_char_count": art.extracted_char_count,
+    }
+
+
 class ArtifactService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
     async def get_by_id(self, artifact_id: UUID) -> Artifact | None:
         return await self.db.get(Artifact, artifact_id)
+
+    async def build_artifact_detail(
+        self,
+        art: Artifact,
+        *,
+        include_chunk_previews: bool,
+    ) -> ArtifactDetailResponse:
+        previews: list[ChunkPreview] = []
+        if include_chunk_previews:
+            r = await self.db.execute(
+                select(ArtifactChunk)
+                .where(ArtifactChunk.artifact_id == art.id)
+                .order_by(ArtifactChunk.chunk_index)
+                .limit(3)
+            )
+            for ch in r.scalars().all():
+                full = ch.content
+                truncated = full if len(full) <= 400 else full[:400]
+                previews.append(
+                    ChunkPreview(
+                        chunk_index=ch.chunk_index,
+                        content=truncated,
+                        content_length=len(full),
+                    )
+                )
+        return ArtifactDetailResponse(
+            id=art.id,
+            project_id=art.project_id,
+            scope_level=self._row_scope_level(art),
+            name=art.name,
+            file_type=art.file_type,
+            size_bytes=art.size_bytes,
+            uploaded_by=art.uploaded_by,
+            created_at=art.created_at,
+            embedding_status=art.embedding_status,  # type: ignore[arg-type]
+            embedded_at=art.embedded_at,
+            chunk_count=art.chunk_count,
+            extracted_char_count=art.extracted_char_count,
+            embedding_error=art.embedding_error,
+            chunk_previews=previews,
+        )
+
+    async def get_artifact_detail_for_project(
+        self,
+        project_id: UUID,
+        artifact_id: UUID,
+        *,
+        include_chunk_previews: bool,
+    ) -> ArtifactDetailResponse:
+        art = await self.get_in_project(project_id, artifact_id)
+        return await self.build_artifact_detail(
+            art, include_chunk_previews=include_chunk_previews
+        )
+
+    async def get_artifact_detail_by_id(
+        self,
+        artifact_id: UUID,
+        *,
+        include_chunk_previews: bool,
+    ) -> ArtifactDetailResponse:
+        art = await self.get_by_id(artifact_id)
+        if art is None:
+            raise ApiError(
+                status_code=404,
+                code="NOT_FOUND",
+                message="Artifact not found.",
+            )
+        return await self.build_artifact_detail(
+            art, include_chunk_previews=include_chunk_previews
+        )
 
     def _validate_upload_bytes(self, original_filename: str, raw: bytes) -> str:
         ft = infer_file_type_from_name(original_filename)
@@ -424,6 +505,7 @@ class ArtifactService:
                     scope_level=self._row_scope_level(art),
                     excluded_at_software=ex_sw,
                     excluded_at_project=ex_proj,
+                    **_embedding_row_fields(art),
                 )
             )
 
@@ -444,6 +526,7 @@ class ArtifactService:
                     scope_level="software",
                     excluded_at_software=ex_sw,
                     excluded_at_project=None,
+                    **_embedding_row_fields(art),
                 )
             )
 
@@ -484,6 +567,7 @@ class ArtifactService:
                     excluded_at_project=None,
                     software_id=None,
                     software_name=None,
+                    **_embedding_row_fields(art),
                 )
             )
 

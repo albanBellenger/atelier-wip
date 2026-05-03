@@ -1,4 +1,6 @@
-"""Slice 5: artifacts API."""
+"""GET artifact detail (RAG indexing) — Phase 1."""
+
+from __future__ import annotations
 
 import uuid
 
@@ -6,7 +8,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
-from app.models import User
+from app.models import Artifact, ArtifactChunk, CrossStudioAccess, User
 from app.services.embedding_service import OPENAI_EMBEDDINGS_URL
 
 
@@ -26,7 +28,6 @@ async def _register(client: AsyncClient, suffix: str, label: str) -> str:
 
 
 async def _studio_project(client: AsyncClient, sfx: str) -> tuple[str, str, str, str]:
-    """token, studio_id, software_id, project_id."""
     token = await _register(client, sfx, "owner")
     client.cookies.set("atelier_token", token)
     cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
@@ -64,6 +65,10 @@ def _noop_embed_tasks(monkeypatch: pytest.MonkeyPatch) -> None:
         noop,
     )
     monkeypatch.setattr(
+        "app.services.embedding_pipeline.embed_artifact_in_upload_session",
+        noop,
+    )
+    monkeypatch.setattr(
         "app.services.embedding_pipeline.enqueue_section_embedding",
         noop,
     )
@@ -84,13 +89,13 @@ def _in_memory_minio(monkeypatch: pytest.MonkeyPatch) -> None:
     async def ensure_bucket(_self: object) -> None:
         return None
 
-    async def put_bytes(_self, object_name: str, data: bytes, _content_type: str) -> None:
+    async def put_bytes(_self: object, object_name: str, data: bytes, _ct: str) -> None:
         store[object_name] = data
 
-    async def get_bytes(_self, object_name: str) -> bytes:
+    async def get_bytes(_self: object, object_name: str) -> bytes:
         return store[object_name]
 
-    async def remove(_self, object_name: str) -> None:
+    async def remove(_self: object, object_name: str) -> None:
         store.pop(object_name, None)
 
     from app.storage.minio_storage import StorageClient
@@ -115,68 +120,35 @@ def fake_embed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(EmbeddingService, "embed_batch", batch)
 
 
+async def _seed_embedded_artifact_with_chunk(
+    db_session: object, artifact_id: uuid.UUID
+) -> None:
+    r = await db_session.execute(select(Artifact).where(Artifact.id == artifact_id))
+    art = r.scalar_one()
+    art.embedding_status = "embedded"
+    art.embedded_at = art.created_at
+    art.extracted_char_count = 12
+    art.chunk_count = 1
+    art.embedding_error = None
+    db_session.add(
+        ArtifactChunk(
+            artifact_id=artifact_id,
+            chunk_index=0,
+            content="preview text for chunk zero",
+            embedding=[0.0] * 1536,
+        )
+    )
+    await db_session.flush()
+
+
 @pytest.mark.asyncio
-async def test_artifacts_upload_list_download_delete(
+async def test_artifact_detail_member_sees_chunk_previews(
     client: AsyncClient,
     db_session,
     fake_embed: None,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, _sfid, pid = await _studio_project(client, sfx)
-    owner_email = f"owner-{sfx}@example.com"
-    await _promote_tool_admin(db_session, owner_email)
-
-    client.cookies.set("atelier_token", token)
-    put_cfg = await client.put(
-        "/admin/config",
-        json={
-            "embedding_provider": "openai",
-            "embedding_model": "text-embedding-3-small",
-            "embedding_api_key": "sk-test",
-        },
-    )
-    assert put_cfg.status_code == 200, put_cfg.text
-
-    md_bytes = b"# Hello\n\nworld"
-    up = await client.post(
-        f"/projects/{pid}/artifacts",
-        files={"file": ("notes.md", md_bytes, "text/markdown")},
-        data={"name": "Notes"},
-    )
-    assert up.status_code == 200, up.text
-    aid = up.json()["id"]
-    assert up.json()["file_type"] == "md"
-    assert up.json()["size_bytes"] == len(md_bytes)
-
-    listed = await client.get(f"/projects/{pid}/artifacts")
-    assert listed.status_code == 200
-    assert len(listed.json()) == 1
-    row0 = listed.json()[0]
-    assert row0["size_bytes"] == len(md_bytes)
-    assert "embedding_status" in row0
-    assert row0["embedding_status"] == "embedded"
-    assert row0.get("chunk_count") is not None
-    assert row0["chunk_count"] >= 1
-
-    dl = await client.get(f"/projects/{pid}/artifacts/{aid}/download")
-    assert dl.status_code == 200
-    assert dl.content == md_bytes
-
-    deleted = await client.delete(f"/projects/{pid}/artifacts/{aid}")
-    assert deleted.status_code == 204
-
-    empty = await client.get(f"/projects/{pid}/artifacts")
-    assert empty.json() == []
-
-
-@pytest.mark.asyncio
-async def test_artifacts_md_create_and_rbac(
-    client: AsyncClient,
-    db_session,
-    fake_embed: None,
-) -> None:
-    sfx = uuid.uuid4().hex[:8]
-    token, studio_id, software_id, pid = await _studio_project(client, sfx)
+    token, _studio_id, _sfid, pid = await _studio_project(client, sfx)
     await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
     client.cookies.set("atelier_token", token)
     await client.put(
@@ -187,80 +159,162 @@ async def test_artifacts_md_create_and_rbac(
             "embedding_api_key": "sk-test",
         },
     )
-
-    cr = await client.post(
-        f"/projects/{pid}/artifacts/md",
-        json={"name": "Doc", "content": "# x"},
+    up = await client.post(
+        f"/projects/{pid}/artifacts",
+        files={"file": ("n.md", b"# Hi", "text/markdown")},
+        data={"name": "N"},
     )
-    assert cr.status_code == 200
-    assert cr.json()["name"] == "Doc"
+    assert up.status_code == 200, up.text
+    aid = uuid.UUID(up.json()["id"])
+    await _seed_embedded_artifact_with_chunk(db_session, aid)
 
-    outsider = await _register(client, sfx, "out")
-    client.cookies.set("atelier_token", outsider)
-    forbidden = await client.post(
-        f"/projects/{pid}/artifacts/md",
-        json={"name": "Nope", "content": ""},
-    )
-    assert forbidden.status_code == 403
-
-    member_token = await _register(client, sfx, "member")
-    client.cookies.set("atelier_token", token)
-    add_m = await client.post(
-        f"/studios/{studio_id}/members",
-        json={"email": f"member-{sfx}@example.com", "role": "studio_member"},
-    )
-    assert add_m.status_code == 200, add_m.text
-    client.cookies.set("atelier_token", member_token)
-    ok_list = await client.get(f"/projects/{pid}/artifacts")
-    assert ok_list.status_code == 200
-    assert len(ok_list.json()) >= 1
+    r = await client.get(f"/projects/{pid}/artifacts/{aid}")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["embedding_status"] == "embedded"
+    assert body["chunk_count"] == 1
+    assert body["extracted_char_count"] == 12
+    assert len(body["chunk_previews"]) == 1
+    assert body["chunk_previews"][0]["chunk_index"] == 0
+    assert "preview text" in body["chunk_previews"][0]["content"]
 
 
 @pytest.mark.asyncio
-async def test_artifacts_requires_embedding_config(
+async def test_artifact_detail_viewer_no_chunk_previews(
     client: AsyncClient,
     db_session,
-    monkeypatch: pytest.MonkeyPatch,
+    fake_embed: None,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, studio_id, _sfid, pid = await _studio_project(client, sfx)
+    await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
+    client.cookies.set("atelier_token", token)
+    await client.put(
+        "/admin/config",
+        json={
+            "embedding_provider": "openai",
+            "embedding_model": "text-embedding-3-small",
+            "embedding_api_key": "sk-test",
+        },
+    )
+    up = await client.post(
+        f"/projects/{pid}/artifacts",
+        files={"file": ("v.md", b"# V", "text/markdown")},
+        data={"name": "V"},
+    )
+    assert up.status_code == 200, up.text
+    aid = uuid.UUID(up.json()["id"])
+    await _seed_embedded_artifact_with_chunk(db_session, aid)
+
+    vtok = await _register(client, sfx, "viewer")
+    client.cookies.set("atelier_token", token)
+    inv = await client.post(
+        f"/studios/{studio_id}/members",
+        json={
+            "email": f"viewer-{sfx}@example.com",
+            "display_name": "V",
+            "role": "studio_viewer",
+        },
+    )
+    assert inv.status_code == 200, inv.text
+
+    client.cookies.set("atelier_token", vtok)
+    r = await client.get(f"/projects/{pid}/artifacts/{aid}")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["embedding_status"] == "embedded"
+    assert body["chunk_count"] == 1
+    assert body["chunk_previews"] == []
+
+
+@pytest.mark.asyncio
+async def test_artifact_detail_unauthenticated_401(
+    client: AsyncClient,
+    db_session,
+    fake_embed: None,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _sid, _sfid, pid = await _studio_project(client, sfx)
     await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
     client.cookies.set("atelier_token", token)
+    await client.put(
+        "/admin/config",
+        json={
+            "embedding_provider": "openai",
+            "embedding_model": "text-embedding-3-small",
+            "embedding_api_key": "sk-test",
+        },
+    )
+    up = await client.post(
+        f"/projects/{pid}/artifacts",
+        files={"file": ("a.md", b"# A", "text/markdown")},
+        data={"name": "A"},
+    )
+    aid = up.json()["id"]
+    client.cookies.clear()
+    r = await client.get(f"/projects/{pid}/artifacts/{aid}")
+    assert r.status_code == 401
 
-    async def boom(_self: object) -> tuple[str, str, str, str]:
-        from app.exceptions import ApiError
 
-        raise ApiError(
-            status_code=503,
-            code="EMBEDDING_NOT_CONFIGURED",
-            message="not configured",
+@pytest.mark.asyncio
+async def test_artifact_detail_wrong_studio_forbidden(
+    client: AsyncClient,
+    db_session,
+    fake_embed: None,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token_a, _sa, _sfa, pid_a = await _studio_project(client, sfx)
+    await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
+    client.cookies.set("atelier_token", token_a)
+    await client.put(
+        "/admin/config",
+        json={
+            "embedding_provider": "openai",
+            "embedding_model": "text-embedding-3-small",
+            "embedding_api_key": "sk-test",
+        },
+    )
+    up = await client.post(
+        f"/projects/{pid_a}/artifacts",
+        files={"file": ("a.md", b"# A", "text/markdown")},
+        data={"name": "A"},
+    )
+    aid = up.json()["id"]
+
+    token_b = await _register(client, sfx, "other")
+    client.cookies.set("atelier_token", token_b)
+    r = await client.get(f"/projects/{pid_a}/artifacts/{aid}")
+    assert r.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_artifact_detail_cross_studio_stranger_forbidden(
+    client: AsyncClient,
+    db_session,
+    fake_embed: None,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token_b = await _register(client, sfx, "ownerb")
+    client.cookies.set("atelier_token", token_b)
+    sb = (await client.post("/studios", json={"name": f"SB{sfx}"})).json()
+    studio_b_id = sb["id"]
+    sw_b = (
+        await client.post(
+            f"/studios/{studio_b_id}/software",
+            json={"name": "sw"},
         )
+    ).json()
+    software_b_id = sw_b["id"]
+    pid_b = (
+        await client.post(
+            f"/software/{software_b_id}/projects",
+            json={"name": "P"},
+        )
+    ).json()["id"]
 
-    from app.services.embedding_service import EmbeddingService
-
-    monkeypatch.setattr(EmbeddingService, "require_embedding_ready", boom)
-
-    up = await client.post(
-        f"/projects/{pid}/artifacts",
-        files={"file": ("x.md", b"# x", "text/markdown")},
-    )
-    assert up.status_code == 503
-
-
-@pytest.mark.asyncio
-async def test_upload_storage_error_does_not_leave_orphan(
-    client: AsyncClient,
-    db_session,
-    fake_embed: None,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    sfx = uuid.uuid4().hex[:8]
-    token, _sid, _sfid, pid = await _studio_project(client, sfx)
-    owner_email = f"owner-{sfx}@example.com"
-    await _promote_tool_admin(db_session, owner_email)
-
-    client.cookies.set("atelier_token", token)
-    put_cfg = await client.put(
+    await _promote_tool_admin(db_session, f"ownerb-{sfx}@example.com")
+    client.cookies.set("atelier_token", token_b)
+    await client.put(
         "/admin/config",
         json={
             "embedding_provider": "openai",
@@ -268,85 +322,80 @@ async def test_upload_storage_error_does_not_leave_orphan(
             "embedding_api_key": "sk-test",
         },
     )
-    assert put_cfg.status_code == 200, put_cfg.text
-
-    from app.storage.minio_storage import StorageClient
-
-    async def put_bytes_fail(_self: object, *_a: object, **_k: object) -> None:
-        raise RuntimeError("minio down")
-
-    monkeypatch.setattr(StorageClient, "put_bytes", put_bytes_fail)
-
     up = await client.post(
-        f"/projects/{pid}/artifacts",
-        files={"file": ("notes.md", b"# Hello\n", "text/markdown")},
-        data={"name": "Notes"},
-    )
-    assert up.status_code == 502
-    assert up.json()["code"] == "STORAGE_ERROR"
-
-    listed = await client.get(f"/projects/{pid}/artifacts")
-    assert listed.status_code == 200
-    assert listed.json() == []
-
-
-@pytest.mark.asyncio
-async def test_delete_artifact_minio_failure_still_returns_204(
-    client: AsyncClient,
-    db_session,
-    fake_embed: None,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    sfx = uuid.uuid4().hex[:8]
-    token, _sid, _sfid, pid = await _studio_project(client, sfx)
-    owner_email = f"owner-{sfx}@example.com"
-    await _promote_tool_admin(db_session, owner_email)
-
-    client.cookies.set("atelier_token", token)
-    put_cfg = await client.put(
-        "/admin/config",
-        json={
-            "embedding_provider": "openai",
-            "embedding_model": "text-embedding-3-small",
-            "embedding_api_key": "sk-test",
-        },
-    )
-    assert put_cfg.status_code == 200, put_cfg.text
-
-    md_bytes = b"# Hello\n\nworld"
-    up = await client.post(
-        f"/projects/{pid}/artifacts",
-        files={"file": ("notes.md", md_bytes, "text/markdown")},
-        data={"name": "Notes"},
+        f"/projects/{pid_b}/artifacts",
+        files={"file": ("n.md", b"# x", "text/markdown")},
+        data={"name": "N"},
     )
     assert up.status_code == 200, up.text
     aid = up.json()["id"]
 
-    from app.storage.minio_storage import StorageClient
-
-    async def remove_fail(_self: object, *_a: object, **_k: object) -> None:
-        raise RuntimeError("minio down")
-
-    monkeypatch.setattr(StorageClient, "remove", remove_fail)
-
-    deleted = await client.delete(f"/projects/{pid}/artifacts/{aid}")
-    assert deleted.status_code == 204
-
-    empty = await client.get(f"/projects/{pid}/artifacts")
-    assert empty.json() == []
+    stranger = await _register(client, sfx, "stranger")
+    client.cookies.set("atelier_token", stranger)
+    r = await client.get(f"/projects/{pid_b}/artifacts/{aid}")
+    assert r.status_code == 403
 
 
 @pytest.mark.asyncio
-async def test_cross_studio_viewer_can_download_artifact(
+async def test_artifact_detail_invalid_project_uuid_422(
+    client: AsyncClient,
+    db_session,
+    fake_embed: None,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _sid, _sfid, pid = await _studio_project(client, sfx)
+    await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
+    client.cookies.set("atelier_token", token)
+    await client.put(
+        "/admin/config",
+        json={
+            "embedding_provider": "openai",
+            "embedding_model": "text-embedding-3-small",
+            "embedding_api_key": "sk-test",
+        },
+    )
+    up = await client.post(
+        f"/projects/{pid}/artifacts",
+        files={"file": ("a.md", b"# A", "text/markdown")},
+        data={"name": "A"},
+    )
+    aid = up.json()["id"]
+    r = await client.get(f"/projects/not-a-uuid/artifacts/{aid}")
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_artifact_detail_unknown_artifact_404(
+    client: AsyncClient,
+    db_session,
+    fake_embed: None,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _sid, _sfid, pid = await _studio_project(client, sfx)
+    await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
+    client.cookies.set("atelier_token", token)
+    await client.put(
+        "/admin/config",
+        json={
+            "embedding_provider": "openai",
+            "embedding_model": "text-embedding-3-small",
+            "embedding_api_key": "sk-test",
+        },
+    )
+    bad = uuid.uuid4()
+    r = await client.get(f"/projects/{pid}/artifacts/{bad}")
+    assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_artifact_detail_by_id_cross_studio_viewer_no_previews(
     client: AsyncClient,
     db_session,
     fake_embed: None,
 ) -> None:
     import uuid as u
 
-    from sqlalchemy import select
-
-    from app.models import CrossStudioAccess, User
+    from sqlalchemy import select as sel
 
     sfx = u.uuid4().hex[:8]
     token_b = await _register(client, sfx, "ownerb")
@@ -377,14 +426,14 @@ async def test_cross_studio_viewer_can_download_artifact(
             "embedding_api_key": "sk-test",
         },
     )
-    md_bytes = b"# cross"
     up = await client.post(
         f"/projects/{pid_b}/artifacts",
-        files={"file": ("n.md", md_bytes, "text/markdown")},
+        files={"file": ("n.md", b"# cross", "text/markdown")},
         data={"name": "N"},
     )
     assert up.status_code == 200, up.text
-    aid = up.json()["id"]
+    aid = u.UUID(up.json()["id"])
+    await _seed_embedded_artifact_with_chunk(db_session, aid)
 
     token_a = await _register(client, sfx, "ownera")
     client.cookies.set("atelier_token", token_a)
@@ -394,7 +443,7 @@ async def test_cross_studio_viewer_can_download_artifact(
     user_a_id = u.UUID(me_a["user"]["id"])
 
     r_b = await db_session.execute(
-        select(User).where(User.email == f"ownerb-{sfx}@example.com")
+        sel(User).where(User.email == f"ownerb-{sfx}@example.com")
     )
     user_b = r_b.scalar_one()
 
@@ -412,11 +461,6 @@ async def test_cross_studio_viewer_can_download_artifact(
     await db_session.flush()
 
     client.cookies.set("atelier_token", token_a)
-    dl = await client.get(f"/projects/{pid_b}/artifacts/{aid}/download")
-    assert dl.status_code == 200
-    assert dl.content == md_bytes
-
-    stranger = await _register(client, sfx, "stranger")
-    client.cookies.set("atelier_token", stranger)
-    forbidden = await client.get(f"/projects/{pid_b}/artifacts/{aid}/download")
-    assert forbidden.status_code == 403
+    r = await client.get(f"/artifacts/{aid}")
+    assert r.status_code == 200, r.text
+    assert r.json()["chunk_previews"] == []

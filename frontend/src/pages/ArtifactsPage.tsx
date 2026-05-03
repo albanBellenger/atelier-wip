@@ -14,6 +14,11 @@ import {
 } from '../services/api'
 import { EmptyState } from '../components/ui/EmptyState'
 import { ListSkeleton } from '../components/ui/ListSkeleton'
+import { ArtifactDetailDrawer } from '../components/artifacts/ArtifactDetailDrawer'
+import {
+  EmbeddingStatusBadge,
+  RagEmptyExtractWarning,
+} from '../components/artifacts/EmbeddingStatusBadge'
 
 function formatApiDetail(err: unknown): string {
   if (err && typeof err === 'object' && 'detail' in err) {
@@ -53,10 +58,19 @@ export function ArtifactsPage(): ReactElement {
 
   const access = useStudioAccess(profile, sid, sfid)
 
+  const [drawerArtifactId, setDrawerArtifactId] = useState<string | null>(null)
+
   const artifactsQ = useQuery({
     queryKey: ['artifacts', pid],
     queryFn: () => listArtifacts(pid),
     enabled: Boolean(pid && access.isMember),
+    refetchInterval: (q) => {
+      const rows = q.state.data
+      if (!rows?.length) {
+        return false
+      }
+      return rows.some((r) => r.embedding_status === 'pending') ? 5000 : false
+    },
   })
 
   const [uploadName, setUploadName] = useState('')
@@ -110,6 +124,9 @@ export function ArtifactsPage(): ReactElement {
       /* keep minimal */
     }
   }
+
+  const canSeeChunkPreviews =
+    access.isStudioEditor && !access.isCrossStudioViewer
 
   if (!sid || !sfid || !pid) {
     void navigate('/studios', { replace: true })
@@ -261,38 +278,61 @@ export function ArtifactsPage(): ReactElement {
             artifactsQ.data.length > 0 && (
               <ul className="divide-y divide-zinc-800 rounded-xl border border-zinc-800 bg-zinc-900/40">
                 {artifactsQ.data.map((a) => (
-                  <li
-                    key={a.id}
-                    className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm"
-                  >
-                    <div>
-                      <span className="font-medium text-zinc-200">{a.name}</span>
-                      <span className="ml-2 text-xs uppercase text-zinc-500">
-                        {a.file_type}
-                      </span>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        className="text-violet-400 hover:underline"
-                        onClick={() => void handleDownload(a.id, a.name)}
-                      >
-                        Download
-                      </button>
-                      {access.isStudioEditor ? (
+                  <li key={a.id}>
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      className="flex cursor-pointer flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm outline-none hover:bg-zinc-900/60 focus-visible:ring-2 focus-visible:ring-violet-500/60"
+                      onClick={() => setDrawerArtifactId(a.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setDrawerArtifactId(a.id)
+                        }
+                      }}
+                    >
+                      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                        <span className="font-medium text-zinc-200">{a.name}</span>
+                        <span className="text-xs uppercase text-zinc-500">
+                          {a.file_type}
+                        </span>
+                        <EmbeddingStatusBadge
+                          status={a.embedding_status ?? undefined}
+                          embeddedAt={a.embedded_at}
+                          chunkCount={a.chunk_count}
+                        />
+                        {a.embedding_status === 'embedded' &&
+                        a.chunk_count === 0 ? (
+                          <RagEmptyExtractWarning />
+                        ) : null}
+                      </div>
+                      <div className="flex gap-2">
                         <button
                           type="button"
-                          className="text-red-400 hover:underline disabled:opacity-40"
-                          disabled={deleteMut.isPending}
-                          onClick={() => {
-                            if (window.confirm(`Delete “${a.name}”?`)) {
-                              deleteMut.mutate(a.id)
-                            }
+                          className="text-violet-400 hover:underline"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            void handleDownload(a.id, a.name)
                           }}
                         >
-                          Delete
+                          Download
                         </button>
-                      ) : null}
+                        {access.isStudioEditor ? (
+                          <button
+                            type="button"
+                            className="text-red-400 hover:underline disabled:opacity-40"
+                            disabled={deleteMut.isPending}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (window.confirm(`Delete “${a.name}”?`)) {
+                                deleteMut.mutate(a.id)
+                              }
+                            }}
+                          >
+                            Delete
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                   </li>
                 ))}
@@ -300,6 +340,13 @@ export function ArtifactsPage(): ReactElement {
             )}
         </section>
       </div>
+      <ArtifactDetailDrawer
+        isOpen={drawerArtifactId != null}
+        onClose={() => setDrawerArtifactId(null)}
+        projectId={pid}
+        artifactId={drawerArtifactId}
+        canSeeChunkPreviews={canSeeChunkPreviews}
+      />
     </div>
   )
 }

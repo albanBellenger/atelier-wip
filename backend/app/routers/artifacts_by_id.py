@@ -8,13 +8,37 @@ from fastapi import APIRouter, Depends, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.deps import ensure_user_can_download_artifact, get_current_user
+from app.deps import (
+    ensure_user_can_download_artifact,
+    get_current_user,
+    user_can_view_artifact_chunk_previews,
+)
 from app.exceptions import ApiError
 from app.models.user import User
+from app.schemas.artifact import ArtifactDetailResponse
 from app.services.artifact_service import ArtifactService
 from app.storage.minio_storage import get_storage_client
 
 router = APIRouter(prefix="/artifacts", tags=["artifacts"])
+
+
+@router.get("/{artifact_id}", response_model=ArtifactDetailResponse)
+async def get_artifact_detail_by_id(
+    artifact_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ArtifactDetailResponse:
+    svc = ArtifactService(session)
+    art = await svc.get_by_id(artifact_id)
+    if art is None:
+        raise ApiError(
+            status_code=404,
+            code="NOT_FOUND",
+            message="Artifact not found.",
+        )
+    await ensure_user_can_download_artifact(session, user, art)
+    include = await user_can_view_artifact_chunk_previews(session, user, art)
+    return await svc.build_artifact_detail(art, include_chunk_previews=include)
 
 
 def _content_type(file_type: str) -> str:

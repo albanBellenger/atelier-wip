@@ -3,7 +3,7 @@
 from datetime import date
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,12 +43,12 @@ from app.schemas.studio import (
 )
 from app.services.artifact_service import ArtifactService
 from app.services.cross_studio_service import CrossStudioService
+from app.services import embedding_pipeline as embed_pipeline
 from app.services.mcp_key_admin_service import McpKeyAdminService
 from app.services.project_service import ProjectService
 from app.services.software_activity_service import SoftwareActivityService
 from app.services.studio_service import StudioService
 from app.services.token_usage_query_service import TokenUsageQueryService
-from app.services.embedding_pipeline import enqueue_artifact_embedding
 from app.storage.minio_storage import get_storage_client
 
 router = APIRouter(prefix="/studios", tags=["studios"])
@@ -154,7 +154,6 @@ async def list_artifact_library(
 @router.post("/{studio_id}/artifacts", response_model=ArtifactResponse)
 async def upload_studio_artifact(
     studio_id: UUID,
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     name: str | None = Form(None),
     session: AsyncSession = Depends(get_db),
@@ -192,7 +191,7 @@ async def upload_studio_artifact(
             code="STORAGE_ERROR",
             message="Could not store file.",
         ) from exc
-    background_tasks.add_task(enqueue_artifact_embedding, art.id)
+    await embed_pipeline.embed_artifact_in_upload_session(session, art.id)
     return ArtifactResponse.model_validate(art)
 
 
@@ -200,7 +199,6 @@ async def upload_studio_artifact(
 async def create_studio_markdown_artifact(
     studio_id: UUID,
     body: MarkdownArtifactCreate,
-    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db),
     access: StudioAccess = Depends(require_studio_editor),
 ) -> ArtifactResponse:
@@ -229,7 +227,7 @@ async def create_studio_markdown_artifact(
             code="STORAGE_ERROR",
             message="Could not store file.",
         ) from exc
-    background_tasks.add_task(enqueue_artifact_embedding, art.id)
+    await embed_pipeline.embed_artifact_in_upload_session(session, art.id)
     return ArtifactResponse.model_validate(art)
 
 

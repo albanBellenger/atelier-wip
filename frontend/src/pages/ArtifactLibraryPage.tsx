@@ -9,6 +9,11 @@ import {
 } from 'react-router-dom'
 
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
+import { ArtifactDetailDrawer } from '../components/artifacts/ArtifactDetailDrawer'
+import {
+  EmbeddingStatusBadge,
+  RagEmptyExtractWarning,
+} from '../components/artifacts/EmbeddingStatusBadge'
 import { ArtifactScopeBadge } from '../components/software/ArtifactScopeBadge'
 import { EmptyState } from '../components/ui/EmptyState'
 import { ListSkeleton } from '../components/ui/ListSkeleton'
@@ -97,7 +102,7 @@ export function ArtifactLibraryPage(): ReactElement {
     }
   }, [profileError, navigate])
 
-  const access = useStudioAccess(profile, sid)
+  const access = useStudioAccess(profile, sid, urlSoftwareFilter)
 
   const studioQ = useQuery({
     queryKey: ['studio', sid],
@@ -118,11 +123,23 @@ export function ArtifactLibraryPage(): ReactElement {
     retry: false,
   })
 
+  const [drawer, setDrawer] = useState<{
+    artifactId: string
+    projectId: string | null
+  } | null>(null)
+
   const libraryQ = useQuery({
     queryKey: ['artifactLibrary', sid, urlSoftwareFilter ?? ''],
     queryFn: () =>
       listArtifactLibrary(sid, { softwareId: urlSoftwareFilter }),
     enabled: Boolean(sid && access.isMember),
+    refetchInterval: (q) => {
+      const rows = q.state.data
+      if (!rows?.length) {
+        return false
+      }
+      return rows.some((r) => r.embedding_status === 'pending') ? 5000 : false
+    },
   })
 
   const handleStudioChange = useCallback(
@@ -297,6 +314,7 @@ export function ArtifactLibraryPage(): ReactElement {
   }
 
   const canUpload = access.isStudioEditor && !access.isCrossStudioViewer
+  const canSeeChunkPreviews = canUpload
   const uploadPending =
     uploadStudioMut.isPending ||
     uploadSoftwareMut.isPending ||
@@ -547,27 +565,57 @@ export function ArtifactLibraryPage(): ReactElement {
                   return (
                     <li key={row.id} className="px-5 py-4">
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
-                        <div className="flex min-w-0 flex-1 gap-3">
-                          <div className="flex shrink-0 flex-col gap-1.5 sm:flex-row sm:items-center">
-                            <ArtifactScopeBadge level={scopeLevel} />
-                            <span
-                              className={`inline-flex w-fit rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${artifactTypeBadgeClass(row.file_type)}`}
-                            >
-                              {row.file_type.toUpperCase()}
-                            </span>
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                              <span className="truncate text-[14px] font-medium text-zinc-100">
-                                {row.name}
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          className="flex min-w-0 flex-1 cursor-pointer flex-col gap-3 outline-none focus-visible:ring-2 focus-visible:ring-violet-500/60 sm:flex-row sm:items-center sm:gap-6"
+                          onClick={() =>
+                            setDrawer({
+                              artifactId: row.id,
+                              projectId: row.project_id,
+                            })
+                          }
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              setDrawer({
+                                artifactId: row.id,
+                                projectId: row.project_id,
+                              })
+                            }
+                          }}
+                        >
+                          <div className="flex min-w-0 flex-1 gap-3">
+                            <div className="flex shrink-0 flex-col gap-1.5 sm:flex-row sm:items-center">
+                              <ArtifactScopeBadge level={scopeLevel} />
+                              <span
+                                className={`inline-flex w-fit rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${artifactTypeBadgeClass(row.file_type)}`}
+                              >
+                                {row.file_type.toUpperCase()}
                               </span>
-                              <span className="shrink-0 tabular-nums text-[12px] text-zinc-500">
-                                {formatFileByteSize(row.size_bytes ?? 0)}
-                              </span>
+                              <EmbeddingStatusBadge
+                                status={row.embedding_status ?? undefined}
+                                embeddedAt={row.embedded_at}
+                                chunkCount={row.chunk_count}
+                              />
+                              {row.embedding_status === 'embedded' &&
+                              row.chunk_count === 0 ? (
+                                <RagEmptyExtractWarning />
+                              ) : null}
                             </div>
-                            <p className="mt-1 text-[11px] text-zinc-500">
-                              {metaParts.join(' · ')}
-                            </p>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                                <span className="truncate text-[14px] font-medium text-zinc-100">
+                                  {row.name}
+                                </span>
+                                <span className="shrink-0 tabular-nums text-[12px] text-zinc-500">
+                                  {formatFileByteSize(row.size_bytes ?? 0)}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-[11px] text-zinc-500">
+                                {metaParts.join(' · ')}
+                              </p>
+                            </div>
                           </div>
                         </div>
                         <button
@@ -586,6 +634,14 @@ export function ArtifactLibraryPage(): ReactElement {
               </ul>
             )}
         </section>
+
+        <ArtifactDetailDrawer
+          isOpen={drawer != null}
+          onClose={() => setDrawer(null)}
+          projectId={drawer?.projectId ?? null}
+          artifactId={drawer?.artifactId ?? null}
+          canSeeChunkPreviews={canSeeChunkPreviews}
+        />
 
         <footer className="mt-16 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-zinc-800/60 pt-6 text-[11px] text-zinc-600">
           <span>Atelier · {hostedEnvLabel}</span>

@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -14,7 +14,7 @@ from app.schemas.attention import SoftwareAttentionListOut
 from app.schemas.software_activity import SoftwareActivityListOut
 from app.services.attention_service import AttentionService
 from app.services.artifact_service import ArtifactService
-from app.services.embedding_pipeline import enqueue_artifact_embedding
+from app.services import embedding_pipeline as embed_pipeline
 from app.services.software_activity_service import SoftwareActivityService
 from app.storage.minio_storage import get_storage_client
 
@@ -92,7 +92,6 @@ def _sw_artifact_content_type(file_type: str) -> str:
 @router.post("/artifacts", response_model=ArtifactResponse)
 async def upload_software_artifact(
     software_id: UUID,
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     name: str | None = Form(None),
     session: AsyncSession = Depends(get_db),
@@ -130,7 +129,7 @@ async def upload_software_artifact(
             code="STORAGE_ERROR",
             message="Could not store file.",
         ) from exc
-    background_tasks.add_task(enqueue_artifact_embedding, art.id)
+    await embed_pipeline.embed_artifact_in_upload_session(session, art.id)
     return ArtifactResponse.model_validate(art)
 
 
@@ -138,7 +137,6 @@ async def upload_software_artifact(
 async def create_software_markdown_artifact(
     software_id: UUID,
     body: MarkdownArtifactCreate,
-    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db),
     sa: SoftwareAccess = Depends(get_software_access),
 ) -> ArtifactResponse:
@@ -167,5 +165,5 @@ async def create_software_markdown_artifact(
             code="STORAGE_ERROR",
             message="Could not store file.",
         ) from exc
-    background_tasks.add_task(enqueue_artifact_embedding, art.id)
+    await embed_pipeline.embed_artifact_in_upload_session(session, art.id)
     return ArtifactResponse.model_validate(art)

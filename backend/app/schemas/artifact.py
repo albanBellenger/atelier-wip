@@ -7,6 +7,30 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 ArtifactScopeLevel = Literal["studio", "software", "project"]
+EmbeddingStatusLiteral = Literal["pending", "embedded", "failed", "skipped"]
+
+
+class ChunkPreview(BaseModel):
+    chunk_index: int
+    content: str
+    content_length: int
+
+
+class ArtifactDetailResponse(BaseModel):
+    id: UUID
+    project_id: UUID | None = None
+    scope_level: ArtifactScopeLevel = "project"
+    name: str
+    file_type: str
+    size_bytes: int
+    uploaded_by: UUID | None
+    created_at: datetime
+    embedding_status: EmbeddingStatusLiteral | None = None
+    embedded_at: datetime | None = None
+    chunk_count: int | None = None
+    extracted_char_count: int | None = None
+    embedding_error: str | None = None
+    chunk_previews: list[ChunkPreview] = Field(default_factory=list)
 
 
 class ArtifactResponse(BaseModel):
@@ -18,6 +42,10 @@ class ArtifactResponse(BaseModel):
     size_bytes: int
     uploaded_by: UUID | None
     created_at: datetime
+    embedding_status: EmbeddingStatusLiteral | None = None
+    embedded_at: datetime | None = None
+    chunk_count: int | None = None
+    extracted_char_count: int | None = None
 
     model_config = {"from_attributes": True}
 
@@ -42,6 +70,10 @@ class SoftwareArtifactRowOut(BaseModel):
     scope_level: ArtifactScopeLevel = "project"
     excluded_at_software: datetime | None = None
     excluded_at_project: datetime | None = None
+    embedding_status: EmbeddingStatusLiteral | None = None
+    embedded_at: datetime | None = None
+    chunk_count: int | None = None
+    extracted_char_count: int | None = None
 
 
 class StudioArtifactRowOut(SoftwareArtifactRowOut):

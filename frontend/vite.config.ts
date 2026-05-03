@@ -18,6 +18,7 @@ export default defineConfig({
       '/studios': { target: apiProxy, changeOrigin: true },
       '/software': { target: apiProxy, changeOrigin: true },
       '/projects': { target: apiProxy, changeOrigin: true },
+      '/artifacts': { target: apiProxy, changeOrigin: true },
       '/mcp': { target: apiProxy, changeOrigin: true },
       '/ws': { target: apiProxy, changeOrigin: true, ws: true },
     },
