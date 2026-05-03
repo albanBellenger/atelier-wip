@@ -8,6 +8,7 @@ from functools import lru_cache
 from io import BytesIO
 
 from minio import Minio
+from minio.commonconfig import CopySource
 from minio.error import S3Error
 
 from app.config import get_settings
@@ -75,6 +76,18 @@ class StorageClient:
     async def remove(self, object_name: str) -> None:
         def _run() -> None:
             self._client.remove_object(self.bucket, object_name)
+
+        await asyncio.to_thread(_run)
+
+    async def copy_object(self, dest_object_name: str, src_object_name: str) -> None:
+        """Copy an object within the same bucket (used when moving artifact storage prefix)."""
+
+        def _run() -> None:
+            self._client.copy_object(
+                self.bucket,
+                dest_object_name,
+                CopySource(self.bucket, src_object_name),
+            )
 
         await asyncio.to_thread(_run)
 

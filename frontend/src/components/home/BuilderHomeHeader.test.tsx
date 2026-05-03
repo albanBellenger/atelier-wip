@@ -84,6 +84,29 @@ describe('BuilderHomeHeader', () => {
     expect(contosoRow.querySelector('.rounded-full.bg-violet-500')).toBeNull()
   })
 
+  it('renders project crumb without software segment when label is omitted', () => {
+    vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
+      items: [],
+      next_cursor: null,
+    })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <BuilderHomeHeader
+            profile={profileTwoStudios()}
+            studioId="s-active"
+            onStudioChange={vi.fn()}
+            onLogout={vi.fn()}
+            trailingCrumb={{ projectLabel: 'Artifact library' }}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    expect(screen.getByText('Artifact library')).toBeInTheDocument()
+    expect(screen.getAllByText('Northwind')).toHaveLength(1)
+  })
+
   it('renders optional trailing software crumb after studio', () => {
     vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
       items: [],

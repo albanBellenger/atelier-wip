@@ -108,3 +108,14 @@ async def test_remove_deletes_object() -> None:
     sc = StorageClient(mc, "buck")
     await sc.remove("k")
     mc.remove_object.assert_called_once_with("buck", "k")
+
+
+@pytest.mark.asyncio
+async def test_copy_object_same_bucket() -> None:
+    mc = MagicMock()
+    sc = StorageClient(mc, "buck")
+    await sc.copy_object("dest/key", "src/key")
+    mc.copy_object.assert_called_once()
+    args = mc.copy_object.call_args[0]
+    assert args[0] == "buck"
+    assert args[1] == "dest/key"

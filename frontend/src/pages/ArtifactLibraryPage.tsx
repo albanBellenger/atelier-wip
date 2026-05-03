@@ -285,9 +285,7 @@ export function ArtifactLibraryPage(): ReactElement {
     [searchParams, setSearchParams],
   )
 
-  const headerTrailingCrumb = studioQ.data
-    ? { label: studioQ.data.name, projectLabel: 'Artifact library' }
-    : undefined
+  const headerTrailingCrumb = { projectLabel: 'Artifact library' }
 
   if (!sid) {
     void navigate('/studios', { replace: true })
@@ -641,6 +639,9 @@ export function ArtifactLibraryPage(): ReactElement {
           projectId={drawer?.projectId ?? null}
           artifactId={drawer?.artifactId ?? null}
           canSeeChunkPreviews={canSeeChunkPreviews}
+          canReindexArtifact={access.isStudioEditor}
+          canDeleteArtifact={access.isStudioAdmin}
+          canConfigureChunking={access.isStudioAdmin}
         />
 
         <footer className="mt-16 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-zinc-800/60 pt-6 text-[11px] text-zinc-600">

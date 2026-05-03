@@ -44,6 +44,7 @@ async def test_run_artifact_embedding_success_sets_embedded_and_counts() -> None
         id=aid,
         file_type="md",
         storage_path="p",
+        chunking_strategy=None,
         extracted_char_count=None,
         chunk_count=None,
         embedding_status="pending",
@@ -61,7 +62,7 @@ async def test_run_artifact_embedding_success_sets_embedded_and_counts() -> None
 
     with patch.object(ep, "get_storage_client", return_value=storage):
         with patch.object(ep, "EmbeddingService", return_value=mock_emb):
-            with patch.object(ep, "chunk_text", return_value=["a", "b"]):
+            with patch.object(ep, "chunk_artifact_text", return_value=["a", "b"]):
                 await ep.run_artifact_embedding(mock_session, aid)
 
     assert row.extracted_char_count == 102
@@ -79,6 +80,7 @@ async def test_run_artifact_embedding_empty_text_still_embedded_zero_chunks() ->
         id=aid,
         file_type="md",
         storage_path="p",
+        chunking_strategy=None,
         extracted_char_count=None,
         chunk_count=None,
         embedding_status="pending",
@@ -96,7 +98,7 @@ async def test_run_artifact_embedding_empty_text_still_embedded_zero_chunks() ->
 
     with patch.object(ep, "get_storage_client", return_value=storage):
         with patch.object(ep, "EmbeddingService", return_value=mock_emb):
-            with patch.object(ep, "chunk_text", return_value=[]):
+            with patch.object(ep, "chunk_artifact_text", return_value=[]):
                 await ep.run_artifact_embedding(mock_session, aid)
 
     mock_emb.embed_batch.assert_not_called()

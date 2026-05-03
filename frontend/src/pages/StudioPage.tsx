@@ -181,10 +181,6 @@ export function StudioPage(): ReactElement {
     [],
   )
 
-  const headerTrailingCrumb = studioQ.data
-    ? { label: studioQ.data.name }
-    : undefined
-
   if (!sid) {
     void navigate('/studios', { replace: true })
     return <div className="min-h-screen bg-zinc-950" />
@@ -225,7 +221,6 @@ export function StudioPage(): ReactElement {
           studioId={sid}
           onStudioChange={handleStudioChange}
           onLogout={() => void handleLogout()}
-          trailingCrumb={headerTrailingCrumb}
         />
 
         {studioQ.isPending && <p className="text-zinc-500">Loading…</p>}

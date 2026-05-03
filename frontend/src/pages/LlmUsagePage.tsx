@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
@@ -23,29 +23,11 @@ export function LlmUsagePage(): ReactElement {
     retry: false,
   })
 
-  const [studioId, setStudioId] = useState<string | null>(null)
-
   useEffect(() => {
     if (profileQ.isError) {
       void navigate('/auth', { replace: true })
     }
   }, [profileQ.isError, navigate])
-
-  useEffect(() => {
-    const p = profileQ.data
-    if (!p?.studios.length) {
-      setStudioId(null)
-      return
-    }
-    setStudioId((cur) => {
-      if (cur && p.studios.some((s) => s.studio_id === cur)) return cur
-      return p.studios[0].studio_id
-    })
-  }, [profileQ.data])
-
-  const handleStudioChange = useCallback((sid: string) => {
-    setStudioId(sid)
-  }, [])
 
   const handleLogout = useCallback(async () => {
     try {
@@ -71,8 +53,6 @@ export function LlmUsagePage(): ReactElement {
       <div className="mx-auto max-w-[1240px]">
         <BuilderHomeHeader
           profile={profile}
-          studioId={studioId}
-          onStudioChange={handleStudioChange}
           onLogout={() => void handleLogout()}
         />
 

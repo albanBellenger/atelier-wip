@@ -75,12 +75,19 @@ def _in_memory_minio(monkeypatch: pytest.MonkeyPatch) -> None:
     async def remove(_self, object_name: str) -> None:
         store.pop(object_name, None)
 
+    async def copy_object(
+        _self: object, dest_object_name: str, src_object_name: str
+    ) -> None:
+        if src_object_name in store:
+            store[dest_object_name] = store[src_object_name]
+
     from app.storage.minio_storage import StorageClient
 
     monkeypatch.setattr(StorageClient, "ensure_bucket", ensure_bucket)
     monkeypatch.setattr(StorageClient, "put_bytes", put_bytes)
     monkeypatch.setattr(StorageClient, "get_bytes", get_bytes)
     monkeypatch.setattr(StorageClient, "remove", remove)
+    monkeypatch.setattr(StorageClient, "copy_object", copy_object)
 
 
 @pytest.fixture
@@ -212,6 +219,144 @@ async def test_studio_upload_forbidden_non_member(
         json={"name": "nope.md", "content": "# n"},
     )
     assert r403.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_delete_library_artifact_by_id_studio_admin(
+    client: AsyncClient,
+    db_session,
+    fake_embed: None,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token = await _register(client, sfx, "ownlib")
+    await _promote_tool_admin(db_session, f"ownlib-{sfx}@example.com")
+    client.cookies.set("atelier_token", token)
+    await client.put(
+        "/admin/config",
+        json={
+            "embedding_provider": "openai",
+            "embedding_model": "text-embedding-3-small",
+            "embedding_api_key": "sk-test",
+        },
+    )
+    cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
+    assert cr.status_code == 200
+    studio_id = cr.json()["id"]
+    st_md = await client.post(
+        f"/studios/{studio_id}/artifacts/md",
+        json={"name": "del.md", "content": "# d"},
+    )
+    assert st_md.status_code == 200
+    aid = st_md.json()["id"]
+
+    deleted = await client.delete(f"/artifacts/{aid}")
+    assert deleted.status_code == 204
+
+    lib = await client.get(f"/studios/{studio_id}/artifact-library")
+    assert all(r["id"] != aid for r in lib.json())
+
+
+@pytest.mark.asyncio
+async def test_delete_library_artifact_by_id_non_member_forbidden(
+    client: AsyncClient,
+    db_session,
+    fake_embed: None,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token = await _register(client, sfx, "ownlib2")
+    await _promote_tool_admin(db_session, f"ownlib2-{sfx}@example.com")
+    client.cookies.set("atelier_token", token)
+    await client.put(
+        "/admin/config",
+        json={
+            "embedding_provider": "openai",
+            "embedding_model": "text-embedding-3-small",
+            "embedding_api_key": "sk-test",
+        },
+    )
+    cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
+    studio_id = cr.json()["id"]
+    st_md = await client.post(
+        f"/studios/{studio_id}/artifacts/md",
+        json={"name": "x.md", "content": "# x"},
+    )
+    assert st_md.status_code == 200
+    aid = st_md.json()["id"]
+
+    other = await _register(client, sfx + "z", "str")
+    client.cookies.set("atelier_token", other)
+    forbidden = await client.delete(f"/artifacts/{aid}")
+    assert forbidden.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_patch_artifact_scope_studio_then_project_download_ok(
+    client: AsyncClient,
+    db_session,
+    fake_embed: None,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token = await _register(client, sfx, "scopemv")
+    await _promote_tool_admin(db_session, f"scopemv-{sfx}@example.com")
+    client.cookies.set("atelier_token", token)
+    await client.put(
+        "/admin/config",
+        json={
+            "embedding_provider": "openai",
+            "embedding_model": "text-embedding-3-small",
+            "embedding_api_key": "sk-test",
+        },
+    )
+    cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
+    studio_id = cr.json()["id"]
+    sw = await client.post(
+        f"/studios/{studio_id}/software",
+        json={"name": "SW", "description": None},
+    )
+    software_id = sw.json()["id"]
+    pr = await client.post(
+        f"/software/{software_id}/projects",
+        json={"name": "P1", "description": None},
+    )
+    project_id = pr.json()["id"]
+
+    st_md = await client.post(
+        f"/studios/{studio_id}/artifacts/md",
+        json={"name": "move-me.md", "content": "# move"},
+    )
+    assert st_md.status_code == 200
+    aid = st_md.json()["id"]
+
+    det1 = await client.get(f"/artifacts/{aid}")
+    assert det1.status_code == 200
+    body1 = det1.json()
+    assert body1["scope_level"] == "studio"
+    sid_ctx = body1["context_studio_id"]
+
+    pa = await client.patch(
+        f"/artifacts/{aid}/scope",
+        json={"scope_level": "software", "software_id": software_id},
+    )
+    assert pa.status_code == 200, pa.text
+    j = pa.json()
+    assert j["scope_level"] == "software"
+    assert j["context_studio_id"] == sid_ctx
+    assert j["context_software_id"] == software_id
+
+    dl = await client.get(f"/artifacts/{aid}/download")
+    assert dl.status_code == 200
+
+    pb = await client.patch(
+        f"/artifacts/{aid}/scope",
+        json={"scope_level": "project", "project_id": project_id},
+    )
+    assert pb.status_code == 200, pb.text
+    jp = pb.json()
+    assert jp["scope_level"] == "project"
+    assert jp["project_id"] == project_id
+
+    dl2 = await client.get(f"/artifacts/{aid}/download")
+    assert dl2.status_code == 200
 
 
 @pytest.mark.asyncio

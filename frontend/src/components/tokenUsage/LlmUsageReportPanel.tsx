@@ -17,8 +17,12 @@ import {
   YAxis,
 } from 'recharts'
 
-import { KNOWN_LLM_CALL_TYPES, llmCallTypeLabel } from '../../lib/llmCallTypeLabels'
+import { llmCallTypeLabel } from '../../lib/llmCallTypeLabels'
 import { deriveLlmUsageReportMode } from '../../lib/llmUsageReportMode'
+import {
+  type FilterPopoverKey,
+  LlmUsageFilterBar,
+} from './LlmUsageFilterBar'
 import {
   type MeResponse,
   type TokenUsageQueryParams,
@@ -339,6 +343,14 @@ export function LlmUsageReportPanel(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
 
+  const [openPopover, setOpenPopover] = useState<FilterPopoverKey | null>(null)
+  const [listSearch, setListSearch] = useState('')
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
+
+  useEffect(() => {
+    setListSearch('')
+  }, [openPopover])
+
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
@@ -435,181 +447,24 @@ export function LlmUsageReportPanel(props: {
         ) : null}
       </p>
 
-      <div className="grid gap-4 rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 text-sm lg:grid-cols-2">
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-zinc-500">Studio (multi)</span>
-          <select
-            multiple
-            className="min-h-[88px] w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs"
-            value={filters.studioIds}
-            onChange={(e) => {
-              const v = [...e.target.selectedOptions].map((o) => o.value)
-              updateFilters({ studioIds: v })
-            }}
-          >
-            {profile.studios.map((s) => (
-              <option key={s.studio_id} value={s.studio_id}>
-                {s.studio_name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-zinc-500">Software (multi)</span>
-          <select
-            multiple
-            className="min-h-[88px] w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs"
-            value={filters.softwareIds}
-            onChange={(e) => {
-              const v = [...e.target.selectedOptions].map((o) => o.value)
-              updateFilters({ softwareIds: v, projectIds: [], workOrderIds: [] })
-            }}
-          >
-            {softwareOptions.map((sw) => (
-              <option key={sw.id} value={sw.id}>
-                {sw.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-zinc-500">Project (multi)</span>
-          <select
-            multiple
-            disabled={filters.softwareIds.length === 0}
-            className="min-h-[88px] w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs disabled:opacity-50"
-            value={filters.projectIds}
-            onChange={(e) => {
-              const v = [...e.target.selectedOptions].map((o) => o.value)
-              updateFilters({ projectIds: v, workOrderIds: [] })
-            }}
-          >
-            {projectOptions.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-zinc-500">Work order (multi)</span>
-          <select
-            multiple
-            disabled={!primaryProjectId}
-            className="min-h-[88px] w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs disabled:opacity-50"
-            value={filters.workOrderIds}
-            onChange={(e) => {
-              const v = [...e.target.selectedOptions].map((o) => o.value)
-              updateFilters({ workOrderIds: v })
-            }}
-          >
-            {(workOrdersQ.data ?? []).map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.title}
-              </option>
-            ))}
-          </select>
-        </label>
-        {mode === 'studio' ? (
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-500">User (multi)</span>
-            <select
-              multiple
-              disabled={!membersQ.data}
-              className="min-h-[88px] w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs disabled:opacity-50"
-              value={filters.userIds}
-              onChange={(e) => {
-                const v = [...e.target.selectedOptions].map((o) => o.value)
-                updateFilters({ userIds: v })
-              }}
-            >
-              {(membersQ.data ?? []).map((m) => (
-                <option key={m.user_id} value={m.user_id}>
-                  {m.display_name || m.email}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : mode === 'admin' ? (
-          <label className="flex flex-col gap-1 lg:col-span-2">
-            <span className="text-xs text-zinc-500">
-              User IDs (comma or newline separated, optional)
-            </span>
-            <textarea
-              rows={3}
-              className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-xs"
-              value={filters.userIds.join(', ')}
-              onChange={(e) => {
-                const parts = e.target.value
-                  .split(/[\s,]+/)
-                  .map((x) => x.trim())
-                  .filter(Boolean)
-                updateFilters({ userIds: [...new Set(parts)] })
-              }}
-            />
-          </label>
-        ) : null}
-        <label className="flex flex-col gap-1 lg:col-span-2">
-          <span className="text-xs text-zinc-500">Call type (multi)</span>
-          <select
-            multiple
-            className="min-h-[72px] w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs"
-            value={filters.callTypes}
-            onChange={(e) => {
-              const v = [...e.target.selectedOptions].map((o) => o.value)
-              updateFilters({ callTypes: v })
-            }}
-          >
-            {KNOWN_LLM_CALL_TYPES.map((ct) => (
-              <option key={ct} value={ct}>
-                {llmCallTypeLabel(ct)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-zinc-500">Date from</span>
-          <input
-            type="date"
-            className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs"
-            value={filters.dateFrom}
-            onChange={(e) => updateFilters({ dateFrom: e.target.value })}
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-zinc-500">Date to</span>
-          <input
-            type="date"
-            className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs"
-            value={filters.dateTo}
-            onChange={(e) => updateFilters({ dateTo: e.target.value })}
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-zinc-500">Limit</span>
-          <input
-            type="number"
-            min={1}
-            max={5000}
-            className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs"
-            value={filters.limit}
-            onChange={(e) =>
-              updateFilters({ limit: Number(e.target.value) || 100 })
-            }
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-zinc-500">Offset</span>
-          <input
-            type="number"
-            min={0}
-            className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs"
-            value={filters.offset}
-            onChange={(e) =>
-              updateFilters({ offset: Number(e.target.value) || 0 })
-            }
-          />
-        </label>
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-1">
+        <LlmUsageFilterBar
+          openPopover={openPopover}
+          setOpenPopover={setOpenPopover}
+          listSearch={listSearch}
+          setListSearch={setListSearch}
+          mobileFiltersOpen={mobileFiltersOpen}
+          setMobileFiltersOpen={setMobileFiltersOpen}
+          profile={profile}
+          mode={mode}
+          filters={filters}
+          updateFilters={updateFilters}
+          softwareOptions={softwareOptions}
+          projectOptions={projectOptions}
+          workOrders={workOrdersQ.data ?? []}
+          members={membersQ.data}
+          primaryProjectId={primaryProjectId}
+        />
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -706,6 +561,39 @@ export function LlmUsageReportPanel(props: {
           </div>
         </>
       )}
+
+      <details className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 text-sm text-zinc-300">
+        <summary className="cursor-pointer select-none text-xs font-medium text-zinc-400 hover:text-zinc-200">
+          Advanced
+        </summary>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-zinc-500">Limit</span>
+            <input
+              type="number"
+              min={1}
+              max={5000}
+              className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs"
+              value={filters.limit}
+              onChange={(e) =>
+                updateFilters({ limit: Number(e.target.value) || 100 })
+              }
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-zinc-500">Offset</span>
+            <input
+              type="number"
+              min={0}
+              className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs"
+              value={filters.offset}
+              onChange={(e) =>
+                updateFilters({ offset: Number(e.target.value) || 0 })
+              }
+            />
+          </label>
+        </div>
+      </details>
     </div>
   )
 }

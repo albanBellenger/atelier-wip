@@ -1410,6 +1410,7 @@ export interface ArtifactItem {
   size_bytes: number
   uploaded_by: string | null
   created_at: string
+  chunking_strategy?: string | null
   embedding_status?: EmbeddingStatus | null
   embedded_at?: string | null
   chunk_count?: number | null
@@ -1430,11 +1431,14 @@ export interface ArtifactDetail {
   id: string
   project_id: string | null
   scope_level: ArtifactScopeLevel
+  context_studio_id: string
+  context_software_id: string | null
   name: string
   file_type: string
   size_bytes: number
   uploaded_by: string | null
   created_at: string
+  chunking_strategy?: string | null
   embedding_status: EmbeddingStatus | null
   embedded_at: string | null
   chunk_count: number | null
@@ -1457,6 +1461,57 @@ export async function getArtifactDetailById(
   artifactId: string,
 ): Promise<ArtifactDetail> {
   return request<ArtifactDetail>('GET', `/artifacts/${artifactId}`)
+}
+
+export interface ArtifactChunkingStrategiesResponse {
+  strategies: string[]
+}
+
+export async function listArtifactChunkingStrategies(): Promise<ArtifactChunkingStrategiesResponse> {
+  return request<ArtifactChunkingStrategiesResponse>(
+    'GET',
+    '/artifacts/chunking-strategies',
+  )
+}
+
+export async function deleteArtifactById(artifactId: string): Promise<void> {
+  return request<void>('DELETE', `/artifacts/${artifactId}`)
+}
+
+export async function reindexArtifactById(artifactId: string): Promise<void> {
+  return request<void>('POST', `/artifacts/${artifactId}/reindex`)
+}
+
+export async function reindexProjectArtifact(
+  projectId: string,
+  artifactId: string,
+): Promise<void> {
+  return request<void>(
+    'POST',
+    `/projects/${projectId}/artifacts/${artifactId}/reindex`,
+  )
+}
+
+export async function patchArtifactChunkingStrategy(
+  artifactId: string,
+  body: { chunking_strategy: string | null },
+): Promise<ArtifactDetail> {
+  return request<ArtifactDetail>(
+    'PATCH',
+    `/artifacts/${artifactId}/chunking-strategy`,
+    body,
+  )
+}
+
+export async function patchArtifactScope(
+  artifactId: string,
+  body: {
+    scope_level: ArtifactScopeLevel
+    software_id?: string | null
+    project_id?: string | null
+  },
+): Promise<ArtifactDetail> {
+  return request<ArtifactDetail>('PATCH', `/artifacts/${artifactId}/scope`, body)
 }
 
 export async function uploadArtifact(

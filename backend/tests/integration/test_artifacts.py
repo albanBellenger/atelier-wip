@@ -420,3 +420,254 @@ async def test_cross_studio_viewer_can_download_artifact(
     client.cookies.set("atelier_token", stranger)
     forbidden = await client.get(f"/projects/{pid_b}/artifacts/{aid}/download")
     assert forbidden.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_delete_project_artifact_studio_member_forbidden(
+    client: AsyncClient,
+    db_session,
+    fake_embed: None,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, studio_id, _software_id, pid = await _studio_project(client, sfx)
+    await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
+    client.cookies.set("atelier_token", token)
+    await client.put(
+        "/admin/config",
+        json={
+            "embedding_provider": "openai",
+            "embedding_model": "text-embedding-3-small",
+            "embedding_api_key": "sk-test",
+        },
+    )
+    up = await client.post(
+        f"/projects/{pid}/artifacts/md",
+        json={"name": "keep.md", "content": "# x"},
+    )
+    assert up.status_code == 200
+    aid = up.json()["id"]
+
+    member_lbl = "memberdel"
+    member_token = await _register(client, sfx, member_lbl)
+    client.cookies.set("atelier_token", token)
+    add_m = await client.post(
+        f"/studios/{studio_id}/members",
+        json={"email": f"{member_lbl}-{sfx}@example.com", "role": "studio_member"},
+    )
+    assert add_m.status_code == 200, add_m.text
+    client.cookies.set("atelier_token", member_token)
+    forbidden = await client.delete(f"/projects/{pid}/artifacts/{aid}")
+    assert forbidden.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_cross_studio_viewer_cannot_delete_or_reindex_project_artifact(
+    client: AsyncClient,
+    db_session,
+    fake_embed: None,
+) -> None:
+    import uuid as u
+
+    from sqlalchemy import select
+
+    from app.models import CrossStudioAccess, User
+
+    sfx = u.uuid4().hex[:8]
+    token_b = await _register(client, sfx, "ownerbd")
+    client.cookies.set("atelier_token", token_b)
+    sb = (await client.post("/studios", json={"name": f"SBD{sfx}"})).json()
+    studio_b_id = sb["id"]
+    sw_b = (
+        await client.post(
+            f"/studios/{studio_b_id}/software",
+            json={"name": "sw"},
+        )
+    ).json()
+    software_b_id = sw_b["id"]
+    pid_b = (
+        await client.post(
+            f"/software/{software_b_id}/projects",
+            json={"name": "P"},
+        )
+    ).json()["id"]
+
+    await _promote_tool_admin(db_session, f"ownerbd-{sfx}@example.com")
+    client.cookies.set("atelier_token", token_b)
+    await client.put(
+        "/admin/config",
+        json={
+            "embedding_provider": "openai",
+            "embedding_model": "text-embedding-3-small",
+            "embedding_api_key": "sk-test",
+        },
+    )
+    up = await client.post(
+        f"/projects/{pid_b}/artifacts/md",
+        json={"name": "v.md", "content": "# v"},
+    )
+    assert up.status_code == 200
+    aid = up.json()["id"]
+
+    token_a = await _register(client, sfx, "ownerad")
+    client.cookies.set("atelier_token", token_a)
+    sa = (await client.post("/studios", json={"name": f"SAD{sfx}"})).json()
+    studio_a_id = sa["id"]
+    me_a = (await client.get("/auth/me")).json()
+    user_a_id = u.UUID(me_a["user"]["id"])
+
+    r_b = await db_session.execute(
+        select(User).where(User.email == f"ownerbd-{sfx}@example.com")
+    )
+    user_b = r_b.scalar_one()
+
+    db_session.add(
+        CrossStudioAccess(
+            id=u.uuid4(),
+            requesting_studio_id=u.UUID(studio_a_id),
+            target_software_id=u.UUID(software_b_id),
+            requested_by=user_a_id,
+            approved_by=user_b.id,
+            access_level="viewer",
+            status="approved",
+        )
+    )
+    await db_session.flush()
+
+    client.cookies.set("atelier_token", token_a)
+    dl = await client.get(f"/projects/{pid_b}/artifacts/{aid}/download")
+    assert dl.status_code == 200
+    del_r = await client.delete(f"/projects/{pid_b}/artifacts/{aid}")
+    assert del_r.status_code == 403
+    re_idx = await client.post(f"/projects/{pid_b}/artifacts/{aid}/reindex")
+    assert re_idx.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_reindex_project_artifact_studio_member_invokes_embed(
+    client: AsyncClient,
+    db_session,
+    fake_embed: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    called: list[object] = []
+
+    async def track_embed(_session: object, artifact_id: object) -> None:
+        called.append(artifact_id)
+
+    sfx = uuid.uuid4().hex[:8]
+    token, studio_id, _sfid, pid = await _studio_project(client, sfx)
+    await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
+    client.cookies.set("atelier_token", token)
+    await client.put(
+        "/admin/config",
+        json={
+            "embedding_provider": "openai",
+            "embedding_model": "text-embedding-3-small",
+            "embedding_api_key": "sk-test",
+        },
+    )
+    up = await client.post(
+        f"/projects/{pid}/artifacts/md",
+        json={"name": "r.md", "content": "# r"},
+    )
+    assert up.status_code == 200
+    aid = up.json()["id"]
+
+    monkeypatch.setattr(
+        "app.services.embedding_pipeline.embed_artifact_in_upload_session",
+        track_embed,
+    )
+
+    member_lbl = "reidxmem"
+    member_token = await _register(client, sfx, member_lbl)
+    client.cookies.set("atelier_token", token)
+    add_m = await client.post(
+        f"/studios/{studio_id}/members",
+        json={"email": f"{member_lbl}-{sfx}@example.com", "role": "studio_member"},
+    )
+    assert add_m.status_code == 200, add_m.text
+    client.cookies.set("atelier_token", member_token)
+    r = await client.post(f"/projects/{pid}/artifacts/{aid}/reindex")
+    assert r.status_code == 204
+    assert len(called) == 1
+
+
+@pytest.mark.asyncio
+async def test_chunking_strategy_get_requires_auth(client: AsyncClient) -> None:
+    r = await client.get("/artifacts/chunking-strategies")
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_patch_chunking_strategy_studio_member_forbidden(
+    client: AsyncClient,
+    db_session,
+    fake_embed: None,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, studio_id, _sfid, pid = await _studio_project(client, sfx)
+    await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
+    client.cookies.set("atelier_token", token)
+    await client.put(
+        "/admin/config",
+        json={
+            "embedding_provider": "openai",
+            "embedding_model": "text-embedding-3-small",
+            "embedding_api_key": "sk-test",
+        },
+    )
+    up = await client.post(
+        f"/projects/{pid}/artifacts/md",
+        json={"name": "c.md", "content": "# c"},
+    )
+    assert up.status_code == 200
+    aid = up.json()["id"]
+
+    member_lbl = "chunkmem"
+    member_token = await _register(client, sfx, member_lbl)
+    client.cookies.set("atelier_token", token)
+    add_m = await client.post(
+        f"/studios/{studio_id}/members",
+        json={"email": f"{member_lbl}-{sfx}@example.com", "role": "studio_member"},
+    )
+    assert add_m.status_code == 200, add_m.text
+    client.cookies.set("atelier_token", member_token)
+    bad = await client.patch(
+        f"/artifacts/{aid}/chunking-strategy",
+        json={"chunking_strategy": "sentence"},
+    )
+    assert bad.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_patch_chunking_strategy_owner_ok(
+    client: AsyncClient,
+    db_session,
+    fake_embed: None,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _sid, _sfid, pid = await _studio_project(client, sfx)
+    await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
+    client.cookies.set("atelier_token", token)
+    await client.put(
+        "/admin/config",
+        json={
+            "embedding_provider": "openai",
+            "embedding_model": "text-embedding-3-small",
+            "embedding_api_key": "sk-test",
+        },
+    )
+    up = await client.post(
+        f"/projects/{pid}/artifacts/md",
+        json={"name": "c2.md", "content": "# c"},
+    )
+    assert up.status_code == 200
+    aid = up.json()["id"]
+
+    ok = await client.patch(
+        f"/artifacts/{aid}/chunking-strategy",
+        json={"chunking_strategy": "sentence"},
+    )
+    assert ok.status_code == 200, ok.text
+    body = ok.json()
+    assert body["chunking_strategy"] == "sentence"

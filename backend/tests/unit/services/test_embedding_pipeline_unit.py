@@ -70,6 +70,7 @@ async def test_run_artifact_embedding_inserts_chunks_md() -> None:
     row = types.SimpleNamespace(
         file_type="md",
         storage_path="p",
+        chunking_strategy=None,
     )
     storage = MagicMock()
     storage.get_bytes = AsyncMock(
@@ -87,7 +88,7 @@ async def test_run_artifact_embedding_inserts_chunks_md() -> None:
 
     with patch.object(ep, "get_storage_client", return_value=storage):
         with patch.object(ep, "EmbeddingService", return_value=mock_emb):
-            with patch.object(ep, "chunk_text", return_value=["a", "b"]):
+            with patch.object(ep, "chunk_artifact_text", return_value=["a", "b"]):
                 await ep.run_artifact_embedding(mock_session, aid)
 
     storage.get_bytes.assert_called_once_with("p")
@@ -106,7 +107,7 @@ async def test_run_artifact_embedding_empty_chunks_flushes() -> None:
         chunk_count=None,
         embedding_status="pending",
         embedded_at=None,
-        embedding_error=None,
+        chunking_strategy=None,
     )
     storage = MagicMock()
     storage.get_bytes = AsyncMock(return_value=b"x")
@@ -118,7 +119,7 @@ async def test_run_artifact_embedding_empty_chunks_flushes() -> None:
     mock_emb.embed_batch = AsyncMock()
 
     with patch.object(ep, "get_storage_client", return_value=storage):
-        with patch.object(ep, "chunk_text", return_value=[]):
+        with patch.object(ep, "chunk_artifact_text", return_value=[]):
             with patch.object(ep, "EmbeddingService", return_value=mock_emb):
                 await ep.run_artifact_embedding(mock_session, aid)
 

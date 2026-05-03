@@ -155,8 +155,14 @@ All routes: `require_project_member`.
 
 | | Atelier admin | Studio owner | Builder | External editor | Viewer (home) | Viewer (cross-studio) |
 |--|:---:|:---:|:---:|:---:|:---:|:---:|
-| R list / download | Y | Y | Y | Y | Y | Y |
-| C / D | Y | Y | Y | Y | N | N |
+| R list / download / detail metadata | Y | Y | Y | Y | Y | Y |
+| C upload / create | Y | Y | Y | Y | N | N |
+| D delete (all scopes: project, studio library, software library) | Y | Y | N | N | N | N |
+| Re-index (`POST …/reindex`) | Y | Y | Y | Y | N | N |
+
+*Delete* requires **studio admin** on the owning studio (`require_project_studio_admin` on `/projects/{project_id}/artifacts/...`, or equivalent checks on `DELETE /artifacts/{id}`). *Re-index* requires **studio editor** on the owning studio (same visibility as upload; not viewers).
+
+*Enforced by:* [`deps.py`](../backend/app/deps.py) (`ensure_user_can_download_artifact`, `ensure_user_can_delete_artifact`, `ensure_user_can_reindex_artifact`) and artifact routers in [`artifacts.py`](../backend/app/routers/artifacts.py), [`artifacts_by_id.py`](../backend/app/routers/artifacts_by_id.py). Chunking strategy updates use the same studio-admin check as delete (`PATCH /artifacts/{id}/chunking-strategy`).
 
 ---
 

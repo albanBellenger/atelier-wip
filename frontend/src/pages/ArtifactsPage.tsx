@@ -317,7 +317,7 @@ export function ArtifactsPage(): ReactElement {
                         >
                           Download
                         </button>
-                        {access.isStudioEditor ? (
+                        {access.isStudioAdmin ? (
                           <button
                             type="button"
                             className="text-red-400 hover:underline disabled:opacity-40"
@@ -346,6 +346,9 @@ export function ArtifactsPage(): ReactElement {
         projectId={pid}
         artifactId={drawerArtifactId}
         canSeeChunkPreviews={canSeeChunkPreviews}
+        canReindexArtifact={access.isStudioEditor}
+        canDeleteArtifact={access.isStudioAdmin}
+        canConfigureChunking={access.isStudioAdmin}
       />
     </div>
   )

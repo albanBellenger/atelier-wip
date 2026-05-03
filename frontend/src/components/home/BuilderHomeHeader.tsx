@@ -19,7 +19,8 @@ export type BuilderHomeHeaderProjectSwitcher = {
 }
 
 export type BuilderHomeHeaderTrailingCrumb = {
-  label: string
+  /** Software segment after studio; omit when the page has no software crumb (e.g. studio-only or project under studio). */
+  label?: string
   /** When present and ``softwareOptions`` has 2+ items, the crumb is a switcher (same pattern as studio). */
   softwareSwitcher?: BuilderHomeHeaderSoftwareSwitcher
   /** Optional segment after software: ``Studio / Software / {projectLabel}``. */
@@ -30,8 +31,9 @@ export type BuilderHomeHeaderTrailingCrumb = {
 
 export type BuilderHomeHeaderProps = {
   profile: MeResponse
-  studioId: string | null
-  onStudioChange: (studioId: string) => void
+  /** When ``onStudioChange`` is omitted, the first studio is shown as a static label (no switcher). */
+  studioId?: string | null
+  onStudioChange?: (studioId: string) => void
   onLogout: () => void
   /** Optional third segment after studio (e.g. software name on the software page). */
   trailingCrumb?: BuilderHomeHeaderTrailingCrumb
@@ -47,20 +49,30 @@ export function BuilderHomeHeader({
   const [studioOpen, setStudioOpen] = useState(false)
   const [softwareOpen, setSoftwareOpen] = useState(false)
   const [projectOpen, setProjectOpen] = useState(false)
-  const current = profile.studios.find((s) => s.studio_id === studioId)
+  const showStudioSwitcher = Boolean(onStudioChange)
+  const effectiveStudioId =
+    studioId ??
+    profile.studios[0]?.studio_id ??
+    null
+  const current = profile.studios.find((s) => s.studio_id === effectiveStudioId)
 
   const softwareSwitcher = trailingCrumb?.softwareSwitcher
   const showSoftwareSwitcher = Boolean(
     softwareSwitcher &&
       softwareSwitcher.softwareOptions.length > 1,
   )
+  const trailingSoftwareLabel = trailingCrumb?.label?.trim() ?? ''
+  const showSoftwareCrumbRow = Boolean(
+    trailingCrumb &&
+      (showSoftwareSwitcher || trailingSoftwareLabel.length > 0),
+  )
   const softwareButtonLabel = (() => {
     if (!trailingCrumb) return ''
-    if (!softwareSwitcher || !showSoftwareSwitcher) return trailingCrumb.label
+    if (!softwareSwitcher || !showSoftwareSwitcher) return trailingSoftwareLabel
     return (
       softwareSwitcher.softwareOptions.find(
         (o) => o.id === softwareSwitcher.currentSoftwareId,
-      )?.name ?? trailingCrumb.label
+      )?.name ?? trailingSoftwareLabel
     )
   })()
 
@@ -114,34 +126,40 @@ export function BuilderHomeHeader({
           </Link>
           <span className="shrink-0 text-zinc-700">/</span>
           <div className="relative min-w-0">
-            <button
-              type="button"
-              onClick={() => setStudioOpen((o) => !o)}
-              onBlur={() => setTimeout(() => setStudioOpen(false), 120)}
-              disabled={profile.studios.length === 0}
-              className="group flex max-w-full items-center gap-2 rounded-md border border-transparent px-2 py-1 text-left text-[15px] font-semibold text-zinc-100 hover:border-zinc-800 hover:bg-zinc-900/60 disabled:opacity-50"
-            >
-              <span className="truncate">
+            {showStudioSwitcher ? (
+              <button
+                type="button"
+                onClick={() => setStudioOpen((o) => !o)}
+                onBlur={() => setTimeout(() => setStudioOpen(false), 120)}
+                disabled={profile.studios.length === 0}
+                className="group flex max-w-full items-center gap-2 rounded-md border border-transparent px-2 py-1 text-left text-[15px] font-semibold text-zinc-100 hover:border-zinc-800 hover:bg-zinc-900/60 disabled:opacity-50"
+              >
+                <span className="truncate">
+                  {current?.studio_name ?? 'No studio'}
+                </span>
+                <svg
+                  width="10"
+                  height="10"
+                  viewBox="0 0 10 10"
+                  fill="none"
+                  className="shrink-0 text-zinc-500 group-hover:text-zinc-300"
+                  aria-hidden
+                >
+                  <path
+                    d="M2 4l3 3 3-3"
+                    stroke="currentColor"
+                    strokeWidth="1.3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+            ) : (
+              <span className="block max-w-full truncate px-2 py-1 text-[15px] font-semibold text-zinc-100">
                 {current?.studio_name ?? 'No studio'}
               </span>
-              <svg
-                width="10"
-                height="10"
-                viewBox="0 0 10 10"
-                fill="none"
-                className="shrink-0 text-zinc-500 group-hover:text-zinc-300"
-                aria-hidden
-              >
-                <path
-                  d="M2 4l3 3 3-3"
-                  stroke="currentColor"
-                  strokeWidth="1.3"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
-            {studioOpen && profile.studios.length > 0 ? (
+            )}
+            {showStudioSwitcher && studioOpen && profile.studios.length > 0 ? (
               <div className="absolute left-0 top-[calc(100%+4px)] z-30 max-h-72 w-72 overflow-y-auto overflow-x-hidden rounded-lg border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/40">
                 <div className="border-b border-zinc-800/80 px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-zinc-500">
                   Switch studio
@@ -152,14 +170,14 @@ export function BuilderHomeHeader({
                       <button
                         type="button"
                         onMouseDown={() => {
-                          onStudioChange(s.studio_id)
+                          onStudioChange?.(s.studio_id)
                           setStudioOpen(false)
                         }}
                         aria-current={
-                          s.studio_id === studioId ? 'true' : undefined
+                          s.studio_id === effectiveStudioId ? 'true' : undefined
                         }
                         className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-zinc-900 ${
-                          s.studio_id === studioId
+                          s.studio_id === effectiveStudioId
                             ? 'bg-zinc-900/70 text-zinc-100'
                             : 'text-zinc-300'
                         }`}
@@ -171,7 +189,7 @@ export function BuilderHomeHeader({
                           <span className="text-[10px] uppercase tracking-wider text-zinc-500">
                             {s.role.replace('_', ' ')}
                           </span>
-                          {s.studio_id === studioId ? (
+                          {s.studio_id === effectiveStudioId ? (
                             <span
                               className="h-2 w-2 shrink-0 rounded-full bg-violet-500"
                               aria-hidden
@@ -195,83 +213,89 @@ export function BuilderHomeHeader({
           </div>
           {trailingCrumb ? (
             <>
-              <span className="shrink-0 text-zinc-700">/</span>
-              {showSoftwareSwitcher && softwareSwitcher ? (
-                <div className="relative min-w-0">
-                  <button
-                    type="button"
-                    onClick={() => setSoftwareOpen((o) => !o)}
-                    onBlur={() =>
-                      setTimeout(() => setSoftwareOpen(false), 120)
-                    }
-                    className="group flex max-w-full items-center gap-2 rounded-md border border-transparent px-2 py-1 text-left text-[15px] font-semibold text-zinc-100 hover:border-zinc-800 hover:bg-zinc-900/60"
-                    title={softwareButtonLabel}
-                  >
-                    <span className="truncate">{softwareButtonLabel}</span>
-                    <svg
-                      width="10"
-                      height="10"
-                      viewBox="0 0 10 10"
-                      fill="none"
-                      className="shrink-0 text-zinc-500 group-hover:text-zinc-300"
-                      aria-hidden
-                    >
-                      <path
-                        d="M2 4l3 3 3-3"
-                        stroke="currentColor"
-                        strokeWidth="1.3"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </button>
-                  {softwareOpen ? (
-                    <div className="absolute left-0 top-[calc(100%+4px)] z-30 max-h-72 w-72 overflow-y-auto overflow-x-hidden rounded-lg border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/40">
-                      <div className="border-b border-zinc-800/80 px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-zinc-500">
-                        Switch software
-                      </div>
-                      <ul className="py-1">
-                        {softwareSwitcher.softwareOptions.map((sw) => (
-                          <li key={sw.id}>
-                            <button
-                              type="button"
-                              onMouseDown={() => {
-                                softwareSwitcher.onSoftwareSelect(sw.id)
-                                setSoftwareOpen(false)
-                              }}
-                              aria-current={
-                                sw.id === softwareSwitcher.currentSoftwareId
-                                  ? 'true'
-                                  : undefined
-                              }
-                              className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-zinc-900 ${
-                                sw.id === softwareSwitcher.currentSoftwareId
-                                  ? 'bg-zinc-900/70 text-zinc-100'
-                                  : 'text-zinc-300'
-                              }`}
-                            >
-                              <span className="min-w-0 truncate">{sw.name}</span>
-                              {sw.id === softwareSwitcher.currentSoftwareId ? (
-                                <span
-                                  className="h-2 w-2 shrink-0 rounded-full bg-violet-500"
-                                  aria-hidden
-                                />
-                              ) : null}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
+              {showSoftwareCrumbRow ? (
+                <>
+                  <span className="shrink-0 text-zinc-700">/</span>
+                  {showSoftwareSwitcher && softwareSwitcher ? (
+                    <div className="relative min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => setSoftwareOpen((o) => !o)}
+                        onBlur={() =>
+                          setTimeout(() => setSoftwareOpen(false), 120)
+                        }
+                        className="group flex max-w-full items-center gap-2 rounded-md border border-transparent px-2 py-1 text-left text-[15px] font-semibold text-zinc-100 hover:border-zinc-800 hover:bg-zinc-900/60"
+                        title={softwareButtonLabel}
+                      >
+                        <span className="truncate">{softwareButtonLabel}</span>
+                        <svg
+                          width="10"
+                          height="10"
+                          viewBox="0 0 10 10"
+                          fill="none"
+                          className="shrink-0 text-zinc-500 group-hover:text-zinc-300"
+                          aria-hidden
+                        >
+                          <path
+                            d="M2 4l3 3 3-3"
+                            stroke="currentColor"
+                            strokeWidth="1.3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </button>
+                      {softwareOpen ? (
+                        <div className="absolute left-0 top-[calc(100%+4px)] z-30 max-h-72 w-72 overflow-y-auto overflow-x-hidden rounded-lg border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/40">
+                          <div className="border-b border-zinc-800/80 px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-zinc-500">
+                            Switch software
+                          </div>
+                          <ul className="py-1">
+                            {softwareSwitcher.softwareOptions.map((sw) => (
+                              <li key={sw.id}>
+                                <button
+                                  type="button"
+                                  onMouseDown={() => {
+                                    softwareSwitcher.onSoftwareSelect(sw.id)
+                                    setSoftwareOpen(false)
+                                  }}
+                                  aria-current={
+                                    sw.id === softwareSwitcher.currentSoftwareId
+                                      ? 'true'
+                                      : undefined
+                                  }
+                                  className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-zinc-900 ${
+                                    sw.id === softwareSwitcher.currentSoftwareId
+                                      ? 'bg-zinc-900/70 text-zinc-100'
+                                      : 'text-zinc-300'
+                                  }`}
+                                >
+                                  <span className="min-w-0 truncate">
+                                    {sw.name}
+                                  </span>
+                                  {sw.id === softwareSwitcher.currentSoftwareId ? (
+                                    <span
+                                      className="h-2 w-2 shrink-0 rounded-full bg-violet-500"
+                                      aria-hidden
+                                    />
+                                  ) : null}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
-                </div>
-              ) : (
-                <span
-                  className="min-w-0 truncate text-[15px] font-semibold tracking-tight text-zinc-100"
-                  title={trailingCrumb.label}
-                >
-                  {trailingCrumb.label}
-                </span>
-              )}
+                  ) : (
+                    <span
+                      className="min-w-0 truncate text-[15px] font-semibold tracking-tight text-zinc-100"
+                      title={trailingSoftwareLabel}
+                    >
+                      {trailingSoftwareLabel}
+                    </span>
+                  )}
+                </>
+              ) : null}
               {trailingCrumb.projectLabel &&
               trailingCrumb.projectLabel.trim().length > 0 ? (
                 <>

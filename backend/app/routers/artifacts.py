@@ -18,9 +18,11 @@ import structlog
 from app.database import get_db
 from app.deps import (
     ProjectAccess,
+    ensure_user_can_reindex_artifact,
     get_project_access,
     get_project_access_artifact_download,
     require_project_member,
+    require_project_studio_admin,
     user_can_view_artifact_chunk_previews,
 )
 from app.exceptions import ApiError
@@ -194,12 +196,32 @@ async def download_artifact(
     )
 
 
+@router.post("/{artifact_id}/reindex", status_code=204)
+async def reindex_project_artifact(
+    project_id: UUID,
+    artifact_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    pa: ProjectAccess = Depends(require_project_member),
+) -> Response:
+    if pa.project.id != project_id:
+        raise ApiError(
+            status_code=404,
+            code="NOT_FOUND",
+            message="Project not found.",
+        )
+    svc = ArtifactService(session)
+    art = await svc.get_in_project(project_id, artifact_id)
+    await ensure_user_can_reindex_artifact(session, pa.studio_access.user, art)
+    await embed_pipeline.embed_artifact_in_upload_session(session, art.id)
+    return Response(status_code=204)
+
+
 @router.delete("/{artifact_id}", status_code=204)
 async def delete_artifact(
     project_id: UUID,
     artifact_id: UUID,
     session: AsyncSession = Depends(get_db),
-    pa: ProjectAccess = Depends(require_project_member),
+    pa: ProjectAccess = Depends(require_project_studio_admin),
 ) -> Response:
     if pa.project.id != project_id:
         raise ApiError(

@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import TokenUsage
+from tests.integration.test_work_orders import _studio_project_with_sections
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -204,3 +205,108 @@ async def test_token_usage_scope_member_studio_admin_tool_admin_csv(
         "/me/token-usage", params={"studio_id": studio_a, "limit": 5000}
     )
     assert me_ta_studio.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_me_token_usage_project_and_work_order_filters_and_404s(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """Exercise project_id / work_order_id validation and filtering on /me/token-usage."""
+    sfx = uuid.uuid4().hex[:8]
+    (
+        _token_admin,
+        studio_id,
+        software_id,
+        project_id,
+        section_a,
+        _section_b,
+    ) = await _studio_project_with_sections(client, sfx)
+
+    token_member = await _register(client, sfx, "pw_member")
+    client.cookies.set("atelier_token", _token_admin)
+    await client.post(
+        f"/studios/{studio_id}/members",
+        json={"email": f"pw_member-{sfx}@example.com", "role": "studio_member"},
+    )
+
+    client.cookies.set("atelier_token", token_member)
+    wo_resp = await client.post(
+        f"/projects/{project_id}/work-orders",
+        json={
+            "title": "WO token filter",
+            "description": "d",
+            "status": "backlog",
+            "section_ids": [section_a],
+        },
+    )
+    assert wo_resp.status_code == 200, wo_resp.text
+    work_order_id = wo_resp.json()["id"]
+
+    uid = (await client.get("/auth/me")).json()["user"]["id"]
+
+    db_session.add_all(
+        [
+            TokenUsage(
+                studio_id=uuid.UUID(studio_id),
+                software_id=uuid.UUID(software_id),
+                project_id=uuid.UUID(project_id),
+                work_order_id=None,
+                user_id=uuid.UUID(uid),
+                call_type="chat",
+                model="gpt-test",
+                input_tokens=7,
+                output_tokens=8,
+                estimated_cost_usd=Decimal("0.010000"),
+            ),
+            TokenUsage(
+                studio_id=uuid.UUID(studio_id),
+                software_id=uuid.UUID(software_id),
+                project_id=uuid.UUID(project_id),
+                work_order_id=uuid.UUID(work_order_id),
+                user_id=uuid.UUID(uid),
+                call_type="thread",
+                model="gpt-test",
+                input_tokens=3,
+                output_tokens=4,
+                estimated_cost_usd=Decimal("0.005000"),
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    by_project = await client.get(
+        "/me/token-usage",
+        params={"project_id": project_id, "limit": 5000},
+    )
+    assert by_project.status_code == 200
+    assert len(by_project.json()["rows"]) == 2
+
+    by_wo = await client.get(
+        "/me/token-usage",
+        params={"work_order_id": work_order_id, "limit": 5000},
+    )
+    assert by_wo.status_code == 200
+    assert len(by_wo.json()["rows"]) == 1
+    assert by_wo.json()["rows"][0]["call_type"] == "thread"
+
+    nf_proj = await client.get(
+        "/me/token-usage",
+        params={"project_id": str(uuid.uuid4()), "limit": 5000},
+    )
+    assert nf_proj.status_code == 404
+
+    nf_wo = await client.get(
+        "/me/token-usage",
+        params={"work_order_id": str(uuid.uuid4()), "limit": 5000},
+    )
+    assert nf_wo.status_code == 404
+
+    csv_proj = await client.get(
+        "/me/token-usage",
+        params={"project_id": project_id, "limit": 5000},
+        headers={"Accept": "text/csv"},
+    )
+    assert csv_proj.status_code == 200
+    assert "text/csv" in (csv_proj.headers.get("content-type") or "").lower()
+    assert csv_proj.text.count("\n") >= 3

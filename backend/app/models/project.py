@@ -133,6 +133,7 @@ class Artifact(Base):
     extracted_char_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     chunk_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     embedding_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    chunking_strategy: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     project = relationship("Project", back_populates="artifacts")
     library_studio = relationship("Studio", foreign_keys=[library_studio_id])

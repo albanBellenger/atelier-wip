@@ -20,11 +20,16 @@ class ArtifactDetailResponse(BaseModel):
     id: UUID
     project_id: UUID | None = None
     scope_level: ArtifactScopeLevel = "project"
+    """Owning studio for this row (for scope changes and navigation)."""
+    context_studio_id: UUID
+    """Parent software when scope is software or project; null for studio-wide rows."""
+    context_software_id: UUID | None = None
     name: str
     file_type: str
     size_bytes: int
     uploaded_by: UUID | None
     created_at: datetime
+    chunking_strategy: str | None = None
     embedding_status: EmbeddingStatusLiteral | None = None
     embedded_at: datetime | None = None
     chunk_count: int | None = None
@@ -42,6 +47,7 @@ class ArtifactResponse(BaseModel):
     size_bytes: int
     uploaded_by: UUID | None
     created_at: datetime
+    chunking_strategy: str | None = None
     embedding_status: EmbeddingStatusLiteral | None = None
     embedded_at: datetime | None = None
     chunk_count: int | None = None
@@ -68,6 +74,7 @@ class SoftwareArtifactRowOut(BaseModel):
     uploaded_by_display: str | None
     created_at: datetime
     scope_level: ArtifactScopeLevel = "project"
+    chunking_strategy: str | None = None
     excluded_at_software: datetime | None = None
     excluded_at_project: datetime | None = None
     embedding_status: EmbeddingStatusLiteral | None = None
@@ -86,6 +93,22 @@ class StudioArtifactRowOut(SoftwareArtifactRowOut):
 class ArtifactExclusionPatch(BaseModel):
     artifact_id: UUID
     excluded: bool
+
+
+class ChunkingStrategiesResponse(BaseModel):
+    strategies: list[str]
+
+
+class ArtifactChunkingStrategyPatch(BaseModel):
+    chunking_strategy: str | None = Field(None, max_length=32)
+
+
+class ArtifactScopePatch(BaseModel):
+    """Move an artifact between studio, software, and project library scopes (same studio only)."""
+
+    scope_level: Literal["studio", "software", "project"]
+    software_id: UUID | None = None
+    project_id: UUID | None = None
 
 
 class ArtifactExclusionPatchResult(BaseModel):

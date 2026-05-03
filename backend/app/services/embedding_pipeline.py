@@ -14,6 +14,7 @@ from app.database import async_session_factory
 from app.models import Artifact, ArtifactChunk, Section, SectionChunk
 from app.services.document_extract import extract_md_text, extract_pdf_text
 from app.services.embedding_service import EmbeddingService, embedding_configured
+from app.services.artifact_chunking import chunk_artifact_text
 from app.services.text_chunking import chunk_text
 from app.storage.minio_storage import get_storage_client
 
@@ -84,7 +85,7 @@ async def run_artifact_embedding(session: AsyncSession, artifact_id: uuid.UUID) 
     else:
         text = extract_md_text(raw)
     extracted_len = len(text)
-    chunks = chunk_text(text)
+    chunks = chunk_artifact_text(text, row.chunking_strategy)
     await session.execute(delete(ArtifactChunk).where(ArtifactChunk.artifact_id == artifact_id))
     row.extracted_char_count = extracted_len
     if not chunks:

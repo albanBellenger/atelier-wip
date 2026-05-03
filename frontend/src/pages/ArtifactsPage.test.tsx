@@ -65,11 +65,14 @@ const detail: api.ArtifactDetail = {
   id: 'a-ok',
   project_id: 'p1',
   scope_level: 'project',
+  context_studio_id: 's1',
+  context_software_id: 'sw1',
   name: 'Ready.md',
   file_type: 'md',
   size_bytes: 80,
   uploaded_by: 'u1',
   created_at: '2026-01-03T00:00:00Z',
+  chunking_strategy: null,
   embedding_status: 'embedded',
   embedded_at: '2026-01-03T01:00:00Z',
   chunk_count: 2,
@@ -96,6 +99,31 @@ function renderArtifacts(path = '/studios/s1/software/sw1/projects/p1/artifacts'
 }
 
 describe('ArtifactsPage', () => {
+  it('studio member does not see Delete on artifact list', async () => {
+    vi.spyOn(api, 'me').mockResolvedValue(editorMe)
+    vi.spyOn(api, 'listArtifacts').mockResolvedValue([embeddedRow])
+
+    renderArtifacts()
+
+    await screen.findByText('Ready.md')
+    expect(screen.queryByRole('button', { name: /^delete$/i })).not.toBeInTheDocument()
+  })
+
+  it('studio admin sees Delete on artifact list', async () => {
+    const adminMe: api.MeResponse = {
+      user: editorMe.user,
+      studios: [{ studio_id: 's1', studio_name: 'S', role: 'studio_admin' }],
+      cross_studio_grants: [],
+    }
+    vi.spyOn(api, 'me').mockResolvedValue(adminMe)
+    vi.spyOn(api, 'listArtifacts').mockResolvedValue([embeddedRow])
+
+    renderArtifacts()
+
+    await screen.findByText('Ready.md')
+    expect(screen.getByRole('button', { name: /^delete$/i })).toBeInTheDocument()
+  })
+
   it('shows Indexing and Indexed badges for mixed embedding status rows', async () => {
     vi.spyOn(api, 'me').mockResolvedValue(editorMe)
     vi.spyOn(api, 'listArtifacts').mockResolvedValue([pendingRow, embeddedRow])
