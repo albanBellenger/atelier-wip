@@ -12,7 +12,7 @@ from app.deps_mcp import McpAuth, require_mcp_api_key, require_mcp_editor
 from app.exceptions import ApiError
 from app.models import Project, TokenUsage, WorkOrderNote
 from app.services.mcp_work_order_service import McpWorkOrderService
-from app.services.work_order_service import VALID_STATUSES
+from app.services.work_order_service import VALID_STATUSES, WorkOrderService
 
 router = APIRouter(prefix="/mcp/v1", tags=["mcp"])
 
@@ -77,6 +77,7 @@ async def mcp_patch_work_order(
             code="BAD_REQUEST",
             message=f"Invalid status (allowed: {sorted(VALID_STATUSES)})",
         )
+    prev_status = wo.status
     wo.status = st
     session.add(
         TokenUsage(
@@ -92,6 +93,9 @@ async def mcp_patch_work_order(
         )
     )
     await session.flush()
+    await WorkOrderService(session)._maybe_dispatch_status_notifications(
+        wo, pr.id, prev_status=prev_status, actor_id=None
+    )
     return {"id": str(wo.id), "status": wo.status}
 
 

@@ -9,16 +9,21 @@ from pycrdt import Doc, Text
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import structlog
+
 from app.exceptions import ApiError
 from app.models import Issue, Project, Section, Software, WorkOrder, WorkOrderSection
 from app.schemas.section import SectionCreate, SectionResponse, SectionUpdate
 from app.schemas.token_context import TokenContext
 from app.services.llm_service import LLMService
+from app.services.notification_dispatch_service import NotificationDispatchService
 from app.services.rag_service import RAGService
 from app.services.section_status import SectionStatusLiteral, rollup_section_status
 
 # Shared Y.Text map key — must match frontend `YDOC_TEXT_FIELD` and collab persistence.
 SECTION_YJS_TEXT_FIELD = "codemirror"
+
+log = structlog.get_logger("atelier.section")
 
 SECTION_IMPROVE_SCHEMA: dict[str, Any] = {
     "name": "section_improve",
@@ -277,6 +282,7 @@ class SectionService:
         body: SectionUpdate,
         *,
         is_studio_admin: bool,
+        actor_user_id: uuid.UUID,
     ) -> SectionResponse:
         s = await self.db.get(Section, section_id)
         if s is None or s.project_id != project_id:
@@ -307,7 +313,10 @@ class SectionService:
         if "order" in data and data["order"] is not None:
             s.order = int(data["order"])
         if "content" in data:
-            s.content = data["content"] if data["content"] is not None else ""
+            new_c = data["content"] if data["content"] is not None else ""
+            if new_c != old_content:
+                s.last_edited_by_id = actor_user_id
+            s.content = new_c
         if (
             "title" in data
             and data["title"] is not None
@@ -320,12 +329,23 @@ class SectionService:
             )
         await self.db.commit()
         await self.db.refresh(s)
-        if "content" in data and (s.content or "") != old_content:
+        content_changed = "content" in data and (s.content or "") != old_content
+        if content_changed:
             from app.services.drift_pipeline import schedule_drift_check
             from app.services.embedding_pipeline import schedule_section_embedding
 
             schedule_section_embedding(section_id)
             schedule_drift_check(section_id)
+            try:
+                await NotificationDispatchService(self.db).section_updated_by_other(
+                    project_id=project_id,
+                    section_id=section_id,
+                    section_title=s.title,
+                    actor_user_id=actor_user_id,
+                )
+                await self.db.commit()
+            except Exception:
+                log.warning("section_update_notification_failed", exc_info=True)
         st = await self.batch_section_statuses(project_id, [s])
         return self._to_response(s, status=st[s.id])
 

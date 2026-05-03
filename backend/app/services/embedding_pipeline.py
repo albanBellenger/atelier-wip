@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session_factory
 from app.models import Artifact, ArtifactChunk, Section, SectionChunk
+from app.services.notification_dispatch_service import NotificationDispatchService
 from app.services.document_extract import extract_md_text, extract_pdf_text
 from app.services.embedding_service import EmbeddingService, embedding_configured
 from app.services.artifact_chunking import chunk_artifact_text
@@ -94,6 +95,19 @@ async def run_artifact_embedding(session: AsyncSession, artifact_id: uuid.UUID) 
         row.embedded_at = _utcnow()
         row.embedding_error = None
         await session.flush()
+        try:
+            fresh = await session.get(Artifact, artifact_id)
+            if fresh is not None:
+                await NotificationDispatchService(session).artifact_embedded(
+                    fresh, actor_user_id=fresh.uploaded_by
+                )
+                await session.flush()
+        except Exception:
+            log.warning(
+                "artifact_embedded_notification_failed",
+                artifact_id=str(artifact_id),
+                exc_info=True,
+            )
         return
     emb = EmbeddingService(session)
     vectors = await emb.embed_batch(chunks)
@@ -111,6 +125,19 @@ async def run_artifact_embedding(session: AsyncSession, artifact_id: uuid.UUID) 
     row.embedded_at = _utcnow()
     row.embedding_error = None
     await session.flush()
+    try:
+        fresh = await session.get(Artifact, artifact_id)
+        if fresh is not None:
+            await NotificationDispatchService(session).artifact_embedded(
+                fresh, actor_user_id=fresh.uploaded_by
+            )
+            await session.flush()
+    except Exception:
+        log.warning(
+            "artifact_embedded_notification_failed",
+            artifact_id=str(artifact_id),
+            exc_info=True,
+        )
 
 
 async def run_section_embedding(session: AsyncSession, section_id: uuid.UUID) -> None:

@@ -171,6 +171,38 @@ async def test_publish_success_commits_and_returns_result(
         "app.services.publish_service.commit_files",
         fake_commit,
     )
+
+    class _PubSessionCM:
+        def __init__(self) -> None:
+            self.sess = MagicMock()
+            proj_row = MagicMock()
+            self.sess.get = AsyncMock(return_value=proj_row)
+            self.sess.commit = AsyncMock()
+
+        async def __aenter__(self) -> MagicMock:
+            return self.sess
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+    def _pub_factory() -> _PubSessionCM:
+        return _PubSessionCM()
+
+    monkeypatch.setattr(
+        "app.services.publish_service.async_session_factory", _pub_factory
+    )
+
+    class _FakeND:
+        def __init__(self, _db: object) -> None:
+            pass
+
+        async def publish_commit(self, **_kw: object) -> int:
+            return 0
+
+    monkeypatch.setattr(
+        "app.services.publish_service.NotificationDispatchService",
+        _FakeND,
+    )
     monkeypatch.setattr(
         "app.services.publish_service.ConflictService.run_conflict_analysis",
         AsyncMock(return_value=0),

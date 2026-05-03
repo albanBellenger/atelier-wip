@@ -179,7 +179,7 @@ async def delete_artifact_by_id(
             message="Artifact not found.",
         )
     await ensure_user_can_delete_artifact(session, user, art)
-    path = await svc.delete_by_id(artifact_id)
+    path = await svc.delete_by_id(artifact_id, actor_user_id=user.id)
     storage = get_storage_client()
     try:
         await storage.remove(path)

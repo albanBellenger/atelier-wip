@@ -275,6 +275,7 @@ describe('ProjectPage landing layout', () => {
       name: 'v2.0 Redesign',
       description: 'Ship the new portal.',
       archived: false,
+      publish_folder_slug: 'v2',
       created_at: '',
       updated_at: '',
       work_orders_done: 1,

@@ -32,7 +32,6 @@ import {
   createSoftwareMarkdownArtifact,
   createStudioMarkdownArtifact,
   downloadArtifactBlobById,
-  getStudio,
   listArtifactLibrary,
   listSoftware,
   listStudioProjects,
@@ -103,12 +102,6 @@ export function ArtifactLibraryPage(): ReactElement {
   }, [profileError, navigate])
 
   const access = useStudioAccess(profile, sid, urlSoftwareFilter)
-
-  const studioQ = useQuery({
-    queryKey: ['studio', sid],
-    queryFn: () => getStudio(sid),
-    enabled: Boolean(sid && access.isMember),
-  })
 
   const softwareQ = useQuery({
     queryKey: ['software', sid],

@@ -30,6 +30,7 @@ from app.services.document_extract import (
     validate_pdf_magic,
 )
 from app.services.embedding_service import EmbeddingService
+from app.services.notification_dispatch_service import NotificationDispatchService
 
 
 def _safe_filename(name: str, file_type: str) -> str:
@@ -706,7 +707,9 @@ class ArtifactService:
             )
         return art
 
-    async def delete_by_id(self, artifact_id: UUID) -> str:
+    async def delete_by_id(
+        self, artifact_id: UUID, *, actor_user_id: UUID
+    ) -> str:
         art = await self.db.get(Artifact, artifact_id)
         if art is None:
             raise ApiError(
@@ -715,6 +718,14 @@ class ArtifactService:
                 message="Artifact not found.",
             )
         path = art.storage_path
+        await NotificationDispatchService(self.db).artifact_deleted(
+            name=art.name,
+            scope_level=art.scope_level or "project",
+            project_id=art.project_id,
+            library_software_id=art.library_software_id,
+            library_studio_id=art.library_studio_id,
+            actor_user_id=actor_user_id,
+        )
         await self.db.delete(art)
         await self.db.flush()
         return path
@@ -897,9 +908,19 @@ class ArtifactService:
         await self.db.flush()
         return art
 
-    async def delete(self, project_id: UUID, artifact_id: UUID) -> str:
+    async def delete(
+        self, project_id: UUID, artifact_id: UUID, *, actor_user_id: UUID
+    ) -> str:
         art = await self.get_in_project(project_id, artifact_id)
         path = art.storage_path
+        await NotificationDispatchService(self.db).artifact_deleted(
+            name=art.name,
+            scope_level=art.scope_level or "project",
+            project_id=art.project_id,
+            library_software_id=art.library_software_id,
+            library_studio_id=art.library_studio_id,
+            actor_user_id=actor_user_id,
+        )
         await self.db.delete(art)
         await self.db.flush()
         return path

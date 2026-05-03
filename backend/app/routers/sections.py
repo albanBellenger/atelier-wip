@@ -139,6 +139,7 @@ async def update_section(
         section_id,
         body,
         is_studio_admin=pa.studio_access.is_studio_admin,
+        actor_user_id=pa.studio_access.user.id,
     )
 
 

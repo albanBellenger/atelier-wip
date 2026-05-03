@@ -781,7 +781,7 @@ export function LlmUsageFilterBar(props: {
             data-testid="filters-mobile-toggle"
             aria-expanded={mobileFiltersOpen}
             className="inline-flex h-9 min-h-9 w-full max-w-full items-center justify-center rounded-full border border-zinc-700 bg-zinc-950 px-4 text-xs font-medium text-zinc-200 hover:border-zinc-600"
-            onClick={() => setMobileFiltersOpen((o) => !o)}
+            onClick={() => setMobileFiltersOpen(!mobileFiltersOpen)}
           >
             Filters
             {(() => {

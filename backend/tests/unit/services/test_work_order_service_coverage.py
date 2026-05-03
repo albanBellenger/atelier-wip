@@ -326,7 +326,21 @@ async def test_update_all_scalar_fields() -> None:
         return sec_map_ex
 
     db.execute = AsyncMock(side_effect=exec_update)
-    db.get = AsyncMock(side_effect=[wo, sec])
+    pr = Project(
+        id=pid,
+        software_id=uuid.uuid4(),
+        name="P",
+        description=None,
+        publish_folder_slug="p",
+    )
+    sw = Software(
+        id=pr.software_id,
+        studio_id=uuid.uuid4(),
+        name="Sw",
+        description="d",
+        definition=None,
+    )
+    db.get = AsyncMock(side_effect=[wo, sec, pr, sw])
 
     body = WorkOrderUpdate(
         title="  new  ",

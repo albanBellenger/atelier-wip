@@ -1,11 +1,37 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as api from '../services/api'
 import { APP_VERSION } from '../version'
 import { SectionPage } from './SectionPage'
+
+vi.mock('../hooks/useYjsCollab', async () => {
+  const Y = await import('yjs')
+  const ydoc = new Y.Doc()
+  const ytext = ydoc.getText('codemirror')
+  ytext.insert(0, 'hello')
+  const bundle = {
+    ydoc,
+    ytext,
+    provider: { on: vi.fn(), off: vi.fn() },
+    awareness: {
+      clientID: 0,
+      getStates: (): Map<number, unknown> => new Map(),
+      on: vi.fn(),
+      off: vi.fn(),
+    },
+  }
+  return {
+    colorsForUser: (): { color: string; colorLight: string } => ({
+      color: 'hsl(0 70% 60%)',
+      colorLight: 'hsl(0 70% 60% / 22%)',
+    }),
+    useYjsCollab: () => bundle,
+  }
+})
 
 const mockSoftware: api.Software = {
   id: 'sw1',
@@ -76,6 +102,7 @@ describe('SectionPage', () => {
   })
 
   beforeEach(() => {
+    localStorage.clear()
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
       configurable: true,
@@ -120,7 +147,6 @@ describe('SectionPage', () => {
       slug: 'api-design',
       order: 1,
       content: '',
-      status: 'ready',
       created_at: '2026-01-01T00:00:00Z',
       updated_at: '2026-01-01T00:00:00Z',
     })
@@ -155,7 +181,6 @@ describe('SectionPage', () => {
       slug: 'r',
       order: 0,
       content: '',
-      status: 'ready',
       created_at: '2026-01-01T00:00:00Z',
       updated_at: '2026-01-01T00:00:00Z',
     })
@@ -176,5 +201,94 @@ describe('SectionPage', () => {
     expect(
       screen.queryByRole('link', { name: 'Issues' }),
     ).not.toBeInTheDocument()
+  })
+
+  it('defaults to split layout and persists focus mode per section', async () => {
+    const user = userEvent.setup()
+    HTMLElement.prototype.scrollIntoView = vi.fn()
+    vi.spyOn(api, 'me').mockResolvedValue(memberMe)
+    vi.spyOn(api, 'getSection').mockResolvedValue({
+      id: 'sec-1',
+      project_id: 'p1',
+      title: 'API design',
+      slug: 'api-design',
+      order: 1,
+      content: '',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    })
+    vi.spyOn(api, 'getSoftware').mockResolvedValue(mockSoftware)
+    vi.spyOn(api, 'listSoftware').mockResolvedValue([mockSoftware])
+    vi.spyOn(api, 'getProject').mockResolvedValue(mockProject)
+    vi.spyOn(api, 'listProjects').mockResolvedValue([mockProject])
+
+    renderSection(
+      '/studios/s1/software/sw1/projects/p1/sections/sec-1',
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('codemirror-host')).toBeInTheDocument()
+    })
+    expect(screen.getByTestId('section-layout-switcher')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: /Focus/ }))
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-breadcrumb-strip')).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('codemirror-host')).not.toBeInTheDocument()
+    expect(localStorage.getItem('atelier:sectionLayout:sec-1')).toBe('focus')
+  })
+
+  it('Cmd+K toggles between split and focus', async () => {
+    HTMLElement.prototype.scrollIntoView = vi.fn()
+    vi.spyOn(api, 'me').mockResolvedValue(memberMe)
+    vi.spyOn(api, 'getSection').mockResolvedValue({
+      id: 'sec-1',
+      project_id: 'p1',
+      title: 'API design',
+      slug: 'api-design',
+      order: 1,
+      content: '',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    })
+    vi.spyOn(api, 'getSoftware').mockResolvedValue(mockSoftware)
+    vi.spyOn(api, 'listSoftware').mockResolvedValue([mockSoftware])
+    vi.spyOn(api, 'getProject').mockResolvedValue(mockProject)
+    vi.spyOn(api, 'listProjects').mockResolvedValue([mockProject])
+
+    renderSection(
+      '/studios/s1/software/sw1/projects/p1/sections/sec-1',
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('codemirror-host')).toBeInTheDocument()
+    })
+
+    await act(async () => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'k',
+          metaKey: true,
+          bubbles: true,
+        }),
+      )
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-breadcrumb-strip')).toBeInTheDocument()
+    })
+
+    await act(async () => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: 'k',
+          metaKey: true,
+          bubbles: true,
+        }),
+      )
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('codemirror-host')).toBeInTheDocument()
+    })
   })
 })

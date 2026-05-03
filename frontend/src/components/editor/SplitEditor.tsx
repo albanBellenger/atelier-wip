@@ -18,6 +18,7 @@ import {
   type MutableRefObject,
   type ReactElement,
 } from 'react'
+import type { EditorViewMode } from '../section/sectionLayoutMode'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import * as Y from 'yjs'
@@ -74,6 +75,9 @@ export interface EditorSelectionState {
 export interface SplitEditorProps {
   collab: YjsCollab | null
   onSelectionChange?: (sel: EditorSelectionState | null) => void
+  /** When both are set, view mode is controlled and the internal tablist is hidden. */
+  viewMode?: EditorViewMode
+  onViewModeChange?: (mode: EditorViewMode) => void
 }
 
 function selectionExtension(
@@ -109,6 +113,8 @@ function selectionExtension(
 export function SplitEditor({
   collab,
   onSelectionChange,
+  viewMode: viewModeProp,
+  onViewModeChange,
 }: SplitEditorProps): ReactElement {
   const parentRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<EditorView | null>(null)
@@ -121,9 +127,20 @@ export function SplitEditor({
     return new Y.UndoManager(collab.ytext)
   }, [collab?.ytext])
 
-  const [viewMode, setViewMode] = useState<'markdown' | 'preview' | 'split'>(
-    'split',
-  )
+  const isControlled =
+    viewModeProp !== undefined && onViewModeChange !== undefined
+  const [uncontrolledViewMode, setUncontrolledViewMode] =
+    useState<EditorViewMode>('split')
+  const viewMode: EditorViewMode = isControlled
+    ? viewModeProp
+    : uncontrolledViewMode
+  const setViewMode = (m: EditorViewMode): void => {
+    if (isControlled) {
+      onViewModeChange(m)
+    } else {
+      setUncontrolledViewMode(m)
+    }
+  }
   const showEditor = viewMode !== 'preview'
   const showPreview = viewMode !== 'markdown'
   const dualPane = showEditor && showPreview
@@ -310,13 +327,15 @@ export function SplitEditor({
       >
         {saveState === 'saving' ? 'Saving…' : 'Saved'}
       </p>
-      <div
-        className="mb-2 flex flex-wrap gap-1.5 rounded-lg border border-zinc-800/80 bg-zinc-950/50 p-1"
-        role="tablist"
-        aria-label="Editor view"
-      >
-        {proseTabs}
-      </div>
+      {!isControlled ? (
+        <div
+          className="mb-2 flex flex-wrap gap-1.5 rounded-lg border border-zinc-800/80 bg-zinc-950/50 p-1"
+          role="tablist"
+          aria-label="Editor view"
+        >
+          {proseTabs}
+        </div>
+      ) : null}
       <div className={outerFlexDir}>
         {showEditor ? (
           <div

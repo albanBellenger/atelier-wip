@@ -29,6 +29,7 @@ function projectFixture(overrides: Partial<Project> = {}): Project {
     name: 'Alpha',
     description: null,
     archived: false,
+    publish_folder_slug: 'pf',
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
     sections: null,

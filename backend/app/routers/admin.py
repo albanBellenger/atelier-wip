@@ -109,6 +109,20 @@ async def resolve_cross_studio_request(
     return result
 
 
+@router.post("/jobs/stale-draft-notifications")
+async def run_stale_draft_notifications_admin(
+    session: AsyncSession = Depends(get_db),
+    _: User = Depends(require_tool_admin),
+) -> dict[str, int]:
+    from app.services.draft_unpublished_notification_job import (
+        run_draft_unpublished_notifications,
+    )
+
+    n = await run_draft_unpublished_notifications(session)
+    await session.commit()
+    return {"notifications_created": n}
+
+
 @router.get("/token-usage")
 async def admin_token_usage(
     request: Request,

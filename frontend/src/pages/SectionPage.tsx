@@ -1,6 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import {
@@ -8,6 +14,9 @@ import {
   type EditorSelectionState,
 } from '../components/editor/SplitEditor'
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
+import { EditorBreadcrumbStrip } from '../components/section/EditorBreadcrumbStrip'
+import { SectionLayoutSwitcher } from '../components/section/SectionLayoutSwitcher'
+import type { SectionLayoutMode } from '../components/section/sectionLayoutMode'
 import { ThreadPanel } from '../components/thread/ThreadPanel'
 import { colorsForUser, useYjsCollab } from '../hooks/useYjsCollab'
 import { useStudioAccess } from '../hooks/useStudioAccess'
@@ -25,6 +34,25 @@ import {
   logout as logoutApi,
   me,
 } from '../services/api'
+
+const SAVE_SAVED_RESET_MS = 2500
+
+function readStoredLayoutMode(sectionId: string): SectionLayoutMode {
+  try {
+    const raw = localStorage.getItem(`atelier:sectionLayout:${sectionId}`)
+    if (
+      raw === 'markdown' ||
+      raw === 'preview' ||
+      raw === 'split' ||
+      raw === 'focus'
+    ) {
+      return raw
+    }
+  } catch {
+    /* ignore */
+  }
+  return 'split'
+}
 
 /** Section deep-link with collaborative Markdown editor. */
 export function SectionPage(): ReactElement {
@@ -178,6 +206,146 @@ export function SectionPage(): ReactElement {
     [],
   )
 
+  const [layoutMode, setLayoutMode] = useState<SectionLayoutMode>('split')
+  const prevNonFocusRef = useRef<'markdown' | 'preview' | 'split'>('split')
+  const [focusComposerEmpty, setFocusComposerEmpty] = useState(true)
+  const [breadcrumbSaveState, setBreadcrumbSaveState] = useState<
+    'saving' | 'saved'
+  >('saved')
+  const breadcrumbSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  )
+  const [breadcrumbDocEpoch, setBreadcrumbDocEpoch] = useState(0)
+
+  useEffect(() => {
+    if (!secid) {
+      return
+    }
+    setLayoutMode(readStoredLayoutMode(secid))
+  }, [secid])
+
+  useEffect(() => {
+    if (!secid) {
+      return
+    }
+    try {
+      localStorage.setItem(`atelier:sectionLayout:${secid}`, layoutMode)
+    } catch {
+      /* ignore */
+    }
+  }, [layoutMode, secid])
+
+  useEffect(() => {
+    if (layoutMode !== 'focus') {
+      prevNonFocusRef.current = layoutMode
+    }
+  }, [layoutMode])
+
+  useEffect(() => {
+    if (layoutMode === 'focus') {
+      setEditorSelection(null)
+    }
+  }, [layoutMode])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setLayoutMode((m) => (m === 'focus' ? prevNonFocusRef.current : 'focus'))
+        return
+      }
+      if (e.key === 'Escape' && layoutMode === 'focus' && focusComposerEmpty) {
+        e.preventDefault()
+        setLayoutMode('split')
+        return
+      }
+      const tgt = e.target
+      if (
+        tgt instanceof HTMLElement &&
+        (tgt.tagName === 'TEXTAREA' || tgt.tagName === 'INPUT')
+      ) {
+        return
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === '1') {
+        e.preventDefault()
+        setLayoutMode('markdown')
+        return
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === '2') {
+        e.preventDefault()
+        setLayoutMode('preview')
+        return
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === '3') {
+        e.preventDefault()
+        setLayoutMode('split')
+        return
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === '4') {
+        e.preventDefault()
+        setLayoutMode('focus')
+        return
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [layoutMode, focusComposerEmpty])
+
+  const collabYtext = collab?.ytext
+
+  useEffect(() => {
+    const p = collab?.provider as
+      | {
+          on?: (e: 'sync', fn: (s: boolean) => void) => void
+          off?: (e: 'sync', fn: (s: boolean) => void) => void
+        }
+      | undefined
+    if (p == null || typeof p.on !== 'function') {
+      return
+    }
+    const onSync = (isSynced: boolean): void => {
+      if (isSynced) {
+        setBreadcrumbSaveState('saved')
+      }
+    }
+    p.on('sync', onSync)
+    return () => p.off?.('sync', onSync)
+  }, [collab])
+
+  useEffect(() => {
+    if (!collabYtext) {
+      return
+    }
+    const onY = (): void => {
+      setBreadcrumbDocEpoch((n) => n + 1)
+      if (breadcrumbSaveTimerRef.current) {
+        clearTimeout(breadcrumbSaveTimerRef.current)
+        breadcrumbSaveTimerRef.current = null
+      }
+      setBreadcrumbSaveState('saving')
+      breadcrumbSaveTimerRef.current = setTimeout(() => {
+        setBreadcrumbSaveState('saved')
+        breadcrumbSaveTimerRef.current = null
+      }, SAVE_SAVED_RESET_MS)
+    }
+    collabYtext.observe(onY)
+    return () => {
+      collabYtext.unobserve(onY)
+      if (breadcrumbSaveTimerRef.current) {
+        clearTimeout(breadcrumbSaveTimerRef.current)
+        breadcrumbSaveTimerRef.current = null
+      }
+    }
+  }, [collabYtext])
+
+  const breadcrumbLineCount = useMemo(() => {
+    const t = collab?.ytext?.toString() ?? ''
+    if (t.length === 0) {
+      return 0
+    }
+    return t.split('\n').length
+  }, [collab?.ytext, breadcrumbDocEpoch])
+
   if (!sid || !sfid || !pid || !secid) {
     void navigate('/studios', { replace: true })
     return <div className="min-h-screen bg-zinc-950" />
@@ -223,7 +391,7 @@ export function SectionPage(): ReactElement {
         )}
         {sectionQ.data && (
           <>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2">
+            <div className="flex flex-col gap-2 rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
                 <h1 className="truncate text-base font-semibold leading-tight text-zinc-100">
                   {sectionQ.data.title}
@@ -232,9 +400,20 @@ export function SectionPage(): ReactElement {
                   {sectionQ.data.slug}
                 </span>
               </div>
+              <SectionLayoutSwitcher
+                mode={layoutMode}
+                onChange={setLayoutMode}
+              />
             </div>
-            <div className="mt-4 grid min-h-0 gap-6 lg:grid-cols-[minmax(280px,420px)_minmax(0,1fr)] lg:items-start">
-              <div className="min-h-0 min-w-0">
+            {layoutMode === 'focus' ? (
+              <div className="mt-4 min-h-[calc(100vh-220px)] bg-[radial-gradient(ellipse_at_top,rgba(91,33,182,0.08),transparent_60%)] transition-opacity duration-150">
+                <EditorBreadcrumbStrip
+                  sectionTitle={sectionQ.data.title}
+                  sectionSlug={sectionQ.data.slug}
+                  savedState={breadcrumbSaveState}
+                  lineCount={breadcrumbLineCount}
+                  onSwitchMode={setLayoutMode}
+                />
                 <ThreadPanel
                   projectId={pid}
                   sectionId={secid}
@@ -242,19 +421,37 @@ export function SectionPage(): ReactElement {
                   collab={collab}
                   editorSelection={editorSelection}
                   onClearEditorSelection={() => setEditorSelection(null)}
+                  density="focus"
+                  sectionTitle={sectionQ.data.title}
+                  onDraftEmptyChange={setFocusComposerEmpty}
                 />
               </div>
-              <div className="min-w-0">
-                {!collab ? (
-                  <p className="text-zinc-500">Connecting editor…</p>
-                ) : (
-                  <SplitEditor
+            ) : (
+              <div className="mt-4 grid min-h-0 gap-6 transition-opacity duration-150 lg:grid-cols-[minmax(280px,420px)_minmax(0,1fr)] lg:items-start">
+                <div className="min-h-0 min-w-0">
+                  <ThreadPanel
+                    projectId={pid}
+                    sectionId={secid}
+                    projectHref={projectHref}
                     collab={collab}
-                    onSelectionChange={onEditorSelectionChange}
+                    editorSelection={editorSelection}
+                    onClearEditorSelection={() => setEditorSelection(null)}
                   />
-                )}
+                </div>
+                <div className="min-w-0">
+                  {!collab ? (
+                    <p className="text-zinc-500">Connecting editor…</p>
+                  ) : (
+                    <SplitEditor
+                      collab={collab}
+                      onSelectionChange={onEditorSelectionChange}
+                      viewMode={layoutMode}
+                      onViewModeChange={setLayoutMode}
+                    />
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </>
         )}
 

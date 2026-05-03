@@ -14,7 +14,9 @@ from pycrdt.websocket import WebsocketServer, YRoom, exception_logger
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.websockets import WebSocketDisconnect
 
+from app.collab.editor_context import collab_acting_user_id
 from app.models import Section
+from app.services.notification_dispatch_service import NotificationDispatchService
 from app.services.section_service import SECTION_YJS_TEXT_FIELD
 
 log = logging.getLogger("atelier.collab")
@@ -225,19 +227,41 @@ class AtelierWebsocketServer(WebsocketServer):
                 )
         else:
             text = ""
+        editor = collab_acting_user_id.get()
+        changed = False
+        section_title = ""
         async with self._session_factory() as session:
             sec = await session.get(Section, section_id)
             if sec is None or sec.project_id != project_id:
                 return
             old_content = sec.content or ""
+            section_title = sec.title
             sec.yjs_state = snapshot
             if text is not None:
                 sec.content = text
+            effective = text if text is not None else old_content
+            changed = effective != old_content
+            if changed and editor is not None:
+                sec.last_edited_by_id = editor
             await session.commit()
-        effective = text if text is not None else old_content
-        if effective != old_content:
-            from app.services.drift_pipeline import schedule_drift_check
-            from app.services.embedding_pipeline import schedule_section_embedding
+        if not changed:
+            return
+        from app.services.drift_pipeline import schedule_drift_check
+        from app.services.embedding_pipeline import schedule_section_embedding
 
-            schedule_section_embedding(section_id)
-            schedule_drift_check(section_id)
+        schedule_section_embedding(section_id)
+        schedule_drift_check(section_id)
+        if editor is None:
+            return
+        try:
+            async with self._session_factory() as session2:
+                await NotificationDispatchService(session2).section_updated_by_other(
+                    project_id=project_id,
+                    section_id=section_id,
+                    section_title=section_title,
+                    actor_user_id=editor,
+                )
+                await session2.commit()
+        except Exception:
+            log.warning("collab_section_notification_failed", exc_info=True)
+

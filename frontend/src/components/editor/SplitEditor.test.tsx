@@ -19,7 +19,7 @@ function minimalCollab(content: string): YjsCollab {
       getStates: () => new Map(),
       on: vi.fn(),
       off: vi.fn(),
-    } as YjsCollab['awareness'],
+    } as unknown as YjsCollab['awareness'],
   }
 }
 
@@ -80,5 +80,21 @@ describe('SplitEditor', () => {
     await user.click(screen.getByRole('tab', { name: 'Markdown' }))
     expect(screen.getByTestId('codemirror-host')).toBeInTheDocument()
     expect(screen.queryByTestId('markdown-preview')).not.toBeInTheDocument()
+  })
+
+  it('controlled mode hides the internal tablist when viewMode and onViewModeChange are passed', () => {
+    const collab = minimalCollab('# Hello')
+    const onViewModeChange = vi.fn()
+    render(
+      <SplitEditor
+        collab={collab}
+        viewMode="preview"
+        onViewModeChange={onViewModeChange}
+      />,
+    )
+    expect(
+      screen.queryByRole('tablist', { name: 'Editor view' }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByTestId('markdown-preview')).toBeInTheDocument()
   })
 })

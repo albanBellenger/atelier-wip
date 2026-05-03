@@ -1,5 +1,6 @@
 """FastAPI application entry point."""
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -51,8 +52,33 @@ from app.routers import (
 async def lifespan(_app: FastAPI):
     await get_storage_client().ensure_bucket()
     srv = init_collab_server(async_session_factory)
+    stale_task: asyncio.Task[None] | None = None
+    if os.environ.get("ATELIER_STALE_DRAFT_NOTIFIER") == "1":
+
+        async def _stale_loop() -> None:
+            from app.services.draft_unpublished_notification_job import (
+                run_draft_unpublished_notifications,
+            )
+
+            while True:
+                await asyncio.sleep(86_400)
+                try:
+                    async with async_session_factory() as s:
+                        n = await run_draft_unpublished_notifications(s)
+                        await s.commit()
+                        log.info("stale_draft_notifier", created=n)
+                except Exception:
+                    log.exception("stale_draft_notifier_failed")
+
+        stale_task = asyncio.create_task(_stale_loop())
     async with srv:
         yield
+    if stale_task is not None:
+        stale_task.cancel()
+        try:
+            await stale_task
+        except asyncio.CancelledError:
+            pass
     if not os.environ.get("PYTEST_VERSION"):
         await engine.dispose()
 

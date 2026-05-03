@@ -32,6 +32,7 @@ from app.schemas.work_order import (
 )
 from app.services.graph_service import GraphService
 from app.services.llm_service import WORK_ORDER_BATCH_JSON_SCHEMA, LLMService
+from app.services.notification_dispatch_service import NotificationDispatchService
 
 log = structlog.get_logger("atelier.work_order")
 
@@ -257,6 +258,7 @@ class WorkOrderService:
         actor_id: uuid.UUID,
     ) -> WorkOrderResponse:
         wo = await self._get_wo(project_id, work_order_id)
+        prev_status = wo.status
         data = body.model_dump(exclude_unset=True)
         if not data:
             sec_map = await self._section_ids_for_work_orders([wo.id])
@@ -275,6 +277,7 @@ class WorkOrderService:
                     message=f"status must be one of: {', '.join(sorted(VALID_STATUSES))}",
                 )
         mutated = False
+        status_changed = False
         if "title" in data and data["title"] is not None:
             new_t = str(data["title"]).strip()
             if new_t != wo.title:
@@ -307,6 +310,7 @@ class WorkOrderService:
             if data["status"] != wo.status:
                 wo.status = data["status"]
                 mutated = True
+                status_changed = True
         if "phase" in data:
             new_ph = str(data["phase"]).strip() if data["phase"] is not None else None
             if new_ph != wo.phase:
@@ -332,6 +336,13 @@ class WorkOrderService:
             wo.updated_by_id = actor_id
         await self.db.flush()
         await self.db.refresh(wo)
+        if status_changed:
+            await self._maybe_dispatch_status_notifications(
+                wo,
+                project_id,
+                prev_status=prev_status,
+                actor_id=actor_id,
+            )
         sec_map = await self._section_ids_for_work_orders([wo.id])
         names = await self._user_display_names(self._user_ids_for_work_orders([wo]))
         return self._to_response(
@@ -340,6 +351,44 @@ class WorkOrderService:
             assignee_name=names.get(wo.assignee_id) if wo.assignee_id else None,
             updated_by_name=names.get(wo.updated_by_id) if wo.updated_by_id else None,
         )
+
+    async def _maybe_dispatch_status_notifications(
+        self,
+        wo: WorkOrder,
+        project_id: uuid.UUID,
+        *,
+        prev_status: str,
+        actor_id: uuid.UUID | None,
+    ) -> None:
+        if prev_status == wo.status:
+            return
+        targets: list[uuid.UUID] = []
+        if wo.assignee_id is not None:
+            targets.append(wo.assignee_id)
+        if wo.created_by is not None:
+            targets.append(wo.created_by)
+        if not targets:
+            return
+        pr = await self.db.get(Project, project_id)
+        if pr is None:
+            return
+        sw = await self.db.get(Software, pr.software_id)
+        if sw is None:
+            return
+        try:
+            await NotificationDispatchService(self.db).work_order_status_changed(
+                project_id=project_id,
+                software_id=sw.id,
+                studio_id=sw.studio_id,
+                work_order_title=wo.title,
+                old_status=prev_status,
+                new_status=wo.status,
+                notify_user_ids=targets,
+                actor_user_id=actor_id,
+            )
+            await self.db.flush()
+        except Exception:
+            log.warning("work_order_status_notification_failed", exc_info=True)
 
     async def delete(self, project_id: uuid.UUID, work_order_id: uuid.UUID) -> None:
         wo = await self._get_wo(project_id, work_order_id)

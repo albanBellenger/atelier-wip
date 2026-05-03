@@ -9,6 +9,7 @@ export function CopilotStatusStrip(props: {
   tokenBudget: number | null
   sourcesCount: number | null
   onSelectTab: (tab: CopilotSideTab) => void
+  variant?: 'full' | 'inline'
 }): ReactElement {
   const {
     driftCount,
@@ -17,6 +18,7 @@ export function CopilotStatusStrip(props: {
     tokenBudget,
     sourcesCount,
     onSelectTab,
+    variant = 'full',
   } = props
   const tokLabel =
     tokenUsed != null && tokenBudget != null && tokenBudget > 0
@@ -26,7 +28,11 @@ export function CopilotStatusStrip(props: {
     sourcesCount != null ? `${sourcesCount} src` : '— src'
   return (
     <div
-      className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-zinc-800/80 px-2 py-1.5 text-[11px] text-zinc-400"
+      className={
+        variant === 'inline'
+          ? 'flex shrink-0 flex-wrap items-center justify-end gap-1 px-2 py-1 text-[11px] text-zinc-400'
+          : 'flex shrink-0 flex-wrap items-center gap-1.5 border-b border-zinc-800/80 px-2 py-1.5 text-[11px] text-zinc-400'
+      }
       data-testid="copilot-status-strip"
     >
       <button

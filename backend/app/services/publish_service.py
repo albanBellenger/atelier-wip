@@ -11,6 +11,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from app.database import async_session_factory
 from app.deps import ProjectAccess
 from app.exceptions import ApiError
 from app.models import Project, Section, WorkOrder
@@ -18,6 +19,7 @@ from app.security.field_encryption import decrypt_secret, fernet_configured
 from app.services.conflict_service import ConflictService
 from app.services.git_service import commit_files
 from app.services.graph_service import GraphService
+from app.services.notification_dispatch_service import NotificationDispatchService
 
 log = structlog.get_logger("atelier.publish")
 
@@ -178,6 +180,20 @@ class PublishService:
                 code="BAD_REQUEST",
                 message=str(e),
             ) from e
+
+        async with async_session_factory() as pub_sess:
+            proj_pub = await pub_sess.get(Project, project.id)
+            if proj_pub is not None:
+                proj_pub.last_published_at = datetime.now(timezone.utc)
+            await NotificationDispatchService(pub_sess).publish_commit(
+                project_id=project.id,
+                software_id=software.id,
+                studio_id=software.studio_id,
+                project_name=project.name,
+                commit_url=web_url or software.git_repo_url,
+                actor_user_id=actor,
+            )
+            await pub_sess.commit()
 
         try:
             await ConflictService(self.db).run_conflict_analysis(

@@ -142,12 +142,7 @@ export function StudioSettingsPage(): ReactElement {
     if (!d) return
     setStudioName(d.name)
     setStudioDesc(d.description ?? '')
-  }, [
-    studioQ.data?.id,
-    studioQ.data?.name,
-    studioQ.data?.description,
-    studioQ.data?.updated_at,
-  ])
+  }, [studioQ.data?.id, studioQ.data?.name, studioQ.data?.description])
 
   const crossMut = useMutation({
     meta: { skipGlobalToast: true },

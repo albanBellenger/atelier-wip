@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor, act } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import * as Y from 'yjs'
 import { MemoryRouter } from 'react-router-dom'
@@ -7,7 +7,11 @@ import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest'
 
 import type { YjsCollab } from '../../hooks/useYjsCollab'
 import * as api from '../../services/api'
-import type { ContextPreview, WorkOrderDetail } from '../../services/api'
+import type {
+  ContextPreview,
+  PrivateThreadMessage,
+  WorkOrderDetail,
+} from '../../services/api'
 import type { PrivateThreadStreamMeta } from '../../services/privateThreadSse'
 import { ThreadPanel } from './ThreadPanel'
 
@@ -92,7 +96,7 @@ describe('ThreadPanel', () => {
             "Cannot read properties of undefined (reading 'states')",
           )
         },
-      } as YjsCollab['awareness'],
+      } as unknown as YjsCollab['awareness'],
     }
     const qc = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -593,5 +597,298 @@ describe('ThreadPanel', () => {
       { timeout: 4000 },
     )
     expect(screen.getByTestId('copilot-status-strip')).toBeInTheDocument()
+  })
+
+  it('autoscroll: bottom anchor scrollIntoView uses block end; smooth after messages grow', async () => {
+    const scrollSpy = vi.fn()
+    HTMLElement.prototype.scrollIntoView = scrollSpy
+
+    let messages: PrivateThreadMessage[] = [
+      {
+        id: 'm1',
+        role: 'user',
+        content: 'one',
+        created_at: new Date().toISOString(),
+      },
+    ]
+    const threadSpy = vi.spyOn(api, 'getPrivateThread').mockImplementation(
+      async () => ({
+        thread_id: 'th-1',
+        messages,
+      }),
+    )
+
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <ThreadPanel
+            projectId="p1"
+            sectionId="sec1"
+            projectHref="/studios/s1/software/sw1/projects/p1"
+            collab={null}
+            editorSelection={null}
+            onClearEditorSelection={() => {}}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('one')).toBeInTheDocument()
+    })
+
+    expect(scrollSpy).toHaveBeenCalled()
+    expect(
+      scrollSpy.mock.calls.some((call) => {
+        const opts = call[0] as ScrollIntoViewOptions | undefined
+        return opts?.block === 'end'
+      }),
+    ).toBe(true)
+    expect(
+      scrollSpy.mock.calls.some((call) => {
+        const opts = call[0] as ScrollIntoViewOptions | undefined
+        return opts?.behavior === 'auto'
+      }),
+    ).toBe(true)
+
+    const callsAfterFirstPaint = scrollSpy.mock.calls.length
+
+    messages = [
+      ...messages,
+      {
+        id: 'm2',
+        role: 'assistant',
+        content: 'two',
+        created_at: new Date().toISOString(),
+      },
+    ]
+    threadSpy.mockImplementation(async () => ({
+      thread_id: 'th-1',
+      messages,
+    }))
+
+    await act(async () => {
+      await qc.invalidateQueries({
+        queryKey: ['privateThread', 'p1', 'sec1'],
+      })
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('two')).toBeInTheDocument()
+    })
+    expect(scrollSpy.mock.calls.length).toBeGreaterThan(callsAfterFirstPaint)
+    expect(
+      scrollSpy.mock.calls.some((call) => {
+        const opts = call[0] as ScrollIntoViewOptions | undefined
+        return opts?.behavior === 'smooth'
+      }),
+    ).toBe(true)
+  })
+
+  it('Chat tab shows empty-state hint when thread has no messages', async () => {
+    HTMLElement.prototype.scrollIntoView = vi.fn()
+    vi.spyOn(api, 'getPrivateThread').mockResolvedValue({
+      thread_id: 'th-1',
+      messages: [],
+    })
+
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <ThreadPanel
+            projectId="p1"
+            sectionId="sec1"
+            projectHref="/studios/s1/software/sw1/projects/p1"
+            collab={null}
+            editorSelection={null}
+            onClearEditorSelection={() => {}}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Start a conversation with the copilot/),
+      ).toBeInTheDocument()
+    })
+  })
+
+  it('Chat tab shows You and Copilot labels for thread messages', async () => {
+    HTMLElement.prototype.scrollIntoView = vi.fn()
+    vi.spyOn(api, 'getPrivateThread').mockResolvedValue({
+      thread_id: 'th-1',
+      messages: [
+        {
+          id: 'm1',
+          role: 'user',
+          content: 'from user',
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: 'm2',
+          role: 'assistant',
+          content: 'from assistant',
+          created_at: new Date().toISOString(),
+        },
+      ],
+    })
+
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <ThreadPanel
+            projectId="p1"
+            sectionId="sec1"
+            projectHref="/studios/s1/software/sw1/projects/p1"
+            collab={null}
+            editorSelection={null}
+            onClearEditorSelection={() => {}}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('You')).toBeInTheDocument()
+    })
+    expect(screen.getByText('from user')).toBeInTheDocument()
+    expect(screen.getByText('Copilot')).toBeInTheDocument()
+    expect(screen.getByText('from assistant')).toBeInTheDocument()
+    expect(screen.getByText('You').parentElement).toHaveClass('items-end')
+  })
+
+  it('focus density uses floating composer without slash pill row and shows slash empty pills', async () => {
+    HTMLElement.prototype.scrollIntoView = vi.fn()
+    vi.spyOn(api, 'getPrivateThread').mockResolvedValue({
+      thread_id: 'th-1',
+      messages: [],
+    })
+
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <ThreadPanel
+            projectId="p1"
+            sectionId="sec1"
+            projectHref="/studios/s1/software/sw1/projects/p1"
+            collab={null}
+            editorSelection={null}
+            onClearEditorSelection={() => {}}
+            density="focus"
+            sectionTitle="Sec A"
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('copilot-composer-focus')).toBeInTheDocument()
+    })
+    await waitFor(() => {
+      expect(screen.getByText(/Talk to the section copilot/)).toBeInTheDocument()
+    })
+    const focusComposer = screen.getByTestId('copilot-composer-focus')
+    const inner = focusComposer.querySelector('.sticky')
+    expect(inner).not.toBeNull()
+    expect(inner?.className).toMatch(/max-w-\[760px\]/)
+    expect(
+      within(focusComposer).queryByRole('button', { name: '/improve' }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '/ask' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '/edit' })).toBeInTheDocument()
+  })
+
+  it('focus density scrollIntoView fires on load and when messages grow', async () => {
+    const scrollSpy = vi.fn()
+    HTMLElement.prototype.scrollIntoView = scrollSpy
+
+    let messages: PrivateThreadMessage[] = [
+      {
+        id: 'm1',
+        role: 'user',
+        content: 'one',
+        created_at: new Date().toISOString(),
+      },
+    ]
+    const threadSpy = vi.spyOn(api, 'getPrivateThread').mockImplementation(
+      async () => ({
+        thread_id: 'th-1',
+        messages,
+      }),
+    )
+
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <ThreadPanel
+            projectId="p1"
+            sectionId="sec1"
+            projectHref="/studios/s1/software/sw1/projects/p1"
+            collab={null}
+            editorSelection={null}
+            onClearEditorSelection={() => {}}
+            density="focus"
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('one')).toBeInTheDocument()
+    })
+    expect(scrollSpy).toHaveBeenCalled()
+    expect(
+      scrollSpy.mock.calls.some((call) => {
+        const opts = call[0] as ScrollIntoViewOptions | undefined
+        return opts?.block === 'end'
+      }),
+    ).toBe(true)
+
+    const callsAfterFirst = scrollSpy.mock.calls.length
+    messages = [
+      ...messages,
+      {
+        id: 'm2',
+        role: 'assistant',
+        content: 'two',
+        created_at: new Date().toISOString(),
+      },
+    ]
+    threadSpy.mockImplementation(async () => ({
+      thread_id: 'th-1',
+      messages,
+    }))
+
+    await act(async () => {
+      await qc.invalidateQueries({
+        queryKey: ['privateThread', 'p1', 'sec1'],
+      })
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('two')).toBeInTheDocument()
+    })
+    expect(scrollSpy.mock.calls.length).toBeGreaterThan(callsAfterFirst)
   })
 })

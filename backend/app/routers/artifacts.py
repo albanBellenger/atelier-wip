@@ -230,7 +230,9 @@ async def delete_artifact(
             message="Project not found.",
         )
     svc = ArtifactService(session)
-    path = await svc.delete(project_id, artifact_id)
+    path = await svc.delete(
+        project_id, artifact_id, actor_user_id=pa.studio_access.user.id
+    )
     storage = get_storage_client()
     try:
         await storage.remove(path)

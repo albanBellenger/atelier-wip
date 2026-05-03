@@ -141,6 +141,8 @@ function remoteEditorNamesFromAwareness(collab: YjsCollab): string[] {
   return names
 }
 
+export type CopilotDensity = 'compact' | 'focus'
+
 export function CopilotPanel(props: {
   projectId: string
   sectionId: string
@@ -148,6 +150,9 @@ export function CopilotPanel(props: {
   collab: YjsCollab | null
   editorSelection: EditorSelectionState | null
   onClearEditorSelection: () => void
+  density?: CopilotDensity
+  sectionTitle?: string
+  onDraftEmptyChange?: (empty: boolean) => void
 }): ReactElement {
   const {
     projectId,
@@ -156,6 +161,9 @@ export function CopilotPanel(props: {
     collab,
     editorSelection,
     onClearEditorSelection,
+    density = 'compact',
+    sectionTitle = 'Section copilot',
+    onDraftEmptyChange,
   } = props
   const { streamPrivateThread } = useStream()
   const qc = useQueryClient()
@@ -187,8 +195,31 @@ export function CopilotPanel(props: {
   const anchorRef = useRef<PatchAnchor | null>(null)
   const [anchorGate, setAnchorGate] = useState<PatchAnchor | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const chatScrollRef = useRef<HTMLDivElement>(null)
+  const chatAutoscrollFirstRef = useRef(true)
   const collabRef = useRef<YjsCollab | null>(null)
   const [docBump, setDocBump] = useState(0)
+  const [recentAccordionOpen, setRecentAccordionOpen] = useState(false)
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
+  const headerMenuRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    onDraftEmptyChange?.(!draft.trim())
+  }, [draft, onDraftEmptyChange])
+
+  useEffect(() => {
+    if (!headerMenuOpen) {
+      return
+    }
+    const onDoc = (e: MouseEvent): void => {
+      const el = headerMenuRef.current
+      if (el && e.target instanceof Node && !el.contains(e.target)) {
+        setHeaderMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [headerMenuOpen])
 
   useEffect(() => {
     const delay = draft.trim().length > 3 ? 600 : 0
@@ -214,7 +245,9 @@ export function CopilotPanel(props: {
     }
     a.on('change', onChange)
     return () => {
-      a.off('change', onChange)
+      if (typeof a.off === 'function') {
+        a.off('change', onChange)
+      }
     }
   }, [collab?.awareness])
 
@@ -228,7 +261,7 @@ export function CopilotPanel(props: {
     if (!ytext) {
       return
     }
-    let timer: ReturnType<typeof window.setTimeout> | null = null
+    let timer: number | null = null
     let pending = false
     const flush = (): void => {
       timer = null
@@ -339,6 +372,7 @@ export function CopilotPanel(props: {
     meta: { skipGlobalToast: true },
     mutationFn: () => resetPrivateThread(projectId, sectionId),
     onSuccess: () => {
+      chatAutoscrollFirstRef.current = true
       void qc.invalidateQueries({
         queryKey: ['privateThread', projectId, sectionId],
       })
@@ -586,7 +620,14 @@ export function CopilotPanel(props: {
     parsedDraft.kind === 'stream' &&
     parsedDraft.threadIntent === 'replace_selection' &&
     !hasNonEmptySelection
-
+  const replaceBlockedFocus =
+    density === 'focus' &&
+    parsedDraft.kind === 'stream' &&
+    parsedDraft.threadIntent === 'replace_selection'
+  const replaceBlocked = replaceNeedsSelection || replaceBlockedFocus
+  const replaceBlockedReasonMsg = replaceBlockedFocus
+    ? 'Switch to Split mode to use /replace with a selection.'
+    : 'Replace requires a non-empty editor selection.'
   void docBump
   let applyPatchBlocked: string | null = null
   if (
@@ -653,9 +694,23 @@ export function CopilotPanel(props: {
   }, [localPatchEvents, peerEditEvents, driftNotesForFeed])
 
   useLayoutEffect(() => {
-    // Nearest scrollport is the unified chat column (recent updates + thread).
-    bottomRef.current?.scrollIntoView({ block: 'end', behavior: 'auto' })
-  }, [threadQ.data?.messages, streaming, recentFeedItems])
+    if (sideTab !== 'chat') {
+      return
+    }
+    const anchor = bottomRef.current
+    if (anchor == null) {
+      return
+    }
+    const behavior = chatAutoscrollFirstRef.current ? 'auto' : 'smooth'
+    chatAutoscrollFirstRef.current = false
+    anchor.scrollIntoView({ block: 'end', behavior })
+  }, [
+    sideTab,
+    msgs.length,
+    streaming,
+    threadQ.isFetched,
+    recentFeedItems.length,
+  ])
 
   const collaboratorCount = collaboratorCountFromAwareness(collab)
 
@@ -695,8 +750,260 @@ export function CopilotPanel(props: {
       ? 'ok'
       : 'warn'
 
+  const isFocusLayout = density === 'focus'
+  const peerFeedCount = recentFeedItems.filter(
+    (i) => i.kind === 'peer_edit',
+  ).length
+  const driftFeedCount = recentFeedItems.filter(
+    (i) => i.kind === 'drift',
+  ).length
+  const recentFeedAccordionSummary =
+    recentFeedItems.length === 0
+      ? ''
+      : peerFeedCount + driftFeedCount > 0
+        ? `${peerFeedCount} peer edits, ${driftFeedCount} drift in last 5 min — show`
+        : `${recentFeedItems.length} recent updates — show`
+
+  const composerEl = (
+    <CopilotComposer
+      draft={draft}
+      canSend
+      sending={sendMut.isPending}
+      improving={improveMut.isPending}
+      replaceBlocked={replaceBlocked}
+      replaceBlockedReason={replaceBlockedReasonMsg}
+      includeSelectionInContext={includeSelectionInContext}
+      includeGitHistory={includeGitHistory}
+      selectionChars={selChars}
+      hasSelection={hasNonEmptySelection}
+      onDraftChange={setDraft}
+      onSend={() => handleSend()}
+      onClearEditorSelection={onClearEditorSelection}
+      onToggleSelection={() => setIncludeSelectionInContext((v) => !v)}
+      onToggleGitHistory={() => setIncludeGitHistory((v) => !v)}
+      onInsertSlash={(prefix) => setDraft(prefix)}
+      variant={isFocusLayout ? 'focus' : 'compact'}
+      footerLeading={
+        <CopilotModelStrip
+          variant="inline"
+          displayLine={modelDisplayLine}
+          connection={modelConnection}
+          scopeBadge="Tool default"
+        />
+      }
+    />
+  )
+
+  const tabPanel =
+    sideTab === 'chat' ? (
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <ContextTruncationBanner visible={contextTruncated} />
+        <div
+          ref={chatScrollRef}
+          className={
+            isFocusLayout
+              ? 'min-h-0 flex-1 overflow-y-auto overflow-x-hidden [scrollbar-width:thin]'
+              : 'min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-4'
+          }
+        >
+          <div
+            className={
+              isFocusLayout
+                ? 'mx-auto flex min-h-full min-w-0 max-w-[760px] flex-col px-6 py-8'
+                : 'flex min-h-full min-w-0 flex-col gap-4'
+            }
+          >
+            {isFocusLayout && recentFeedItems.length > 0 ? (
+              <div className="mb-4 shrink-0">
+                <button
+                  type="button"
+                  className="w-full rounded-lg border border-zinc-800/80 bg-zinc-950/50 px-3 py-2 text-left text-xs text-zinc-400 hover:bg-zinc-900"
+                  onClick={() => setRecentAccordionOpen((o) => !o)}
+                >
+                  {recentAccordionOpen ? 'Hide recent activity' : recentFeedAccordionSummary}
+                </button>
+                {recentAccordionOpen ? (
+                  <div className="mt-2">
+                    <RecentUpdatesFeed
+                      items={recentFeedItems}
+                      driftInteractive
+                      onDriftClick={() => setSideTab('critique')}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            {!isFocusLayout ? (
+              <div className="shrink-0">
+                <RecentUpdatesFeed
+                  items={recentFeedItems}
+                  driftInteractive
+                  onDriftClick={() => setSideTab('critique')}
+                />
+              </div>
+            ) : null}
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+              <ConversationView
+                messages={msgs}
+                streaming={streaming}
+                threadPending={threadQ.isPending}
+                patchProposal={patchProposal}
+                patchPreviewLines={patchPreviewLines}
+                applyPatchBlocked={applyPatchBlocked}
+                applyErr={applyErr}
+                applyPatchEnabled={applyPatchEnabled}
+                findings={findings}
+                err={err}
+                bottomRef={bottomRef}
+                onApplyPatch={() => onApplyPatch()}
+                onDismissPatch={() => onDismissPatch()}
+                onViewPatchDiff={() => onViewPatchDiff()}
+                density={isFocusLayout ? 'focus' : 'compact'}
+                onInsertSlash={isFocusLayout ? (p) => setDraft(p) : undefined}
+              />
+            </div>
+          </div>
+        </div>
+        {isFocusLayout ? (
+          <div className="shrink-0 bg-[#0a0a0b]/80 px-4 pb-4 pt-2">
+            {composerEl}
+          </div>
+        ) : (
+          <div className="shrink-0 border-t border-zinc-800/70 bg-zinc-900/95">
+            {composerEl}
+          </div>
+        )}
+      </div>
+    ) : sideTab === 'context' ? (
+      <div
+        className={
+          isFocusLayout
+            ? 'mx-auto flex min-h-0 w-full max-w-[920px] flex-1 flex-col overflow-hidden px-4'
+            : 'flex min-h-0 flex-1 flex-col overflow-hidden'
+        }
+      >
+        <ContextTab
+          projectId={projectId}
+          sectionId={sectionId}
+          ragQuery={draft}
+          includeGitHistory={includeGitHistory}
+        />
+      </div>
+    ) : sideTab === 'critique' ? (
+      isFocusLayout ? (
+        <div className="mx-auto flex min-h-0 w-full max-w-[920px] flex-1 flex-col overflow-hidden px-4">
+          <CritiqueTab
+            projectId={projectId}
+            sectionId={sectionId}
+            projectHref={projectHref}
+          />
+        </div>
+      ) : (
+        <CritiqueTab
+          projectId={projectId}
+          sectionId={sectionId}
+          projectHref={projectHref}
+        />
+      )
+    ) : isFocusLayout ? (
+      <div className="mx-auto flex min-h-0 w-full max-w-[920px] flex-1 flex-col overflow-hidden px-4">
+        <DiffTab
+          original={collab?.ytext?.toString() ?? ''}
+          proposed={proposedMarkdown}
+          onApply={onApplyProposedFull}
+        />
+      </div>
+    ) : (
+      <DiffTab
+        original={collab?.ytext?.toString() ?? ''}
+        proposed={proposedMarkdown}
+        onApply={onApplyProposedFull}
+      />
+    );
+
+  if (isFocusLayout) {
+    return (
+      <section className="mx-auto flex h-[calc(100vh-200px)] min-h-[560px] w-full max-w-[920px] flex-col overflow-hidden rounded-2xl border border-zinc-800/70 bg-zinc-900/40">
+        <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-zinc-800 px-3">
+          <h2 className="min-w-0 truncate text-sm font-medium text-zinc-200">
+            {sectionTitle}
+          </h2>
+          <div className="flex shrink-0 items-center gap-2">
+            <span
+              className="text-zinc-500"
+              title={`Private · ${collaboratorCount} collaborator${
+                collaboratorCount === 1 ? '' : 's'
+              } editing`}
+            >
+              👥
+            </span>
+            <button
+              type="button"
+              disabled={resetMut.isPending}
+              className="text-xs text-zinc-400 hover:text-zinc-100 disabled:opacity-50"
+              onClick={() => resetMut.mutate()}
+            >
+              New thread
+            </button>
+            <div className="relative" ref={headerMenuRef}>
+              <button
+                type="button"
+                className="rounded px-2 py-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+                aria-expanded={headerMenuOpen}
+                onClick={() => setHeaderMenuOpen((o) => !o)}
+              >
+                ⋯
+              </button>
+              {headerMenuOpen ? (
+                <div className="absolute right-0 z-30 mt-1 min-w-[11rem] rounded-md border border-zinc-800 bg-zinc-950 py-1 shadow-lg">
+                  <button
+                    type="button"
+                    className="block w-full px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800"
+                    onClick={() => {
+                      resetMut.mutate()
+                      setHeaderMenuOpen(false)
+                    }}
+                  >
+                    Reset thread
+                  </button>
+                  <button
+                    type="button"
+                    disabled
+                    title="Coming soon"
+                    className="block w-full px-3 py-1.5 text-left text-xs text-zinc-600"
+                  >
+                    Toggle live updates
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-stretch border-b border-zinc-800/80">
+          <CopilotTabs
+            sideTab={sideTab}
+            onSelectTab={(tab) => setSideTab(tab)}
+            critiqueBadge={critiqueBadge}
+            diffBadge={diffBadge}
+            variant="inline-overflow"
+          />
+          <CopilotStatusStrip
+            driftCount={staleWoCount}
+            gapCount={gapCount}
+            tokenUsed={contextMeterQ.data?.total_tokens ?? null}
+            tokenBudget={contextMeterQ.data?.budget_tokens ?? null}
+            sourcesCount={uniqueKinds}
+            onSelectTab={(tab) => setSideTab(tab)}
+            variant="inline"
+          />
+        </div>
+        {tabPanel}
+      </section>
+    )
+  }
+
   return (
-    <aside className="flex h-[min(70vh,560px)] min-h-0 max-w-[420px] flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60">
+    <aside className="flex h-[min(80vh,720px)] min-h-0 max-w-[420px] flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60">
       <CopilotHeader
         collaboratorCount={collaboratorCount}
         newThreadPending={resetMut.isPending}
@@ -716,89 +1023,7 @@ export function CopilotPanel(props: {
         critiqueBadge={critiqueBadge}
         diffBadge={diffBadge}
       />
-      {sideTab === 'chat' ? (
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <ContextTruncationBanner visible={contextTruncated} />
-          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-2">
-            <div className="flex flex-col gap-3">
-              <div className="shrink-0">
-                <RecentUpdatesFeed
-                  items={recentFeedItems}
-                  driftInteractive
-                  onDriftClick={() => setSideTab('critique')}
-                />
-              </div>
-              <ConversationView
-                messages={msgs}
-                streaming={streaming}
-                threadPending={threadQ.isPending}
-                patchProposal={patchProposal}
-                patchPreviewLines={patchPreviewLines}
-                applyPatchBlocked={applyPatchBlocked}
-                applyErr={applyErr}
-                applyPatchEnabled={applyPatchEnabled}
-                findings={findings}
-                err={err}
-                bottomRef={bottomRef}
-                onApplyPatch={() => onApplyPatch()}
-                onDismissPatch={() => onDismissPatch()}
-                onViewPatchDiff={() => onViewPatchDiff()}
-              />
-            </div>
-          </div>
-          <div className="shrink-0 border-t border-zinc-800/70 bg-zinc-900/95">
-            <CopilotComposer
-              draft={draft}
-              canSend
-              sending={sendMut.isPending}
-              improving={improveMut.isPending}
-              replaceBlocked={replaceNeedsSelection}
-              replaceBlockedReason="Replace requires a non-empty editor selection."
-              includeSelectionInContext={includeSelectionInContext}
-              includeGitHistory={includeGitHistory}
-              selectionChars={selChars}
-              hasSelection={hasNonEmptySelection}
-              onDraftChange={setDraft}
-              onSend={() => handleSend()}
-              onClearEditorSelection={onClearEditorSelection}
-              onToggleSelection={() =>
-                setIncludeSelectionInContext((v) => !v)
-              }
-              onToggleGitHistory={() => setIncludeGitHistory((v) => !v)}
-              onInsertSlash={(prefix) => setDraft(prefix)}
-              footerLeading={
-                <CopilotModelStrip
-                  variant="inline"
-                  displayLine={modelDisplayLine}
-                  connection={modelConnection}
-                  scopeBadge="Tool default"
-                />
-              }
-            />
-          </div>
-        </div>
-      ) : sideTab === 'context' ? (
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <ContextTab
-            projectId={projectId}
-            sectionId={sectionId}
-            ragQuery={draft}
-            includeGitHistory={includeGitHistory}
-          />
-        </div>
-      ) : sideTab === 'critique' ? (
-        <CritiqueTab
-          projectId={projectId}
-          sectionId={sectionId}
-          projectHref={projectHref}
-        />
-      ) : (
-        <DiffTab
-          original={collab?.ytext?.toString() ?? ''}
-          proposed={proposedMarkdown}
-          onApply={onApplyProposedFull}
-        />
-      )}
+      {tabPanel}
     </aside>
   )
 }

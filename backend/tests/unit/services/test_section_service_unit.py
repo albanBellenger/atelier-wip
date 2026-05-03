@@ -120,7 +120,7 @@ async def test_update_section_structure_forbidden_for_member(
     body = SectionUpdate(title="New Title")
     with pytest.raises(ApiError) as e:
         await SectionService(db).update_section(
-            pid, sid, body, is_studio_admin=False
+            pid, sid, body, is_studio_admin=False, actor_user_id=uuid.uuid4()
         )
     assert e.value.status_code == 403
 
@@ -199,8 +199,16 @@ async def test_update_section_content_schedules_embedding(
         fake_drift,
     )
     body = SectionUpdate(content="new body")
+    def _make_nd(_db: object) -> MagicMock:
+        m = MagicMock()
+        m.section_updated_by_other = AsyncMock(return_value=0)
+        return m
+
+    monkeypatch.setattr(
+        "app.services.section_service.NotificationDispatchService", _make_nd
+    )
     await SectionService(db).update_section(
-        pid, sid, body, is_studio_admin=True
+        pid, sid, body, is_studio_admin=True, actor_user_id=uuid.uuid4()
     )
     assert emb == [sid]
     assert drift == [sid]

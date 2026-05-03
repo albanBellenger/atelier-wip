@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, WebSocket
 
 from app.collab.channel import FastAPIWebSocketChannel
+from app.collab.editor_context import collab_acting_user_id
 from app.collab.server import collab_room_path, get_collab_server
 from app.database import async_session_factory
 from app.deps import fetch_project_access
@@ -61,4 +62,8 @@ async def section_collab(
     await websocket.accept()
     path = collab_room_path(project_id, section_id)
     channel = FastAPIWebSocketChannel(websocket, path)
-    await get_collab_server().serve(channel)
+    var_tok = collab_acting_user_id.set(user.id)
+    try:
+        await get_collab_server().serve(channel)
+    finally:
+        collab_acting_user_id.reset(var_tok)

@@ -1,9 +1,16 @@
 import type { ReactElement } from 'react'
 import type { RefObject } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 import type { PatchProposalMeta } from '../../lib/sectionPatchApply'
 import type { PrivateThreadMessage } from '../../services/api'
 import { AssistantProposalCard } from './AssistantProposalCard'
+
+export type ConversationDensity = 'compact' | 'focus'
+
+const mdProseClass =
+  '[&_a]:text-violet-400 [&_code]:rounded [&_code]:bg-zinc-800 [&_code]:px-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-zinc-900'
 
 export function ConversationView(props: {
   messages: PrivateThreadMessage[]
@@ -20,6 +27,8 @@ export function ConversationView(props: {
   onApplyPatch: () => void
   onDismissPatch: () => void
   onViewPatchDiff: () => void
+  density?: ConversationDensity
+  onInsertSlash?: (prefix: string) => void
 }): ReactElement {
   const {
     messages,
@@ -36,7 +45,12 @@ export function ConversationView(props: {
     onApplyPatch,
     onDismissPatch,
     onViewPatchDiff,
+    density = 'compact',
+    onInsertSlash,
   } = props
+
+  const isFocus = density === 'focus'
+  const assistantLabel = isFocus ? 'Atelier Copilot' : 'Copilot'
 
   const lastMsg =
     messages.length > 0 ? messages[messages.length - 1] : undefined
@@ -45,24 +59,162 @@ export function ConversationView(props: {
     lastMsg?.role === 'assistant' &&
     patchProposal != null
 
+  const showEmptyHint =
+    messages.length === 0 && !streaming && !threadPending
+
+  const outerGap = isFocus
+    ? 'flex flex-col gap-8 text-[15px] leading-7'
+    : 'flex min-h-0 min-w-0 flex-1 flex-col gap-5 text-sm leading-relaxed'
+
+  function renderAssistantBody(text: string): ReactElement {
+    return (
+      <div className={`whitespace-pre-wrap break-words ${mdProseClass}`}>
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+      </div>
+    )
+  }
+
   return (
-    <div className="flex min-w-0 flex-col gap-2 text-sm">
-      {threadPending && <p className="text-zinc-500">Loading thread…</p>}
-      {messages.map((m: PrivateThreadMessage, i: number) => (
-        <div key={m.id}>
+    <div className={outerGap}>
+      {threadPending && (
+        <div className="flex flex-col items-start">
           <div
-            className={`rounded-lg px-2 py-1.5 ${
-              m.role === 'user'
-                ? 'ml-4 bg-violet-950/50 text-zinc-100'
-                : 'mr-4 bg-zinc-800/80 text-zinc-200'
-            }`}
+            className={
+              isFocus
+                ? 'self-start max-w-[100%] rounded-2xl rounded-bl-md bg-zinc-800/60 px-5 py-3.5 text-zinc-100 ring-1 ring-zinc-800/80'
+                : 'self-start max-w-[92%] rounded-2xl rounded-bl-md bg-zinc-800/70 px-4 py-2.5 text-zinc-100 shadow-sm'
+            }
           >
-            <span className="text-[10px] uppercase text-zinc-500">{m.role}</span>
-            <p className="mt-0.5 whitespace-pre-wrap">{m.content}</p>
+            <p
+              className={
+                isFocus
+                  ? 'mb-1.5 text-xs font-medium text-zinc-500'
+                  : 'mb-1 text-xs font-medium text-zinc-400'
+              }
+            >
+              {assistantLabel}
+            </p>
+            <p className="whitespace-pre-wrap break-words text-zinc-300">
+              Loading thread…
+            </p>
           </div>
+        </div>
+      )}
+      {showEmptyHint && isFocus && onInsertSlash ? (
+        <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+          <div className="mb-3 text-3xl">✦</div>
+          <h2 className="text-lg font-medium text-zinc-200">
+            Talk to the section copilot
+          </h2>
+          <p className="mt-2 max-w-md text-sm text-zinc-500">
+            Ask a question, request changes, or use a slash command. Your live
+            editor text travels with every message.
+          </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-2 text-xs">
+            {['/ask', '/improve', '/append', '/replace', '/edit'].map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => onInsertSlash(`${c} `)}
+                className="rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1 font-mono text-zinc-400 hover:border-violet-700/60 hover:text-violet-200"
+              >
+                {c}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {showEmptyHint && !isFocus ? (
+        <div className="flex flex-1 flex-col items-center justify-center px-6 text-center text-xs text-zinc-500">
+          Start a conversation with the copilot — ask a question, /improve,
+          /append, /replace, or /edit.
+        </div>
+      ) : null}
+      {messages.map((m: PrivateThreadMessage, i: number) => (
+        <div key={m.id} className="flex min-w-0 flex-col">
+          {m.role === 'user' ? (
+            <div className="flex flex-col items-end">
+              <p
+                className={
+                  isFocus
+                    ? 'mb-1.5 text-xs font-medium text-zinc-500'
+                    : 'mb-1 text-xs font-medium text-zinc-400'
+                }
+              >
+                You
+              </p>
+              <div
+                className={
+                  isFocus
+                    ? 'self-end max-w-[78%] rounded-2xl rounded-br-md bg-violet-600 px-5 py-3 text-zinc-50 shadow-md shadow-violet-950/40'
+                    : 'self-end max-w-[85%] rounded-2xl rounded-br-md bg-violet-600/90 px-4 py-2.5 text-zinc-50 shadow-sm'
+                }
+              >
+                <p className="whitespace-pre-wrap break-words">{m.content}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-start">
+              <p
+                className={
+                  isFocus
+                    ? 'mb-1.5 text-xs font-medium text-zinc-500'
+                    : 'mb-1 text-xs font-medium text-zinc-400'
+                }
+              >
+                {assistantLabel}
+              </p>
+              <div
+                className={
+                  isFocus
+                    ? 'self-start max-w-[100%] rounded-2xl rounded-bl-md bg-zinc-800/60 px-5 py-3.5 text-zinc-100 ring-1 ring-zinc-800/80'
+                    : 'self-start max-w-[92%] rounded-2xl rounded-bl-md bg-zinc-800/70 px-4 py-2.5 text-zinc-100 shadow-sm'
+                }
+              >
+                {renderAssistantBody(m.content)}
+              </div>
+            </div>
+          )}
           {attachCardToTailAssistant &&
             m.role === 'assistant' &&
             i === messages.length - 1 && (
+              <div className={`w-full ${isFocus ? 'mt-3' : 'mt-2'}`}>
+                <AssistantProposalCard
+                  patchProposal={patchProposal}
+                  patchPreviewLines={patchPreviewLines}
+                  applyPatchBlocked={applyPatchBlocked}
+                  applyErr={applyErr}
+                  applyPatchEnabled={applyPatchEnabled}
+                  onApplyPatch={onApplyPatch}
+                  onDismissPatch={onDismissPatch}
+                  onViewPatchDiff={onViewPatchDiff}
+                />
+              </div>
+            )}
+        </div>
+      ))}
+      {streaming && (
+        <div className="flex min-w-0 flex-col items-start">
+          <p
+            className={
+              isFocus
+                ? 'mb-1.5 text-xs font-medium text-zinc-500'
+                : 'mb-1 text-xs font-medium text-zinc-400'
+            }
+          >
+            {assistantLabel}
+          </p>
+          <div
+            className={
+              isFocus
+                ? 'self-start max-w-[100%] rounded-2xl rounded-bl-md bg-zinc-800/60 px-5 py-3.5 text-zinc-100 ring-1 ring-zinc-800/80'
+                : 'self-start max-w-[92%] rounded-2xl rounded-bl-md bg-zinc-800/70 px-4 py-2.5 text-zinc-100 shadow-sm'
+            }
+          >
+            {renderAssistantBody(streaming)}
+          </div>
+          {patchProposal != null && (
+            <div className={`w-full ${isFocus ? 'mt-3' : 'mt-2'}`}>
               <AssistantProposalCard
                 patchProposal={patchProposal}
                 patchPreviewLines={patchPreviewLines}
@@ -73,14 +225,14 @@ export function ConversationView(props: {
                 onDismissPatch={onDismissPatch}
                 onViewPatchDiff={onViewPatchDiff}
               />
-            )}
+            </div>
+          )}
         </div>
-      ))}
-      {streaming && (
-        <div className="mr-4 rounded-lg bg-zinc-800/80 px-2 py-1.5 text-zinc-200">
-          <span className="text-[10px] uppercase text-zinc-500">assistant</span>
-          <p className="mt-0.5 whitespace-pre-wrap">{streaming}</p>
-          {patchProposal != null && (
+      )}
+      {!streaming &&
+        patchProposal != null &&
+        lastMsg?.role !== 'assistant' && (
+          <div className="w-full">
             <AssistantProposalCard
               patchProposal={patchProposal}
               patchPreviewLines={patchPreviewLines}
@@ -91,22 +243,7 @@ export function ConversationView(props: {
               onDismissPatch={onDismissPatch}
               onViewPatchDiff={onViewPatchDiff}
             />
-          )}
-        </div>
-      )}
-      {!streaming &&
-        patchProposal != null &&
-        lastMsg?.role !== 'assistant' && (
-          <AssistantProposalCard
-            patchProposal={patchProposal}
-            patchPreviewLines={patchPreviewLines}
-            applyPatchBlocked={applyPatchBlocked}
-            applyErr={applyErr}
-            applyPatchEnabled={applyPatchEnabled}
-            onApplyPatch={onApplyPatch}
-            onDismissPatch={onDismissPatch}
-            onViewPatchDiff={onViewPatchDiff}
-          />
+          </div>
         )}
       {findings.length > 0 && (
         <div className="rounded border border-amber-900/40 bg-amber-950/30 px-2 py-2 text-xs text-amber-100">
