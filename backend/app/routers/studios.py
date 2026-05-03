@@ -3,20 +3,27 @@
 from datetime import date
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, Request, Response, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import (
     StudioAccess,
+    StudioSoftwareListAccess,
     get_current_user,
     get_studio_access,
+    get_studio_software_list_access,
     require_studio_admin,
+    require_studio_editor,
 )
 from app.exceptions import ApiError
-from app.models import User
-from app.schemas.artifact import StudioArtifactRowOut
+from app.models import Project, Software, User, WorkOrder
+from app.schemas.artifact import (
+    ArtifactResponse,
+    MarkdownArtifactCreate,
+    StudioArtifactRowOut,
+)
 from app.schemas.cross_studio import CrossStudioRequestCreate, CrossStudioRequestResult
 from app.schemas.mcp_keys import McpKeyCreateBody, McpKeyCreatedResponse, McpKeyPublic
 from app.schemas.token_usage_report import (
@@ -41,6 +48,8 @@ from app.services.project_service import ProjectService
 from app.services.software_activity_service import SoftwareActivityService
 from app.services.studio_service import StudioService
 from app.services.token_usage_query_service import TokenUsageQueryService
+from app.services.embedding_pipeline import enqueue_artifact_embedding
+from app.storage.minio_storage import get_storage_client
 
 router = APIRouter(prefix="/studios", tags=["studios"])
 
@@ -116,6 +125,112 @@ async def list_studio_artifacts(
     access: StudioAccess = Depends(get_studio_access),
 ) -> list[StudioArtifactRowOut]:
     return await ArtifactService(session).list_artifacts_for_studio(access.studio_id)
+
+
+def _studio_artifact_content_type(file_type: str) -> str:
+    return "application/pdf" if file_type == "pdf" else "text/markdown"
+
+
+@router.get("/{studio_id}/artifact-library", response_model=list[StudioArtifactRowOut])
+async def list_artifact_library(
+    studio_id: UUID,
+    for_software_id: UUID | None = Query(None, alias="softwareId"),
+    session: AsyncSession = Depends(get_db),
+    list_access: StudioSoftwareListAccess = Depends(get_studio_software_list_access),
+) -> list[StudioArtifactRowOut]:
+    if list_access.studio_access.studio_id != studio_id:
+        raise ApiError(
+            status_code=404,
+            code="NOT_FOUND",
+            message="Studio not found.",
+        )
+    return await ArtifactService(session).list_artifact_library_for_studio(
+        studio_id,
+        for_software_id=for_software_id,
+        allowed_software_ids=list_access.allowed_software_ids,
+    )
+
+
+@router.post("/{studio_id}/artifacts", response_model=ArtifactResponse)
+async def upload_studio_artifact(
+    studio_id: UUID,
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    name: str | None = Form(None),
+    session: AsyncSession = Depends(get_db),
+    access: StudioAccess = Depends(require_studio_editor),
+) -> ArtifactResponse:
+    if access.studio_id != studio_id:
+        raise ApiError(
+            status_code=404,
+            code="NOT_FOUND",
+            message="Studio not found.",
+        )
+    raw = await file.read()
+    if not raw:
+        raise ApiError(
+            status_code=422,
+            code="EMPTY_FILE",
+            message="Uploaded file is empty.",
+        )
+    svc = ArtifactService(session)
+    art = await svc.create_upload_for_studio(
+        studio_id=studio_id,
+        uploaded_by=access.user.id,
+        original_filename=file.filename or "upload",
+        raw=raw,
+        display_name=name,
+    )
+    storage = get_storage_client()
+    try:
+        await storage.put_bytes(art.storage_path, raw, _studio_artifact_content_type(art.file_type))
+    except Exception as exc:
+        await session.delete(art)
+        await session.flush()
+        raise ApiError(
+            status_code=502,
+            code="STORAGE_ERROR",
+            message="Could not store file.",
+        ) from exc
+    background_tasks.add_task(enqueue_artifact_embedding, art.id)
+    return ArtifactResponse.model_validate(art)
+
+
+@router.post("/{studio_id}/artifacts/md", response_model=ArtifactResponse)
+async def create_studio_markdown_artifact(
+    studio_id: UUID,
+    body: MarkdownArtifactCreate,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_db),
+    access: StudioAccess = Depends(require_studio_editor),
+) -> ArtifactResponse:
+    if access.studio_id != studio_id:
+        raise ApiError(
+            status_code=404,
+            code="NOT_FOUND",
+            message="Studio not found.",
+        )
+    svc = ArtifactService(session)
+    art = await svc.create_markdown_for_studio(
+        studio_id=studio_id,
+        uploaded_by=access.user.id,
+        name=body.name,
+        content=body.content,
+    )
+    raw = body.content.encode("utf-8")
+    storage = get_storage_client()
+    try:
+        await storage.put_bytes(art.storage_path, raw, _studio_artifact_content_type(art.file_type))
+    except Exception as exc:
+        await session.delete(art)
+        await session.flush()
+        raise ApiError(
+            status_code=502,
+            code="STORAGE_ERROR",
+            message="Could not store file.",
+        ) from exc
+    background_tasks.add_task(enqueue_artifact_embedding, art.id)
+    return ArtifactResponse.model_validate(art)
 
 
 @router.get("/{studio_id}", response_model=StudioResponse)
@@ -202,28 +317,81 @@ async def studio_token_usage(
     request: Request,
     session: AsyncSession = Depends(get_db),
     access: StudioAccess = Depends(require_studio_admin),
-    software_id: UUID | None = Query(None),
-    project_id: UUID | None = Query(None),
-    user_id: UUID | None = Query(None),
-    call_type: str | None = Query(None),
+    software_id: list[UUID] | None = Query(None),
+    project_id: list[UUID] | None = Query(None),
+    work_order_id: list[UUID] | None = Query(None),
+    user_id: list[UUID] | None = Query(None),
+    call_type: list[str] | None = Query(None),
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
     limit: int = Query(100, ge=1, le=5000),
     offset: int = Query(0, ge=0),
 ):
+    sid = access.studio_id
+    if software_id:
+        for swi in software_id:
+            sw = await session.get(Software, swi)
+            if sw is None or sw.studio_id != sid:
+                raise ApiError(
+                    status_code=404,
+                    code="NOT_FOUND",
+                    message="Software not found.",
+                )
+    if project_id:
+        for pid in project_id:
+            pr = await session.get(Project, pid)
+            if pr is None:
+                raise ApiError(
+                    status_code=404,
+                    code="NOT_FOUND",
+                    message="Project not found.",
+                )
+            sw = await session.get(Software, pr.software_id)
+            if sw is None or sw.studio_id != sid:
+                raise ApiError(
+                    status_code=404,
+                    code="NOT_FOUND",
+                    message="Project not found.",
+                )
+    if work_order_id:
+        for woid in work_order_id:
+            wo = await session.get(WorkOrder, woid)
+            if wo is None:
+                raise ApiError(
+                    status_code=404,
+                    code="NOT_FOUND",
+                    message="Work order not found.",
+                )
+            pr = await session.get(Project, wo.project_id)
+            if pr is None:
+                raise ApiError(
+                    status_code=404,
+                    code="NOT_FOUND",
+                    message="Project not found.",
+                )
+            sw = await session.get(Software, pr.software_id)
+            if sw is None or sw.studio_id != sid:
+                raise ApiError(
+                    status_code=404,
+                    code="NOT_FOUND",
+                    message="Work order not found.",
+                )
+
     svc = TokenUsageQueryService(session)
     csv_mode = _studio_wants_csv(request)
     lim = 500_000 if csv_mode else limit
     off = 0 if csv_mode else offset
+    ct = [c.strip() for c in (call_type or []) if c and c.strip()]
     rows, totals = await svc.list_rows(
         scope="studio",
-        scope_studio_id=access.studio_id,
+        scope_studio_id=sid,
         scope_user_id=None,
-        studio_id=None,
-        software_id=software_id,
-        project_id=project_id,
-        user_id=user_id,
-        call_type=call_type,
+        studio_ids=None,
+        software_ids=software_id,
+        project_ids=project_id,
+        user_ids=user_id,
+        call_types=ct or None,
+        work_order_ids=work_order_id,
         date_from=date_from,
         date_to=date_to,
         limit=lim,

@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react'
+import { Link } from 'react-router-dom'
 
 import { formatFileByteSize } from '../../lib/formatFileByteSize'
 import { formatPersonShortLabel } from '../../lib/formatPersonShortLabel'
@@ -15,6 +16,16 @@ function artifactTypeBadgeClass(fileType: string): string {
   return 'border border-teal-500/40 bg-teal-950/55 text-teal-200'
 }
 
+function rowOriginLabel(
+  scope: string | undefined,
+  projectName: string | null,
+): string {
+  const s = scope ?? 'project'
+  if (s === 'studio') return 'Studio library'
+  if (s === 'software') return 'Software library'
+  return projectName ?? 'Project'
+}
+
 export function SoftwareArtifactsSection(props: {
   studioId: string
   softwareId: string
@@ -24,9 +35,10 @@ export function SoftwareArtifactsSection(props: {
   isPending: boolean
   isError: boolean
   rows: SoftwareArtifactRow[] | undefined
-  onDownload: (projectId: string, artifactId: string, filename: string) => void
+  onDownload: (artifactId: string, filename: string) => void
 }): ReactElement | null {
   const {
+    studioId,
     softwareId,
     defaultProjectId,
     canStudioEditor,
@@ -43,7 +55,7 @@ export function SoftwareArtifactsSection(props: {
 
   return (
     <section className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 px-5 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-zinc-800 px-5 py-4">
         <h2 className="text-[15px] font-semibold tracking-tight text-zinc-100">
           Software artifacts
           {rows != null ? (
@@ -52,13 +64,24 @@ export function SoftwareArtifactsSection(props: {
             </span>
           ) : null}
         </h2>
-        {canStudioEditor && defaultProjectId ? (
-          <ArtifactQuickUpload
-            softwareId={softwareId}
-            projectId={defaultProjectId}
-            canUpload
-            variant="header"
-          />
+        {defaultProjectId ? (
+          <div className="flex w-full min-w-0 flex-col items-stretch gap-2 sm:w-auto sm:max-w-md sm:items-end">
+            <Link
+              to={`/studios/${studioId}/artifact-library?softwareId=${encodeURIComponent(softwareId)}`}
+              className="self-end text-[11px] text-zinc-400 hover:text-zinc-200"
+            >
+              Open library →
+            </Link>
+            {canStudioEditor ? (
+              <ArtifactQuickUpload
+                softwareId={softwareId}
+                projectId={defaultProjectId}
+                canUpload
+                variant="full"
+                studioIdForListInvalidation={studioId}
+              />
+            ) : null}
+          </div>
         ) : null}
       </div>
       <div className="px-5 pb-5 pt-1">
@@ -103,7 +126,7 @@ export function SoftwareArtifactsSection(props: {
                           </span>
                         </div>
                         <p className="mt-1 text-[11px] text-zinc-500">
-                          {row.project_name} · {uploader} · {when}
+                          {`${rowOriginLabel(scopeLevel, row.project_name)} · ${uploader} · ${when}`}
                           {excludedHint ? (
                             <span className="text-zinc-600">
                               {' '}
@@ -122,9 +145,7 @@ export function SoftwareArtifactsSection(props: {
                     <button
                       type="button"
                       className="shrink-0 self-start text-[12px] font-medium text-zinc-500 hover:text-zinc-300 sm:self-center"
-                      onClick={() =>
-                        void onDownload(row.project_id, row.id, row.name)
-                      }
+                      onClick={() => void onDownload(row.id, row.name)}
                     >
                       Download
                     </button>

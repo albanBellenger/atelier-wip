@@ -165,14 +165,21 @@ UNIQUE (project_id, slug)
 
 ### `artifacts`
 ```sql
-id           UUID PRIMARY KEY,
-project_id   UUID REFERENCES projects(id) ON DELETE CASCADE,
-uploaded_by  UUID REFERENCES users(id),
-name         TEXT NOT NULL,
-file_type    TEXT NOT NULL,   -- pdf | md
-storage_path TEXT NOT NULL,
-created_at   TIMESTAMPTZ DEFAULT NOW()
+id                UUID PRIMARY KEY,
+scope_level       TEXT NOT NULL DEFAULT 'project',  -- studio | software | project
+project_id        UUID REFERENCES projects(id) ON DELETE CASCADE,  -- NULL when scope is studio or software
+library_studio_id UUID REFERENCES studios(id) ON DELETE CASCADE,   -- set when scope_level = 'studio'
+library_software_id UUID REFERENCES software(id) ON DELETE CASCADE, -- set when scope_level = 'software'
+uploaded_by       UUID REFERENCES users(id),
+name              TEXT NOT NULL,
+file_type         TEXT NOT NULL,   -- pdf | md
+storage_path      TEXT NOT NULL,   -- project: {project_id}/{artifact_id}/{file}; software: software/{id}/...; studio: studio/{id}/...
+size_bytes        BIGINT NOT NULL DEFAULT 0,
+created_at        TIMESTAMPTZ DEFAULT NOW()
+-- CHECK ck_artifacts_scope_fks: exactly one ownership pattern (project vs software vs studio) per row; see migration.
 ```
+
+Rows with `scope_level = 'project'` require `project_id` and null library FKs. Software-scoped library files use `library_software_id` and null `project_id`. Studio-scoped files use `library_studio_id` only. Object keys in MinIO never rely on a null `project_id`.
 
 ### `artifact_chunks`
 ```sql
@@ -404,12 +411,20 @@ CREATE INDEX ON mcp_keys       (studio_id,  revoked_at);
 ### ArtifactService
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
-| `/projects/{pid}/artifacts` | POST | Studio Member | Upload PDF or MD |
-| `/projects/{pid}/artifacts` | GET | Member/Viewer | List artifacts |
+| `/projects/{pid}/artifacts` | POST | Studio Member | Upload PDF or MD (project scope) |
+| `/projects/{pid}/artifacts` | GET | Member/Viewer | List project-scoped artifacts |
 | `/projects/{pid}/artifacts/{aid}/download` | GET | Member/Viewer | Proxied file download (streamed through FastAPI) |
 | `/projects/{pid}/artifacts/{aid}` | DELETE | Studio Member | Delete artifact + chunks |
+| `/studios/{sid}/artifacts` | POST | Studio Editor | Upload PDF or MD (studio library scope) |
+| `/studios/{sid}/artifacts/md` | POST | Studio Editor | Create Markdown artifact (studio scope) |
+| `/studios/{sid}/artifact-library` | GET | Member/Viewer (studio list rules) | Unified library list; optional `?softwareId=` filter |
+| `/software/{swid}/artifacts` | POST | Software editor (owning studio) | Upload PDF or MD (software library scope) |
+| `/software/{swid}/artifacts/md` | POST | Same | Create Markdown artifact (software scope) |
+| `/artifacts/{aid}/download` | GET | Authorized reader | Download any artifact the user may read (all scopes) |
 
 **Download security note:** the download endpoint streams the file content directly from MinIO through FastAPI to the client — it does **not** generate a presigned URL. This ensures all downloads are gated by JWT validation and never bypass Atelier's auth layer. MinIO is configured as strictly private (no public bucket policy, no internet-facing exposure). This is the correct default for confidential corporate specs.
+
+**Artifact library visibility:** project-scoped files appear on their project’s software aggregate and in the studio library when not excluded. Software-scoped files belong to one software and appear on that software’s list and in the studio library. Studio-scoped files are visible only at studio level (not on per-software lists). The `GET /studios/{sid}/artifact-library` endpoint returns a merged, sorted view for the Artifact library UI, honoring the same exclusion flags as software-scoped lists where applicable.
 
 ### WorkOrderService
 | Endpoint | Method | Auth | Description |
@@ -1119,10 +1134,16 @@ ENCRYPTION_KEY=changeme-32-byte-fernet-key
 ### Artifacts
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| POST | `/projects/{pid}/artifacts` | Member | Upload |
-| GET | `/projects/{pid}/artifacts` | Member/Viewer | List |
+| POST | `/projects/{pid}/artifacts` | Member | Upload (project scope) |
+| GET | `/projects/{pid}/artifacts` | Member/Viewer | List project-scoped files |
 | GET | `/projects/{pid}/artifacts/{aid}/download` | Member/Viewer | Download |
 | DELETE | `/projects/{pid}/artifacts/{aid}` | Member | Delete |
+| POST | `/studios/{sid}/artifacts` | Studio Editor | Upload (studio library) |
+| POST | `/studios/{sid}/artifacts/md` | Studio Editor | Create Markdown (studio library) |
+| GET | `/studios/{sid}/artifact-library` | Member/Viewer | Unified library (`?softwareId=` optional) |
+| POST | `/software/{swid}/artifacts` | Software editor | Upload (software library) |
+| POST | `/software/{swid}/artifacts/md` | Software editor | Create Markdown (software library) |
+| GET | `/artifacts/{aid}/download` | Authorized reader | Download (all scopes) |
 
 ### Work Orders
 | Method | Path | Auth | Description |

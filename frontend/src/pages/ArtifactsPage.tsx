@@ -7,7 +7,7 @@ import {
   type AuthErrorBody,
   createMarkdownArtifact,
   deleteArtifact,
-  downloadArtifactBlob,
+  downloadArtifactBlobById,
   listArtifacts,
   me,
   uploadArtifact,
@@ -99,7 +99,7 @@ export function ArtifactsPage(): ReactElement {
     filename: string,
   ): Promise<void> {
     try {
-      const blob = await downloadArtifactBlob(pid, artifactId)
+      const blob = await downloadArtifactBlobById(artifactId)
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url

@@ -23,8 +23,16 @@ export function ArtifactQuickUpload(props: {
   projectId: string
   canUpload: boolean
   variant: ArtifactQuickUploadVariant
+  /** When set, invalidates the studio-wide artifact list after upload. */
+  studioIdForListInvalidation?: string
 }): ReactElement | null {
-  const { softwareId, projectId, canUpload, variant } = props
+  const {
+    softwareId,
+    projectId,
+    canUpload,
+    variant,
+    studioIdForListInvalidation,
+  } = props
   const qc = useQueryClient()
   const fileRef = useRef<HTMLInputElement>(null)
   const [showMd, setShowMd] = useState(false)
@@ -34,6 +42,14 @@ export function ArtifactQuickUpload(props: {
   const invalidateArtifactQueries = (): void => {
     void qc.invalidateQueries({ queryKey: ['artifacts', projectId] })
     void qc.invalidateQueries({ queryKey: ['software', softwareId, 'artifacts'] })
+    if (studioIdForListInvalidation) {
+      void qc.invalidateQueries({
+        queryKey: ['studio', studioIdForListInvalidation, 'artifacts'],
+      })
+      void qc.invalidateQueries({
+        queryKey: ['artifactLibrary', studioIdForListInvalidation],
+      })
+    }
   }
 
   const uploadMut = useMutation({

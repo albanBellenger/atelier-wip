@@ -101,7 +101,7 @@ describe('TokenUsageReportPanel', () => {
       },
     })
     render(
-      <MemoryRouter initialEntries={['/me/token-usage?studio_id=st-99']}>
+      <MemoryRouter initialEntries={['/llm-usage?studio_id=st-99']}>
         <QueryClientProvider client={qc}>
           <TokenUsageReportPanel mode="me" />
         </QueryClientProvider>

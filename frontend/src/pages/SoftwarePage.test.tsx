@@ -136,6 +136,15 @@ describe('SoftwarePage', () => {
       screen.getByRole('button', { name: /^upload file$/i }),
     ).toBeInTheDocument()
     expect(
+      screen.getByRole('button', { name: /^new markdown$/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: /open library/i }),
+    ).toHaveAttribute(
+      'href',
+      '/studios/s1/artifact-library?softwareId=sw1',
+    )
+    expect(
       screen.queryByRole('link', { name: /software settings/i }),
     ).not.toBeInTheDocument()
     expect(
@@ -436,6 +445,9 @@ describe('SoftwarePage', () => {
       screen.getByRole('heading', { name: /software artifacts/i }),
     ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^upload file$/i })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /^new markdown$/i }),
+    ).not.toBeInTheDocument()
     expect(
       screen.queryByRole('link', { name: /software settings/i }),
     ).not.toBeInTheDocument()

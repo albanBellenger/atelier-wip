@@ -17,11 +17,12 @@ import {
   getHostedEnvironment,
   hostedEnvironmentLabel,
 } from '../lib/hostedEnvironment'
+import { withUtcMonthQuery } from '../lib/utcMonthBounds'
 import { useStudioAccess } from '../hooks/useStudioAccess'
 import { APP_VERSION } from '../version'
 import {
   createProject,
-  downloadArtifactBlob,
+  downloadArtifactBlobById,
   getSoftware,
   getSoftwareActivity,
   getSoftwareAttention,
@@ -253,9 +254,9 @@ export function SoftwarePage(): ReactElement {
   )
 
   const handleArtifactDownload = useCallback(
-    async (projectId: string, artifactId: string, filename: string) => {
+    async (artifactId: string, filename: string) => {
       try {
-        const blob = await downloadArtifactBlob(projectId, artifactId)
+        const blob = await downloadArtifactBlobById(artifactId)
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
@@ -386,7 +387,7 @@ export function SoftwarePage(): ReactElement {
                     </button>
                   ) : null}
                   <Link
-                    to={`/me/token-usage?software_id=${encodeURIComponent(sfid)}`}
+                    to={`/llm-usage${withUtcMonthQuery(`software_id=${encodeURIComponent(sfid)}`)}`}
                     className="inline-flex items-center justify-center rounded-md border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-[12px] font-medium text-zinc-300 hover:bg-zinc-800"
                   >
                     Token usage
@@ -663,7 +664,7 @@ export function SoftwarePage(): ReactElement {
                   isPending={tokenReportQ.isPending}
                   canSeeTokenUsage={userCanSeeMeTokenUsage(profile)}
                   billedToStudioName={billedToStudioName}
-                  detailReportHref={`/me/token-usage?software_id=${encodeURIComponent(sfid)}`}
+                  detailReportHref={`/llm-usage${withUtcMonthQuery(`software_id=${encodeURIComponent(sfid)}`)}`}
                   sectionPaddingClass="p-5"
                 />
               </div>

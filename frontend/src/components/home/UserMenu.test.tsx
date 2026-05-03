@@ -63,7 +63,7 @@ describe('UserMenu', () => {
     )
     expect(screen.getByRole('link', { name: /token usage/i })).toHaveAttribute(
       'href',
-      '/me/token-usage',
+      '/llm-usage',
     )
   })
 

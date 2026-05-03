@@ -9,9 +9,11 @@ import { DocsUserGuidePage } from './pages/DocsUserGuidePage'
 import { HomePage } from './pages/HomePage'
 import { MeProfilePage } from './pages/MeProfilePage'
 import { NotificationSettingsPage } from './pages/NotificationSettingsPage'
+import { ArtifactLibraryPage } from './pages/ArtifactLibraryPage'
 import { ArtifactsPage } from './pages/ArtifactsPage'
 import { WorkOrdersPage } from './pages/WorkOrdersPage'
 import { IssuesPage } from './pages/IssuesPage'
+import { LlmUsagePage } from './pages/LlmUsagePage'
 import { MeTokenUsagePage } from './pages/MeTokenUsagePage'
 import { ProjectPage } from './pages/ProjectPage'
 import { ProjectSettingsPage } from './pages/ProjectSettingsPage'
@@ -40,6 +42,7 @@ function App(): ReactElement {
         <Route path="/admin/settings" element={<AdminSettingsPage />} />
         <Route path="/admin/cross-studio" element={<AdminCrossStudioPage />} />
         <Route path="/admin/token-usage" element={<AdminTokenUsagePage />} />
+        <Route path="/llm-usage" element={<LlmUsagePage />} />
         <Route path="/me/token-usage" element={<MeTokenUsagePage />} />
         <Route path="/studios" element={<StudiosListPage />} />
         <Route
@@ -50,6 +53,10 @@ function App(): ReactElement {
         <Route
           path="/studios/:studioId/token-usage"
           element={<StudioTokenUsagePage />}
+        />
+        <Route
+          path="/studios/:studioId/artifact-library"
+          element={<ArtifactLibraryPage />}
         />
         <Route path="/studios/:studioId" element={<StudioPage />} />
         <Route

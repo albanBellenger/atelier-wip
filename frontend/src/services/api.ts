@@ -160,25 +160,41 @@ export async function postMeNotificationsMarkAllRead(): Promise<MarkAllReadRespo
   )
 }
 
+function appendTokenUsageParamKey(
+  sp: URLSearchParams,
+  key: string,
+  value: string | string[] | number | undefined,
+): void {
+  if (value === undefined || value === '') return
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const s = String(item).trim()
+      if (s) sp.append(key, s)
+    }
+    return
+  }
+  if (typeof value === 'number') {
+    sp.append(key, String(value))
+    return
+  }
+  sp.append(key, String(value))
+}
+
 function appendTokenUsageParams(
   sp: URLSearchParams,
   params: TokenUsageQueryParams | undefined,
 ): void {
   if (!params) return
-  const entries: [string, string | number | undefined][] = [
-    ['studio_id', params.studio_id],
-    ['software_id', params.software_id],
-    ['project_id', params.project_id],
-    ['user_id', params.user_id],
-    ['call_type', params.call_type],
-    ['date_from', params.date_from],
-    ['date_to', params.date_to],
-    ['limit', params.limit],
-    ['offset', params.offset],
-  ]
-  for (const [k, v] of entries) {
-    if (v !== undefined && v !== '') sp.set(k, String(v))
-  }
+  appendTokenUsageParamKey(sp, 'studio_id', params.studio_id)
+  appendTokenUsageParamKey(sp, 'software_id', params.software_id)
+  appendTokenUsageParamKey(sp, 'project_id', params.project_id)
+  appendTokenUsageParamKey(sp, 'work_order_id', params.work_order_id)
+  appendTokenUsageParamKey(sp, 'user_id', params.user_id)
+  appendTokenUsageParamKey(sp, 'call_type', params.call_type)
+  appendTokenUsageParamKey(sp, 'date_from', params.date_from)
+  appendTokenUsageParamKey(sp, 'date_to', params.date_to)
+  if (params.limit !== undefined) sp.append('limit', String(params.limit))
+  if (params.offset !== undefined) sp.append('offset', String(params.offset))
 }
 
 async function fetchCsv(pathWithQuery: string): Promise<Blob> {
@@ -213,12 +229,15 @@ export function downloadBlob(blob: Blob, filename: string): void {
   URL.revokeObjectURL(url)
 }
 
+export type TokenUsageIdParam = string | string[] | undefined
+
 export interface TokenUsageQueryParams {
-  studio_id?: string
-  software_id?: string
-  project_id?: string
-  user_id?: string
-  call_type?: string
+  studio_id?: TokenUsageIdParam
+  software_id?: TokenUsageIdParam
+  project_id?: TokenUsageIdParam
+  work_order_id?: TokenUsageIdParam
+  user_id?: TokenUsageIdParam
+  call_type?: TokenUsageIdParam
   date_from?: string
   date_to?: string
   limit?: number
@@ -230,6 +249,7 @@ export interface TokenUsageRow {
   studio_id: string | null
   software_id: string | null
   project_id: string | null
+  work_order_id: string | null
   user_id: string | null
   call_type: string
   model: string
@@ -971,8 +991,8 @@ export type ArtifactScopeLevel = 'studio' | 'software' | 'project'
 
 export interface SoftwareArtifactRow {
   id: string
-  project_id: string
-  project_name: string
+  project_id: string | null
+  project_name: string | null
   name: string
   file_type: string
   size_bytes: number
@@ -985,8 +1005,8 @@ export interface SoftwareArtifactRow {
 }
 
 export interface StudioArtifactRow extends SoftwareArtifactRow {
-  software_id: string
-  software_name: string
+  software_id: string | null
+  software_name: string | null
 }
 
 export async function listSoftwareArtifacts(
@@ -1009,6 +1029,109 @@ export async function listStudioArtifacts(
   return request<StudioArtifactRow[]>(
     'GET',
     `/studios/${studioId}/artifacts`,
+  )
+}
+
+/** Unified artifact library (studio + software + project rows). Optional ``softwareId`` filters server-side. */
+export async function listArtifactLibrary(
+  studioId: string,
+  opts?: { softwareId?: string },
+): Promise<StudioArtifactRow[]> {
+  const q =
+    opts?.softwareId != null && opts.softwareId !== ''
+      ? `?softwareId=${encodeURIComponent(opts.softwareId)}`
+      : ''
+  return request<StudioArtifactRow[]>(
+    'GET',
+    `/studios/${studioId}/artifact-library${q}`,
+  )
+}
+
+export async function uploadStudioArtifact(
+  studioId: string,
+  file: File,
+  displayName?: string,
+): Promise<ArtifactItem> {
+  const fd = new FormData()
+  fd.append('file', file)
+  if (displayName?.trim()) {
+    fd.append('name', displayName.trim())
+  }
+  const r = await fetch(base() + `/studios/${studioId}/artifacts`, {
+    method: 'POST',
+    credentials: 'include',
+    body: fd,
+  })
+  const text = await r.text()
+  if (!r.ok) {
+    let err: AuthErrorBody = {
+      detail: r.statusText,
+      code: 'HTTP_ERROR',
+    }
+    if (text) {
+      try {
+        err = JSON.parse(text) as AuthErrorBody
+      } catch {
+        err = { detail: text, code: 'HTTP_ERROR' }
+      }
+    }
+    throw err
+  }
+  return JSON.parse(text) as ArtifactItem
+}
+
+export async function createStudioMarkdownArtifact(
+  studioId: string,
+  body: { name: string; content: string },
+): Promise<ArtifactItem> {
+  return request<ArtifactItem>(
+    'POST',
+    `/studios/${studioId}/artifacts/md`,
+    body,
+  )
+}
+
+export async function uploadSoftwareArtifact(
+  softwareId: string,
+  file: File,
+  displayName?: string,
+): Promise<ArtifactItem> {
+  const fd = new FormData()
+  fd.append('file', file)
+  if (displayName?.trim()) {
+    fd.append('name', displayName.trim())
+  }
+  const r = await fetch(base() + `/software/${softwareId}/artifacts`, {
+    method: 'POST',
+    credentials: 'include',
+    body: fd,
+  })
+  const text = await r.text()
+  if (!r.ok) {
+    let err: AuthErrorBody = {
+      detail: r.statusText,
+      code: 'HTTP_ERROR',
+    }
+    if (text) {
+      try {
+        err = JSON.parse(text) as AuthErrorBody
+      } catch {
+        err = { detail: text, code: 'HTTP_ERROR' }
+      }
+    }
+    throw err
+  }
+  return JSON.parse(text) as ArtifactItem
+}
+
+export async function createSoftwareMarkdownArtifact(
+  softwareId: string,
+  body: { name: string; content: string },
+): Promise<ArtifactItem> {
+  return request<ArtifactItem>(
+    'POST',
+    `/software/${softwareId}/artifacts/md`,
+    body,
   )
 }
 
@@ -1274,7 +1397,8 @@ export async function reorderSections(
 
 export interface ArtifactItem {
   id: string
-  project_id: string
+  project_id: string | null
+  scope_level?: ArtifactScopeLevel
   name: string
   file_type: string
   size_bytes: number
@@ -1617,6 +1741,29 @@ export async function downloadArtifactBlob(
       `/projects/${projectId}/artifacts/${artifactId}/download`,
     { credentials: 'include' },
   )
+  if (!r.ok) {
+    const text = await r.text()
+    let err: AuthErrorBody = {
+      detail: r.statusText,
+      code: 'HTTP_ERROR',
+    }
+    if (text) {
+      try {
+        err = JSON.parse(text) as AuthErrorBody
+      } catch {
+        err = { detail: text, code: 'HTTP_ERROR' }
+      }
+    }
+    throw err
+  }
+  return r.blob()
+}
+
+/** Download any artifact the user may read (project, software, or studio scope). */
+export async function downloadArtifactBlobById(artifactId: string): Promise<Blob> {
+  const r = await fetch(base() + `/artifacts/${artifactId}/download`, {
+    credentials: 'include',
+  })
   if (!r.ok) {
     const text = await r.text()
     let err: AuthErrorBody = {

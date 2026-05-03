@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
@@ -16,11 +16,12 @@ import {
   getHostedEnvironment,
   hostedEnvironmentLabel,
 } from '../lib/hostedEnvironment'
+import { withUtcMonthQuery } from '../lib/utcMonthBounds'
 import { useStudioAccess } from '../hooks/useStudioAccess'
 import { APP_VERSION } from '../version'
 import {
   createSoftware,
-  downloadArtifactBlob,
+  downloadArtifactBlobById,
   getMeTokenUsage,
   getStudio,
   getStudioActivity,
@@ -124,6 +125,17 @@ export function StudioPage(): ReactElement {
     retry: false,
   })
 
+  const studioDefaultUploadTarget = useMemo((): {
+    projectId: string
+    softwareId: string
+  } | null => {
+    const rows = studioProjectsQ.data ?? []
+    const active = rows.filter((p) => !p.archived)
+    const pick = active[0] ?? rows[0]
+    if (!pick) return null
+    return { projectId: pick.id, softwareId: pick.software_id }
+  }, [studioProjectsQ.data])
+
   const [newSoftwareName, setNewSoftwareName] = useState('')
 
   const createSwMut = useMutation({
@@ -153,9 +165,9 @@ export function StudioPage(): ReactElement {
   )
 
   const handleArtifactDownload = useCallback(
-    async (projectId: string, artifactId: string, filename: string) => {
+    async (artifactId: string, filename: string) => {
       try {
-        const blob = await downloadArtifactBlob(projectId, artifactId)
+        const blob = await downloadArtifactBlobById(artifactId)
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
@@ -245,7 +257,7 @@ export function StudioPage(): ReactElement {
                 <div className="flex shrink-0 flex-row flex-wrap items-center justify-start gap-2 lg:justify-end">
                   {profile && userCanSeeMeTokenUsage(profile) ? (
                     <Link
-                      to={`/me/token-usage?studio_id=${encodeURIComponent(sid)}`}
+                      to={`/llm-usage${withUtcMonthQuery(`studio_id=${encodeURIComponent(sid)}`)}`}
                       className="inline-flex items-center justify-center rounded-md border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-[12px] font-medium text-zinc-300 hover:bg-zinc-800"
                     >
                       Token usage
@@ -285,6 +297,10 @@ export function StudioPage(): ReactElement {
                   isPending={studioProjectsQ.isPending}
                 />
                 <StudioArtifactsSection
+                  studioId={sid}
+                  defaultSoftwareId={studioDefaultUploadTarget?.softwareId ?? null}
+                  defaultProjectId={studioDefaultUploadTarget?.projectId ?? null}
+                  canStudioEditor={access.isStudioEditor}
                   isMember={access.isMember}
                   isPending={artifactsQ.isPending}
                   isError={artifactsQ.isError}
@@ -317,7 +333,7 @@ export function StudioPage(): ReactElement {
                     canSeeTokenUsage={userCanSeeMeTokenUsage(profile)}
                     billedToStudioName={billedToStudioName}
                     heading="Studio LLM usage"
-                    detailReportHref={`/me/token-usage?studio_id=${encodeURIComponent(sid)}`}
+                    detailReportHref={`/llm-usage${withUtcMonthQuery(`studio_id=${encodeURIComponent(sid)}`)}`}
                     sectionPaddingClass="p-5"
                   />
                 </div>

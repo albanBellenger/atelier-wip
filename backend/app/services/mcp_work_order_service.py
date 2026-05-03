@@ -132,6 +132,7 @@ class McpWorkOrderService:
             studio_id=studio_id,
             software_id=sw.id,
             project_id=pr.id,
+            work_order_id=wo.id,
             user_id=None,
         )
         await record_usage(

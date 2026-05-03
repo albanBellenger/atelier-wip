@@ -320,6 +320,7 @@ async def test_patch_project_artifact_exclusion_viewer_forbidden(
     token, studio_id, software_id, pid1, _, aid1, _ = await _studio_two_projects_one_artifact_each(
         client, db_session, sfx
     )
+    vtok = await _register(client, sfx, "viewer")
     client.cookies.set("atelier_token", token)
     vr = await client.post(
         f"/studios/{studio_id}/members",
@@ -330,7 +331,6 @@ async def test_patch_project_artifact_exclusion_viewer_forbidden(
         },
     )
     assert vr.status_code == 200
-    vtok = await _register(client, sfx, "viewer")
     client.cookies.set("atelier_token", vtok)
     r = await client.patch(
         f"/studios/{studio_id}/software/{software_id}/projects/{pid1}/artifact-exclusions",

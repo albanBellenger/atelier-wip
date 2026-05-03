@@ -36,6 +36,7 @@ async def record_usage(
         studio_id=ctx.studio_id,
         software_id=ctx.software_id,
         project_id=ctx.project_id,
+        work_order_id=ctx.work_order_id,
         user_id=ctx.user_id,
         call_type=call_type[:32],
         model=model[:256],

@@ -130,6 +130,15 @@ describe('StudioPage', () => {
     expect(screen.getByRole('heading', { name: /^Projects/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /new project/i })).not.toBeInTheDocument()
     expect(
+      screen.getByRole('heading', { name: /studio artifacts/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /^upload file$/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /^new markdown$/i }),
+    ).toBeInTheDocument()
+    expect(
       screen.getByRole('heading', { name: /studio llm usage/i }),
     ).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /building this studio/i })).toBeInTheDocument()
@@ -150,5 +159,11 @@ describe('StudioPage', () => {
       screen.queryByRole('link', { name: /studio settings/i }),
     ).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /add software/i })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /^upload file$/i }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /^new markdown$/i }),
+    ).not.toBeInTheDocument()
   })
 })

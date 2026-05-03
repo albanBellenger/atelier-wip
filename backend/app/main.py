@@ -26,6 +26,7 @@ limiter = Limiter(key_func=get_remote_address)
 from app.routers import (
     admin,
     artifacts,
+    artifacts_by_id,
     auth,
     collab,
     me_notifications,
@@ -166,6 +167,7 @@ def create_app() -> FastAPI:
     app.include_router(project_attention.router)
     app.include_router(sections.router)
     app.include_router(artifacts.router)
+    app.include_router(artifacts_by_id.router)
     app.include_router(work_orders.router)
     app.include_router(private_threads.router)
     app.include_router(project_chat.router)

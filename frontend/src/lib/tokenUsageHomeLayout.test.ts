@@ -17,6 +17,7 @@ function row(
     studio_id: null,
     software_id: null,
     project_id: null,
+    work_order_id: null,
     user_id: null,
     model: 'm',
     input_tokens: 1,

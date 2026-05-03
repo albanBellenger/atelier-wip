@@ -101,6 +101,7 @@ async def test_token_usage_scope_member_studio_admin_tool_admin_csv(
     body = me_r.json()
     assert len(body["rows"]) == 1
     assert body["rows"][0]["user_id"] == uid_m
+    assert "work_order_id" in body["rows"][0]
 
     client.cookies.set("atelier_token", token_sa)
     st_r = await client.get(f"/studios/{studio_a}/token-usage")
@@ -173,6 +174,30 @@ async def test_token_usage_scope_member_studio_admin_tool_admin_csv(
     )
     assert csv_me.status_code == 200
     assert "call_type" in csv_me.text
+    assert "work_order_id" in csv_me.text.split("\n")[0]
+
+    client.cookies.set("atelier_token", token_m)
+    me_ct = await client.get(
+        "/me/token-usage",
+        params=[("call_type", "chat"), ("call_type", "thread")],
+    )
+    assert me_ct.status_code == 200
+    assert len(me_ct.json()["rows"]) == 1
+
+    rand_sw = str(uuid.uuid4())
+    bad_sw = await client.get(
+        "/me/token-usage",
+        params={"software_id": rand_sw, "limit": 5000},
+    )
+    assert bad_sw.status_code == 404
+
+    client.cookies.set("atelier_token", token_m)
+    me_multi = await client.get(
+        "/me/token-usage",
+        params=[("studio_id", studio_a), ("studio_id", studio_a)],
+    )
+    assert me_multi.status_code == 200
+    assert len(me_multi.json()["rows"]) == 1
 
     client.cookies.set("atelier_token", token_ta)
     me_ta_studio = await client.get(

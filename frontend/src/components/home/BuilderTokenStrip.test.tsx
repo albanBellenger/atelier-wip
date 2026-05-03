@@ -33,7 +33,7 @@ describe('BuilderTokenStrip', () => {
       </MemoryRouter>,
     )
     const links = screen.getAllByRole('link', { name: /detailed report/i })
-    expect(links[0]).toHaveAttribute('href', '/me/token-usage')
+    expect(links[0]).toHaveAttribute('href', '/llm-usage')
   })
 
   it('honours detailReportHref for detailed report', () => {
@@ -57,7 +57,7 @@ describe('BuilderTokenStrip', () => {
             isPending={false}
             canSeeTokenUsage
             billedToStudioName={null}
-            detailReportHref="/me/token-usage?software_id=sw-99"
+            detailReportHref="/llm-usage?software_id=sw-99"
           />
         </QueryClientProvider>
       </MemoryRouter>,
@@ -65,7 +65,7 @@ describe('BuilderTokenStrip', () => {
     const links = screen.getAllByRole('link', { name: /detailed report/i })
     expect(links[0]).toHaveAttribute(
       'href',
-      '/me/token-usage?software_id=sw-99',
+      '/llm-usage?software_id=sw-99',
     )
   })
 

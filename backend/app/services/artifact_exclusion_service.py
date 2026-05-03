@@ -28,16 +28,27 @@ class ArtifactExclusionService:
             .where(
                 Artifact.id == artifact_id,
                 Project.software_id == software_id,
+                Artifact.scope_level == "project",
             )
         )
         art = r.scalar_one_or_none()
-        if art is None:
+        if art is not None:
+            return art
+        r2 = await self.db.execute(
+            select(Artifact).where(
+                Artifact.id == artifact_id,
+                Artifact.scope_level == "software",
+                Artifact.library_software_id == software_id,
+            )
+        )
+        art2 = r2.scalar_one_or_none()
+        if art2 is None:
             raise ApiError(
                 status_code=404,
                 code="NOT_FOUND",
                 message="Artifact not found for this software.",
             )
-        return art
+        return art2
 
     async def set_software_exclusion(
         self,

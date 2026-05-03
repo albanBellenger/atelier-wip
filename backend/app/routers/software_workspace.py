@@ -2,19 +2,21 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import SoftwareAccess, get_current_user, get_software_access
 from app.exceptions import ApiError
 from app.models.user import User
-from app.schemas.artifact import SoftwareArtifactRowOut
+from app.schemas.artifact import ArtifactResponse, MarkdownArtifactCreate, SoftwareArtifactRowOut
 from app.schemas.attention import SoftwareAttentionListOut
 from app.schemas.software_activity import SoftwareActivityListOut
 from app.services.attention_service import AttentionService
 from app.services.artifact_service import ArtifactService
+from app.services.embedding_pipeline import enqueue_artifact_embedding
 from app.services.software_activity_service import SoftwareActivityService
+from app.storage.minio_storage import get_storage_client
 
 router = APIRouter(prefix="/software/{software_id}", tags=["software-workspace"])
 
@@ -81,3 +83,89 @@ async def list_software_artifacts(
         software_id,
         for_project_id=for_project_id,
     )
+
+
+def _sw_artifact_content_type(file_type: str) -> str:
+    return "application/pdf" if file_type == "pdf" else "text/markdown"
+
+
+@router.post("/artifacts", response_model=ArtifactResponse)
+async def upload_software_artifact(
+    software_id: UUID,
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    name: str | None = Form(None),
+    session: AsyncSession = Depends(get_db),
+    sa: SoftwareAccess = Depends(get_software_access),
+) -> ArtifactResponse:
+    if not sa.studio_access.is_studio_editor:
+        raise ApiError(
+            status_code=403,
+            code="FORBIDDEN",
+            message="Studio editor access required.",
+        )
+    raw = await file.read()
+    if not raw:
+        raise ApiError(
+            status_code=422,
+            code="EMPTY_FILE",
+            message="Uploaded file is empty.",
+        )
+    svc = ArtifactService(session)
+    art = await svc.create_upload_for_software(
+        software_id=software_id,
+        uploaded_by=sa.studio_access.user.id,
+        original_filename=file.filename or "upload",
+        raw=raw,
+        display_name=name,
+    )
+    storage = get_storage_client()
+    try:
+        await storage.put_bytes(art.storage_path, raw, _sw_artifact_content_type(art.file_type))
+    except Exception as exc:
+        await session.delete(art)
+        await session.flush()
+        raise ApiError(
+            status_code=502,
+            code="STORAGE_ERROR",
+            message="Could not store file.",
+        ) from exc
+    background_tasks.add_task(enqueue_artifact_embedding, art.id)
+    return ArtifactResponse.model_validate(art)
+
+
+@router.post("/artifacts/md", response_model=ArtifactResponse)
+async def create_software_markdown_artifact(
+    software_id: UUID,
+    body: MarkdownArtifactCreate,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_db),
+    sa: SoftwareAccess = Depends(get_software_access),
+) -> ArtifactResponse:
+    if not sa.studio_access.is_studio_editor:
+        raise ApiError(
+            status_code=403,
+            code="FORBIDDEN",
+            message="Studio editor access required.",
+        )
+    svc = ArtifactService(session)
+    art = await svc.create_markdown_for_software(
+        software_id=software_id,
+        uploaded_by=sa.studio_access.user.id,
+        name=body.name,
+        content=body.content,
+    )
+    raw = body.content.encode("utf-8")
+    storage = get_storage_client()
+    try:
+        await storage.put_bytes(art.storage_path, raw, _sw_artifact_content_type(art.file_type))
+    except Exception as exc:
+        await session.delete(art)
+        await session.flush()
+        raise ApiError(
+            status_code=502,
+            code="STORAGE_ERROR",
+            message="Could not store file.",
+        ) from exc
+    background_tasks.add_task(enqueue_artifact_embedding, art.id)
+    return ArtifactResponse.model_validate(art)

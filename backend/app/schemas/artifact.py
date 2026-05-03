@@ -6,10 +6,13 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+ArtifactScopeLevel = Literal["studio", "software", "project"]
+
 
 class ArtifactResponse(BaseModel):
     id: UUID
-    project_id: UUID
+    project_id: UUID | None
+    scope_level: ArtifactScopeLevel = "project"
     name: str
     file_type: str
     size_bytes: int
@@ -24,15 +27,12 @@ class MarkdownArtifactCreate(BaseModel):
     content: str = Field(default="")
 
 
-ArtifactScopeLevel = Literal["studio", "software", "project"]
-
-
 class SoftwareArtifactRowOut(BaseModel):
-    """Artifact row for software-wide list (includes owning project)."""
+    """Artifact row for software-wide list (includes owning project when project-scoped)."""
 
     id: UUID
-    project_id: UUID
-    project_name: str
+    project_id: UUID | None = None
+    project_name: str | None = None
     name: str
     file_type: str
     size_bytes: int
@@ -47,8 +47,8 @@ class SoftwareArtifactRowOut(BaseModel):
 class StudioArtifactRowOut(SoftwareArtifactRowOut):
     """Artifact on studio-wide aggregate list."""
 
-    software_id: UUID
-    software_name: str
+    software_id: UUID | None = None
+    software_name: str | None = None
 
 
 class ArtifactExclusionPatch(BaseModel):

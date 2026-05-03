@@ -17,6 +17,16 @@ function artifactTypeBadgeClass(fileType: string): string {
   return 'border border-teal-500/40 bg-teal-950/55 text-teal-200'
 }
 
+function rowOriginLabel(
+  scope: string | undefined,
+  projectName: string | null,
+): string {
+  const s = scope ?? 'project'
+  if (s === 'studio') return 'Studio library'
+  if (s === 'software') return 'Software library'
+  return projectName ?? 'Project'
+}
+
 export function ProjectAggregatedArtifactsSection(props: {
   studioId: string
   softwareId: string
@@ -26,7 +36,7 @@ export function ProjectAggregatedArtifactsSection(props: {
   isPending: boolean
   isError: boolean
   rows: SoftwareArtifactRow[] | undefined
-  onDownload: (projectId: string, artifactId: string, filename: string) => void
+  onDownload: (artifactId: string, filename: string) => void
 }): ReactElement | null {
   const {
     studioId,
@@ -53,7 +63,7 @@ export function ProjectAggregatedArtifactsSection(props: {
     return null
   }
 
-  const libraryPath = `/studios/${studioId}/software/${softwareId}/projects/${projectId}/artifacts`
+  const libraryPath = `/studios/${studioId}/artifact-library?softwareId=${encodeURIComponent(softwareId)}`
 
   return (
     <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40">
@@ -84,6 +94,7 @@ export function ProjectAggregatedArtifactsSection(props: {
             projectId={projectId}
             canUpload={canStudioEditor}
             variant="full"
+            studioIdForListInvalidation={studioId}
           />
         </div>
       </div>
@@ -132,16 +143,14 @@ export function ProjectAggregatedArtifactsSection(props: {
                           </span>
                         </div>
                         <p className="mt-1 text-[11px] text-zinc-500">
-                          {row.project_name} · {uploader} · {when}
+                          {`${rowOriginLabel(scopeLevel, row.project_name)} · ${uploader} · ${when}`}
                         </p>
                       </div>
                     </div>
                     <button
                       type="button"
                       className="shrink-0 self-start text-[12px] font-medium text-zinc-500 hover:text-zinc-300 sm:self-center"
-                      onClick={() =>
-                        void onDownload(row.project_id, row.id, row.name)
-                      }
+                      onClick={() => void onDownload(row.id, row.name)}
                     >
                       Download
                     </button>

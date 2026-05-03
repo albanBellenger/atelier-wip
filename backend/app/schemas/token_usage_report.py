@@ -14,6 +14,7 @@ class TokenUsageRowOut(BaseModel):
     studio_id: UUID | None
     software_id: UUID | None
     project_id: UUID | None
+    work_order_id: UUID | None
     user_id: UUID | None
     call_type: str
     model: str

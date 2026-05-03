@@ -20,10 +20,11 @@ import { ListSkeleton } from '../components/ui/ListSkeleton'
 import { showPublishSuccessToast } from '../components/ui/Toast'
 import { useStudioAccess } from '../hooks/useStudioAccess'
 import { formatRelativeTimeUtc } from '../lib/formatRelativeTime'
+import { withUtcMonthQuery } from '../lib/utcMonthBounds'
 import {
   createSection,
   deleteSection,
-  downloadArtifactBlob,
+  downloadArtifactBlobById,
   getProject,
   getProjectAttention,
   getProjectGraph,
@@ -437,9 +438,9 @@ export function ProjectPage(): ReactElement {
   )
 
   const handleArtifactDownload = useCallback(
-    async (artifactProjectId: string, artifactId: string, filename: string) => {
+    async (artifactId: string, filename: string) => {
       try {
-        const blob = await downloadArtifactBlob(artifactProjectId, artifactId)
+        const blob = await downloadArtifactBlobById(artifactId)
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
@@ -567,7 +568,7 @@ export function ProjectPage(): ReactElement {
               ← Software
             </Link>
             <Link
-              to={`/studios/${sid}/software/${sfid}/projects/${pid}/artifacts`}
+              to={`/studios/${sid}/artifact-library?softwareId=${encodeURIComponent(sfid)}`}
               className="shrink-0 hover:text-zinc-200"
             >
               Artifacts
@@ -651,7 +652,7 @@ export function ProjectPage(): ReactElement {
                   </div>
                   <div className="flex flex-row flex-wrap items-center justify-start gap-2 lg:justify-end">
                     <Link
-                      to={`/me/token-usage?project_id=${encodeURIComponent(pid)}`}
+                      to={`/llm-usage${withUtcMonthQuery(`project_id=${encodeURIComponent(pid)}`)}`}
                       className="inline-flex items-center justify-center rounded-md border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-[12px] font-medium text-zinc-300 hover:bg-zinc-800"
                     >
                       Token usage
@@ -834,7 +835,7 @@ export function ProjectPage(): ReactElement {
                     isPending={tokenReportQ.isPending}
                     canSeeTokenUsage={userCanSeeMeTokenUsage(profile)}
                     billedToStudioName={billedToStudioName}
-                    detailReportHref={`/me/token-usage?project_id=${encodeURIComponent(pid)}`}
+                    detailReportHref={`/llm-usage${withUtcMonthQuery(`project_id=${encodeURIComponent(pid)}`)}`}
                     sectionPaddingClass="p-6"
                   />
                 </aside>

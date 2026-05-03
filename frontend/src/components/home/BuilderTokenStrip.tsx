@@ -15,7 +15,7 @@ export type BuilderTokenStripProps = {
   isPending: boolean
   canSeeTokenUsage: boolean
   billedToStudioName: string | null
-  /** Defaults to ``/me/token-usage`` (e.g. pass ``?software_id=…`` for software-scoped report). */
+  /** Defaults to ``/llm-usage`` (e.g. pass ``?software_id=…`` for software-scoped report). */
   detailReportHref?: string
   /** Outer section vertical padding; default matches the home dashboard card. */
   sectionPaddingClass?: 'p-5' | 'p-6'
@@ -40,7 +40,7 @@ export function BuilderTokenStrip({
   isPending,
   canSeeTokenUsage,
   billedToStudioName,
-  detailReportHref = '/me/token-usage',
+  detailReportHref = '/llm-usage',
   sectionPaddingClass = 'p-6',
   heading = 'Your LLM usage',
 }: BuilderTokenStripProps): ReactElement {

@@ -56,7 +56,7 @@ export function NotificationSettingsPage(): ReactElement {
         {canToken ? (
           <p className="mt-6 text-sm text-zinc-500">
             <Link
-              to="/me/token-usage"
+              to="/llm-usage"
               className="font-medium text-violet-400 hover:underline"
             >
               Token usage

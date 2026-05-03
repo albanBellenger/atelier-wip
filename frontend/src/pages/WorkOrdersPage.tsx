@@ -445,7 +445,7 @@ export function WorkOrdersPage(): ReactElement {
           </Link>
           <span className="text-zinc-600">|</span>
           <Link
-            to={`/studios/${sid}/software/${sfid}/projects/${pid}/artifacts`}
+            to={`/studios/${sid}/artifact-library?softwareId=${encodeURIComponent(sfid)}`}
             className="text-violet-400 hover:underline"
           >
             Artifacts

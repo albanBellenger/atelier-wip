@@ -102,8 +102,17 @@ class Artifact(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    project_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
+    )
+    scope_level: Mapped[str] = mapped_column(
+        String(16), server_default="project", nullable=False
+    )
+    library_studio_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("studios.id", ondelete="CASCADE"), nullable=True
+    )
+    library_software_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("software.id", ondelete="CASCADE"), nullable=True
     )
     uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
@@ -117,6 +126,8 @@ class Artifact(Base):
     )
 
     project = relationship("Project", back_populates="artifacts")
+    library_studio = relationship("Studio", foreign_keys=[library_studio_id])
+    library_software = relationship("Software", foreign_keys=[library_software_id])
     chunks = relationship("ArtifactChunk", back_populates="artifact", cascade="all, delete-orphan")
     software_exclusions = relationship(
         "SoftwareArtifactExclusion",

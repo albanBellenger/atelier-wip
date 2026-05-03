@@ -11,7 +11,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.exceptions import ApiError
-from app.models import CrossStudioAccess, Project, Software, Studio, StudioMember, User
+from app.models import (
+    Artifact,
+    CrossStudioAccess,
+    Project,
+    Software,
+    Studio,
+    StudioMember,
+    User,
+)
 from app.services.auth_service import AuthService
 
 
@@ -498,6 +506,75 @@ async def fetch_project_access_for_artifact_download(
 ) -> ProjectAccess:
     """Same RBAC as normal project access (includes cross-studio viewer/editor)."""
     return await fetch_project_access(session, user, project_id)
+
+
+async def ensure_user_can_download_artifact(
+    session: AsyncSession,
+    user: User,
+    artifact: Artifact,
+) -> None:
+    """Authorize artifact download for project-, studio-, or software-scoped rows."""
+    scope = artifact.scope_level or "project"
+    if scope == "project":
+        if artifact.project_id is None:
+            raise ApiError(
+                status_code=404,
+                code="NOT_FOUND",
+                message="Artifact not found.",
+            )
+        await fetch_project_access_for_artifact_download(
+            session, user, artifact.project_id
+        )
+        return
+    if scope == "studio":
+        if artifact.library_studio_id is None:
+            raise ApiError(
+                status_code=404,
+                code="NOT_FOUND",
+                message="Artifact not found.",
+            )
+        st = await session.get(Studio, artifact.library_studio_id)
+        if st is None:
+            raise ApiError(
+                status_code=404,
+                code="NOT_FOUND",
+                message="Studio not found.",
+            )
+        row = await session.execute(
+            select(StudioMember).where(
+                StudioMember.studio_id == artifact.library_studio_id,
+                StudioMember.user_id == user.id,
+            )
+        )
+        mem = row.scalar_one_or_none()
+        if mem is None and not user.is_tool_admin:
+            raise ApiError(
+                status_code=403,
+                code="FORBIDDEN",
+                message="Not a member of this studio",
+            )
+        return
+    if scope == "software":
+        if artifact.library_software_id is None:
+            raise ApiError(
+                status_code=404,
+                code="NOT_FOUND",
+                message="Artifact not found.",
+            )
+        sw = await session.get(Software, artifact.library_software_id)
+        if sw is None:
+            raise ApiError(
+                status_code=404,
+                code="NOT_FOUND",
+                message="Software not found.",
+            )
+        await resolve_studio_access_for_software(session, user, sw)
+        return
+    raise ApiError(
+        status_code=404,
+        code="NOT_FOUND",
+        message="Artifact not found.",
+    )
 
 
 async def get_project_access(

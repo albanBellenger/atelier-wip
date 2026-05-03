@@ -82,7 +82,7 @@ export function UserMenu({ profile, onLogout }: UserMenuProps): ReactElement {
             {canToken ? (
               <li>
                 <Link
-                  to="/me/token-usage"
+                  to="/llm-usage"
                   className="flex w-full items-center justify-between px-4 py-2 text-left text-[13px] text-zinc-200 transition hover:bg-zinc-900"
                   onMouseDown={() => setOpen(false)}
                 >
