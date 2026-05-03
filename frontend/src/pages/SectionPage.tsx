@@ -15,8 +15,8 @@ import {
 } from '../components/editor/SplitEditor'
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
 import { SectionLayoutSwitcher } from '../components/section/SectionLayoutSwitcher'
-import type { SectionLayoutMode } from '../components/section/sectionLayoutMode'
 import { ThreadPanel } from '../components/thread/ThreadPanel'
+import { usePersistedSectionLayoutMode } from '../hooks/usePersistedSectionLayoutMode'
 import { colorsForUser, useYjsCollab } from '../hooks/useYjsCollab'
 import { useStudioAccess } from '../hooks/useStudioAccess'
 import { collaboratorCountFromAwareness } from '../lib/copilotAwareness'
@@ -37,23 +37,6 @@ import {
 } from '../services/api'
 
 const SAVE_SAVED_RESET_MS = 2500
-
-function readStoredLayoutMode(sectionId: string): SectionLayoutMode {
-  try {
-    const raw = localStorage.getItem(`atelier:sectionLayout:${sectionId}`)
-    if (
-      raw === 'markdown' ||
-      raw === 'preview' ||
-      raw === 'split' ||
-      raw === 'focus'
-    ) {
-      return raw
-    }
-  } catch {
-    /* ignore */
-  }
-  return 'split'
-}
 
 /** Section deep-link with collaborative Markdown editor. */
 export function SectionPage(): ReactElement {
@@ -207,7 +190,7 @@ export function SectionPage(): ReactElement {
     [],
   )
 
-  const [layoutMode, setLayoutMode] = useState<SectionLayoutMode>('split')
+  const [layoutMode, setLayoutMode] = usePersistedSectionLayoutMode(secid)
   const prevNonFocusRef = useRef<'markdown' | 'preview' | 'split'>('split')
   const [focusComposerEmpty, setFocusComposerEmpty] = useState(true)
   const [breadcrumbSaveState, setBreadcrumbSaveState] = useState<
@@ -217,24 +200,6 @@ export function SectionPage(): ReactElement {
     null,
   )
   const [breadcrumbDocEpoch, setBreadcrumbDocEpoch] = useState(0)
-
-  useEffect(() => {
-    if (!secid) {
-      return
-    }
-    setLayoutMode(readStoredLayoutMode(secid))
-  }, [secid])
-
-  useEffect(() => {
-    if (!secid) {
-      return
-    }
-    try {
-      localStorage.setItem(`atelier:sectionLayout:${secid}`, layoutMode)
-    } catch {
-      /* ignore */
-    }
-  }, [layoutMode, secid])
 
   useEffect(() => {
     if (layoutMode !== 'focus') {
