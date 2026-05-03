@@ -136,6 +136,52 @@ async def test_stream_sse_envelope_format(
 
 
 @pytest.mark.asyncio
+async def test_stream_llm_failure_persists_error_and_completes_sse(
+    client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _sid, pid, section_id, email = await _project_section(client, sfx)
+    await _promote_tool_admin(db_session, email)
+    client.cookies.set("atelier_token", token)
+    await client.put(
+        "/admin/config",
+        json={
+            "llm_provider": "openai",
+            "llm_model": "gpt-4o-mini",
+            "llm_api_key": "sk-test",
+        },
+    )
+
+    async def fake_rag(self, *a, **k):
+        return RAGContext(text="ctx", truncated=False)
+
+    async def failing_stream(self, *a, **k) -> AsyncIterator[str]:
+        raise ApiError(
+            status_code=502,
+            code="LLM_UPSTREAM_ERROR",
+            message="LLM call failed",
+        )
+        if False:
+            yield ""
+
+    monkeypatch.setattr("app.services.rag_service.RAGService.build_context", fake_rag)
+    monkeypatch.setattr(
+        "app.services.llm_service.LLMService.chat_stream", failing_stream
+    )
+
+    r = await client.post(
+        f"/projects/{pid}/sections/{section_id}/thread/messages",
+        json={"content": "hello"},
+    )
+    assert r.status_code == 200, r.text
+    assert _last_nonempty_line(r.text) == "data: [DONE]"
+    g = await client.get(f"/projects/{pid}/sections/{section_id}/thread")
+    assert g.status_code == 200
+    asst_msgs = [m for m in g.json()["messages"] if m["role"] == "assistant"]
+    assert any(m["content"] == "[error: LLM call failed]" for m in asst_msgs)
+
+
+@pytest.mark.asyncio
 async def test_stream_conflict_meta_populated(
     client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -1,5 +1,6 @@
 """LLM client behavior (timeouts → ApiError)."""
 
+from typing import Any
 import uuid
 
 import httpx
@@ -384,6 +385,7 @@ async def test_admin_connectivity_probe_invalid_json_body_returns_result(
 class _StructuredUpstreamErrorResponse:
     status_code = 503
     text = "upstream down"
+    headers = httpx.Headers()
 
     def json(self) -> dict:
         return {}
@@ -437,6 +439,167 @@ async def test_chat_structured_upstream_http_error_maps_to_api_error(
         )
     assert exc_info.value.status_code == 502
     assert exc_info.value.error_code == "LLM_UPSTREAM_ERROR"
+
+
+_MIN_SCHEMA: dict[str, Any] = {"name": "x", "strict": True, "schema": {"type": "object"}}
+
+
+@pytest.mark.asyncio
+async def test_chat_structured_rejects_json_schema_not_dict(
+    db_session,
+) -> None:
+    llm = LLMService(db_session)
+    ctx = TokenContext(
+        studio_id=uuid.uuid4(),
+        software_id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+    )
+    bad_schema: Any = []
+    with pytest.raises(ApiError) as exc_info:
+        await llm.chat_structured(
+            system_prompt="s",
+            user_prompt="u",
+            json_schema=bad_schema,
+            context=ctx,
+            call_type="test",
+        )
+    assert exc_info.value.error_code == "LLM_SCHEMA_INVALID"
+    assert exc_info.value.status_code == 500
+
+
+@pytest.mark.asyncio
+async def test_chat_structured_rejects_json_schema_empty_name(
+    db_session,
+) -> None:
+    llm = LLMService(db_session)
+    ctx = TokenContext(
+        studio_id=uuid.uuid4(),
+        software_id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+    )
+    with pytest.raises(ApiError) as exc_info:
+        await llm.chat_structured(
+            system_prompt="s",
+            user_prompt="u",
+            json_schema={"name": "  ", "strict": True, "schema": {"type": "object"}},
+            context=ctx,
+            call_type="test",
+        )
+    assert exc_info.value.error_code == "LLM_SCHEMA_INVALID"
+
+
+@pytest.mark.asyncio
+async def test_chat_structured_rejects_json_schema_strict_not_true(
+    db_session,
+) -> None:
+    llm = LLMService(db_session)
+    ctx = TokenContext(
+        studio_id=uuid.uuid4(),
+        software_id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+    )
+    with pytest.raises(ApiError) as exc_info:
+        await llm.chat_structured(
+            system_prompt="s",
+            user_prompt="u",
+            json_schema={"name": "n", "strict": False, "schema": {"type": "object"}},
+            context=ctx,
+            call_type="test",
+        )
+    assert exc_info.value.error_code == "LLM_SCHEMA_INVALID"
+
+
+@pytest.mark.asyncio
+async def test_chat_structured_rejects_json_schema_inner_not_object(
+    db_session,
+) -> None:
+    llm = LLMService(db_session)
+    ctx = TokenContext(
+        studio_id=uuid.uuid4(),
+        software_id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+    )
+    with pytest.raises(ApiError) as exc_info:
+        await llm.chat_structured(
+            system_prompt="s",
+            user_prompt="u",
+            json_schema={
+                "name": "n",
+                "strict": True,
+                "schema": {"type": "array", "items": {"type": "string"}},
+            },
+            context=ctx,
+            call_type="test",
+        )
+    assert exc_info.value.error_code == "LLM_SCHEMA_INVALID"
+
+
+class _Upstream400SecretBodyResponse:
+    status_code = 400
+    headers = httpx.Headers({"x-request-id": "req-test-1"})
+    text = '{"error": {"code": "bad", "type": "invalid", "message": "USER_SECRET_PROMPT"}}'
+
+    def json(self) -> dict[str, Any]:
+        return {}
+
+
+class _Upstream400SecretBodyClient(_StructuredUpstreamErrPostClient):
+    async def post(self, *args: object, **kwargs: object) -> object:
+        return _Upstream400SecretBodyResponse()
+
+
+@pytest.mark.asyncio
+async def test_chat_structured_upstream_error_log_omits_raw_body(
+    db_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import llm_service
+
+    row = await db_session.get(AdminConfig, 1)
+    assert row is not None
+    row.llm_model = "gpt-test"
+    row.llm_api_key = "sk-test"
+    row.llm_provider = "openai"
+    await db_session.flush()
+
+    captured: list[tuple[str, dict[str, Any]]] = []
+
+    def capture_warning(event: str, **kw: Any) -> None:
+        captured.append((event, kw))
+
+    monkeypatch.setattr(llm_service.log, "warning", capture_warning)
+    monkeypatch.setattr(
+        "app.services.llm_service.httpx.AsyncClient",
+        _Upstream400SecretBodyClient,
+    )
+
+    llm = LLMService(db_session)
+    ctx = TokenContext(
+        studio_id=uuid.uuid4(),
+        software_id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+    )
+    with pytest.raises(ApiError):
+        await llm.chat_structured(
+            system_prompt="s",
+            user_prompt="u",
+            json_schema=_MIN_SCHEMA,
+            context=ctx,
+            call_type="test",
+        )
+    blob = str(captured)
+    assert "USER_SECRET_PROMPT" not in blob
+    assert any(
+        rec[0] == "llm_http_error"
+        and rec[1].get("upstream_error_code") == "bad"
+        and rec[1].get("upstream_error_type") == "invalid"
+        for rec in captured
+    )
 
 
 class _StructuredEmptyChoicesResponse:
@@ -599,6 +762,7 @@ async def test_chat_stream_read_timeout_maps_to_api_error(
 class _StreamHttpErrResp:
     status_code = 429
     _body = b"rate limited"
+    headers = httpx.Headers()
 
     async def aread(self) -> bytes:
         return self._body
@@ -664,3 +828,173 @@ async def test_chat_stream_upstream_http_error_maps_to_api_error(
         async for _ in gen:
             pass
     assert exc_info.value.error_code == "LLM_UPSTREAM_ERROR"
+
+
+class _StreamHttpErrSecretResp:
+    status_code = 400
+    headers = httpx.Headers({"x-request-id": "stream-req"})
+    _body = b'{"error": {"code": "x", "type": "y", "message": "USER_SECRET_PROMPT"}}'
+
+    async def aread(self) -> bytes:
+        return self._body
+
+    async def aiter_lines(self):
+        if False:
+            yield ""
+
+
+class _StreamHttpErrSecretClient:
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        pass
+
+    async def __aenter__(self) -> "_StreamHttpErrSecretClient":
+        return self
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+    def stream(self, *args: object, **kwargs: object) -> "_StreamHttpErrSecretCtx":
+        return _StreamHttpErrSecretCtx()
+
+
+class _StreamHttpErrSecretCtx:
+    async def __aenter__(self) -> _StreamHttpErrSecretResp:
+        return _StreamHttpErrSecretResp()
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_upstream_error_log_omits_raw_body(
+    db_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import llm_service
+
+    row = await db_session.get(AdminConfig, 1)
+    assert row is not None
+    row.llm_model = "gpt-test"
+    row.llm_api_key = "sk-test"
+    row.llm_provider = "openai"
+    await db_session.flush()
+
+    captured: list[tuple[str, dict[str, Any]]] = []
+
+    def capture_warning(event: str, **kw: Any) -> None:
+        captured.append((event, kw))
+
+    monkeypatch.setattr(llm_service.log, "warning", capture_warning)
+    monkeypatch.setattr(
+        "app.services.llm_service.httpx.AsyncClient",
+        _StreamHttpErrSecretClient,
+    )
+
+    llm = LLMService(db_session)
+    ctx = TokenContext(
+        studio_id=uuid.uuid4(),
+        software_id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+    )
+    gen = llm.chat_stream(
+        system_prompt="s",
+        messages=[{"role": "user", "content": "hi"}],
+        context=ctx,
+        call_type="test",
+    )
+    with pytest.raises(ApiError):
+        async for _ in gen:
+            pass
+    assert "USER_SECRET_PROMPT" not in str(captured)
+    assert any(
+        rec[0] == "llm_stream_http_error"
+        and rec[1].get("upstream_error_code") == "x"
+        and rec[1].get("upstream_error_type") == "y"
+        for rec in captured
+    )
+
+
+class _StreamHttpErrSecretResp:
+    status_code = 400
+    headers = httpx.Headers({"x-request-id": "stream-req"})
+    _body = b'{"error": {"code": "x", "type": "y", "message": "USER_SECRET_PROMPT"}}'
+
+    async def aread(self) -> bytes:
+        return self._body
+
+    async def aiter_lines(self):
+        if False:
+            yield ""
+
+
+class _StreamHttpErrSecretClient:
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        pass
+
+    async def __aenter__(self) -> "_StreamHttpErrSecretClient":
+        return self
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+    def stream(self, *args: object, **kwargs: object) -> "_StreamHttpErrSecretCtx":
+        return _StreamHttpErrSecretCtx()
+
+
+class _StreamHttpErrSecretCtx:
+    async def __aenter__(self) -> _StreamHttpErrSecretResp:
+        return _StreamHttpErrSecretResp()
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_upstream_error_log_omits_raw_body(
+    db_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import llm_service
+
+    row = await db_session.get(AdminConfig, 1)
+    assert row is not None
+    row.llm_model = "gpt-test"
+    row.llm_api_key = "sk-test"
+    row.llm_provider = "openai"
+    await db_session.flush()
+
+    captured: list[tuple[str, dict[str, Any]]] = []
+
+    def capture_warning(event: str, **kw: Any) -> None:
+        captured.append((event, kw))
+
+    monkeypatch.setattr(llm_service.log, "warning", capture_warning)
+    monkeypatch.setattr(
+        "app.services.llm_service.httpx.AsyncClient",
+        _StreamHttpErrSecretClient,
+    )
+
+    llm = LLMService(db_session)
+    ctx = TokenContext(
+        studio_id=uuid.uuid4(),
+        software_id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+    )
+    gen = llm.chat_stream(
+        system_prompt="s",
+        messages=[{"role": "user", "content": "hi"}],
+        context=ctx,
+        call_type="test",
+    )
+    with pytest.raises(ApiError):
+        async for _ in gen:
+            pass
+    assert "USER_SECRET_PROMPT" not in str(captured)
+    assert any(
+        rec[0] == "llm_stream_http_error"
+        and rec[1].get("upstream_error_code") == "x"
+        and rec[1].get("upstream_error_type") == "y"
+        for rec in captured
+    )

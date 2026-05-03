@@ -3,6 +3,21 @@
 from app.services.private_thread_service import _normalize_patch_proposal
 
 
+def test_invalid_patch_response() -> None:
+    p = _normalize_patch_proposal("append", [], snapshot="x", selection=None)
+    assert p.get("error") == "invalid_patch_response"
+
+
+def test_empty_old_snippet() -> None:
+    p = _normalize_patch_proposal(
+        "edit",
+        {"old_snippet": "", "new_snippet": "z"},
+        snapshot="ab",
+        selection=None,
+    )
+    assert p.get("error") == "empty_old_snippet"
+
+
 def test_append_ok() -> None:
     p = _normalize_patch_proposal(
         "append",

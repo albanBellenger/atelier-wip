@@ -31,4 +31,11 @@ describe('parseApiError', () => {
     expect(p.title).toBe('Invalid input')
     expect(p.message).toContain('missing')
   })
+
+  it('returns Invalid response when detail is not JSON-serialisable', () => {
+    const circular: Record<string, unknown> = {}
+    circular.self = circular
+    const p = parseApiError({ code: 'HTTP_ERROR', detail: circular })
+    expect(p.message).toBe('Invalid response')
+  })
 })

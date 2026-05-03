@@ -20,6 +20,60 @@ from app.services.token_tracker import record_usage
 
 log = structlog.get_logger("atelier.llm_service")
 
+
+def _validate_json_schema(json_schema: dict[str, Any]) -> None:
+    """Enforce OpenAI ``response_format.json_schema`` envelope shape."""
+    if not isinstance(json_schema, dict):
+        raise ApiError(
+            status_code=500,
+            code="LLM_SCHEMA_INVALID",
+            message="json_schema must be a dict with name, strict, and schema keys.",
+        )
+    name = json_schema.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise ApiError(
+            status_code=500,
+            code="LLM_SCHEMA_INVALID",
+            message="json_schema.name must be a non-empty string.",
+        )
+    if json_schema.get("strict") is not True:
+        raise ApiError(
+            status_code=500,
+            code="LLM_SCHEMA_INVALID",
+            message="json_schema.strict must be True.",
+        )
+    inner = json_schema.get("schema")
+    if not isinstance(inner, dict) or inner.get("type") != "object":
+        raise ApiError(
+            status_code=500,
+            code="LLM_SCHEMA_INVALID",
+            message='json_schema.schema must be an object with type "object".',
+        )
+
+
+def _upstream_error_log_fields(
+    *, status_code: int, headers: httpx.Headers, body_text: str
+) -> dict[str, Any]:
+    """Log-safe subset of an upstream LLM error (never raw body text)."""
+    out: dict[str, Any] = {
+        "status": status_code,
+        "request_id": headers.get("x-request-id"),
+    }
+    try:
+        data = json.loads(body_text)
+    except json.JSONDecodeError:
+        return out
+    if not isinstance(data, dict):
+        return out
+    err = data.get("error")
+    if isinstance(err, dict):
+        if "code" in err:
+            out["upstream_error_code"] = err.get("code")
+        if "type" in err:
+            out["upstream_error_type"] = err.get("type")
+    return out
+
+
 # Default OpenAI chat/completions URL (no custom Tool Admin base).
 OPENAI_CHAT_COMPLETIONS_URL = chat_completions_url(None)
 
@@ -131,6 +185,7 @@ class LLMService:
         call_type: str,
     ) -> dict[str, Any]:
         """Returns parsed assistant JSON object (never raw string)."""
+        _validate_json_schema(json_schema)
         model, api_key, chat_url = await self._require_openai_config()
         body = {
             "model": model,
@@ -156,7 +211,14 @@ class LLMService:
             async with httpx.AsyncClient(timeout=180.0) as client:
                 r = await client.post(chat_url, headers=headers, json=body)
                 if r.status_code >= 400:
-                    log.warning("llm_http_error", status=r.status_code, body=r.text[:500])
+                    log.warning(
+                        "llm_http_error",
+                        **_upstream_error_log_fields(
+                            status_code=r.status_code,
+                            headers=r.headers,
+                            body_text=r.text,
+                        ),
+                    )
                     raise ApiError(
                         status_code=502,
                         code="LLM_UPSTREAM_ERROR",
@@ -255,10 +317,14 @@ class LLMService:
                 ) as resp:
                     if resp.status_code >= 400:
                         text = await resp.aread()
+                        body_text = text.decode()
                         log.warning(
                             "llm_stream_http_error",
-                            status=resp.status_code,
-                            body=text.decode()[:500],
+                            **_upstream_error_log_fields(
+                                status_code=resp.status_code,
+                                headers=resp.headers,
+                                body_text=body_text,
+                            ),
                         )
                         raise ApiError(
                             status_code=502,

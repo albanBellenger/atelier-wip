@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import structlog
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Any
+
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -39,6 +42,50 @@ log = structlog.get_logger("atelier.work_order")
 VALID_STATUSES = frozenset(
     {"backlog", "in_progress", "in_review", "done", "archived"}
 )
+
+_PATCHABLE_SCALAR_FIELDS: tuple[str, ...] = (
+    "title",
+    "description",
+    "implementation_guide",
+    "acceptance_criteria",
+    "status",
+    "phase",
+    "phase_order",
+    "assignee_id",
+)
+
+
+@dataclass
+class _WorkOrderPatchApply:
+    mutated: bool = False
+    status_changed: bool = False
+
+
+def _normalize_work_order_patch(data: dict[str, Any]) -> dict[str, Any]:
+    """Map raw ``model_dump(exclude_unset=True)`` entries to normalized assignable values."""
+    norm: dict[str, Any] = {}
+    if "title" in data and data["title"] is not None:
+        norm["title"] = str(data["title"]).strip()
+    if "description" in data and data["description"] is not None:
+        norm["description"] = str(data["description"]).strip()
+    if "implementation_guide" in data:
+        ig = data["implementation_guide"]
+        norm["implementation_guide"] = str(ig).strip() if ig else None
+    if "acceptance_criteria" in data:
+        ac = data["acceptance_criteria"]
+        norm["acceptance_criteria"] = str(ac).strip() if ac else None
+    if "status" in data and data["status"] is not None:
+        norm["status"] = data["status"]
+    if "phase" in data:
+        ph = data["phase"]
+        norm["phase"] = str(ph).strip() if ph is not None else None
+    if "phase_order" in data:
+        norm["phase_order"] = data["phase_order"]
+    if "assignee_id" in data:
+        norm["assignee_id"] = data["assignee_id"]
+    if "section_ids" in data and data["section_ids"] is not None:
+        norm["section_ids"] = data["section_ids"]
+    return norm
 
 
 class WorkOrderService:
@@ -189,12 +236,6 @@ class WorkOrderService:
         *,
         created_by: uuid.UUID,
     ) -> WorkOrderResponse:
-        if body.status not in VALID_STATUSES:
-            raise ApiError(
-                status_code=422,
-                code="INVALID_STATUS",
-                message=f"status must be one of: {', '.join(sorted(VALID_STATUSES))}",
-            )
         wo = WorkOrder(
             id=uuid.uuid4(),
             project_id=project_id,
@@ -269,74 +310,31 @@ class WorkOrderService:
                 assignee_name=names.get(wo.assignee_id) if wo.assignee_id else None,
                 updated_by_name=names.get(wo.updated_by_id) if wo.updated_by_id else None,
             )
-        if "status" in data and data["status"] is not None:
-            if data["status"] not in VALID_STATUSES:
-                raise ApiError(
-                    status_code=422,
-                    code="INVALID_STATUS",
-                    message=f"status must be one of: {', '.join(sorted(VALID_STATUSES))}",
-                )
-        mutated = False
-        status_changed = False
-        if "title" in data and data["title"] is not None:
-            new_t = str(data["title"]).strip()
-            if new_t != wo.title:
-                wo.title = new_t
-                mutated = True
-        if "description" in data and data["description"] is not None:
-            new_d = str(data["description"]).strip()
-            if new_d != wo.description:
-                wo.description = new_d
-                mutated = True
-        if "implementation_guide" in data:
-            new_ig = (
-                str(data["implementation_guide"]).strip()
-                if data["implementation_guide"]
-                else None
-            )
-            if new_ig != wo.implementation_guide:
-                wo.implementation_guide = new_ig
-                mutated = True
-        if "acceptance_criteria" in data:
-            new_ac = (
-                str(data["acceptance_criteria"]).strip()
-                if data["acceptance_criteria"]
-                else None
-            )
-            if new_ac != wo.acceptance_criteria:
-                wo.acceptance_criteria = new_ac
-                mutated = True
-        if "status" in data and data["status"] is not None:
-            if data["status"] != wo.status:
-                wo.status = data["status"]
-                mutated = True
-                status_changed = True
-        if "phase" in data:
-            new_ph = str(data["phase"]).strip() if data["phase"] is not None else None
-            if new_ph != wo.phase:
-                wo.phase = new_ph
-                mutated = True
-        if "phase_order" in data:
-            if data["phase_order"] != wo.phase_order:
-                wo.phase_order = data["phase_order"]
-                mutated = True
-        if "assignee_id" in data:
-            if data["assignee_id"] != wo.assignee_id:
-                wo.assignee_id = data["assignee_id"]
-                mutated = True
-        if "section_ids" in data and data["section_ids"] is not None:
+        norm = _normalize_work_order_patch(data)
+        state = _WorkOrderPatchApply()
+        if "section_ids" in norm:
             prev_sec = sorted(
                 (await self._section_ids_for_work_orders([wo.id])).get(wo.id, [])
             )
-            new_sec = sorted(data["section_ids"])
+            new_sec = sorted(norm["section_ids"])
             if new_sec != prev_sec:
-                await self._set_sections(wo.id, project_id, data["section_ids"])
-                mutated = True
-        if mutated:
+                await self._set_sections(wo.id, project_id, norm["section_ids"])
+                state.mutated = True
+        for attr in _PATCHABLE_SCALAR_FIELDS:
+            if attr not in norm:
+                continue
+            new_val = norm[attr]
+            old_val = getattr(wo, attr)
+            if new_val != old_val:
+                setattr(wo, attr, new_val)
+                state.mutated = True
+                if attr == "status":
+                    state.status_changed = True
+        if state.mutated:
             wo.updated_by_id = actor_id
         await self.db.flush()
         await self.db.refresh(wo)
-        if status_changed:
+        if state.status_changed:
             await self._maybe_dispatch_status_notifications(
                 wo,
                 project_id,
@@ -484,9 +482,12 @@ class WorkOrderService:
         studio_id = software.studio_id
         software_id = software.id
 
+        ids = list(body.section_ids)
+        sec_rows = await self.db.execute(select(Section).where(Section.id.in_(ids)))
+        by_id: dict[uuid.UUID, Section] = {s.id: s for s in sec_rows.scalars().all()}
         sections: list[Section] = []
-        for sid in body.section_ids:
-            sec = await self.db.get(Section, sid)
+        for sid in ids:
+            sec = by_id.get(sid)
             if sec is None or sec.project_id != project_id:
                 raise ApiError(
                     status_code=422,

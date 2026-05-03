@@ -1,11 +1,15 @@
 """Unit tests for publish folder slug helpers (no DB)."""
 
+import uuid
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 
 from app.services.publish_folder_slug import (
     PUBLISH_FOLDER_SLUG_MAX_LEN,
     coerce_publish_folder_slug_for_create,
     coerce_publish_folder_slug_for_update,
+    next_unique_publish_folder_slug,
     normalize_publish_folder_slug,
     slug_from_project_name,
 )
@@ -63,3 +67,44 @@ def test_normalize_publish_folder_slug_truncation_all_hyphens_raises_empty() -> 
 
 def test_coerce_publish_folder_slug_for_update_invalid_falls_back() -> None:
     assert coerce_publish_folder_slug_for_update("!!!") == "section"
+
+
+@pytest.mark.asyncio
+async def test_next_unique_publish_folder_slug_returns_base_when_unused() -> None:
+    db = AsyncMock()
+    res = MagicMock()
+    res.scalar_one_or_none.return_value = None
+    db.execute = AsyncMock(return_value=res)
+    sid = uuid.uuid4()
+    out = await next_unique_publish_folder_slug(db, sid, "my-export")
+    assert out == "my-export"
+    db.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_next_unique_publish_folder_slug_suffixes_on_collision() -> None:
+    db = AsyncMock()
+    taken = MagicMock()
+    taken.scalar_one_or_none.return_value = uuid.uuid4()
+    free = MagicMock()
+    free.scalar_one_or_none.return_value = None
+    db.execute = AsyncMock(side_effect=[taken, free])
+    sid = uuid.uuid4()
+    out = await next_unique_publish_folder_slug(db, sid, "dup")
+    assert out == "dup-2"
+    assert db.execute.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_next_unique_publish_folder_slug_respects_exclude_project() -> None:
+    db = AsyncMock()
+    res = MagicMock()
+    res.scalar_one_or_none.return_value = None
+    db.execute = AsyncMock(return_value=res)
+    sid = uuid.uuid4()
+    exclude = uuid.uuid4()
+    out = await next_unique_publish_folder_slug(
+        db, sid, "reserved", exclude_project_id=exclude
+    )
+    assert out == "reserved"
+    db.execute.assert_awaited_once()

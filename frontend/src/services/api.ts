@@ -45,6 +45,25 @@ export interface AuthErrorBody {
   code: string
 }
 
+export async function throwIfNotOk(r: Response): Promise<void> {
+  if (r.ok) {
+    return
+  }
+  const text = await r.text()
+  let err: AuthErrorBody = {
+    detail: r.statusText,
+    code: 'HTTP_ERROR',
+  }
+  if (text) {
+    try {
+      err = JSON.parse(text) as AuthErrorBody
+    } catch {
+      err = { detail: text, code: 'HTTP_ERROR' }
+    }
+  }
+  throw err
+}
+
 export interface RegisterRequestBody {
   email: string
   password: string
@@ -1831,21 +1850,7 @@ export async function streamPrivateThreadReply(
       body: JSON.stringify(payload),
     },
   )
-  if (!r.ok) {
-    const text = await r.text()
-    let err: AuthErrorBody = {
-      detail: r.statusText,
-      code: 'HTTP_ERROR',
-    }
-    if (text) {
-      try {
-        err = JSON.parse(text) as AuthErrorBody
-      } catch {
-        err = { detail: text, code: 'HTTP_ERROR' }
-      }
-    }
-    throw err
-  }
+  await throwIfNotOk(r)
   const reader = r.body?.getReader()
   if (!reader) {
     throw new Error('No response body')
@@ -1862,21 +1867,7 @@ export async function downloadArtifactBlob(
       `/projects/${projectId}/artifacts/${artifactId}/download`,
     { credentials: 'include' },
   )
-  if (!r.ok) {
-    const text = await r.text()
-    let err: AuthErrorBody = {
-      detail: r.statusText,
-      code: 'HTTP_ERROR',
-    }
-    if (text) {
-      try {
-        err = JSON.parse(text) as AuthErrorBody
-      } catch {
-        err = { detail: text, code: 'HTTP_ERROR' }
-      }
-    }
-    throw err
-  }
+  await throwIfNotOk(r)
   return r.blob()
 }
 
@@ -1885,20 +1876,6 @@ export async function downloadArtifactBlobById(artifactId: string): Promise<Blob
   const r = await fetch(base() + `/artifacts/${artifactId}/download`, {
     credentials: 'include',
   })
-  if (!r.ok) {
-    const text = await r.text()
-    let err: AuthErrorBody = {
-      detail: r.statusText,
-      code: 'HTTP_ERROR',
-    }
-    if (text) {
-      try {
-        err = JSON.parse(text) as AuthErrorBody
-      } catch {
-        err = { detail: text, code: 'HTTP_ERROR' }
-      }
-    }
-    throw err
-  }
+  await throwIfNotOk(r)
   return r.blob()
 }

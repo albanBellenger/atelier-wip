@@ -521,7 +521,10 @@ async def test_generate_invalid_section() -> None:
         definition=None,
     )
     db = MagicMock()
-    db.get = AsyncMock(side_effect=[pr, sw, None])
+    empty_sec = MagicMock()
+    empty_sec.scalars.return_value.all.return_value = []
+    db.get = AsyncMock(side_effect=[pr, sw])
+    db.execute = AsyncMock(return_value=empty_sec)
     with pytest.raises(ApiError) as e:
         await WorkOrderService(db).generate_work_orders(
             pid,
@@ -560,8 +563,11 @@ async def test_generate_success_with_graph_and_skips(
         order=0,
         content="body",
     )
+    sec_ex = MagicMock()
+    sec_ex.scalars.return_value.all.return_value = [sec]
+
     db = MagicMock()
-    db.get = AsyncMock(side_effect=[pr, sw, sec])
+    db.get = AsyncMock(side_effect=[pr, sw])
 
     llm_items = {
         "items": [
@@ -617,7 +623,13 @@ async def test_generate_success_with_graph_and_skips(
     sec_map_ex = MagicMock()
     sec_map_ex.all.return_value = []
 
+    exec_n = 0
+
     async def exec_after_gen(*a: object, **k: object) -> MagicMock:
+        nonlocal exec_n
+        exec_n += 1
+        if exec_n == 1:
+            return sec_ex
         return sec_map_ex
 
     db.execute = AsyncMock(side_effect=exec_after_gen)
@@ -661,8 +673,11 @@ async def test_generate_empty_items_list_records_usage_paths(
         order=0,
         content="c",
     )
+    sec_ex = MagicMock()
+    sec_ex.scalars.return_value.all.return_value = [sec]
+
     db = MagicMock()
-    db.get = AsyncMock(side_effect=[pr, sw, sec])
+    db.get = AsyncMock(side_effect=[pr, sw])
 
     async def empty_items(self: object, **kwargs: object) -> dict:
         return {"items": [{"title": "", "description": ""}]}
@@ -673,7 +688,17 @@ async def test_generate_empty_items_list_records_usage_paths(
     )
     sec_map_ex = MagicMock()
     sec_map_ex.all.return_value = []
-    db.execute = AsyncMock(return_value=sec_map_ex)
+
+    exec_n = 0
+
+    async def exec_empty(*a: object, **k: object) -> MagicMock:
+        nonlocal exec_n
+        exec_n += 1
+        if exec_n == 1:
+            return sec_ex
+        return sec_map_ex
+
+    db.execute = AsyncMock(side_effect=exec_empty)
     db.add = MagicMock()
     db.flush = AsyncMock()
 

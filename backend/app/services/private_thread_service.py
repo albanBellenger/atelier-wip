@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import AsyncIterator
-from typing import Any, Literal
+from dataclasses import dataclass
+from typing import Any, Literal, cast
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -89,6 +91,15 @@ THREAD_PATCH_EDIT_SCHEMA: dict[str, Any] = {
 }
 
 
+@dataclass(frozen=True)
+class ThreadFinding:
+    finding_type: Literal["conflict", "gap"]
+    description: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {"finding_type": self.finding_type, "description": self.description}
+
+
 def _normalize_thread_findings(scan: object) -> list[dict[str, str]]:
     if not isinstance(scan, dict):
         return []
@@ -107,21 +118,21 @@ def _normalize_thread_findings(scan: object) -> list[dict[str, str]]:
     return out
 
 
-def _findings_appendix(findings: list[dict[str, str]]) -> str:
+def _findings_appendix(findings: list[ThreadFinding]) -> str:
     if not findings:
         return ""
     lines: list[str] = ["---", "**Conflicts and gaps**"]
     for f in findings:
-        label = "Conflict" if f["finding_type"] == "conflict" else "Gap"
-        lines.append(f"- **{label}:** {f['description']}")
+        label = "Conflict" if f.finding_type == "conflict" else "Gap"
+        lines.append(f"- **{label}:** {f.description}")
     return "\n".join(lines) + "\n"
 
 
-def _conflicts_from_findings(findings: list[dict[str, str]]) -> list[dict[str, str]]:
+def _conflicts_from_findings(findings: list[ThreadFinding]) -> list[dict[str, str]]:
     return [
-        {"description": f["description"]}
+        {"description": f.description}
         for f in findings
-        if f.get("finding_type") == "conflict"
+        if f.finding_type == "conflict"
     ]
 
 
@@ -169,6 +180,142 @@ def _normalize_patch_proposal(
     if count != 1:
         return {"error": "old_snippet_must_match_exactly_once", "occurrences": count}
     return {"intent": "edit", "old_snippet": old_s, "new_snippet": new_s}
+
+
+async def _stream_main_reply(
+    llm: LLMService,
+    *,
+    system_prompt: str,
+    openai_msgs: list[dict[str, Any]],
+    ctx: TokenContext,
+    stream_state: dict[str, Any],
+) -> AsyncIterator[str]:
+    stream_state["stream_failed"] = False
+    try:
+        async for piece in llm.chat_stream(
+            system_prompt=system_prompt,
+            messages=openai_msgs,
+            context=ctx,
+            call_type="private_thread",
+        ):
+            yield piece
+    except (ApiError, httpx.HTTPError):
+        stream_state["stream_failed"] = True
+        return
+
+
+async def _scan_for_findings(
+    llm: LLMService,
+    *,
+    user_message: str,
+    full_text: str,
+    ctx: TokenContext,
+) -> list[ThreadFinding]:
+    if not full_text.strip():
+        return []
+    try:
+        scan = await llm.chat_structured(
+            system_prompt=(
+                "You scan the user message and assistant reply. Identify "
+                "(1) contradictory requirements or conflicting facts, and "
+                "(2) missing requirements, unanswered questions, or "
+                "specification gaps. Return JSON only."
+            ),
+            user_prompt=(
+                f"User:\n{user_message}\n\nAssistant:\n{full_text}\n\n"
+                "List concrete findings. Use finding_type \"conflict\" for "
+                "contradictions and \"gap\" for missing or unclear coverage."
+            ),
+            json_schema=THREAD_FINDINGS_JSON_SCHEMA,
+            context=ctx,
+            call_type="thread_conflict_scan",
+        )
+    except ApiError:
+        return []
+    raw_items = _normalize_thread_findings(scan)
+    out: list[ThreadFinding] = []
+    for item in raw_items:
+        ft = item.get("finding_type")
+        if ft not in ("conflict", "gap"):
+            continue
+        out.append(
+            ThreadFinding(
+                finding_type=cast(Literal["conflict", "gap"], ft),
+                description=str(item.get("description") or ""),
+            )
+        )
+    return out
+
+
+async def _build_patch_proposal(
+    llm: LLMService,
+    *,
+    intent: Literal["append", "replace_selection", "edit"],
+    effective_snap: str,
+    content: str,
+    full: str,
+    selection_triple: tuple[int, int, str] | None,
+    ctx: TokenContext,
+) -> dict[str, Any] | None:
+    patch_prompt = (
+        f"Current section markdown (full):\n{effective_snap}\n\n"
+        f"User request:\n{content}\n\nAssistant reply (main body):\n{full}\n"
+    )
+    if selection_triple is not None:
+        patch_prompt += (
+            f"\nSelection to replace (from={selection_triple[0]}, "
+            f"to={selection_triple[1]}):\n{selection_triple[2]}\n"
+        )
+    try:
+        if intent == "append":
+            raw_patch = await llm.chat_structured(
+                system_prompt=(
+                    "You propose markdown to APPEND at the end of the section. "
+                    "Return JSON only. Do not repeat the whole document."
+                ),
+                user_prompt=patch_prompt,
+                json_schema=THREAD_PATCH_APPEND_SCHEMA,
+                context=ctx,
+                call_type="thread_patch_append",
+            )
+            return _normalize_patch_proposal(
+                "append",
+                raw_patch,
+                snapshot=effective_snap,
+                selection=selection_triple,
+            )
+        if intent == "replace_selection":
+            raw_patch = await llm.chat_structured(
+                system_prompt=(
+                    "You propose replacement markdown for the user's selection only. "
+                    "Return JSON only with replacement_markdown."
+                ),
+                user_prompt=patch_prompt,
+                json_schema=THREAD_PATCH_REPLACE_SCHEMA,
+                context=ctx,
+                call_type="thread_patch_replace",
+            )
+            return _normalize_patch_proposal(
+                "replace_selection",
+                raw_patch,
+                snapshot=effective_snap,
+                selection=selection_triple,
+            )
+        raw_patch = await llm.chat_structured(
+            system_prompt=(
+                "You propose replacing exactly one occurrence of old_snippet "
+                "in the section with new_snippet. Return JSON only."
+            ),
+            user_prompt=patch_prompt,
+            json_schema=THREAD_PATCH_EDIT_SCHEMA,
+            context=ctx,
+            call_type="thread_patch_edit",
+        )
+        return _normalize_patch_proposal(
+            "edit", raw_patch, snapshot=effective_snap, selection=selection_triple
+        )
+    except ApiError:
+        return {"error": "patch_structured_call_failed"}
 
 
 class PrivateThreadService:
@@ -381,25 +528,23 @@ class PrivateThreadService:
         system_prompt = persona + rag_text + excerpt_extra
 
         llm = LLMService(self.db)
+        stream_state: dict[str, Any] = {}
         buf: list[str] = []
-        full = ""
-        stream_failed = False
+        async for piece in _stream_main_reply(
+            llm,
+            system_prompt=system_prompt,
+            openai_msgs=openai_msgs,
+            ctx=ctx,
+            stream_state=stream_state,
+        ):
+            buf.append(piece)
+            payload = json.dumps({"type": "token", "text": piece})
+            yield f"data: {payload}\n\n".encode()
 
-        try:
-            async for piece in llm.chat_stream(
-                system_prompt=system_prompt,
-                messages=openai_msgs,
-                context=ctx,
-                call_type="private_thread",
-            ):
-                buf.append(piece)
-                payload = json.dumps({"type": "token", "text": piece})
-                yield f"data: {payload}\n\n".encode()
+        full = "".join(buf)
+        stream_failed = bool(stream_state.get("stream_failed", False))
 
-            full = "".join(buf)
-        except Exception:
-            stream_failed = True
-            full = ""
+        if stream_failed:
             self.db.add(
                 ThreadMessage(
                     id=uuid.uuid4(),
@@ -410,7 +555,7 @@ class PrivateThreadService:
             )
             await self.db.flush()
 
-        findings_list: list[dict[str, str]] = []
+        findings_list: list[ThreadFinding] = []
         appendix = ""
         full_final = full
 
@@ -429,30 +574,14 @@ class PrivateThreadService:
                 )
                 await self.db.flush()
             else:
-                try:
-                    scan = await llm.chat_structured(
-                        system_prompt=(
-                            "You scan the user message and assistant reply. Identify "
-                            "(1) contradictory requirements or conflicting facts, and "
-                            "(2) missing requirements, unanswered questions, or "
-                            "specification gaps. Return JSON only."
-                        ),
-                        user_prompt=(
-                            f"User:\n{content}\n\nAssistant:\n{full}\n\n"
-                            "List concrete findings. Use finding_type \"conflict\" for "
-                            "contradictions and \"gap\" for missing or unclear coverage."
-                        ),
-                        json_schema=THREAD_FINDINGS_JSON_SCHEMA,
-                        context=ctx,
-                        call_type="thread_conflict_scan",
-                    )
-                    findings_list = _normalize_thread_findings(scan)
-                    appendix = _findings_appendix(findings_list)
-                    full_final = f"{full}\n\n{appendix}" if appendix else full
-                except ApiError:
-                    findings_list = []
-                    appendix = ""
-                    full_final = full
+                findings_list = await _scan_for_findings(
+                    llm,
+                    user_message=content,
+                    full_text=full,
+                    ctx=ctx,
+                )
+                appendix = _findings_appendix(findings_list)
+                full_final = f"{full}\n\n{appendix}" if appendix else full
 
                 self.db.add(
                     ThreadMessage(
@@ -472,70 +601,26 @@ class PrivateThreadService:
         conflicts_out = _conflicts_from_findings(findings_list)
 
         patch_proposal: dict[str, Any] | None = None
-        if not stream_failed and full.strip() and thread_intent != "ask":
-            patch_prompt = (
-                f"Current section markdown (full):\n{effective_snap}\n\n"
-                f"User request:\n{content}\n\nAssistant reply (main body):\n{full}\n"
+        if (
+            not stream_failed
+            and full.strip()
+            and thread_intent in ("append", "replace_selection", "edit")
+        ):
+            patch_proposal = await _build_patch_proposal(
+                llm,
+                intent=thread_intent,
+                effective_snap=effective_snap,
+                content=content,
+                full=full,
+                selection_triple=selection_triple,
+                ctx=ctx,
             )
-            if selection_triple is not None:
-                patch_prompt += (
-                    f"\nSelection to replace (from={selection_triple[0]}, "
-                    f"to={selection_triple[1]}):\n{selection_triple[2]}\n"
-                )
-            try:
-                if thread_intent == "append":
-                    raw_patch = await llm.chat_structured(
-                        system_prompt=(
-                            "You propose markdown to APPEND at the end of the section. "
-                            "Return JSON only. Do not repeat the whole document."
-                        ),
-                        user_prompt=patch_prompt,
-                        json_schema=THREAD_PATCH_APPEND_SCHEMA,
-                        context=ctx,
-                        call_type="thread_patch_append",
-                    )
-                    patch_proposal = _normalize_patch_proposal(
-                        "append", raw_patch, snapshot=effective_snap, selection=selection_triple
-                    )
-                elif thread_intent == "replace_selection":
-                    raw_patch = await llm.chat_structured(
-                        system_prompt=(
-                            "You propose replacement markdown for the user's selection only. "
-                            "Return JSON only with replacement_markdown."
-                        ),
-                        user_prompt=patch_prompt,
-                        json_schema=THREAD_PATCH_REPLACE_SCHEMA,
-                        context=ctx,
-                        call_type="thread_patch_replace",
-                    )
-                    patch_proposal = _normalize_patch_proposal(
-                        "replace_selection",
-                        raw_patch,
-                        snapshot=effective_snap,
-                        selection=selection_triple,
-                    )
-                else:  # edit
-                    raw_patch = await llm.chat_structured(
-                        system_prompt=(
-                            "You propose replacing exactly one occurrence of old_snippet "
-                            "in the section with new_snippet. Return JSON only."
-                        ),
-                        user_prompt=patch_prompt,
-                        json_schema=THREAD_PATCH_EDIT_SCHEMA,
-                        context=ctx,
-                        call_type="thread_patch_edit",
-                    )
-                    patch_proposal = _normalize_patch_proposal(
-                        "edit", raw_patch, snapshot=effective_snap, selection=selection_triple
-                    )
-            except ApiError:
-                patch_proposal = {"error": "patch_structured_call_failed"}
 
         if not stream_failed:
             meta = json.dumps(
                 {
                     "type": "meta",
-                    "findings": findings_list,
+                    "findings": [f.as_dict() for f in findings_list],
                     "conflicts": conflicts_out,
                     "context_truncated": context_truncated,
                     "patch_proposal": patch_proposal,

@@ -1,10 +1,15 @@
 """Work order API schemas."""
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 from pydantic_core import PydanticCustomError
+
+WorkOrderStatusLiteral = Literal[
+    "backlog", "in_progress", "in_review", "done", "archived"
+]
 
 
 class WorkOrderNoteCreate(BaseModel):
@@ -26,7 +31,7 @@ class WorkOrderCreate(BaseModel):
     description: str = Field(..., min_length=1)
     implementation_guide: str | None = None
     acceptance_criteria: str | None = None
-    status: str = Field(default="backlog", max_length=32)
+    status: WorkOrderStatusLiteral = Field(default="backlog")
     phase: str | None = Field(None, max_length=256)
     phase_order: int | None = None
     assignee_id: UUID | None = None
@@ -49,7 +54,7 @@ class WorkOrderUpdate(BaseModel):
     description: str | None = None
     implementation_guide: str | None = None
     acceptance_criteria: str | None = None
-    status: str | None = Field(None, max_length=32)
+    status: WorkOrderStatusLiteral | None = None
     phase: str | None = Field(None, max_length=256)
     phase_order: int | None = None
     assignee_id: UUID | None = None

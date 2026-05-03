@@ -9,7 +9,7 @@ import pytest
 
 from app.exceptions import ApiError
 from app.models import Project, Section, Software, WorkOrder
-from app.schemas.work_order import GenerateWorkOrdersBody, WorkOrderCreate
+from app.schemas.work_order import GenerateWorkOrdersBody
 from app.services.work_order_service import WorkOrderService
 
 
@@ -90,22 +90,6 @@ async def test_get_work_order_not_found() -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_rejects_invalid_status() -> None:
-    db = AsyncMock()
-    body = WorkOrderCreate(
-        title="t",
-        description="d",
-        status="not_a_status",
-        section_ids=[uuid.uuid4()],
-    )
-    with pytest.raises(ApiError) as e:
-        await WorkOrderService(db).create(
-            uuid.uuid4(), body, created_by=uuid.uuid4()
-        )
-    assert e.value.error_code == "INVALID_STATUS"
-
-
-@pytest.mark.asyncio
 async def test_add_dependency_self_raises() -> None:
     db = AsyncMock()
     wid = uuid.uuid4()
@@ -159,8 +143,11 @@ async def test_generate_invalid_llm_shape(
         order=0,
         content="x",
     )
+    sec_ex = MagicMock()
+    sec_ex.scalars.return_value.all.return_value = [sec]
     db = AsyncMock()
-    db.get = AsyncMock(side_effect=[pr, sw, sec])
+    db.execute = AsyncMock(return_value=sec_ex)
+    db.get = AsyncMock(side_effect=[pr, sw])
 
     async def bad(self, **kwargs):
         return {}
@@ -219,35 +206,6 @@ async def test_get_work_order_detail_includes_notes() -> None:
     out = await WorkOrderService(db).get_work_order(pid, wid, detail=True)
     assert len(out.notes) == 1
     assert out.notes[0].content == "n1"
-
-
-@pytest.mark.asyncio
-async def test_update_rejects_invalid_status() -> None:
-    from datetime import datetime, timezone
-
-    from app.schemas.work_order import WorkOrderUpdate
-
-    now = datetime.now(timezone.utc)
-    wo = WorkOrder(
-        id=uuid.uuid4(),
-        project_id=uuid.uuid4(),
-        title="t",
-        description="d",
-        status="backlog",
-        created_at=now,
-        updated_at=now,
-    )
-    db = AsyncMock()
-    db.get = AsyncMock(return_value=wo)
-    db.flush = AsyncMock()
-    db.refresh = AsyncMock()
-
-    body = WorkOrderUpdate(status="bogus")
-    with pytest.raises(ApiError) as e:
-        await WorkOrderService(db).update(
-            wo.project_id, wo.id, body, actor_id=uuid.uuid4()
-        )
-    assert e.value.error_code == "INVALID_STATUS"
 
 
 @pytest.mark.asyncio
