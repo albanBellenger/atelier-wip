@@ -13,7 +13,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "vitest run --coverage --maxWorkers=1",
     "test:coverage:module": "vitest run --coverage --coverage.reportOnFailure",
     "test:e2e": "playwright test"
   },

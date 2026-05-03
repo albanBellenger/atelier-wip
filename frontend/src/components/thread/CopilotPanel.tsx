@@ -1,10 +1,22 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import type { ReactElement } from 'react'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+import * as Y from 'yjs'
 import type { EditorSelectionState } from '../editor/SplitEditor'
 import { useStream } from '../../hooks/useStream'
 import type { YjsCollab } from '../../hooks/useYjsCollab'
+import { summarizePeerEdit } from '../../lib/copilotPeerEditSummary'
 import {
   applyPatchToYtext,
   canApplyPatch,
@@ -19,24 +31,119 @@ import {
   previewAfterReplace,
   summarizeTextChange,
 } from '../../lib/sectionPatchPreview'
+import { parseThreadComposerInput } from '../../lib/threadSlashCommand'
 import {
+  getContextPreview,
+  getLlmRuntimeInfo,
   getPrivateThread,
+  getWorkOrder,
   improveSection,
+  listProjectIssues,
+  listWorkOrders,
   resetPrivateThread,
-  type PrivateThreadMessage,
 } from '../../services/api'
-import { parseThreadSlashInput } from '../../lib/threadSlashCommand'
 import { ContextTab } from './ContextTab'
 import { ContextTruncationBanner } from './ContextTruncationBanner'
+import { CopilotComposer } from './CopilotComposer'
+import { CopilotHeader } from './CopilotHeader'
+import { CopilotModelStrip } from './CopilotModelStrip'
+import type { CopilotSideTab } from './CopilotStatusStrip'
+import { CopilotStatusStrip } from './CopilotStatusStrip'
+import { CopilotTabs } from './CopilotTabs'
+import { ConversationView } from './ConversationView'
 import { CritiqueTab } from './CritiqueTab'
 import { DiffTab } from './DiffTab'
+import { RecentUpdatesFeed, type RecentUpdateItem } from './RecentUpdatesFeed'
 
-type ThreadIntent = 'ask' | 'append' | 'replace_selection' | 'edit'
+/** y-websocket Awareness can throw from getStates() before the conn/doc is ready. */
+function safeAwarenessStates(awareness: {
+  getStates: () => Map<number, unknown>
+}): Map<number, unknown> | null {
+  try {
+    return awareness.getStates()
+  } catch {
+    return null
+  }
+}
+
+function collaboratorCountFromAwareness(collab: YjsCollab | null): number {
+  if (collab == null) {
+    return 1
+  }
+  const awareness = collab.awareness as unknown
+  if (
+    awareness == null ||
+    typeof awareness !== 'object' ||
+    !('getStates' in awareness) ||
+    typeof (awareness as { getStates?: unknown }).getStates !== 'function'
+  ) {
+    return 1
+  }
+  const states = safeAwarenessStates(
+    awareness as { getStates: () => Map<number, unknown> },
+  )
+  if (states == null) {
+    return 1
+  }
+  const names = new Set<string>()
+  states.forEach((state: unknown) => {
+    if (
+      state != null &&
+      typeof state === 'object' &&
+      'user' in state &&
+      state.user != null &&
+      typeof state.user === 'object' &&
+      'name' in state.user &&
+      typeof (state.user as { name?: unknown }).name === 'string'
+    ) {
+      names.add((state.user as { name: string }).name)
+    }
+  })
+  return Math.max(1, names.size)
+}
+
+function remoteEditorNamesFromAwareness(collab: YjsCollab): string[] {
+  const awareness = collab.awareness as unknown
+  if (
+    awareness == null ||
+    typeof awareness !== 'object' ||
+    !('getStates' in awareness) ||
+    typeof (awareness as { getStates?: unknown }).getStates !== 'function' ||
+    !('clientID' in awareness) ||
+    typeof (awareness as { clientID?: unknown }).clientID !== 'number'
+  ) {
+    return []
+  }
+  const localId = (awareness as { clientID: number }).clientID
+  const states = safeAwarenessStates(
+    awareness as { getStates: () => Map<number, unknown> },
+  )
+  if (states == null) {
+    return []
+  }
+  const names: string[] = []
+  states.forEach((state: unknown, clientId: number) => {
+    if (clientId === localId) {
+      return
+    }
+    if (
+      state != null &&
+      typeof state === 'object' &&
+      'user' in state &&
+      state.user != null &&
+      typeof state.user === 'object' &&
+      'name' in state.user &&
+      typeof (state.user as { name?: unknown }).name === 'string'
+    ) {
+      names.push((state.user as { name: string }).name)
+    }
+  })
+  return names
+}
 
 export function CopilotPanel(props: {
   projectId: string
   sectionId: string
-  sectionTitle: string
   projectHref: string
   collab: YjsCollab | null
   editorSelection: EditorSelectionState | null
@@ -45,7 +152,6 @@ export function CopilotPanel(props: {
   const {
     projectId,
     sectionId,
-    sectionTitle,
     projectHref,
     collab,
     editorSelection,
@@ -53,10 +159,9 @@ export function CopilotPanel(props: {
   } = props
   const { streamPrivateThread } = useStream()
   const qc = useQueryClient()
-  const [sideTab, setSideTab] = useState<
-    'chat' | 'context' | 'critique' | 'diff'
-  >('chat')
+  const [sideTab, setSideTab] = useState<CopilotSideTab>('chat')
   const [draft, setDraft] = useState('')
+  const [debouncedDraftForPreview, setDebouncedDraftForPreview] = useState('')
   const [proposedMarkdown, setProposedMarkdown] = useState('')
   const [streaming, setStreaming] = useState('')
   const [findings, setFindings] = useState<
@@ -66,17 +171,104 @@ export function CopilotPanel(props: {
   const [includeGitHistory, setIncludeGitHistory] = useState(false)
   const [includeSelectionInContext, setIncludeSelectionInContext] =
     useState(true)
-  const [threadIntent, setThreadIntent] = useState<ThreadIntent>('ask')
   const [err, setErr] = useState<string | null>(null)
   const [patchProposal, setPatchProposal] = useState<PatchProposalMeta | null>(
     null,
   )
   const [patchPreviewLines, setPatchPreviewLines] = useState<string[]>([])
   const [applyErr, setApplyErr] = useState<string | null>(null)
+  const [localPatchEvents, setLocalPatchEvents] = useState<
+    { id: string; ts: string; summary: string }[]
+  >([])
+  const [peerEditEvents, setPeerEditEvents] = useState<
+    { id: string; ts: string; summary: string }[]
+  >([])
+  const [awareBump, setAwareBump] = useState(0)
   const anchorRef = useRef<PatchAnchor | null>(null)
+  const [anchorGate, setAnchorGate] = useState<PatchAnchor | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
-  /** Forces re-run of canApplyPatch when Yjs text changes while a proposal is open. */
+  const collabRef = useRef<YjsCollab | null>(null)
   const [docBump, setDocBump] = useState(0)
+
+  useEffect(() => {
+    const delay = draft.trim().length > 3 ? 600 : 0
+    const id = window.setTimeout(() => {
+      setDebouncedDraftForPreview(draft.trim().length > 3 ? draft : '')
+    }, delay)
+    return () => window.clearTimeout(id)
+  }, [draft])
+
+  useEffect(() => {
+    if (!collab?.awareness) {
+      return
+    }
+    const a = collab.awareness as {
+      on?: (ev: string, fn: () => void) => void
+      off?: (ev: string, fn: () => void) => void
+    }
+    if (typeof a.on !== 'function' || typeof a.off !== 'function') {
+      return
+    }
+    const onChange = (): void => {
+      setAwareBump((n) => n + 1)
+    }
+    a.on('change', onChange)
+    return () => {
+      a.off('change', onChange)
+    }
+  }, [collab?.awareness])
+
+  void awareBump
+
+  collabRef.current = collab
+
+  useEffect(() => {
+    const ytext = collab?.ytext
+    setPeerEditEvents([])
+    if (!ytext) {
+      return
+    }
+    let timer: ReturnType<typeof window.setTimeout> | null = null
+    let pending = false
+    const flush = (): void => {
+      timer = null
+      if (!pending) {
+        return
+      }
+      pending = false
+      const c = collabRef.current
+      const names = c != null ? remoteEditorNamesFromAwareness(c) : []
+      const ts = new Date().toISOString()
+      const summary = summarizePeerEdit(names)
+      setPeerEditEvents((prev) =>
+        [
+          {
+            id: `peer-${ts}-${Math.random().toString(36).slice(2, 9)}`,
+            ts,
+            summary,
+          },
+          ...prev,
+        ].slice(0, 40),
+      )
+    }
+    const onObs = (_event: Y.YTextEvent, transaction: Y.Transaction): void => {
+      if (transaction.local) {
+        return
+      }
+      pending = true
+      if (timer != null) {
+        window.clearTimeout(timer)
+      }
+      timer = window.setTimeout(flush, 450)
+    }
+    ytext.observe(onObs)
+    return () => {
+      if (timer != null) {
+        window.clearTimeout(timer)
+      }
+      ytext.unobserve(onObs)
+    }
+  }, [collab?.ytext])
 
   useLayoutEffect(() => {
     if (!collab?.ytext || patchProposal == null) {
@@ -97,6 +289,52 @@ export function CopilotPanel(props: {
     enabled: Boolean(projectId && sectionId),
   })
 
+  const llmRtQ = useQuery({
+    queryKey: ['auth', 'llmRuntime'],
+    queryFn: () => getLlmRuntimeInfo(),
+    staleTime: 120_000,
+  })
+
+  const issuesQ = useQuery({
+    queryKey: ['projectIssues', projectId, sectionId],
+    queryFn: () => listProjectIssues(projectId, { sectionId }),
+    enabled: Boolean(projectId && sectionId),
+  })
+
+  const woSectionQ = useQuery({
+    queryKey: ['workOrders', projectId, 'section', sectionId],
+    queryFn: () => listWorkOrders(projectId, { section_id: sectionId }),
+    enabled: Boolean(projectId && sectionId),
+  })
+
+  const woList = woSectionQ.data ?? []
+  const woDetailsQueries = useQueries({
+    queries: woList.map((wo) => ({
+      queryKey: ['workOrder', projectId, wo.id, 'copilot-feed'],
+      queryFn: () => getWorkOrder(projectId, wo.id),
+      enabled: Boolean(projectId && wo.id && woList.length > 0),
+    })),
+  })
+
+  const contextMeterQ = useQuery({
+    queryKey: [
+      'contextPreview',
+      'meter',
+      projectId,
+      sectionId,
+      debouncedDraftForPreview,
+      includeGitHistory,
+    ],
+    queryFn: () =>
+      getContextPreview(projectId, sectionId, {
+        q: debouncedDraftForPreview,
+        includeGitHistory,
+      }),
+    enabled: Boolean(
+      projectId && sectionId && debouncedDraftForPreview.length > 3,
+    ),
+  })
+
   const resetMut = useMutation({
     meta: { skipGlobalToast: true },
     mutationFn: () => resetPrivateThread(projectId, sectionId),
@@ -109,13 +347,21 @@ export function CopilotPanel(props: {
 
   const improveMut = useMutation({
     meta: { skipGlobalToast: true },
-    mutationFn: async () => {
+    mutationFn: async (instruction: string | null) => {
       const snapshot = collab?.ytext?.toString() ?? ''
-      const r = await improveSection(projectId, sectionId, {
-        instruction: draft.trim() ? draft.trim() : null,
+      return improveSection(projectId, sectionId, {
+        instruction,
         current_section_plaintext:
           snapshot.length > 0 ? snapshot : undefined,
       })
+    },
+    onMutate: () => {
+      setErr(null)
+      setIncludeGitHistory(false)
+      setIncludeSelectionInContext(true)
+    },
+    onSuccess: (r) => {
+      setDraft('')
       setProposedMarkdown(r.improved_markdown)
       setSideTab('diff')
     },
@@ -128,10 +374,6 @@ export function CopilotPanel(props: {
     },
   })
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [threadQ.data?.messages, streaming])
-
   const sendMut = useMutation({
     meta: { skipGlobalToast: true },
     mutationFn: async () => {
@@ -139,16 +381,24 @@ export function CopilotPanel(props: {
       if (!rawContent) {
         return
       }
-      const parsed = parseThreadSlashInput(rawContent)
+      const parsed = parseThreadComposerInput(rawContent)
+      if (parsed.kind !== 'stream') {
+        return
+      }
       const content = parsed.content
-      const effectiveIntent: ThreadIntent =
-        parsed.command !== 'none' ? 'ask' : threadIntent
+      const effectiveIntent = parsed.threadIntent
+      const streamCommand = parsed.command
+      const sendIncludeGit = includeGitHistory
+      const sendIncludeSelection = includeSelectionInContext
       setErr(null)
       setApplyErr(null)
       setPatchProposal(null)
       setPatchPreviewLines([])
       anchorRef.current = null
+      setAnchorGate(null)
       setDraft('')
+      setIncludeGitHistory(false)
+      setIncludeSelectionInContext(true)
       setStreaming('')
       setFindings([])
       setContextTruncated(false)
@@ -161,13 +411,13 @@ export function CopilotPanel(props: {
         sel.to > sel.from
       const sendSelectionBounds =
         hasNonEmptySelection &&
-        (includeSelectionInContext || effectiveIntent === 'replace_selection')
+        (sendIncludeSelection || effectiveIntent === 'replace_selection')
       const payload = {
         content,
-        command: parsed.command,
+        command: streamCommand,
         ...(collab != null ? { current_section_plaintext: snapshot ?? '' } : {}),
-        include_git_history: includeGitHistory,
-        include_selection_in_context: includeSelectionInContext,
+        include_git_history: sendIncludeGit,
+        include_selection_in_context: sendIncludeSelection,
         thread_intent: effectiveIntent,
         ...(sendSelectionBounds && sel != null
           ? {
@@ -187,6 +437,7 @@ export function CopilotPanel(props: {
                 hasNonEmptySelection && sel != null ? sel.to : undefined,
             }
           : null
+      setAnchorGate(anchorRef.current)
       await streamPrivateThread(projectId, sectionId, payload, {
         onToken: (t: string) => {
           setStreaming((s) => s + t)
@@ -266,9 +517,39 @@ export function CopilotPanel(props: {
       setApplyErr(r.reason)
       return
     }
+    const summary =
+      patchPreviewLines.length > 0
+        ? `LLM patch · ${patchPreviewLines[0].slice(0, 80)}`
+        : 'LLM patch applied'
+    setLocalPatchEvents((prev) => [
+      {
+        id: `llm-${Date.now()}`,
+        ts: new Date().toISOString(),
+        summary,
+      },
+      ...prev,
+    ].slice(0, 40))
     setPatchProposal(null)
     setPatchPreviewLines([])
     anchorRef.current = null
+    setAnchorGate(null)
+  }
+
+  function onDismissPatch(): void {
+    setPatchProposal(null)
+    setPatchPreviewLines([])
+    anchorRef.current = null
+    setAnchorGate(null)
+    setApplyErr(null)
+  }
+
+  function onViewPatchDiff(): void {
+    if (!patchProposal || !anchorRef.current?.snapshot) {
+      return
+    }
+    const merged = previewFromProposal(anchorRef.current.snapshot, patchProposal)
+    setProposedMarkdown(merged)
+    setSideTab('diff')
   }
 
   function onApplyProposedFull(): void {
@@ -282,308 +563,220 @@ export function CopilotPanel(props: {
     setSideTab('chat')
   }
 
+  function handleSend(): void {
+    const raw = draft.trim()
+    if (!raw || sendMut.isPending || improveMut.isPending) {
+      return
+    }
+    const parsed = parseThreadComposerInput(raw)
+    if (parsed.kind === 'improve_section') {
+      improveMut.mutate(parsed.instruction)
+      return
+    }
+    sendMut.mutate()
+  }
+
   const msgs = threadQ.data?.messages ?? []
-  const slashPreview = useMemo(() => parseThreadSlashInput(draft), [draft])
+  const parsedDraft = useMemo(() => parseThreadComposerInput(draft), [draft])
   const selChars =
     editorSelection != null ? editorSelection.to - editorSelection.from : 0
+  const hasNonEmptySelection =
+    editorSelection != null && editorSelection.to > editorSelection.from
   const replaceNeedsSelection =
-    threadIntent === 'replace_selection' &&
-    (editorSelection == null ||
-      editorSelection.from >= editorSelection.to)
+    parsedDraft.kind === 'stream' &&
+    parsedDraft.threadIntent === 'replace_selection' &&
+    !hasNonEmptySelection
 
   void docBump
   let applyPatchBlocked: string | null = null
   if (
     patchProposal != null &&
     collab?.ytext != null &&
-    anchorRef.current != null &&
+    anchorGate != null &&
     !('error' in patchProposal && patchProposal.error)
   ) {
-    const gate = canApplyPatch(collab.ytext, patchProposal, anchorRef.current)
+    const gate = canApplyPatch(collab.ytext, patchProposal, anchorGate)
     if (!gate.ok) {
       applyPatchBlocked = gate.reason
     }
   }
 
+  const applyPatchEnabled =
+    Boolean(collab?.ytext) &&
+    patchProposal != null &&
+    !('error' in patchProposal && patchProposal.error) &&
+    applyPatchBlocked == null
+
+  const staleWoCount =
+    woSectionQ.data?.filter((w) => w.is_stale).length ?? 0
+  const gapCount = findings.filter((f) => f.finding_type === 'gap').length
+
+  const driftNotesForFeed: RecentUpdateItem[] = useMemo(() => {
+    const rows: RecentUpdateItem[] = []
+    for (const q of woDetailsQueries) {
+      const d = q.data
+      if (d == null) {
+        continue
+      }
+      for (const n of d.notes ?? []) {
+        if (n.source === 'drift_flag') {
+          rows.push({
+            id: `drift-${d.id}-${n.id}`,
+            kind: 'drift',
+            ts: n.created_at,
+            workOrderTitle: d.title,
+            workOrderId: d.id,
+            reason: n.content,
+          })
+        }
+      }
+    }
+    return rows
+  }, [woDetailsQueries])
+
+  const recentFeedItems: RecentUpdateItem[] = useMemo(() => {
+    const llm: RecentUpdateItem[] = localPatchEvents.map((e) => ({
+      id: e.id,
+      kind: 'llm_patch' as const,
+      ts: e.ts,
+      summary: e.summary,
+    }))
+    const peer: RecentUpdateItem[] = peerEditEvents.map((e) => ({
+      id: e.id,
+      kind: 'peer_edit' as const,
+      ts: e.ts,
+      summary: e.summary,
+    }))
+    const merged = [...llm, ...peer, ...driftNotesForFeed]
+    merged.sort((a, b) => (a.ts < b.ts ? 1 : a.ts > b.ts ? -1 : 0))
+    return merged.slice(0, 20)
+  }, [localPatchEvents, peerEditEvents, driftNotesForFeed])
+
+  useLayoutEffect(() => {
+    // Nearest scrollport is the unified chat column (recent updates + thread).
+    bottomRef.current?.scrollIntoView({ block: 'end', behavior: 'auto' })
+  }, [threadQ.data?.messages, streaming, recentFeedItems])
+
+  const collaboratorCount = collaboratorCountFromAwareness(collab)
+
+  const critiqueBadge =
+    (issuesQ.data?.length ?? 0) + staleWoCount > 0
+      ? (issuesQ.data?.length ?? 0) + staleWoCount
+      : null
+  const diffBadge = proposedMarkdown.trim() ? 1 : null
+
+  const meterBlocks = contextMeterQ.data?.blocks
+  const uniqueKinds =
+    Array.isArray(meterBlocks) && meterBlocks.length > 0
+      ? new Set(meterBlocks.map((b) => b.kind)).size
+      : null
+
+  const modelDisplayLine = useMemo(() => {
+    if (llmRtQ.isError) {
+      return 'Could not load model info'
+    }
+    const p = (llmRtQ.data?.llm_provider ?? '').trim()
+    const m = (llmRtQ.data?.llm_model ?? '').trim()
+    if (p && m) {
+      return `${p} · ${m}`
+    }
+    if (m) {
+      return m
+    }
+    if (p) {
+      return `${p} (model not set)`
+    }
+    return 'LLM not configured'
+  }, [llmRtQ.data, llmRtQ.isError])
+
+  const modelConnection: 'ok' | 'warn' | 'error' = llmRtQ.isError
+    ? 'error'
+    : (llmRtQ.data?.llm_model ?? '').trim()
+      ? 'ok'
+      : 'warn'
+
   return (
-    <aside className="flex h-[min(70vh,560px)] flex-col rounded-xl border border-zinc-800 bg-zinc-900/60">
-      <div className="flex items-start justify-between gap-2 border-b border-zinc-800 px-3 py-2">
-        <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-zinc-200">Private thread</h2>
-          <p className="truncate text-xs text-zinc-300" title={sectionTitle}>
-            {sectionTitle}
-          </p>
-          <p className="mt-0.5 text-xs text-zinc-500">
-            Scoped to this section. Live editor text is sent with each message.
-          </p>
-          <Link
-            to={projectHref}
-            className="mt-1 inline-block text-xs text-violet-400 hover:underline"
-          >
-            Back to project outline
-          </Link>
-        </div>
-        <button
-          type="button"
-          disabled={resetMut.isPending}
-          className="shrink-0 text-xs text-zinc-500 hover:text-zinc-300 disabled:opacity-50"
-          onClick={() => resetMut.mutate()}
-        >
-          New thread
-        </button>
-      </div>
-      <div className="border-b border-zinc-800/80 px-3 py-2 text-xs text-zinc-400">
-        <label className="flex cursor-pointer items-center gap-2">
-          <input
-            type="checkbox"
-            checked={includeGitHistory}
-            disabled={sendMut.isPending || improveMut.isPending}
-            onChange={(e) => setIncludeGitHistory(e.target.checked)}
-            className="rounded border-zinc-600"
-          />
-          Include recent git history in context (GitLab) — chat send and preview
-        </label>
-      </div>
-      <div
-        className="flex gap-1 border-b border-zinc-800 px-2 py-1"
-        role="tablist"
-      >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={sideTab === 'chat'}
-          className={`rounded px-3 py-1 text-xs font-medium ${
-            sideTab === 'chat'
-              ? 'bg-zinc-800 text-zinc-100'
-              : 'text-zinc-500 hover:text-zinc-300'
-          }`}
-          onClick={() => setSideTab('chat')}
-        >
-          Chat
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={sideTab === 'context'}
-          className={`rounded px-3 py-1 text-xs font-medium ${
-            sideTab === 'context'
-              ? 'bg-zinc-800 text-zinc-100'
-              : 'text-zinc-500 hover:text-zinc-300'
-          }`}
-          onClick={() => setSideTab('context')}
-        >
-          Context
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={sideTab === 'critique'}
-          className={`rounded px-3 py-1 text-xs font-medium ${
-            sideTab === 'critique'
-              ? 'bg-zinc-800 text-zinc-100'
-              : 'text-zinc-500 hover:text-zinc-300'
-          }`}
-          onClick={() => setSideTab('critique')}
-        >
-          Critique
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={sideTab === 'diff'}
-          className={`rounded px-3 py-1 text-xs font-medium ${
-            sideTab === 'diff'
-              ? 'bg-zinc-800 text-zinc-100'
-              : 'text-zinc-500 hover:text-zinc-300'
-          }`}
-          onClick={() => setSideTab('diff')}
-        >
-          Diff
-        </button>
-      </div>
+    <aside className="flex h-[min(70vh,560px)] min-h-0 max-w-[420px] flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60">
+      <CopilotHeader
+        collaboratorCount={collaboratorCount}
+        newThreadPending={resetMut.isPending}
+        onNewThread={() => resetMut.mutate()}
+      />
+      <CopilotStatusStrip
+        driftCount={staleWoCount}
+        gapCount={gapCount}
+        tokenUsed={contextMeterQ.data?.total_tokens ?? null}
+        tokenBudget={contextMeterQ.data?.budget_tokens ?? null}
+        sourcesCount={uniqueKinds}
+        onSelectTab={(tab) => setSideTab(tab)}
+      />
+      <CopilotTabs
+        sideTab={sideTab}
+        onSelectTab={(tab) => setSideTab(tab)}
+        critiqueBadge={critiqueBadge}
+        diffBadge={diffBadge}
+      />
       {sideTab === 'chat' ? (
-        <>
-      <ContextTruncationBanner visible={contextTruncated} />
-      <div className="space-y-1 border-b border-zinc-800/80 px-3 py-2 text-xs text-zinc-400">
-        <label className="flex cursor-pointer items-center gap-2">
-          <input
-            type="checkbox"
-            checked={includeSelectionInContext}
-            disabled={sendMut.isPending}
-            onChange={(e) => setIncludeSelectionInContext(e.target.checked)}
-            className="rounded border-zinc-600"
-          />
-          Include editor selection in LLM context
-        </label>
-        {editorSelection != null && selChars > 0 ? (
-          <div className="flex flex-wrap items-center gap-2 pt-0.5">
-            <span className="rounded bg-zinc-800 px-2 py-0.5 text-zinc-200">
-              Selection: {selChars} chars
-            </span>
-            <button
-              type="button"
-              className="text-violet-400 hover:underline"
-              onClick={onClearEditorSelection}
-            >
-              Clear selection (editor)
-            </button>
-          </div>
-        ) : (
-          <p className="text-zinc-600">No selection — select text in the editor to narrow context.</p>
-        )}
-        <label className="mt-1 block text-zinc-500">
-          Intent
-          <select
-            className="mt-0.5 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-100"
-            value={threadIntent}
-            disabled={sendMut.isPending}
-            onChange={(e) => setThreadIntent(e.target.value as ThreadIntent)}
-          >
-            <option value="ask">Ask (chat only)</option>
-            <option value="append">Append — propose text to add at end</option>
-            <option value="replace_selection">Replace selection — needs selection</option>
-            <option value="edit">Edit — replace one unique snippet</option>
-          </select>
-        </label>
-      </div>
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-2 text-sm">
-        {threadQ.isPending && (
-          <p className="text-zinc-500">Loading thread…</p>
-        )}
-        {msgs.map((m: PrivateThreadMessage) => (
-          <div
-            key={m.id}
-            className={`rounded-lg px-2 py-1.5 ${
-              m.role === 'user'
-                ? 'ml-4 bg-violet-950/50 text-zinc-100'
-                : 'mr-4 bg-zinc-800/80 text-zinc-200'
-            }`}
-          >
-            <span className="text-[10px] uppercase text-zinc-500">{m.role}</span>
-            <p className="mt-0.5 whitespace-pre-wrap">{m.content}</p>
-          </div>
-        ))}
-        {streaming && (
-          <div className="mr-4 rounded-lg bg-zinc-800/80 px-2 py-1.5 text-zinc-200">
-            <span className="text-[10px] uppercase text-zinc-500">assistant</span>
-            <p className="mt-0.5 whitespace-pre-wrap">{streaming}</p>
-          </div>
-        )}
-        <div ref={bottomRef} />
-      </div>
-      {findings.length > 0 && (
-        <div className="border-t border-amber-900/40 bg-amber-950/30 px-3 py-2 text-xs text-amber-100">
-          <p className="font-medium text-amber-200">Conflicts and gaps</p>
-          <ul className="mt-1 list-inside list-disc space-y-0.5">
-            {findings.map((f, i) => (
-              <li key={i}>
-                <span className="font-medium text-amber-300">
-                  {f.finding_type === 'gap' ? 'Gap' : 'Conflict'}
-                </span>
-                : {f.description}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {patchProposal != null && (
-        <div className="border-t border-violet-900/40 bg-violet-950/20 px-3 py-2 text-xs text-zinc-200">
-          <p className="font-medium text-violet-200">Patch proposal</p>
-          {'error' in patchProposal && patchProposal.error ? (
-            <p className="mt-1 text-red-300">{patchProposal.error}</p>
-          ) : (
-            <>
-              {patchPreviewLines.length > 0 && (
-                <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap rounded border border-zinc-800 bg-zinc-950/80 p-2 text-[11px] text-zinc-400">
-                  {patchPreviewLines.join('\n')}
-                </pre>
-              )}
-              <div className="mt-2 flex gap-2">
-                <button
-                  type="button"
-                  disabled={
-                    !collab?.ytext ||
-                    ('error' in patchProposal && Boolean(patchProposal.error)) ||
-                    applyPatchBlocked != null
-                  }
-                  title={applyPatchBlocked ?? undefined}
-                  className="rounded bg-violet-600 px-2 py-1 font-medium text-white hover:bg-violet-500 disabled:opacity-50"
-                  onClick={() => onApplyPatch()}
-                >
-                  Apply to editor
-                </button>
-                <button
-                  type="button"
-                  className="rounded border border-zinc-600 px-2 py-1 text-zinc-300 hover:bg-zinc-800"
-                  onClick={() => {
-                    setPatchProposal(null)
-                    setPatchPreviewLines([])
-                    anchorRef.current = null
-                    setApplyErr(null)
-                  }}
-                >
-                  Dismiss
-                </button>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <ContextTruncationBanner visible={contextTruncated} />
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-2">
+            <div className="flex flex-col gap-3">
+              <div className="shrink-0">
+                <RecentUpdatesFeed
+                  items={recentFeedItems}
+                  driftInteractive
+                  onDriftClick={() => setSideTab('critique')}
+                />
               </div>
-            </>
-          )}
-          {applyPatchBlocked != null && (
-            <p className="mt-1 text-amber-200/90">{applyPatchBlocked}</p>
-          )}
-          {applyErr && <p className="mt-1 text-red-300">{applyErr}</p>}
+              <ConversationView
+                messages={msgs}
+                streaming={streaming}
+                threadPending={threadQ.isPending}
+                patchProposal={patchProposal}
+                patchPreviewLines={patchPreviewLines}
+                applyPatchBlocked={applyPatchBlocked}
+                applyErr={applyErr}
+                applyPatchEnabled={applyPatchEnabled}
+                findings={findings}
+                err={err}
+                bottomRef={bottomRef}
+                onApplyPatch={() => onApplyPatch()}
+                onDismissPatch={() => onDismissPatch()}
+                onViewPatchDiff={() => onViewPatchDiff()}
+              />
+            </div>
+          </div>
+          <div className="shrink-0 border-t border-zinc-800/70 bg-zinc-900/95">
+            <CopilotComposer
+              draft={draft}
+              canSend
+              sending={sendMut.isPending}
+              improving={improveMut.isPending}
+              replaceBlocked={replaceNeedsSelection}
+              replaceBlockedReason="Replace requires a non-empty editor selection."
+              includeSelectionInContext={includeSelectionInContext}
+              includeGitHistory={includeGitHistory}
+              selectionChars={selChars}
+              hasSelection={hasNonEmptySelection}
+              onDraftChange={setDraft}
+              onSend={() => handleSend()}
+              onClearEditorSelection={onClearEditorSelection}
+              onToggleSelection={() =>
+                setIncludeSelectionInContext((v) => !v)
+              }
+              onToggleGitHistory={() => setIncludeGitHistory((v) => !v)}
+              onInsertSlash={(prefix) => setDraft(prefix)}
+              footerLeading={
+                <CopilotModelStrip
+                  variant="inline"
+                  displayLine={modelDisplayLine}
+                  connection={modelConnection}
+                  scopeBadge="Tool default"
+                />
+              }
+            />
+          </div>
         </div>
-      )}
-      {err && (
-        <p className="border-t border-red-900/40 px-3 py-2 text-xs text-red-300">
-          {err}
-        </p>
-      )}
-      <div className="border-t border-zinc-800 p-2">
-        {slashPreview.command !== 'none' ? (
-          <p
-            className="mb-2 text-xs text-violet-300"
-            data-testid="slash-command-chip"
-          >
-            Uses{' '}
-            <span className="font-mono">{slashPreview.command}</span> mode (intent
-            forced to ask).
-          </p>
-        ) : null}
-        <div className="mb-2">
-          <button
-            type="button"
-            className="w-full rounded border border-zinc-600 py-1.5 text-xs text-zinc-200 hover:bg-zinc-800 disabled:opacity-50"
-            disabled={!collab?.ytext || improveMut.isPending}
-            onClick={() => improveMut.mutate()}
-          >
-            {improveMut.isPending ? 'Improving…' : 'Structured improve (API)'}
-          </button>
-        </div>
-        <textarea
-          className="mb-2 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100"
-          rows={3}
-          placeholder="Ask about this section…"
-          value={draft}
-          disabled={sendMut.isPending}
-          onChange={(e) => setDraft(e.target.value)}
-        />
-        <button
-          type="button"
-          disabled={
-            !draft.trim() || sendMut.isPending || replaceNeedsSelection
-          }
-          title={
-            replaceNeedsSelection
-              ? 'Replace selection requires a non-empty editor selection.'
-              : undefined
-          }
-          className="w-full rounded-lg bg-violet-600 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
-          onClick={() => sendMut.mutate()}
-        >
-          {sendMut.isPending ? 'Sending…' : 'Send'}
-        </button>
-      </div>
-        </>
       ) : sideTab === 'context' ? (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <ContextTab
@@ -594,7 +787,11 @@ export function CopilotPanel(props: {
           />
         </div>
       ) : sideTab === 'critique' ? (
-        <CritiqueTab projectId={projectId} sectionId={sectionId} />
+        <CritiqueTab
+          projectId={projectId}
+          sectionId={sectionId}
+          projectHref={projectHref}
+        />
       ) : (
         <DiffTab
           original={collab?.ytext?.toString() ?? ''}

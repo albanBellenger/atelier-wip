@@ -20,7 +20,7 @@ export function useStudioAccess(
   crossGrant: CrossStudioGrantPublic | null
 } {
   return useMemo(() => {
-    const isToolAdmin = profile?.user.is_tool_admin ?? false
+    const isToolAdmin = profile?.user?.is_tool_admin ?? false
     const row = profile?.studios.find((s) => s.studio_id === studioId)
     const role = row?.role ?? null
 

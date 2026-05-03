@@ -80,6 +80,13 @@ class MeResponse(BaseModel):
     cross_studio_grants: list[CrossStudioGrantPublic] = []
 
 
+class LlmRuntimePublic(BaseModel):
+    """Read-only LLM identity for authenticated users (no keys or base URLs)."""
+
+    llm_provider: str | None = None
+    llm_model: str | None = None
+
+
 class UserProfilePatch(BaseModel):
     """PATCH /auth/me — v1: display name only."""
 

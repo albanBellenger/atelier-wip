@@ -36,6 +36,7 @@ describe('ContextTab', () => {
       total_tokens: 12,
       budget_tokens: 6000,
       overflow_strategy_applied: null,
+      debug_raw_rag_text: null,
     })
 
     const qc = new QueryClient({
@@ -72,12 +73,69 @@ describe('ContextTab', () => {
     })
   })
 
+  it('requests debug raw RAG when checkbox is enabled', async () => {
+    const user = userEvent.setup()
+    const spy = vi.spyOn(api, 'getContextPreview').mockResolvedValue({
+      blocks: [
+        {
+          label: 'Software definition',
+          kind: 'software_def',
+          tokens: 1,
+          relevance: null,
+          truncated: false,
+          body: '## Software definition\nx',
+        },
+      ],
+      total_tokens: 1,
+      budget_tokens: 6000,
+      overflow_strategy_applied: null,
+      debug_raw_rag_text: 'RAW_SNIPPET',
+    })
+
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <ContextTab
+            projectId="p1"
+            sectionId="sec1"
+            ragQuery=""
+            includeGitHistory={false}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(spy).toHaveBeenCalled()
+    })
+    await user.click(
+      screen.getByRole('checkbox', {
+        name: /include raw rag string/i,
+      }),
+    )
+    await waitFor(() => {
+      expect(spy).toHaveBeenCalledWith(
+        'p1',
+        'sec1',
+        expect.objectContaining({ debugRawRag: true }),
+      )
+    })
+    expect(await screen.findByTestId('context-debug-raw-rag')).toHaveTextContent(
+      'RAW_SNIPPET',
+    )
+  })
+
   it('has no apply-to-editor or send controls (read-only surface)', () => {
     vi.spyOn(api, 'getContextPreview').mockResolvedValue({
       blocks: [],
       total_tokens: 0,
       budget_tokens: 6000,
       overflow_strategy_applied: null,
+      debug_raw_rag_text: null,
     })
 
     const qc = new QueryClient({

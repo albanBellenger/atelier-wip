@@ -5,6 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.database import get_db
 from app.deps import (
     ProjectAccess,
@@ -77,14 +78,20 @@ async def get_section_context_preview(
     q: str = Query("", max_length=8000, description="RAG query for chunk retrieval"),
     token_budget: int = Query(6000, ge=100, le=50_000),
     include_git_history: bool = Query(False),
+    debug_raw_rag: bool = Query(
+        False,
+        description="Dev/staging only: include debug_raw_rag_text (same string as build_context).",
+    ),
 ) -> ContextPreviewOut:
     _ensure_project(pa, project_id)
+    allow_debug = get_settings().env != "production"
     return await RAGService(session).build_context_with_blocks(
         q,
         project_id,
         section_id,
         token_budget=token_budget,
         include_git_history=include_git_history,
+        include_debug_raw_rag=bool(debug_raw_rag and allow_debug),
     )
 
 

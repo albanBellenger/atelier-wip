@@ -1,8 +1,12 @@
 """Unit tests for RAG chunk ordering and mandatory overflow (Slice 6)."""
 
+import uuid
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models import Artifact, ArtifactChunk
+from app.services.embedding_service import EmbeddingService
 from app.services.rag_service import RAGService, _mandatory_parts_with_overflow, _unified_chunk_fill
 from tests.factories import create_project, create_section, create_software, create_studio
 
@@ -104,3 +108,160 @@ async def test_rag_build_context_prefers_plaintext_override(
     )
     assert "OVERRIDE_BODY" in ctx.text
     assert "DB_ONLY" not in ctx.text
+
+
+@pytest.mark.asyncio
+async def test_rag_empty_user_query_embeds_section_title_and_body(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Empty `query` still runs retrieval using the current section as implicit q."""
+    captured: list[str] = []
+
+    async def ready(_self: object) -> tuple[str, str, str, str]:
+        return ("text-embedding-3-small", "sk-fake", "openai", "http://embed.example")
+
+    async def batch(_self: object, texts: list[str]) -> list[list[float]]:
+        captured.extend(texts)
+        return [[0.02] * 1536 for _ in texts]
+
+    monkeypatch.setattr(EmbeddingService, "require_embedding_ready", ready)
+    monkeypatch.setattr(EmbeddingService, "embed_batch", batch)
+
+    studio = await create_studio(db_session)
+    sw = await create_software(db_session, studio.id, definition="d")
+    pr = await create_project(db_session, sw.id)
+    sec = await create_section(
+        db_session, pr.id, title="Intro", slug="intro", order=0, content="BODY_X"
+    )
+    aid = uuid.uuid4()
+    db_session.add(
+        Artifact(
+            id=aid,
+            project_id=pr.id,
+            scope_level="project",
+            library_studio_id=None,
+            library_software_id=None,
+            name="Doc",
+            file_type="md",
+            size_bytes=1,
+            storage_path=f"{pr.id}/{aid}/d.md",
+            embedding_status="embedded",
+        )
+    )
+    db_session.add(
+        ArtifactChunk(
+            artifact_id=aid,
+            chunk_index=0,
+            content="CHUNK_FROM_PROJECT_ARTIFACT",
+            embedding=[0.02] * 1536,
+        )
+    )
+    await db_session.flush()
+
+    rag = RAGService(db_session)
+    prev = await rag.build_context_with_blocks(
+        "",
+        pr.id,
+        sec.id,
+        token_budget=6000,
+    )
+    assert captured and "Intro" in captured[0] and "BODY_X" in captured[0]
+    joined = "\n\n".join(b.body for b in prev.blocks)
+    assert "CHUNK_FROM_PROJECT_ARTIFACT" in joined
+
+
+@pytest.mark.asyncio
+async def test_rag_includes_software_library_artifact_chunks(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Software-scoped library rows have project_id NULL but must appear in RAG."""
+    async def ready(_self: object) -> tuple[str, str, str, str]:
+        return ("text-embedding-3-small", "sk-fake", "openai", "http://embed.example")
+
+    async def batch(_self: object, texts: list[str]) -> list[list[float]]:
+        return [[0.03] * 1536 for _ in texts]
+
+    monkeypatch.setattr(EmbeddingService, "require_embedding_ready", ready)
+    monkeypatch.setattr(EmbeddingService, "embed_batch", batch)
+
+    studio = await create_studio(db_session)
+    sw = await create_software(db_session, studio.id, definition="d")
+    pr = await create_project(db_session, sw.id)
+    sec = await create_section(
+        db_session, pr.id, title="T", slug="t", order=0, content="qtext"
+    )
+    lib_id = uuid.uuid4()
+    db_session.add(
+        Artifact(
+            id=lib_id,
+            project_id=None,
+            scope_level="software",
+            library_studio_id=studio.id,
+            library_software_id=sw.id,
+            name="LibDoc",
+            file_type="md",
+            size_bytes=1,
+            storage_path=f"software/{sw.id}/{lib_id}/x.md",
+            embedding_status="embedded",
+        )
+    )
+    db_session.add(
+        ArtifactChunk(
+            artifact_id=lib_id,
+            chunk_index=0,
+            content="SOFTWARE_LIBRARY_CHUNK",
+            embedding=[0.03] * 1536,
+        )
+    )
+    await db_session.flush()
+
+    rag = RAGService(db_session)
+    prev = await rag.build_context_with_blocks(
+        "qtext",
+        pr.id,
+        sec.id,
+        token_budget=6000,
+    )
+    joined = "\n\n".join(b.body for b in prev.blocks)
+    assert "SOFTWARE_LIBRARY_CHUNK" in joined
+
+
+@pytest.mark.asyncio
+async def test_build_context_with_blocks_debug_raw_matches_build_context(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def ready(_self: object) -> tuple[str, str, str, str]:
+        return ("text-embedding-3-small", "sk-fake", "openai", "http://embed.example")
+
+    async def batch(_self: object, texts: list[str]) -> list[list[float]]:
+        return [[0.04] * 1536 for _ in texts]
+
+    monkeypatch.setattr(EmbeddingService, "require_embedding_ready", ready)
+    monkeypatch.setattr(EmbeddingService, "embed_batch", batch)
+
+    studio = await create_studio(db_session)
+    sw = await create_software(db_session, studio.id, definition="defx")
+    pr = await create_project(db_session, sw.id)
+    sec = await create_section(
+        db_session, pr.id, title="T", slug="t", order=0, content="bodyz"
+    )
+    await db_session.flush()
+
+    rag = RAGService(db_session)
+    ctx = await rag.build_context(
+        "q",
+        pr.id,
+        sec.id,
+        token_budget=6000,
+    )
+    prev = await rag.build_context_with_blocks(
+        "q",
+        pr.id,
+        sec.id,
+        token_budget=6000,
+        include_debug_raw_rag=True,
+    )
+    assert prev.debug_raw_rag_text == ctx.text

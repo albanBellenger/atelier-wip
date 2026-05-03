@@ -96,6 +96,16 @@ export async function me(): Promise<MeResponse> {
   return request<MeResponse>('GET', '/auth/me')
 }
 
+/** Tool-wide LLM identity (read-only; no secrets). */
+export interface LlmRuntimeInfo {
+  llm_provider: string | null
+  llm_model: string | null
+}
+
+export async function getLlmRuntimeInfo(): Promise<LlmRuntimeInfo> {
+  return request<LlmRuntimeInfo>('GET', '/auth/llm-runtime')
+}
+
 export interface UserProfilePatchBody {
   display_name: string
 }
@@ -1295,6 +1305,8 @@ export interface ContextPreview {
   total_tokens: number
   budget_tokens: number
   overflow_strategy_applied: string | null
+  /** Dev/staging only: same truncated string as RAGService.build_context when requested. */
+  debug_raw_rag_text?: string | null
 }
 
 export async function getContextPreview(
@@ -1304,6 +1316,8 @@ export async function getContextPreview(
     q?: string
     tokenBudget?: number
     includeGitHistory?: boolean
+    /** Non-production API: adds debug_raw_rag_text to the response. */
+    debugRawRag?: boolean
   },
 ): Promise<ContextPreview> {
   const sp = new URLSearchParams()
@@ -1315,6 +1329,9 @@ export async function getContextPreview(
   }
   if (opts?.includeGitHistory === true) {
     sp.set('include_git_history', 'true')
+  }
+  if (opts?.debugRawRag === true) {
+    sp.set('debug_raw_rag', 'true')
   }
   const qs = sp.toString()
   const suffix = qs ? `?${qs}` : ''

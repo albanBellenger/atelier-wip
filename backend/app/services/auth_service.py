@@ -16,6 +16,7 @@ from app.models import (
 )
 from app.schemas.auth import (
     CrossStudioGrantPublic,
+    LlmRuntimePublic,
     MeResponse,
     StudioMembershipPublic,
     UserCreate,
@@ -116,6 +117,15 @@ class AuthService:
             user=UserPublic.model_validate(user),
             studios=studios,
             cross_studio_grants=cross_studio_grants,
+        )
+
+    async def llm_runtime_public(self) -> LlmRuntimePublic:
+        from app.services.admin_service import AdminService
+
+        row = await AdminService(self.db).get_or_create()
+        return LlmRuntimePublic(
+            llm_provider=row.llm_provider,
+            llm_model=row.llm_model,
         )
 
     async def patch_profile(self, user: User, body: UserProfilePatch) -> MeResponse:

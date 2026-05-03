@@ -232,7 +232,7 @@ All routes: `require_project_member`.
 
 ## Appendix A — Route inventory (authoritative `Depends`)
 
-Auth ([`auth.py`](../backend/app/routers/auth.py)): `register`, `login`, `logout` — unauthenticated; `GET /auth/me` — `get_current_user`.
+Auth ([`auth.py`](../backend/app/routers/auth.py)): `register`, `login`, `logout` — unauthenticated; `GET /auth/me`, `GET /auth/llm-runtime` — `get_current_user` (read-only LLM display for any authenticated user; no secrets).
 
 | Router | Method | Path pattern | RBAC dependency |
 |--------|--------|--------------|-----------------|

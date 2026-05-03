@@ -121,9 +121,16 @@ export function SplitEditor({
     return new Y.UndoManager(collab.ytext)
   }, [collab?.ytext])
 
+  const [viewMode, setViewMode] = useState<'markdown' | 'preview' | 'split'>(
+    'split',
+  )
+  const showEditor = viewMode !== 'preview'
+  const showPreview = viewMode !== 'markdown'
+  const dualPane = showEditor && showPreview
+
   useEffect(() => {
     const parent = parentRef.current
-    if (!parent || !collab || !undoManager) {
+    if (!showEditor || !parent || !collab || !undoManager) {
       return
     }
 
@@ -153,7 +160,7 @@ export function SplitEditor({
       view.destroy()
       viewRef.current = null
     }
-  }, [collab, undoManager])
+  }, [showEditor, collab, undoManager])
 
   const [saveState, setSaveState] = useState<'saving' | 'saved'>('saved')
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -249,13 +256,50 @@ export function SplitEditor({
     window.addEventListener('mouseup', onUp)
   }
 
-  const editorPaneStyle: import('react').CSSProperties = isLg
+  const isRowSplit = viewMode === 'split' && isLg
+
+  const editorPaneStyle: import('react').CSSProperties = isRowSplit
     ? { width: `${leftPct}%`, minWidth: 0, flexShrink: 0 }
     : { minWidth: 0 }
 
-  const previewPaneStyle: import('react').CSSProperties = isLg
+  const previewPaneStyle: import('react').CSSProperties = isRowSplit
     ? { width: `${100 - leftPct}%`, minWidth: 0, flexShrink: 0 }
     : { minWidth: 0 }
+
+  const outerFlexDir = isRowSplit
+    ? 'flex min-h-[480px] flex-row overflow-hidden border border-zinc-800'
+    : 'flex min-h-[480px] flex-col overflow-hidden border border-zinc-800'
+
+  const editorPaneClass = dualPane
+    ? 'min-h-[280px] min-w-0 border-b border-zinc-800 bg-zinc-950 lg:min-h-0 lg:border-b-0 lg:border-r lg:border-zinc-800'
+    : 'min-h-[480px] min-w-0 flex-1 bg-zinc-950'
+
+  const previewPaneClass = dualPane
+    ? 'min-h-0 max-h-[60vh] min-w-0 flex-1 overflow-auto bg-zinc-950 p-4 text-sm text-zinc-300 lg:max-h-none [&_a]:text-violet-400 [&_code]:rounded [&_code]:bg-zinc-800 [&_code]:px-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-zinc-900'
+    : 'min-h-[480px] min-w-0 flex-1 overflow-auto bg-zinc-950 p-4 text-sm text-zinc-300 [&_a]:text-violet-400 [&_code]:rounded [&_code]:bg-zinc-800 [&_code]:px-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-zinc-900'
+
+  const proseTabs = (
+    ['markdown', 'preview', 'split'] as const
+  ).map((mode) => {
+    const label =
+      mode === 'markdown' ? 'Markdown' : mode === 'preview' ? 'Preview' : 'Split'
+    return (
+      <button
+        key={mode}
+        type="button"
+        role="tab"
+        aria-selected={viewMode === mode}
+        className={`rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors ${
+          viewMode === mode
+            ? 'bg-zinc-800 text-zinc-100'
+            : 'text-zinc-500 hover:text-zinc-300'
+        }`}
+        onClick={() => setViewMode(mode)}
+      >
+        {label}
+      </button>
+    )
+  })
 
   return (
     <div>
@@ -267,31 +311,38 @@ export function SplitEditor({
         {saveState === 'saving' ? 'Saving…' : 'Saved'}
       </p>
       <div
-        className={
-          isLg
-            ? 'flex min-h-[480px] flex-row overflow-hidden border border-zinc-800'
-            : 'flex min-h-[480px] flex-col overflow-hidden border border-zinc-800'
-        }
+        className="mb-2 flex flex-wrap gap-1.5 rounded-lg border border-zinc-800/80 bg-zinc-950/50 p-1"
+        role="tablist"
+        aria-label="Editor view"
       >
-        <div
-          ref={parentRef}
-          style={editorPaneStyle}
-          className="min-h-[280px] border-b border-zinc-800 bg-zinc-950 lg:min-h-0 lg:border-b-0 lg:border-r lg:border-zinc-800"
-        />
-        {isLg && (
+        {proseTabs}
+      </div>
+      <div className={outerFlexDir}>
+        {showEditor ? (
+          <div
+            ref={parentRef}
+            data-testid="codemirror-host"
+            style={editorPaneStyle}
+            className={editorPaneClass}
+          />
+        ) : null}
+        {isRowSplit ? (
           <button
             type="button"
             className="w-1.5 flex-shrink-0 cursor-col-resize border-0 bg-zinc-800 p-0 hover:bg-violet-900/40"
             aria-label="Resize panes"
             onMouseDown={onDividerMouseDown}
           />
-        )}
-        <div
-          style={isLg ? previewPaneStyle : undefined}
-          className="min-h-0 max-h-[60vh] min-w-0 flex-1 overflow-auto bg-zinc-950 p-4 text-sm text-zinc-300 lg:max-h-none [&_a]:text-violet-400 [&_code]:rounded [&_code]:bg-zinc-800 [&_code]:px-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-zinc-900"
-        >
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{preview}</ReactMarkdown>
-        </div>
+        ) : null}
+        {showPreview ? (
+          <div
+            data-testid="markdown-preview"
+            style={isRowSplit ? previewPaneStyle : undefined}
+            className={previewPaneClass}
+          >
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{preview}</ReactMarkdown>
+          </div>
+        ) : null}
       </div>
     </div>
   )

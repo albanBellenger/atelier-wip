@@ -17,6 +17,7 @@ import { LlmUsagePage } from './pages/LlmUsagePage'
 import { MeTokenUsagePage } from './pages/MeTokenUsagePage'
 import { ProjectPage } from './pages/ProjectPage'
 import { ProjectSettingsPage } from './pages/ProjectSettingsPage'
+import { SectionCopilotAliasRedirect } from './pages/SectionCopilotAliasRedirect'
 import { SectionPage } from './pages/SectionPage'
 import { SoftwarePage } from './pages/SoftwarePage'
 import { SoftwareSettingsPage } from './pages/SoftwareSettingsPage'
@@ -66,6 +67,10 @@ function App(): ReactElement {
         <Route
           path="/studios/:studioId/software/:softwareId"
           element={<SoftwarePage />}
+        />
+        <Route
+          path="/studios/:studioId/software/:softwareId/projects/:projectId/sections/:sectionId/copilot"
+          element={<SectionCopilotAliasRedirect />}
         />
         <Route
           path="/studios/:studioId/software/:softwareId/projects/:projectId/sections/:sectionId"

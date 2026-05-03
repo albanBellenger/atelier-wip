@@ -217,13 +217,13 @@ async def test_publish_folder_slug_rename_calls_git_when_configured(
     )
     assert pr.status_code == 200
     pid = pr.json()["id"]
-    assert pr.json()["publish_folder_slug"] == "folder-proj"
+    assert pr.json()["publish_folder_slug"] == "folderproj"
 
     calls: list[tuple[str, str]] = []
 
     async def fake_list(**kwargs: object) -> list[str]:
-        assert kwargs["path_prefix"] == "folder-proj"
-        return ["folder-proj/README.md"]
+        assert kwargs["path_prefix"] == "folderproj"
+        return ["folderproj/README.md"]
 
     async def fake_moves(**kwargs: object) -> tuple[str, str | None]:
         moves = kwargs["moves"]
@@ -246,4 +246,4 @@ async def test_publish_folder_slug_rename_calls_git_when_configured(
     )
     assert upd.status_code == 200, upd.text
     assert upd.json()["publish_folder_slug"] == "renamed-proj"
-    assert calls == [("folder-proj/README.md", "renamed-proj/README.md")]
+    assert calls == [("folderproj/README.md", "renamed-proj/README.md")]

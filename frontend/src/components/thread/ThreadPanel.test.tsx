@@ -7,6 +7,7 @@ import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest'
 
 import type { YjsCollab } from '../../hooks/useYjsCollab'
 import * as api from '../../services/api'
+import type { ContextPreview, WorkOrderDetail } from '../../services/api'
 import type { PrivateThreadStreamMeta } from '../../services/privateThreadSse'
 import { ThreadPanel } from './ThreadPanel'
 
@@ -28,6 +29,90 @@ describe('ThreadPanel', () => {
   beforeEach(() => {
     vi.spyOn(api, 'improveSection').mockResolvedValue({
       improved_markdown: '## Proposed\n',
+    })
+    vi.spyOn(api, 'listWorkOrders').mockResolvedValue([])
+    vi.spyOn(api, 'listProjectIssues').mockResolvedValue([])
+    vi.spyOn(api, 'getContextPreview').mockResolvedValue({
+      blocks: [],
+      total_tokens: 0,
+      budget_tokens: 8000,
+      overflow_strategy_applied: null,
+    })
+    vi.spyOn(api, 'getLlmRuntimeInfo').mockResolvedValue({
+      llm_provider: 'openai',
+      llm_model: 'gpt-4o-mini',
+    })
+  })
+
+  it('shows read-only tool LLM model beside the composer', async () => {
+    HTMLElement.prototype.scrollIntoView = vi.fn()
+    vi.spyOn(api, 'getPrivateThread').mockResolvedValue({
+      thread_id: 'th-1',
+      messages: [],
+    })
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <ThreadPanel
+            projectId="p1"
+            sectionId="sec1"
+            projectHref="/studios/s1/software/sw1/projects/p1"
+            collab={null}
+            editorSelection={null}
+            onClearEditorSelection={() => {}}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    await waitFor(() => {
+      expect(screen.getByText(/gpt-4o-mini/)).toBeInTheDocument()
+    })
+    expect(screen.getByText('Tool default')).toBeInTheDocument()
+  })
+
+  it('does not crash when awareness.getStates throws before collab is ready', async () => {
+    HTMLElement.prototype.scrollIntoView = vi.fn()
+    vi.spyOn(api, 'getPrivateThread').mockResolvedValue({
+      thread_id: 'th-1',
+      messages: [],
+    })
+    const ydoc = new Y.Doc()
+    const ytext = ydoc.getText('t')
+    const collab: YjsCollab = {
+      ydoc,
+      provider: {} as YjsCollab['provider'],
+      ytext,
+      awareness: {
+        clientID: 0,
+        getStates: () => {
+          throw new TypeError(
+            "Cannot read properties of undefined (reading 'states')",
+          )
+        },
+      } as YjsCollab['awareness'],
+    }
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <ThreadPanel
+            projectId="p1"
+            sectionId="sec1"
+            projectHref="/studios/s1/software/sw1/projects/p1"
+            collab={collab}
+            editorSelection={null}
+            onClearEditorSelection={() => {}}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    await waitFor(() => {
+      expect(screen.getByText(/Private · 1 collaborator/)).toBeInTheDocument()
     })
   })
 
@@ -74,7 +159,6 @@ describe('ThreadPanel', () => {
           <ThreadPanel
             projectId="p1"
             sectionId="sec1"
-            sectionTitle="Intro"
             projectHref="/studios/s1/software/sw1/projects/p1"
             collab={null}
             editorSelection={null}
@@ -129,7 +213,6 @@ describe('ThreadPanel', () => {
           <ThreadPanel
             projectId="p1"
             sectionId="sec1"
-            sectionTitle="Intro"
             projectHref="/studios/s1/software/sw1/projects/p1"
             collab={collab}
             editorSelection={{ from: 1, to: 3, text: 'bc' }}
@@ -143,7 +226,7 @@ describe('ThreadPanel', () => {
       expect(screen.getByText('Selection: 2 chars')).toBeInTheDocument()
     })
 
-    await user.type(screen.getByPlaceholderText(/Ask about/), 'hello')
+    await user.type(screen.getByPlaceholderText(/copilot/), 'hello')
     await user.click(screen.getByRole('button', { name: 'Send' }))
 
     await waitFor(() => {
@@ -211,7 +294,6 @@ describe('ThreadPanel', () => {
           <ThreadPanel
             projectId="p1"
             sectionId="sec1"
-            sectionTitle="Intro"
             projectHref="/studios/s1/software/sw1/projects/p1"
             collab={collab}
             editorSelection={null}
@@ -221,8 +303,7 @@ describe('ThreadPanel', () => {
       </MemoryRouter>,
     )
 
-    await user.selectOptions(screen.getByLabelText('Intent'), 'append')
-    await user.type(screen.getByPlaceholderText(/Ask about/), 'go')
+    await user.type(screen.getByPlaceholderText(/copilot/), '/append go')
     await user.click(screen.getByRole('button', { name: 'Send' }))
 
     await waitFor(() => {
@@ -272,7 +353,6 @@ describe('ThreadPanel', () => {
           <ThreadPanel
             projectId="p1"
             sectionId="sec1"
-            sectionTitle="Intro"
             projectHref="/studios/s1/software/sw1/projects/p1"
             collab={null}
             editorSelection={null}
@@ -318,7 +398,6 @@ describe('ThreadPanel', () => {
           <ThreadPanel
             projectId="p1"
             sectionId="sec1"
-            sectionTitle="Intro"
             projectHref="/studios/s1/software/sw1/projects/p1"
             collab={null}
             editorSelection={null}
@@ -338,10 +417,13 @@ describe('ThreadPanel', () => {
     })
   })
 
-  it('Slash /improve sends command and forces ask intent', async () => {
+  it('Slash /improve calls structured improve API (not chat stream)', async () => {
     const user = userEvent.setup()
     HTMLElement.prototype.scrollIntoView = vi.fn()
     streamSpy.mockClear()
+    const improveSpy = vi.spyOn(api, 'improveSection').mockResolvedValue({
+      improved_markdown: '## Better\n',
+    })
     vi.spyOn(api, 'getPrivateThread').mockResolvedValue({
       thread_id: 'th-1',
       messages: [],
@@ -357,7 +439,6 @@ describe('ThreadPanel', () => {
           <ThreadPanel
             projectId="p1"
             sectionId="sec1"
-            sectionTitle="Intro"
             projectHref="/studios/s1/software/sw1/projects/p1"
             collab={null}
             editorSelection={null}
@@ -368,7 +449,7 @@ describe('ThreadPanel', () => {
     )
 
     await user.type(
-      screen.getByPlaceholderText(/Ask about/),
+      screen.getByPlaceholderText(/copilot/),
       '/improve tighten doc',
     )
     expect(screen.getByTestId('slash-command-chip')).toBeInTheDocument()
@@ -376,15 +457,141 @@ describe('ThreadPanel', () => {
     await user.click(screen.getByRole('button', { name: 'Send' }))
 
     await waitFor(() => {
-      expect(streamSpy).toHaveBeenCalled()
+      expect(improveSpy).toHaveBeenCalledWith(
+        'p1',
+        'sec1',
+        expect.objectContaining({ instruction: 'tighten doc' }),
+      )
     })
-    const [, , payload] = streamSpy.mock.calls[0] as [
-      string,
-      string,
-      Record<string, unknown>,
-    ]
-    expect(payload.command).toBe('improve')
-    expect(payload.content).toBe('tighten doc')
-    expect(payload.thread_intent).toBe('ask')
+    expect(streamSpy).not.toHaveBeenCalled()
+  })
+
+  it('does not crash when work order detail omits notes (drift feed)', async () => {
+    HTMLElement.prototype.scrollIntoView = vi.fn()
+    vi.spyOn(api, 'getPrivateThread').mockResolvedValue({
+      thread_id: 'th-1',
+      messages: [],
+    })
+    vi.spyOn(api, 'listWorkOrders').mockResolvedValue([
+      {
+        id: 'wo-1',
+        project_id: 'p1',
+        title: 'WO',
+        description: '',
+        implementation_guide: null,
+        acceptance_criteria: null,
+        status: 'backlog',
+        phase: null,
+        phase_order: null,
+        assignee_id: null,
+        assignee_display_name: null,
+        is_stale: false,
+        stale_reason: null,
+        created_by: null,
+        updated_by_id: null,
+        updated_by_display_name: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        section_ids: ['sec1'],
+      },
+    ])
+    vi.spyOn(api, 'getWorkOrder').mockResolvedValue({
+      id: 'wo-1',
+      project_id: 'p1',
+      title: 'WO',
+      description: '',
+      implementation_guide: null,
+      acceptance_criteria: null,
+      status: 'backlog',
+      phase: null,
+      phase_order: null,
+      assignee_id: null,
+      assignee_display_name: null,
+      is_stale: false,
+      stale_reason: null,
+      created_by: null,
+      updated_by_id: null,
+      updated_by_display_name: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      section_ids: ['sec1'],
+    } as WorkOrderDetail)
+
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <ThreadPanel
+            projectId="p1"
+            sectionId="sec1"
+            projectHref="/studios/s1/software/sw1/projects/p1"
+            collab={null}
+            editorSelection={null}
+            onClearEditorSelection={() => {}}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('recent-updates-feed')).toBeInTheDocument()
+    })
+  })
+
+  it('does not crash when context meter returns preview without blocks', async () => {
+    const user = userEvent.setup()
+    HTMLElement.prototype.scrollIntoView = vi.fn()
+    vi.spyOn(api, 'getPrivateThread').mockResolvedValue({
+      thread_id: 'th-1',
+      messages: [],
+    })
+    vi.spyOn(api, 'getContextPreview').mockImplementation(
+      async (_p, _s, opts) => {
+        if (opts?.q != null && opts.q.length > 3) {
+          return {
+            total_tokens: 1,
+            budget_tokens: 8000,
+            overflow_strategy_applied: null,
+          } as ContextPreview
+        }
+        return {
+          blocks: [],
+          total_tokens: 0,
+          budget_tokens: 8000,
+          overflow_strategy_applied: null,
+        }
+      },
+    )
+
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <ThreadPanel
+            projectId="p1"
+            sectionId="sec1"
+            projectHref="/studios/s1/software/sw1/projects/p1"
+            collab={null}
+            editorSelection={null}
+            onClearEditorSelection={() => {}}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await user.type(screen.getByPlaceholderText(/copilot/), 'hello')
+    await waitFor(
+      () => {
+        expect(api.getContextPreview).toHaveBeenCalled()
+      },
+      { timeout: 4000 },
+    )
+    expect(screen.getByTestId('copilot-status-strip')).toBeInTheDocument()
   })
 })

@@ -2,14 +2,29 @@ import { useQuery } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+
 import {
   SplitEditor,
   type EditorSelectionState,
 } from '../components/editor/SplitEditor'
+import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
 import { ThreadPanel } from '../components/thread/ThreadPanel'
 import { colorsForUser, useYjsCollab } from '../hooks/useYjsCollab'
 import { useStudioAccess } from '../hooks/useStudioAccess'
-import { getSection, me } from '../services/api'
+import {
+  getHostedEnvironment,
+  hostedEnvironmentLabel,
+} from '../lib/hostedEnvironment'
+import { APP_VERSION } from '../version'
+import {
+  getProject,
+  getSection,
+  getSoftware,
+  listProjects,
+  listSoftware,
+  logout as logoutApi,
+  me,
+} from '../services/api'
 
 /** Section deep-link with collaborative Markdown editor. */
 export function SectionPage(): ReactElement {
@@ -24,6 +39,9 @@ export function SectionPage(): ReactElement {
   const sfid = softwareId ?? ''
   const pid = projectId ?? ''
   const secid = sectionId ?? ''
+
+  const hostedEnv = useMemo(() => getHostedEnvironment(), [])
+  const hostedEnvLabel = hostedEnvironmentLabel(hostedEnv)
 
   const {
     data: profile,
@@ -49,6 +67,90 @@ export function SectionPage(): ReactElement {
     enabled: Boolean(pid && secid && access.isMember),
   })
 
+  const swQ = useQuery({
+    queryKey: ['softwareOne', sid, sfid],
+    queryFn: () => getSoftware(sid, sfid),
+    enabled: Boolean(sid && sfid && access.isMember),
+  })
+
+  const studioSoftwareListQ = useQuery({
+    queryKey: ['software', sid],
+    queryFn: () => listSoftware(sid),
+    enabled: Boolean(sid && access.isMember),
+  })
+
+  const softwareProjectsNavQ = useQuery({
+    queryKey: ['projects', sfid, 'breadcrumb'],
+    queryFn: () => listProjects(sfid),
+    enabled: Boolean(sfid && access.isMember),
+  })
+
+  const projectQ = useQuery({
+    queryKey: ['project', sfid, pid],
+    queryFn: () => getProject(sfid, pid),
+    enabled: Boolean(sfid && pid && access.isMember),
+  })
+
+  const headerTrailingCrumb = useMemo(() => {
+    if (!swQ.data || !projectQ.data) {
+      return undefined
+    }
+    const swRows = studioSoftwareListQ.data ?? []
+    const projRows = (softwareProjectsNavQ.data ?? []).filter((p) => !p.archived)
+    const baseLabel = swQ.data.name
+    return {
+      label: baseLabel,
+      projectLabel: projectQ.data.name,
+      softwareSwitcher:
+        swRows.length > 1
+          ? {
+              currentSoftwareId: sfid,
+              softwareOptions: swRows.map((r) => ({ id: r.id, name: r.name })),
+              onSoftwareSelect: (nextId: string) => {
+                void navigate(`/studios/${sid}/software/${nextId}`)
+              },
+            }
+          : undefined,
+      projectSwitcher:
+        projRows.length > 1
+          ? {
+              currentProjectId: pid,
+              projectOptions: projRows.map((p) => ({ id: p.id, name: p.name })),
+              onProjectSelect: (nextId: string) => {
+                void navigate(
+                  `/studios/${sid}/software/${sfid}/projects/${nextId}`,
+                )
+              },
+            }
+          : undefined,
+    }
+  }, [
+    swQ.data,
+    projectQ.data,
+    studioSoftwareListQ.data,
+    softwareProjectsNavQ.data,
+    sfid,
+    sid,
+    pid,
+    navigate,
+  ])
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await logoutApi()
+    } catch {
+      /* still leave */
+    }
+    void navigate('/auth', { replace: true })
+  }, [navigate])
+
+  const handleStudioChange = useCallback(
+    (nextStudioId: string) => {
+      void navigate(`/studios/${nextStudioId}`)
+    },
+    [navigate],
+  )
+
   const collabUser = useMemo(() => {
     if (!profile?.user) return null
     const { color, colorLight } = colorsForUser(profile.user.id)
@@ -57,7 +159,7 @@ export function SectionPage(): ReactElement {
       color,
       colorLight,
     }
-  }, [profile?.user.display_name, profile?.user.id])
+  }, [profile?.user?.display_name, profile?.user?.id])
 
   const collab = useYjsCollab(
     sectionQ.data ? pid : undefined,
@@ -103,22 +205,15 @@ export function SectionPage(): ReactElement {
   const projectHref = `/studios/${sid}/software/${sfid}/projects/${pid}`
 
   return (
-    <div className="min-h-screen bg-zinc-950 px-4 py-10 text-zinc-100">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-6 flex flex-wrap gap-4 text-sm">
-          <Link
-            to={projectHref}
-            className="text-violet-400 hover:underline"
-          >
-            ← Project
-          </Link>
-          <Link
-            to={`/studios/${sid}/software/${sfid}`}
-            className="text-zinc-500 hover:text-zinc-300"
-          >
-            Software
-          </Link>
-        </div>
+    <div className="min-h-screen bg-[#0a0a0b] px-8 pb-16 pt-8 font-sans text-zinc-100">
+      <div className="mx-auto max-w-[1240px]">
+        <BuilderHomeHeader
+          profile={profile}
+          studioId={sid}
+          onStudioChange={handleStudioChange}
+          onLogout={() => void handleLogout()}
+          trailingCrumb={headerTrailingCrumb}
+        />
 
         {sectionQ.isPending && (
           <p className="text-zinc-500">Loading section…</p>
@@ -128,14 +223,28 @@ export function SectionPage(): ReactElement {
         )}
         {sectionQ.data && (
           <>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-6">
-              <h1 className="text-2xl font-semibold">{sectionQ.data.title}</h1>
-              <p className="mt-2 font-mono text-sm text-zinc-500">
-                {sectionQ.data.slug}
-              </p>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2">
+              <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <h1 className="truncate text-base font-semibold leading-tight text-zinc-100">
+                  {sectionQ.data.title}
+                </h1>
+                <span className="shrink-0 font-mono text-[11px] text-zinc-500">
+                  {sectionQ.data.slug}
+                </span>
+              </div>
             </div>
-            <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_minmax(280px,360px)] lg:items-start">
-              <div>
+            <div className="mt-4 grid min-h-0 gap-6 lg:grid-cols-[minmax(280px,420px)_minmax(0,1fr)] lg:items-start">
+              <div className="min-h-0 min-w-0">
+                <ThreadPanel
+                  projectId={pid}
+                  sectionId={secid}
+                  projectHref={projectHref}
+                  collab={collab}
+                  editorSelection={editorSelection}
+                  onClearEditorSelection={() => setEditorSelection(null)}
+                />
+              </div>
+              <div className="min-w-0">
                 {!collab ? (
                   <p className="text-zinc-500">Connecting editor…</p>
                 ) : (
@@ -145,18 +254,30 @@ export function SectionPage(): ReactElement {
                   />
                 )}
               </div>
-              <ThreadPanel
-                projectId={pid}
-                sectionId={secid}
-                sectionTitle={sectionQ.data.title}
-                projectHref={projectHref}
-                collab={collab}
-                editorSelection={editorSelection}
-                onClearEditorSelection={() => setEditorSelection(null)}
-              />
             </div>
           </>
         )}
+
+        <footer className="mt-16 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-zinc-800/60 pt-6 text-[11px] text-zinc-600">
+          <span>Atelier · Builder workspace</span>
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono">
+            <Link
+              to="/changelog"
+              className="text-zinc-500 hover:text-zinc-300 hover:underline focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
+            >
+              v{APP_VERSION}
+            </Link>
+            <span className="select-none font-sans text-zinc-700" aria-hidden>
+              ·
+            </span>
+            <span
+              className="rounded border border-zinc-700/70 px-1.5 py-px text-[10px] font-sans font-normal uppercase tracking-wider text-zinc-500"
+              title={`Hosted environment: ${hostedEnvLabel}`}
+            >
+              {hostedEnvLabel}
+            </span>
+          </span>
+        </footer>
       </div>
     </div>
   )

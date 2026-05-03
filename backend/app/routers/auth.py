@@ -11,7 +11,7 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.main import limiter
 from app.models import User
-from app.schemas.auth import MeResponse, UserCreate, UserLogin, UserProfilePatch
+from app.schemas.auth import LlmRuntimePublic, MeResponse, UserCreate, UserLogin, UserProfilePatch
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -81,6 +81,15 @@ async def me(
     user: User = Depends(get_current_user),
 ) -> MeResponse:
     return await AuthService(session).me(user)
+
+
+@router.get("/llm-runtime", response_model=LlmRuntimePublic)
+async def llm_runtime(
+    session: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> LlmRuntimePublic:
+    """Tool-wide LLM provider/model for read-only UI (no secrets)."""
+    return await AuthService(session).llm_runtime_public()
 
 
 @router.patch("/me", response_model=MeResponse)

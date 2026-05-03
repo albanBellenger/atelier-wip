@@ -13,6 +13,7 @@ export function ContextTab(props: {
 }): ReactElement {
   const { projectId, sectionId, ragQuery, includeGitHistory } = props
   const [previewQ, setPreviewQ] = useState(ragQuery)
+  const [showDebugRawRag, setShowDebugRawRag] = useState(false)
 
   useEffect(() => {
     setPreviewQ(ragQuery)
@@ -25,11 +26,13 @@ export function ContextTab(props: {
       sectionId,
       previewQ,
       includeGitHistory,
+      showDebugRawRag,
     ],
     queryFn: () =>
       getContextPreview(projectId, sectionId, {
         q: previewQ,
         includeGitHistory,
+        debugRawRag: showDebugRawRag,
       }),
     enabled: Boolean(projectId && sectionId),
   })
@@ -51,8 +54,19 @@ export function ContextTab(props: {
       </label>
       <p className="text-xs text-zinc-500">
         Same assembly as the private thread LLM context. Refreshes when the
-        query or git option changes.
+        query or git option changes. If the search box is empty, chunk retrieval
+        uses the current section title and body as the implicit query (so
+        artifacts still match on the Context tab).
       </p>
+      <label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-400">
+        <input
+          type="checkbox"
+          checked={showDebugRawRag}
+          onChange={(e) => setShowDebugRawRag(e.target.checked)}
+          className="rounded border-zinc-600"
+        />
+        Include raw RAG string (debug, non-production API only)
+      </label>
       {q.isPending && <p className="text-zinc-500">Loading context…</p>}
       {q.isError && (
         <p className="text-red-400">Could not load context preview.</p>
@@ -70,37 +84,62 @@ export function ContextTab(props: {
             ) : null}
           </div>
           <ul className="space-y-3">
-            {q.data.blocks.map((b, i) => (
-              <li
-                key={`${b.kind}-${i}`}
-                className="rounded-lg border border-zinc-800 bg-zinc-950/60"
-              >
-                <div className="flex flex-wrap items-center gap-2 border-b border-zinc-800/80 px-2 py-1.5 text-xs">
-                  <span
-                    className="font-medium text-violet-300"
-                    data-testid={`context-block-kind-${b.kind}`}
-                  >
-                    {b.kind}
-                  </span>
-                  <span className="truncate text-zinc-400" title={b.label}>
-                    {b.label}
-                  </span>
-                  <span className="text-zinc-500">{b.tokens} tok</span>
-                  {b.relevance != null ? (
-                    <span className="text-zinc-500">
-                      d={b.relevance.toFixed(3)}
+            {(Array.isArray(q.data.blocks) ? q.data.blocks : []).map(
+              (b, i) => (
+                <li
+                  key={`${b.kind}-${i}`}
+                  className="rounded-lg border border-zinc-800 bg-zinc-950/60"
+                >
+                  <div className="flex flex-wrap items-center gap-2 border-b border-zinc-800/80 px-2 py-1.5 text-xs">
+                    <span
+                      className="font-medium text-violet-300"
+                      data-testid={`context-block-kind-${b.kind}`}
+                    >
+                      {b.kind}
                     </span>
-                  ) : null}
-                  {b.truncated ? (
-                    <span className="text-amber-400">truncated</span>
-                  ) : null}
-                </div>
-                <pre className="max-h-48 overflow-auto whitespace-pre-wrap p-2 font-mono text-[11px] leading-relaxed text-zinc-300">
-                  {b.body}
-                </pre>
-              </li>
-            ))}
+                    <span className="truncate text-zinc-400" title={b.label}>
+                      {b.label}
+                    </span>
+                    <span className="text-zinc-500">{b.tokens} tok</span>
+                    {b.relevance != null ? (
+                      <span className="text-zinc-500">
+                        d={b.relevance.toFixed(3)}
+                      </span>
+                    ) : null}
+                    {b.truncated ? (
+                      <span className="text-amber-400">truncated</span>
+                    ) : null}
+                  </div>
+                  <pre className="max-h-48 overflow-auto whitespace-pre-wrap p-2 font-mono text-[11px] leading-relaxed text-zinc-300">
+                    {b.body}
+                  </pre>
+                </li>
+              ))}
           </ul>
+          {showDebugRawRag ? (
+            q.data.debug_raw_rag_text != null &&
+            q.data.debug_raw_rag_text !== '' ? (
+              <details className="rounded-lg border border-zinc-800 bg-zinc-950/40">
+                <summary className="cursor-pointer px-2 py-1.5 text-xs text-zinc-400">
+                  Raw RAG text (same string as{' '}
+                  <code className="text-zinc-500">build_context</code> for the
+                  thread)
+                </summary>
+                <pre
+                  className="max-h-64 overflow-auto whitespace-pre-wrap border-t border-zinc-800/80 p-2 font-mono text-[11px] text-zinc-300"
+                  data-testid="context-debug-raw-rag"
+                >
+                  {q.data.debug_raw_rag_text}
+                </pre>
+              </details>
+            ) : (
+              <p className="text-xs text-zinc-600" data-testid="context-debug-unavailable">
+                Raw RAG debug not returned — use a non-production API (
+                <code className="text-zinc-500">ENV≠production</code>) and enable
+                the checkbox.
+              </p>
+            )
+          ) : null}
         </>
       )}
     </div>

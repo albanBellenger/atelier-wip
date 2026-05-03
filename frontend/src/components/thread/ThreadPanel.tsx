@@ -7,7 +7,6 @@ import { CopilotPanel } from './CopilotPanel'
 export function ThreadPanel(props: {
   projectId: string
   sectionId: string
-  sectionTitle: string
   projectHref: string
   collab: YjsCollab | null
   editorSelection: EditorSelectionState | null

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
@@ -227,6 +227,7 @@ class RAGService:
         outline = "\n".join(f"- {s.title} ({s.slug})" for s in section_rows)
 
         current_body = ""
+        section_for_embed: Section | None = None
         if current_section_id:
             cur = await self.db.get(Section, current_section_id)
             if cur is None or cur.project_id != project_id:
@@ -237,6 +238,7 @@ class RAGService:
                 )
             override = (current_section_plaintext_override or "").strip()
             current_body = override if override else (cur.content or "")
+            section_for_embed = cur
 
         ctx = TokenContext(
             studio_id=software.studio_id,
@@ -289,11 +291,19 @@ class RAGService:
                         parts[-1] = last[: max(0, len(last) - over - 4)] + "\n…\n"
 
         q = (query or "").strip()
+        query_for_embedding = q
+        if not query_for_embedding and section_for_embed is not None:
+            # Context preview often calls with no `q` (empty composer). Use the
+            # current section as an implicit query so artifact/section chunks run.
+            query_for_embedding = (
+                f"{section_for_embed.title}\n{current_body}".strip()[:2500]
+            )
+
         qvec: list[float] | None = None
-        if q:
+        if query_for_embedding:
             try:
                 emb = EmbeddingService(self.db)
-                qvec = (await emb.embed_batch([q]))[0]
+                qvec = (await emb.embed_batch([query_for_embedding]))[0]
             except ApiError as e:
                 log.warning("rag_embed_skip", reason=str(e))
 
@@ -320,7 +330,19 @@ class RAGService:
             art_stmt = (
                 select(ArtifactChunk, Artifact.name, d_art.label("d"))
                 .join(Artifact, ArtifactChunk.artifact_id == Artifact.id)
-                .where(Artifact.project_id == project_id)
+                .where(
+                    or_(
+                        Artifact.project_id == project_id,
+                        and_(
+                            Artifact.scope_level == "software",
+                            Artifact.library_software_id == software.id,
+                        ),
+                        and_(
+                            Artifact.scope_level == "studio",
+                            Artifact.library_studio_id == software.studio_id,
+                        ),
+                    )
+                )
                 .order_by(d_art)
                 .limit(5)
             )
@@ -428,6 +450,7 @@ class RAGService:
         token_budget: int = 6000,
         current_section_plaintext_override: str | None = None,
         include_git_history: bool = False,
+        include_debug_raw_rag: bool = False,
     ) -> ContextPreviewOut:
         """Structured RAG preview; same retrieval path as :meth:`build_context`."""
         asm = await self._assemble_rag_parts(
@@ -446,11 +469,17 @@ class RAGService:
         elif asm.truncated_early:
             overflow = "mandatory_or_git_trim"
         total_tokens = sum(b.tokens for b in blocks)
+        debug_raw: str | None = None
+        if include_debug_raw_rag:
+            debug_raw = out
+            if len(debug_raw) > asm.budget_chars:
+                debug_raw = debug_raw[: asm.budget_chars] + "\n…"
         return ContextPreviewOut(
             blocks=blocks,
             total_tokens=total_tokens,
             budget_tokens=asm.token_budget,
             overflow_strategy_applied=overflow,
+            debug_raw_rag_text=debug_raw,
         )
 
     async def build_context(

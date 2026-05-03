@@ -70,6 +70,48 @@ async def test_context_preview_happy_and_join_matches_rag_text(
 
 
 @pytest.mark.asyncio
+async def test_context_preview_debug_raw_rag_when_param(
+    client: AsyncClient,
+) -> None:
+    """Non-production: debug_raw_rag=true returns the same text shape as build_context."""
+    sfx = uuid.uuid4().hex[:8]
+    token = await _register(client, sfx, "owner")
+    client.cookies.set("atelier_token", token)
+    cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
+    assert cr.status_code == 200
+    studio_id = cr.json()["id"]
+    sw = await client.post(
+        f"/studios/{studio_id}/software",
+        json={"name": "SW"},
+    )
+    assert sw.status_code == 200
+    software_id = sw.json()["id"]
+    pr = await client.post(
+        f"/software/{software_id}/projects",
+        json={"name": "P1"},
+    )
+    assert pr.status_code == 200
+    project_id = pr.json()["id"]
+    s1 = await client.post(
+        f"/projects/{project_id}/sections",
+        json={"title": "Intro", "content": "alpha"},
+    )
+    assert s1.status_code == 200
+    sid = s1.json()["id"]
+
+    r = await client.get(
+        f"/projects/{project_id}/sections/{sid}/context-preview",
+        params={"q": "alpha", "debug_raw_rag": "true"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    raw = body.get("debug_raw_rag_text")
+    assert raw is not None
+    assert isinstance(raw, str)
+    assert len(raw) > 0
+    assert "## Software definition" in raw
+    assert "## Project outline" in raw
+    assert "## Current section" in raw
 async def test_context_preview_401_without_auth(client: AsyncClient) -> None:
     r = await client.get(
         "/projects/00000000-0000-4000-8000-000000000001/"

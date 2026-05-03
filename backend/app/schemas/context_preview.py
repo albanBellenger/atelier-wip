@@ -36,3 +36,10 @@ class ContextPreviewOut(BaseModel):
         default=None,
         description="Which global overflow strategy was applied, if any",
     )
+    debug_raw_rag_text: str | None = Field(
+        default=None,
+        description=(
+            "Non-production only: same character-truncated string as RAGService.build_context "
+            "when ?debug_raw_rag=true is sent."
+        ),
+    )
