@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import * as Y from 'yjs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -62,6 +62,19 @@ describe('SplitEditor', () => {
       'aria-selected',
       'true',
     )
+  })
+
+  it('renders markdown preview with headings and paragraphs (not a single flat text block)', () => {
+    const collab = minimalCollab('# Section title\n\nBody paragraph.')
+    render(<SplitEditor collab={collab} />)
+    const preview = screen.getByTestId('markdown-preview')
+    expect(
+      within(preview).getByRole('heading', {
+        level: 1,
+        name: 'Section title',
+      }),
+    ).toBeInTheDocument()
+    expect(within(preview).getByText('Body paragraph.')).toBeInTheDocument()
   })
 
   it('switches to preview-only: hides CodeMirror host, shows markdown preview', async () => {

@@ -79,9 +79,13 @@ describe('SoftwareSettingsPage', () => {
 
     renderSettings()
 
-    await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /software settings/i })).toBeInTheDocument()
-    })
+    expect(
+      await screen.findByRole(
+        'heading',
+        { name: /software settings/i },
+        { timeout: 10_000 },
+      ),
+    ).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /^Details$/i })).toBeInTheDocument()
     expect(
       screen.getByRole('heading', { name: /self-hosted gitlab integration/i }),

@@ -792,7 +792,6 @@ describe('ThreadPanel', () => {
             editorSelection={null}
             onClearEditorSelection={() => {}}
             density="focus"
-            sectionTitle="Sec A"
           />
         </QueryClientProvider>
       </MemoryRouter>,
@@ -805,9 +804,19 @@ describe('ThreadPanel', () => {
       expect(screen.getByText(/Talk to the section copilot/)).toBeInTheDocument()
     })
     const focusComposer = screen.getByTestId('copilot-composer-focus')
-    const inner = focusComposer.querySelector('.sticky')
-    expect(inner).not.toBeNull()
-    expect(inner?.className).toMatch(/max-w-\[760px\]/)
+    let card: Element | null = null
+    for (const el of focusComposer.querySelectorAll('div')) {
+      if (
+        typeof el.className === 'string' &&
+        el.className.includes('max-w-[760px]')
+      ) {
+        card = el
+        break
+      }
+    }
+    expect(card).not.toBeNull()
+    expect(card?.className).toMatch(/rounded-2xl/)
+    expect(card?.className).not.toMatch(/sticky/)
     expect(
       within(focusComposer).queryByRole('button', { name: '/improve' }),
     ).not.toBeInTheDocument()

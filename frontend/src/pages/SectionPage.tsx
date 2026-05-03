@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
 import {
   useCallback,
@@ -14,12 +14,12 @@ import {
   type EditorSelectionState,
 } from '../components/editor/SplitEditor'
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
-import { EditorBreadcrumbStrip } from '../components/section/EditorBreadcrumbStrip'
 import { SectionLayoutSwitcher } from '../components/section/SectionLayoutSwitcher'
 import type { SectionLayoutMode } from '../components/section/sectionLayoutMode'
 import { ThreadPanel } from '../components/thread/ThreadPanel'
 import { colorsForUser, useYjsCollab } from '../hooks/useYjsCollab'
 import { useStudioAccess } from '../hooks/useStudioAccess'
+import { collaboratorCountFromAwareness } from '../lib/copilotAwareness'
 import {
   getHostedEnvironment,
   hostedEnvironmentLabel,
@@ -33,6 +33,7 @@ import {
   listSoftware,
   logout as logoutApi,
   me,
+  resetPrivateThread,
 } from '../services/api'
 
 const SAVE_SAVED_RESET_MS = 2500
@@ -346,6 +347,45 @@ export function SectionPage(): ReactElement {
     return t.split('\n').length
   }, [collab?.ytext, breadcrumbDocEpoch])
 
+  const queryClient = useQueryClient()
+  const resetThreadMut = useMutation({
+    mutationFn: () => resetPrivateThread(pid, secid),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ['privateThread', pid, secid],
+      })
+    },
+  })
+
+  const [sectionAwareBump, setSectionAwareBump] = useState(0)
+
+  useEffect(() => {
+    if (!collab?.awareness) {
+      return
+    }
+    const a = collab.awareness as {
+      on?: (ev: string, fn: () => void) => void
+      off?: (ev: string, fn: () => void) => void
+    }
+    if (typeof a.on !== 'function') {
+      return
+    }
+    const fn = (): void => {
+      setSectionAwareBump((n) => n + 1)
+    }
+    a.on('change', fn)
+    return () => {
+      a.off?.('change', fn)
+    }
+  }, [collab?.awareness])
+
+  void sectionAwareBump
+
+  const focusCollaboratorCount = useMemo(
+    () => collaboratorCountFromAwareness(collab),
+    [collab, sectionAwareBump],
+  )
+
   if (!sid || !sfid || !pid || !secid) {
     void navigate('/studios', { replace: true })
     return <div className="min-h-screen bg-zinc-950" />
@@ -373,8 +413,18 @@ export function SectionPage(): ReactElement {
   const projectHref = `/studios/${sid}/software/${sfid}/projects/${pid}`
 
   return (
-    <div className="min-h-screen bg-[#0a0a0b] px-8 pb-16 pt-8 font-sans text-zinc-100">
-      <div className="mx-auto max-w-[1240px]">
+    <div
+      className={`min-h-screen bg-[#0a0a0b] px-8 pt-8 font-sans text-zinc-100 ${
+        layoutMode === 'focus'
+          ? 'flex flex-col pb-4 lg:h-screen lg:overflow-hidden'
+          : 'pb-16'
+      }`}
+    >
+      <div
+        className={`mx-auto max-w-[1240px] ${
+          layoutMode === 'focus' ? 'flex min-h-0 flex-1 flex-col' : ''
+        }`}
+      >
         <BuilderHomeHeader
           profile={profile}
           studioId={sid}
@@ -390,7 +440,11 @@ export function SectionPage(): ReactElement {
           <p className="text-red-400">Could not load section.</p>
         )}
         {sectionQ.data && (
-          <>
+          <div
+            className={
+              layoutMode === 'focus' ? 'flex min-h-0 flex-1 flex-col' : ''
+            }
+          >
             <div className="flex flex-col gap-2 rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
                 <h1 className="truncate text-base font-semibold leading-tight text-zinc-100">
@@ -400,31 +454,60 @@ export function SectionPage(): ReactElement {
                   {sectionQ.data.slug}
                 </span>
               </div>
+              {layoutMode === 'focus' ? (
+                <div
+                  data-testid="section-title-breadcrumb"
+                  className="flex shrink-0 flex-wrap items-center gap-3 text-xs text-zinc-500"
+                >
+                  <span
+                    title={`Private · ${focusCollaboratorCount} collaborator${
+                      focusCollaboratorCount === 1 ? '' : 's'
+                    }`}
+                  >
+                    👥 {focusCollaboratorCount}
+                  </span>
+                  <span className="text-zinc-600">·</span>
+                  <span>
+                    {breadcrumbSaveState === 'saving' ? 'Saving…' : 'Saved'}
+                  </span>
+                  <span className="text-zinc-600">·</span>
+                  <span>{breadcrumbLineCount} lines</span>
+                  <button
+                    type="button"
+                    onClick={() => setLayoutMode('split')}
+                    className="rounded-md px-2 py-0.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+                  >
+                    Open editor →
+                  </button>
+                  <button
+                    type="button"
+                    disabled={resetThreadMut.isPending}
+                    onClick={() => resetThreadMut.mutate()}
+                    className="rounded-md px-2 py-0.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-50"
+                  >
+                    New thread
+                  </button>
+                </div>
+              ) : null}
               <SectionLayoutSwitcher
                 mode={layoutMode}
                 onChange={setLayoutMode}
               />
             </div>
             {layoutMode === 'focus' ? (
-              <div className="mt-4 min-h-[calc(100vh-220px)] bg-[radial-gradient(ellipse_at_top,rgba(91,33,182,0.08),transparent_60%)] transition-opacity duration-150">
-                <EditorBreadcrumbStrip
-                  sectionTitle={sectionQ.data.title}
-                  sectionSlug={sectionQ.data.slug}
-                  savedState={breadcrumbSaveState}
-                  lineCount={breadcrumbLineCount}
-                  onSwitchMode={setLayoutMode}
-                />
-                <ThreadPanel
-                  projectId={pid}
-                  sectionId={secid}
-                  projectHref={projectHref}
-                  collab={collab}
-                  editorSelection={editorSelection}
-                  onClearEditorSelection={() => setEditorSelection(null)}
-                  density="focus"
-                  sectionTitle={sectionQ.data.title}
-                  onDraftEmptyChange={setFocusComposerEmpty}
-                />
+              <div className="mt-4 flex min-h-0 flex-1 flex-col bg-[radial-gradient(ellipse_at_top,rgba(91,33,182,0.08),transparent_60%)] transition-opacity duration-150">
+                <div className="min-h-0 flex-1">
+                  <ThreadPanel
+                    projectId={pid}
+                    sectionId={secid}
+                    projectHref={projectHref}
+                    collab={collab}
+                    editorSelection={editorSelection}
+                    onClearEditorSelection={() => setEditorSelection(null)}
+                    density="focus"
+                    onDraftEmptyChange={setFocusComposerEmpty}
+                  />
+                </div>
               </div>
             ) : (
               <div className="mt-4 grid min-h-0 gap-6 transition-opacity duration-150 lg:grid-cols-[minmax(280px,420px)_minmax(0,1fr)] lg:items-start">
@@ -452,10 +535,14 @@ export function SectionPage(): ReactElement {
                 </div>
               </div>
             )}
-          </>
+          </div>
         )}
 
-        <footer className="mt-16 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-zinc-800/60 pt-6 text-[11px] text-zinc-600">
+        <footer
+          className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-zinc-800/60 text-[11px] text-zinc-600 ${
+            layoutMode === 'focus' ? 'mt-4 shrink-0 pt-4' : 'mt-16 pt-6'
+          }`}
+        >
           <span>Atelier · Builder workspace</span>
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono">
             <Link

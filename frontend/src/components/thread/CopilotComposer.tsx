@@ -251,7 +251,7 @@ export function CopilotComposer(props: {
     : 'shrink-0 border-t border-zinc-800 p-2'
 
   const innerComposerClass = isFocus
-    ? 'sticky bottom-6 mx-auto w-full max-w-[760px] rounded-2xl border border-zinc-800/80 bg-zinc-900/95 px-4 py-3 shadow-xl shadow-black/40 backdrop-blur focus-within:ring-1 focus-within:ring-violet-500/40'
+    ? 'mx-auto w-full max-w-[760px] rounded-2xl border border-zinc-800/80 bg-zinc-900/95 px-4 py-3 shadow-xl shadow-black/40 backdrop-blur focus-within:ring-1 focus-within:ring-violet-500/40'
     : ''
 
   const body = (

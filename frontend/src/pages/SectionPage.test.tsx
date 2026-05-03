@@ -233,7 +233,7 @@ describe('SectionPage', () => {
 
     await user.click(screen.getByRole('tab', { name: /Focus/ }))
     await waitFor(() => {
-      expect(screen.getByTestId('editor-breadcrumb-strip')).toBeInTheDocument()
+      expect(screen.getByTestId('section-title-breadcrumb')).toBeInTheDocument()
     })
     expect(screen.queryByTestId('codemirror-host')).not.toBeInTheDocument()
     expect(localStorage.getItem('atelier:sectionLayout:sec-1')).toBe('focus')
@@ -275,7 +275,7 @@ describe('SectionPage', () => {
       )
     })
     await waitFor(() => {
-      expect(screen.getByTestId('editor-breadcrumb-strip')).toBeInTheDocument()
+      expect(screen.getByTestId('section-title-breadcrumb')).toBeInTheDocument()
     })
 
     await act(async () => {

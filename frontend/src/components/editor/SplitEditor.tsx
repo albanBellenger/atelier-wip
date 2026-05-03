@@ -292,8 +292,8 @@ export function SplitEditor({
     : 'min-h-[480px] min-w-0 flex-1 bg-zinc-950'
 
   const previewPaneClass = dualPane
-    ? 'min-h-0 max-h-[60vh] min-w-0 flex-1 overflow-auto bg-zinc-950 p-4 text-sm text-zinc-300 lg:max-h-none [&_a]:text-violet-400 [&_code]:rounded [&_code]:bg-zinc-800 [&_code]:px-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-zinc-900'
-    : 'min-h-[480px] min-w-0 flex-1 overflow-auto bg-zinc-950 p-4 text-sm text-zinc-300 [&_a]:text-violet-400 [&_code]:rounded [&_code]:bg-zinc-800 [&_code]:px-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-zinc-900'
+    ? 'prose prose-invert prose-sm max-w-none min-h-0 max-h-[60vh] min-w-0 flex-1 overflow-auto bg-zinc-950 p-4 text-zinc-300 lg:max-h-none prose-a:text-violet-400 [&_code]:rounded [&_code]:bg-zinc-800 [&_code]:px-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-zinc-900'
+    : 'prose prose-invert prose-sm max-w-none min-h-[480px] min-w-0 flex-1 overflow-auto bg-zinc-950 p-4 text-zinc-300 prose-a:text-violet-400 [&_code]:rounded [&_code]:bg-zinc-800 [&_code]:px-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-zinc-900'
 
   const proseTabs = (
     ['markdown', 'preview', 'split'] as const

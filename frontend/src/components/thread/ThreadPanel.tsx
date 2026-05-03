@@ -12,8 +12,15 @@ export function ThreadPanel(props: {
   editorSelection: EditorSelectionState | null
   onClearEditorSelection: () => void
   density?: CopilotDensity
-  sectionTitle?: string
   onDraftEmptyChange?: (empty: boolean) => void
 }): ReactElement {
+  const density = props.density ?? 'compact'
+  if (density === 'focus') {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <CopilotPanel {...props} />
+      </div>
+    )
+  }
   return <CopilotPanel {...props} />
 }

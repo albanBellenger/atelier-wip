@@ -31,6 +31,10 @@ import {
   previewAfterReplace,
   summarizeTextChange,
 } from '../../lib/sectionPatchPreview'
+import {
+  collaboratorCountFromAwareness,
+  safeAwarenessStates,
+} from '../../lib/copilotAwareness'
 import { parseThreadComposerInput } from '../../lib/threadSlashCommand'
 import {
   getContextPreview,
@@ -54,53 +58,6 @@ import { ConversationView } from './ConversationView'
 import { CritiqueTab } from './CritiqueTab'
 import { DiffTab } from './DiffTab'
 import { RecentUpdatesFeed, type RecentUpdateItem } from './RecentUpdatesFeed'
-
-/** y-websocket Awareness can throw from getStates() before the conn/doc is ready. */
-function safeAwarenessStates(awareness: {
-  getStates: () => Map<number, unknown>
-}): Map<number, unknown> | null {
-  try {
-    return awareness.getStates()
-  } catch {
-    return null
-  }
-}
-
-function collaboratorCountFromAwareness(collab: YjsCollab | null): number {
-  if (collab == null) {
-    return 1
-  }
-  const awareness = collab.awareness as unknown
-  if (
-    awareness == null ||
-    typeof awareness !== 'object' ||
-    !('getStates' in awareness) ||
-    typeof (awareness as { getStates?: unknown }).getStates !== 'function'
-  ) {
-    return 1
-  }
-  const states = safeAwarenessStates(
-    awareness as { getStates: () => Map<number, unknown> },
-  )
-  if (states == null) {
-    return 1
-  }
-  const names = new Set<string>()
-  states.forEach((state: unknown) => {
-    if (
-      state != null &&
-      typeof state === 'object' &&
-      'user' in state &&
-      state.user != null &&
-      typeof state.user === 'object' &&
-      'name' in state.user &&
-      typeof (state.user as { name?: unknown }).name === 'string'
-    ) {
-      names.add((state.user as { name: string }).name)
-    }
-  })
-  return Math.max(1, names.size)
-}
 
 function remoteEditorNamesFromAwareness(collab: YjsCollab): string[] {
   const awareness = collab.awareness as unknown
@@ -151,7 +108,6 @@ export function CopilotPanel(props: {
   editorSelection: EditorSelectionState | null
   onClearEditorSelection: () => void
   density?: CopilotDensity
-  sectionTitle?: string
   onDraftEmptyChange?: (empty: boolean) => void
 }): ReactElement {
   const {
@@ -162,7 +118,6 @@ export function CopilotPanel(props: {
     editorSelection,
     onClearEditorSelection,
     density = 'compact',
-    sectionTitle = 'Section copilot',
     onDraftEmptyChange,
   } = props
   const { streamPrivateThread } = useStream()
@@ -197,29 +152,14 @@ export function CopilotPanel(props: {
   const bottomRef = useRef<HTMLDivElement>(null)
   const chatScrollRef = useRef<HTMLDivElement>(null)
   const chatAutoscrollFirstRef = useRef(true)
+  const prevStreamingRef = useRef('')
   const collabRef = useRef<YjsCollab | null>(null)
   const [docBump, setDocBump] = useState(0)
   const [recentAccordionOpen, setRecentAccordionOpen] = useState(false)
-  const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
-  const headerMenuRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     onDraftEmptyChange?.(!draft.trim())
   }, [draft, onDraftEmptyChange])
-
-  useEffect(() => {
-    if (!headerMenuOpen) {
-      return
-    }
-    const onDoc = (e: MouseEvent): void => {
-      const el = headerMenuRef.current
-      if (el && e.target instanceof Node && !el.contains(e.target)) {
-        setHeaderMenuOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
-  }, [headerMenuOpen])
 
   useEffect(() => {
     const delay = draft.trim().length > 3 ? 600 : 0
@@ -701,7 +641,15 @@ export function CopilotPanel(props: {
     if (anchor == null) {
       return
     }
-    const behavior = chatAutoscrollFirstRef.current ? 'auto' : 'smooth'
+    const wasStreaming = prevStreamingRef.current !== ''
+    const isStreaming = streaming !== ''
+    prevStreamingRef.current = streaming
+    const behavior: ScrollBehavior =
+      chatAutoscrollFirstRef.current || isStreaming
+        ? 'auto'
+        : wasStreaming
+          ? 'smooth'
+          : 'smooth'
     chatAutoscrollFirstRef.current = false
     anchor.scrollIntoView({ block: 'end', behavior })
   }, [
@@ -865,7 +813,11 @@ export function CopilotPanel(props: {
           </div>
         </div>
         {isFocusLayout ? (
-          <div className="shrink-0 bg-[#0a0a0b]/80 px-4 pb-4 pt-2">
+          <div className="relative shrink-0 px-4 pb-4 pt-2">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 -top-6 h-6 bg-gradient-to-b from-transparent to-zinc-900/40"
+            />
             {composerEl}
           </div>
         ) : (
@@ -878,7 +830,7 @@ export function CopilotPanel(props: {
       <div
         className={
           isFocusLayout
-            ? 'mx-auto flex min-h-0 w-full max-w-[920px] flex-1 flex-col overflow-hidden px-4'
+            ? 'mx-auto flex min-h-0 w-full max-w-[840px] flex-1 flex-col overflow-hidden px-4'
             : 'flex min-h-0 flex-1 flex-col overflow-hidden'
         }
       >
@@ -891,7 +843,7 @@ export function CopilotPanel(props: {
       </div>
     ) : sideTab === 'critique' ? (
       isFocusLayout ? (
-        <div className="mx-auto flex min-h-0 w-full max-w-[920px] flex-1 flex-col overflow-hidden px-4">
+        <div className="mx-auto flex min-h-0 w-full max-w-[840px] flex-1 flex-col overflow-hidden px-4">
           <CritiqueTab
             projectId={projectId}
             sectionId={sectionId}
@@ -906,7 +858,7 @@ export function CopilotPanel(props: {
         />
       )
     ) : isFocusLayout ? (
-      <div className="mx-auto flex min-h-0 w-full max-w-[920px] flex-1 flex-col overflow-hidden px-4">
+      <div className="mx-auto flex min-h-0 w-full max-w-[840px] flex-1 flex-col overflow-hidden px-4">
         <DiffTab
           original={collab?.ytext?.toString() ?? ''}
           proposed={proposedMarkdown}
@@ -923,62 +875,7 @@ export function CopilotPanel(props: {
 
   if (isFocusLayout) {
     return (
-      <section className="mx-auto flex h-[calc(100vh-200px)] min-h-[560px] w-full max-w-[920px] flex-col overflow-hidden rounded-2xl border border-zinc-800/70 bg-zinc-900/40">
-        <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-zinc-800 px-3">
-          <h2 className="min-w-0 truncate text-sm font-medium text-zinc-200">
-            {sectionTitle}
-          </h2>
-          <div className="flex shrink-0 items-center gap-2">
-            <span
-              className="text-zinc-500"
-              title={`Private · ${collaboratorCount} collaborator${
-                collaboratorCount === 1 ? '' : 's'
-              } editing`}
-            >
-              👥
-            </span>
-            <button
-              type="button"
-              disabled={resetMut.isPending}
-              className="text-xs text-zinc-400 hover:text-zinc-100 disabled:opacity-50"
-              onClick={() => resetMut.mutate()}
-            >
-              New thread
-            </button>
-            <div className="relative" ref={headerMenuRef}>
-              <button
-                type="button"
-                className="rounded px-2 py-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
-                aria-expanded={headerMenuOpen}
-                onClick={() => setHeaderMenuOpen((o) => !o)}
-              >
-                ⋯
-              </button>
-              {headerMenuOpen ? (
-                <div className="absolute right-0 z-30 mt-1 min-w-[11rem] rounded-md border border-zinc-800 bg-zinc-950 py-1 shadow-lg">
-                  <button
-                    type="button"
-                    className="block w-full px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-zinc-800"
-                    onClick={() => {
-                      resetMut.mutate()
-                      setHeaderMenuOpen(false)
-                    }}
-                  >
-                    Reset thread
-                  </button>
-                  <button
-                    type="button"
-                    disabled
-                    title="Coming soon"
-                    className="block w-full px-3 py-1.5 text-left text-xs text-zinc-600"
-                  >
-                    Toggle live updates
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </div>
+      <section className="mx-auto flex h-full min-h-0 w-full max-w-[840px] flex-col overflow-hidden rounded-2xl border border-zinc-800/70 bg-zinc-900/40">
         <div className="flex shrink-0 items-stretch border-b border-zinc-800/80">
           <CopilotTabs
             sideTab={sideTab}
