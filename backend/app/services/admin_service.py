@@ -11,6 +11,7 @@ from app.schemas.auth import (
     AdminConfigResponse,
     AdminConfigUpdate,
     AdminConnectivityResult,
+    AdminLlmProbeBody,
     UserPublic,
 )
 from app.services.embedding_pipeline import (
@@ -56,6 +57,8 @@ class AdminService:
         self,
         body: AdminConfigUpdate,
         background_tasks: BackgroundTasks | None = None,
+        *,
+        actor_user_id: UUID | None = None,
     ) -> AdminConfigResponse:
         was_embed = await embedding_configured(self.db)
         row = await self.get_or_create()
@@ -64,6 +67,14 @@ class AdminService:
             setattr(row, key, value)
         await self.db.flush()
         now_embed = await embedding_configured(self.db)
+        if actor_user_id is not None:
+            from app.services.admin_activity_service import AdminActivityService
+
+            await AdminActivityService(self.db).record(
+                action="admin_config.updated",
+                actor_user_id=actor_user_id,
+                summary="Tool Admin LLM / embedding configuration updated",
+            )
         if (
             not was_embed
             and now_embed
@@ -96,9 +107,12 @@ class AdminService:
         await self.db.flush()
         return UserPublic.model_validate(target_user)
 
-    async def test_llm(self) -> AdminConnectivityResult:
-        """Minimal chat completion against stored LLM config (OpenAI-compatible)."""
-        return await LLMService(self.db).admin_connectivity_probe()
+    async def test_llm(self, body: AdminLlmProbeBody | None = None) -> AdminConnectivityResult:
+        b = body or AdminLlmProbeBody()
+        return await LLMService(self.db).admin_connectivity_probe(
+            model_override=b.model,
+            api_base_url_override=b.api_base_url,
+        )
 
     async def test_embedding(self) -> AdminConnectivityResult:
         """Single-vector embedding using stored embedding config."""

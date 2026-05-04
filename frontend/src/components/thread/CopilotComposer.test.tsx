@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { CopilotComposer } from './CopilotComposer'
@@ -94,9 +95,26 @@ describe('CopilotComposer', () => {
         onInsertSlash={vi.fn()}
       />,
     )
-    const ta = screen.getByPlaceholderText(/copilot/)
+    const ta = screen.getByTestId('copilot-composer-textarea')
     fireEvent.keyDown(ta, { key: 'Enter', metaKey: true })
     expect(onSend).toHaveBeenCalledTimes(1)
+  })
+
+  it('slash chip inserts command with trailing space', async () => {
+    const user = userEvent.setup()
+    const onInsert = vi.fn()
+    render(
+      <CopilotComposer
+        {...baseProps()}
+        onInsertSlash={onInsert}
+      />,
+    )
+    await user.click(
+      within(screen.getByTestId('copilot-slash-chips')).getByRole('button', {
+        name: '/ask',
+      }),
+    )
+    expect(onInsert).toHaveBeenCalledWith('/ask ')
   })
 
   it('viewer cannot send when canSend is false', () => {

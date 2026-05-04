@@ -45,3 +45,8 @@ class Software(Base):
         back_populates="software",
         cascade="all, delete-orphan",
     )
+    software_chat_messages = relationship(
+        "SoftwareChatMessage",
+        back_populates="software",
+        cascade="all, delete-orphan",
+    )

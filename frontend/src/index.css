@@ -16,3 +16,10 @@ body {
 #root {
   min-height: 100svh;
 }
+
+/* Section workspace: body sans, code/pre mono (outline editor shell). */
+.section-workspace .prose code,
+.section-workspace .prose pre,
+.section-workspace pre {
+  font-family: var(--font-mono);
+}

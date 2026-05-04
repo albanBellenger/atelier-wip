@@ -502,6 +502,14 @@ class PrivateThreadService:
             include_git_history=include_git_history,
         )
         rag_text = rag.text
+        extra = await RAGService(self.db).plaintext_suffix_from_user_pins(
+            project_id=project_id,
+            section_id=section_id,
+            user_id=user_id,
+            max_extra_chars=6000,
+        )
+        if extra:
+            rag_text = rag_text + extra
         context_truncated = rag.truncated
         excerpt_extra = ""
         if (

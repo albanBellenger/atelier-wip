@@ -388,6 +388,15 @@ export function BuilderHomeHeader({
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-4 text-sm">
+        {profile.user.is_tool_admin ? (
+          <Link
+            to="/admin/console"
+            className="flex h-9 shrink-0 items-center rounded-md border border-zinc-800 bg-zinc-900/60 px-2.5 text-[12px] font-semibold tracking-tight text-zinc-300 transition hover:border-zinc-700 hover:text-zinc-100"
+            aria-label="Admin console"
+          >
+            Admin
+          </Link>
+        ) : null}
         <NotificationBell />
         <div className="h-5 w-px bg-zinc-800" />
         <UserMenu profile={profile} onLogout={onLogout} />

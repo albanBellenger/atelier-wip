@@ -3,7 +3,7 @@ import type { ReactElement } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
-import { BuilderGreeting } from './BuilderGreeting'
+import { BuilderHomeComposer } from './BuilderHomeComposer'
 import { BuilderHomeHeader } from './BuilderHomeHeader'
 import { BuilderResumeCard } from './BuilderResumeCard'
 import { BuilderShortcutsCard } from './BuilderShortcutsCard'
@@ -340,9 +340,15 @@ export function BuilderHomeDashboard({
           </div>
         ) : (
           <>
-            <BuilderGreeting
+            <BuilderHomeComposer
               profile={profile}
+              studioId={studioId!}
+              softwareId={softwareId!}
+              projectId={projectId}
               projectName={project?.name ?? null}
+              softwareName={software?.name ?? 'Software'}
+              canUseSoftwareChat={access.isStudioEditor}
+              canSeeComposerHint={access.isMember}
             />
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
               <div className="space-y-6">
@@ -376,6 +382,14 @@ export function BuilderHomeDashboard({
                       Tool administration
                     </h3>
                     <ul className="mt-3 list-inside list-disc text-sm text-zinc-400">
+                      <li>
+                        <Link
+                          to="/admin/console"
+                          className="text-violet-400 hover:underline"
+                        >
+                          Admin console
+                        </Link>
+                      </li>
                       <li>
                         <Link
                           to="/admin/settings"

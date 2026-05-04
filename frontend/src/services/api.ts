@@ -473,12 +473,336 @@ export interface AdminConnectivityResult {
   detail: string | null
 }
 
-export async function postAdminTestLlm(): Promise<AdminConnectivityResult> {
-  return request<AdminConnectivityResult>('POST', '/admin/test/llm')
+/** Optional overrides for POST /admin/test/llm (defaults from admin_config). */
+export type AdminLlmProbeBody = {
+  model?: string | null
+  api_base_url?: string | null
+}
+
+export async function postAdminTestLlm(
+  body: AdminLlmProbeBody = {},
+): Promise<AdminConnectivityResult> {
+  return request<AdminConnectivityResult>('POST', '/admin/test/llm', body)
 }
 
 export async function postAdminTestEmbedding(): Promise<AdminConnectivityResult> {
   return request<AdminConnectivityResult>('POST', '/admin/test/embedding')
+}
+
+// --- Admin console (overview, directory) ---
+
+export interface DeploymentActivityRow {
+  id: string
+  created_at: string
+  actor_user_id: string | null
+  action: string
+  target_type: string | null
+  target_id: string | null
+  summary: string | null
+}
+
+export interface StudioOverviewRow {
+  studio_id: string
+  name: string
+  software_count: number
+  member_count: number
+  mtd_spend_usd: string
+  budget_cap_monthly_usd: string | null
+  budget_overage_action: string
+}
+
+export interface AdminConsoleOverview {
+  studios: StudioOverviewRow[]
+  mtd_spend_total_usd: string
+  active_builders_count: number
+  embedding_collection_count: number
+  recent_activity: DeploymentActivityRow[]
+}
+
+export async function getAdminConsoleOverview(): Promise<AdminConsoleOverview> {
+  return request<AdminConsoleOverview>('GET', '/admin/console/overview')
+}
+
+export interface AdminStudioMembershipRow {
+  studio_id: string
+  studio_name: string
+  role: string
+}
+
+export interface AdminUserDirectoryRow {
+  user_id: string
+  email: string
+  display_name: string
+  is_tool_admin: boolean
+  created_at: string
+  studio_memberships: AdminStudioMembershipRow[]
+}
+
+export async function getAdminUsers(params?: {
+  limit?: number
+  offset?: number
+}): Promise<AdminUserDirectoryRow[]> {
+  const sp = new URLSearchParams()
+  if (params?.limit != null) sp.set('limit', String(params.limit))
+  if (params?.offset != null) sp.set('offset', String(params.offset))
+  const q = sp.toString()
+  return request<AdminUserDirectoryRow[]>('GET', `/admin/users${q ? `?${q}` : ''}`)
+}
+
+export interface AdminUserPublic {
+  id: string
+  email: string
+  display_name: string
+  is_tool_admin: boolean
+}
+
+export async function putAdminUserAdminStatus(
+  userId: string,
+  body: { is_tool_admin: boolean },
+): Promise<AdminUserPublic> {
+  return request<AdminUserPublic>(
+    'PUT',
+    `/admin/users/${encodeURIComponent(userId)}/admin-status`,
+    body,
+  )
+}
+
+// --- Admin LLM connectivity ---
+
+export interface LlmProviderRegistryRow {
+  id: string
+  provider_key: string
+  display_name: string
+  models: string[]
+  region: string | null
+  api_base_url: string | null
+  status: string
+  is_default: boolean
+  key_preview: string | null
+  sort_order: number
+}
+
+export type LlmProviderUpsertBody = {
+  display_name: string
+  models: string[]
+  region?: string | null
+  api_base_url?: string | null
+  status?: string
+  is_default?: boolean
+  key_preview?: string | null
+  sort_order?: number
+}
+
+/** Combined Tool admin config + LLM provider registry for the LLM connectivity page. */
+export interface AdminLlmDeployment {
+  credentials: AdminConfigPublic
+  providers: LlmProviderRegistryRow[]
+}
+
+export async function getAdminLlmDeployment(): Promise<AdminLlmDeployment> {
+  return request<AdminLlmDeployment>('GET', '/admin/llm/deployment')
+}
+
+export async function getAdminLlmProviders(): Promise<LlmProviderRegistryRow[]> {
+  return request<LlmProviderRegistryRow[]>('GET', '/admin/llm/providers')
+}
+
+export async function putAdminLlmProvider(
+  providerKey: string,
+  body: LlmProviderUpsertBody,
+): Promise<LlmProviderRegistryRow> {
+  return request<LlmProviderRegistryRow>(
+    'PUT',
+    `/admin/llm/providers/${encodeURIComponent(providerKey)}`,
+    body,
+  )
+}
+
+export async function deleteAdminLlmProvider(providerKey: string): Promise<void> {
+  return request<void>('DELETE', `/admin/llm/providers/${encodeURIComponent(providerKey)}`)
+}
+
+export interface LlmRoutingRuleRow {
+  use_case: string
+  primary_model: string
+  fallback_model: string | null
+}
+
+export async function getAdminLlmRouting(): Promise<LlmRoutingRuleRow[]> {
+  return request<LlmRoutingRuleRow[]>('GET', '/admin/llm/routing')
+}
+
+export async function putAdminLlmRouting(body: {
+  rules: LlmRoutingRuleRow[]
+}): Promise<LlmRoutingRuleRow[]> {
+  return request<LlmRoutingRuleRow[]>('PUT', '/admin/llm/routing', body)
+}
+
+export interface StudioLlmPolicyRow {
+  provider_key: string
+  enabled: boolean
+  selected_model: string | null
+}
+
+export async function getAdminStudioLlmPolicy(
+  studioId: string,
+): Promise<StudioLlmPolicyRow[]> {
+  return request<StudioLlmPolicyRow[]>(
+    'GET',
+    `/admin/studios/${encodeURIComponent(studioId)}/llm-policy`,
+  )
+}
+
+export async function putAdminStudioLlmPolicy(
+  studioId: string,
+  body: { rows: StudioLlmPolicyRow[] },
+): Promise<StudioLlmPolicyRow[]> {
+  return request<StudioLlmPolicyRow[]>(
+    'PUT',
+    `/admin/studios/${encodeURIComponent(studioId)}/llm-policy`,
+    body,
+  )
+}
+
+// --- Admin embeddings registry ---
+
+export interface EmbeddingModelRegistryRow {
+  id: string
+  model_id: string
+  provider_name: string
+  dim: number
+  cost_per_million_usd: string | null
+  region: string | null
+  default_role: string | null
+}
+
+export type EmbeddingModelUpsertBody = {
+  model_id: string
+  provider_name: string
+  dim: number
+  cost_per_million_usd?: string | null
+  region?: string | null
+  default_role?: string | null
+}
+
+export async function getAdminEmbeddingModels(): Promise<EmbeddingModelRegistryRow[]> {
+  return request<EmbeddingModelRegistryRow[]>('GET', '/admin/embeddings/models')
+}
+
+export async function putAdminEmbeddingModel(
+  modelId: string,
+  body: EmbeddingModelUpsertBody,
+): Promise<EmbeddingModelRegistryRow> {
+  return request<EmbeddingModelRegistryRow>(
+    'PUT',
+    `/admin/embeddings/models/${encodeURIComponent(modelId)}`,
+    body,
+  )
+}
+
+export async function deleteAdminEmbeddingModel(modelId: string): Promise<void> {
+  return request<void>(
+    'DELETE',
+    `/admin/embeddings/models/${encodeURIComponent(modelId)}`,
+  )
+}
+
+export interface AdminEmbeddingLibraryStudioRow {
+  studio_id: string
+  studio_name: string
+  artifact_count: number
+  embedded_artifact_count: number
+  artifact_vector_chunks: number
+  section_vector_chunks: number
+}
+
+export async function getAdminEmbeddingLibrary(): Promise<
+  AdminEmbeddingLibraryStudioRow[]
+> {
+  return request<AdminEmbeddingLibraryStudioRow[]>('GET', '/admin/embeddings/library')
+}
+
+export interface EmbeddingReindexPolicy {
+  id: number
+  auto_reindex_trigger: string
+  debounce_seconds: number
+  drift_threshold_pct: string
+  retention_days: number
+}
+
+export type EmbeddingReindexPolicyPatchBody = {
+  auto_reindex_trigger?: string | null
+  debounce_seconds?: number | null
+  drift_threshold_pct?: string | null
+  retention_days?: number | null
+}
+
+export async function getAdminEmbeddingReindexPolicy(): Promise<EmbeddingReindexPolicy> {
+  return request<EmbeddingReindexPolicy>('GET', '/admin/embeddings/reindex-policy')
+}
+
+export async function patchAdminEmbeddingReindexPolicy(
+  body: EmbeddingReindexPolicyPatchBody,
+): Promise<EmbeddingReindexPolicy> {
+  return request<EmbeddingReindexPolicy>(
+    'PATCH',
+    '/admin/embeddings/reindex-policy',
+    body,
+  )
+}
+
+// --- Admin studio budget (tool admin) ---
+
+export type StudioBudgetPatchBody = {
+  budget_cap_monthly_usd?: string | null
+  budget_overage_action?: string
+}
+
+export async function patchAdminStudioBudget(
+  studioId: string,
+  body: StudioBudgetPatchBody,
+): Promise<void> {
+  return request<void>(
+    'PATCH',
+    `/admin/studios/${encodeURIComponent(studioId)}/budget`,
+    body,
+  )
+}
+
+// --- Admin per-member studio budgets (tool admin) ---
+
+export interface AdminMemberBudgetRow {
+  user_id: string
+  email: string
+  display_name: string
+  role: string
+  budget_cap_monthly_usd: string | number | null
+  mtd_spend_usd: string | number
+}
+
+export type MemberStudioBudgetPatchBody = {
+  budget_cap_monthly_usd: string | null
+}
+
+export async function getAdminStudioMemberBudgets(
+  studioId: string,
+): Promise<AdminMemberBudgetRow[]> {
+  return request<AdminMemberBudgetRow[]>(
+    'GET',
+    `/admin/studios/${encodeURIComponent(studioId)}/member-budgets`,
+  )
+}
+
+export async function patchAdminStudioMemberBudget(
+  studioId: string,
+  userId: string,
+  body: MemberStudioBudgetPatchBody,
+): Promise<AdminMemberBudgetRow> {
+  return request<AdminMemberBudgetRow>(
+    'PATCH',
+    `/admin/studios/${encodeURIComponent(studioId)}/members/${encodeURIComponent(userId)}/budget`,
+    body,
+  )
 }
 
 export const api = {
@@ -508,6 +832,7 @@ export interface Studio {
   description: string | null
   logo_path: string | null
   created_at: string
+  budget_cap_monthly_usd?: string | null
 }
 
 export async function listStudios(): Promise<Studio[]> {
@@ -690,6 +1015,7 @@ export interface SectionSummary {
   slug: string
   order: number
   status: SectionStatus
+  open_issue_count: number
   updated_at: string
 }
 
@@ -843,6 +1169,53 @@ export async function getProjectChat(
   return request<ProjectChatHistoryResponse>(
     'GET',
     `/projects/${projectId}/chat${q ? `?${q}` : ''}`,
+  )
+}
+
+// --- Software chat (shared thread per software) ---
+
+export interface SoftwareChatMessageRow {
+  id: string
+  software_id: string
+  user_id: string | null
+  role: string
+  content: string
+  created_at: string
+}
+
+export interface SoftwareChatHistoryResponse {
+  messages: SoftwareChatMessageRow[]
+  next_before: string | null
+}
+
+export async function getSoftwareChat(
+  softwareId: string,
+  opts?: { before?: string; limit?: number },
+): Promise<SoftwareChatHistoryResponse> {
+  const params = new URLSearchParams()
+  if (opts?.before) params.set('before', opts.before)
+  if (opts?.limit != null) params.set('limit', String(opts.limit))
+  const q = params.toString()
+  return request<SoftwareChatHistoryResponse>(
+    'GET',
+    `/software/${softwareId}/chat${q ? `?${q}` : ''}`,
+  )
+}
+
+export interface BuilderComposerHintResponse {
+  headline: string
+  input_placeholder: string
+}
+
+export async function postBuilderComposerHint(body: {
+  software_id: string
+  project_id?: string | null
+  local_hour?: number | null
+}): Promise<BuilderComposerHintResponse> {
+  return request<BuilderComposerHintResponse>(
+    'POST',
+    '/me/builder-composer-hint',
+    body,
   )
 }
 
@@ -1290,6 +1663,14 @@ export interface SectionUpdateBody {
   content?: string | null
 }
 
+export interface SectionOutlineHealthLite {
+  drift_count: number
+  gap_count: number
+  token_used: number
+  token_budget: number
+  citation_scan_pending: boolean
+}
+
 export interface Section {
   id: string
   project_id: string
@@ -1297,6 +1678,9 @@ export interface Section {
   slug: string
   order: number
   content: string
+  status: SectionStatus
+  open_issue_count: number
+  outline_health?: SectionOutlineHealthLite | null
   created_at: string
   updated_at: string
 }
@@ -1360,6 +1744,94 @@ export async function getContextPreview(
   )
 }
 
+export interface SectionHealth {
+  drift_count: number
+  gap_count: number
+  token_used: number
+  token_budget: number
+  citations_resolved: number
+  citations_missing: number
+  drawer_drift: string | null
+  drawer_gap: string | null
+  drawer_tokens: string | null
+  drawer_sources: string | null
+}
+
+export async function getSectionHealth(
+  projectId: string,
+  sectionId: string,
+  opts?: { tokenBudget?: number },
+): Promise<SectionHealth> {
+  const sp = new URLSearchParams()
+  if (opts?.tokenBudget != null) {
+    sp.set('token_budget', String(opts.tokenBudget))
+  }
+  const qs = sp.toString()
+  const suffix = qs ? `?${qs}` : ''
+  return request<SectionHealth>(
+    'GET',
+    `/projects/${projectId}/sections/${sectionId}/health${suffix}`,
+  )
+}
+
+export interface CitationMissingItem {
+  statement: string
+}
+
+export interface CitationHealth {
+  citations_resolved: number
+  citations_missing: number
+  missing_items: CitationMissingItem[]
+}
+
+export async function getCitationHealth(
+  projectId: string,
+  sectionId: string,
+): Promise<CitationHealth> {
+  return request<CitationHealth>(
+    'GET',
+    `/projects/${projectId}/sections/${sectionId}/citation-health`,
+  )
+}
+
+export interface SectionContextPreferences {
+  excluded_kinds: string[]
+  pinned_artifact_ids: string[]
+  pinned_section_ids: string[]
+  pinned_work_order_ids: string[]
+  extra_urls: { url: string; note?: string }[]
+}
+
+export interface SectionContextPreferencesPatch {
+  excluded_kinds?: string[] | null
+  pinned_artifact_ids?: string[] | null
+  pinned_section_ids?: string[] | null
+  pinned_work_order_ids?: string[] | null
+  extra_urls?: { url: string; note?: string }[] | null
+}
+
+export async function getSectionContextPreferences(
+  projectId: string,
+  sectionId: string,
+): Promise<SectionContextPreferences> {
+  return request<SectionContextPreferences>(
+    'GET',
+    `/projects/${projectId}/sections/${sectionId}/context-preferences`,
+  )
+}
+
+export async function patchSectionContextPreferences(
+  projectId: string,
+  sectionId: string,
+  body: SectionContextPreferencesPatch,
+): Promise<SectionContextPreferences> {
+  return request<SectionContextPreferences>(
+    'PATCH',
+    `/projects/${projectId}/sections/${sectionId}/context-preferences`,
+    body,
+  )
+}
+
 export interface SectionImproveBody {
   instruction?: string | null
   current_section_plaintext?: string | null
@@ -1381,8 +1853,17 @@ export async function improveSection(
   )
 }
 
-export async function listSections(projectId: string): Promise<Section[]> {
-  return request<Section[]>('GET', `/projects/${projectId}/sections`)
+export async function listSections(
+  projectId: string,
+  opts?: { includeOutlineHealth?: boolean },
+): Promise<Section[]> {
+  const sp = new URLSearchParams()
+  if (opts?.includeOutlineHealth) {
+    sp.set('include_outline_health', 'true')
+  }
+  const qs = sp.toString()
+  const suffix = qs ? `?${qs}` : ''
+  return request<Section[]>('GET', `/projects/${projectId}/sections${suffix}`)
 }
 
 export async function createSection(

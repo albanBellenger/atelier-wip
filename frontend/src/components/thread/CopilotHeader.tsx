@@ -13,9 +13,6 @@ export function CopilotHeader(props: {
           Private · {collaboratorCount}{' '}
           {collaboratorCount === 1 ? 'collaborator' : 'collaborators'} editing
         </p>
-        <p className="mt-0.5 text-xs text-zinc-500">
-          Scoped to this section. Live editor text is sent with each message.
-        </p>
       </div>
       <button
         type="button"

@@ -59,7 +59,7 @@ export function UserMenu({ profile, onLogout }: UserMenuProps): ReactElement {
               <Link
                 to="/me/profile"
                 className="flex w-full items-center justify-between px-4 py-2 text-left text-[13px] text-zinc-200 transition hover:bg-zinc-900"
-                onMouseDown={() => setOpen(false)}
+                onClick={() => setOpen(false)}
               >
                 <span>Profile</span>
                 <span className="text-[11px] text-zinc-600">
@@ -71,7 +71,7 @@ export function UserMenu({ profile, onLogout }: UserMenuProps): ReactElement {
               <Link
                 to="/docs/builder"
                 className="flex w-full items-center justify-between px-4 py-2 text-left text-[13px] text-zinc-200 transition hover:bg-zinc-900"
-                onMouseDown={() => setOpen(false)}
+                onClick={() => setOpen(false)}
               >
                 <span>Documentation</span>
                 <span className="text-[11px] text-zinc-600">
@@ -84,7 +84,7 @@ export function UserMenu({ profile, onLogout }: UserMenuProps): ReactElement {
                 <Link
                   to="/llm-usage"
                   className="flex w-full items-center justify-between px-4 py-2 text-left text-[13px] text-zinc-200 transition hover:bg-zinc-900"
-                  onMouseDown={() => setOpen(false)}
+                  onClick={() => setOpen(false)}
                 >
                   <span>Token usage</span>
                   <span className="text-[11px] text-zinc-600">

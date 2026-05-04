@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+
+import { SoftwareChatRoom } from '../components/chat/SoftwareChatRoom'
 
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
 import { BuilderTokenStrip } from '../components/home/BuilderTokenStrip'
@@ -55,6 +57,7 @@ export function SoftwarePage(): ReactElement {
   }>()
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
   const sid = studioId ?? ''
   const sfid = softwareId ?? ''
   const hostedEnv = getHostedEnvironment()
@@ -106,6 +109,41 @@ export function SoftwarePage(): ReactElement {
       },
     }
   }, [swQ.data, studioSoftwareListQ.data, sfid, sid, navigate])
+
+  const tabRaw = searchParams.get('tab')
+  const softwareView: 'overview' | 'chat' =
+    tabRaw === 'chat' ? 'chat' : 'overview'
+
+  const setSoftwareTab = useCallback(
+    (next: 'overview' | 'chat') => {
+      const nextParams = new URLSearchParams(searchParams)
+      if (next === 'overview') {
+        nextParams.delete('tab')
+      } else {
+        nextParams.set('tab', next)
+      }
+      setSearchParams(nextParams, { replace: true })
+    },
+    [searchParams, setSearchParams],
+  )
+
+  useEffect(() => {
+    if (profilePending || !profile) {
+      return
+    }
+    if (tabRaw === 'chat' && !access.isStudioEditor) {
+      const next = new URLSearchParams(searchParams)
+      next.delete('tab')
+      setSearchParams(next, { replace: true })
+    }
+  }, [
+    profilePending,
+    profile,
+    tabRaw,
+    access.isStudioEditor,
+    searchParams,
+    setSearchParams,
+  ])
 
   const [showArchivedProjects, setShowArchivedProjects] = useState(false)
   const [showNewProjectRow, setShowNewProjectRow] = useState(false)
@@ -404,6 +442,40 @@ export function SoftwarePage(): ReactElement {
                 </div>
               </div>
             </section>
+
+            <div className="mt-6 flex flex-wrap gap-2 border-b border-zinc-800/80 pb-3">
+              <button
+                type="button"
+                onClick={() => setSoftwareTab('overview')}
+                className={`rounded-md px-3 py-1.5 text-[12px] font-medium ${
+                  softwareView === 'overview'
+                    ? 'bg-zinc-800 text-zinc-100'
+                    : 'text-zinc-500 hover:text-zinc-200'
+                }`}
+              >
+                Overview
+              </button>
+              {access.isStudioEditor ? (
+                <button
+                  type="button"
+                  onClick={() => setSoftwareTab('chat')}
+                  className={`rounded-md px-3 py-1.5 text-[12px] font-medium ${
+                    softwareView === 'chat'
+                      ? 'bg-zinc-800 text-zinc-100'
+                      : 'text-zinc-500 hover:text-zinc-200'
+                  }`}
+                >
+                  Software chat
+                </button>
+              ) : null}
+            </div>
+
+            {softwareView === 'chat' ? (
+              <div className="mt-8">
+                <SoftwareChatRoom softwareId={sfid} />
+              </div>
+            ) : (
+              <>
             <SoftwareDefinitionPreviewCard
               className="mt-8"
               definition={swQ.data.definition}
@@ -412,7 +484,10 @@ export function SoftwarePage(): ReactElement {
             />
             <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
               <div className="flex min-w-0 flex-col gap-10">
-            <section className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60">
+            <section
+              id="software-projects-section"
+              className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60"
+            >
               <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-zinc-800 px-5 py-4">
                 <div className="flex min-w-0 flex-wrap items-baseline gap-2">
                   <h2 className="text-[15px] font-semibold tracking-tight text-zinc-100">
@@ -670,6 +745,8 @@ export function SoftwarePage(): ReactElement {
               </div>
             </aside>
           </div>
+              </>
+            )}
           </>
         )}
 

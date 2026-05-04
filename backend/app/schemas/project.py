@@ -31,6 +31,7 @@ class SectionSummary(BaseModel):
     slug: str
     order: int
     status: Literal["ready", "gaps", "conflict", "empty"]
+    open_issue_count: int = Field(default=0, ge=0)
     updated_at: datetime
 
 

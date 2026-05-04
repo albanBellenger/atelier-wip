@@ -1,6 +1,11 @@
 import type { ReactElement } from 'react'
 
-export type CopilotSideTab = 'chat' | 'context' | 'critique' | 'diff'
+export type CopilotSideTab =
+  | 'chat'
+  | 'context'
+  | 'critique'
+  | 'diff'
+  | 'sources'
 
 export function CopilotStatusStrip(props: {
   driftCount: number
@@ -45,7 +50,7 @@ export function CopilotStatusStrip(props: {
       <button
         type="button"
         className="rounded-full border border-zinc-700 bg-zinc-950/80 px-2 py-0.5 hover:border-amber-700/60 hover:text-amber-200/90"
-        onClick={() => onSelectTab('chat')}
+        onClick={() => onSelectTab('critique')}
       >
         <span className="text-amber-400/90">⚠</span> {gapCount} gap
       </button>
@@ -59,7 +64,7 @@ export function CopilotStatusStrip(props: {
       <button
         type="button"
         className="rounded-full border border-zinc-700 bg-zinc-950/80 px-2 py-0.5 hover:border-violet-700/60 hover:text-violet-200/90"
-        onClick={() => onSelectTab('context')}
+        onClick={() => onSelectTab('sources')}
       >
         {srcLabel}
       </button>

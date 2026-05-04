@@ -18,6 +18,7 @@ import {
   type MutableRefObject,
   type ReactElement,
 } from 'react'
+import type { SectionPatchOverlayState } from '../../lib/sectionPatchOverlay'
 import type { EditorViewMode } from '../section/sectionLayoutMode'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -78,6 +79,8 @@ export interface SplitEditorProps {
   /** When both are set, view mode is controlled and the internal tablist is hidden. */
   viewMode?: EditorViewMode
   onViewModeChange?: (mode: EditorViewMode) => void
+  /** Optional LLM patch preview shown in the Markdown preview pane (Accept / Reject). */
+  patchOverlay?: SectionPatchOverlayState | null
 }
 
 function selectionExtension(
@@ -115,6 +118,7 @@ export function SplitEditor({
   onSelectionChange,
   viewMode: viewModeProp,
   onViewModeChange,
+  patchOverlay,
 }: SplitEditorProps): ReactElement {
   const parentRef = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<EditorView | null>(null)
@@ -141,8 +145,10 @@ export function SplitEditor({
       setUncontrolledViewMode(m)
     }
   }
-  const showEditor = viewMode !== 'preview'
-  const showPreview = viewMode !== 'markdown'
+  const layoutMode =
+    viewMode === 'context' ? ('split' as const) : viewMode
+  const showEditor = layoutMode !== 'preview'
+  const showPreview = layoutMode !== 'markdown'
   const dualPane = showEditor && showPreview
 
   useEffect(() => {
@@ -273,7 +279,7 @@ export function SplitEditor({
     window.addEventListener('mouseup', onUp)
   }
 
-  const isRowSplit = viewMode === 'split' && isLg
+  const isRowSplit = layoutMode === 'split' && isLg
 
   const editorPaneStyle: import('react').CSSProperties = isRowSplit
     ? { width: `${leftPct}%`, minWidth: 0, flexShrink: 0 }
@@ -359,7 +365,47 @@ export function SplitEditor({
             style={isRowSplit ? previewPaneStyle : undefined}
             className={previewPaneClass}
           >
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{preview}</ReactMarkdown>
+            {patchOverlay ? (
+              <div
+                className="space-y-3 rounded-lg border border-violet-500/40 bg-violet-950/10 p-3"
+                data-testid="patch-inline-preview"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[11px] font-medium uppercase tracking-wide text-violet-200">
+                    Proposal preview
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={!patchOverlay.canApply}
+                      onClick={() => patchOverlay.onApply()}
+                      className="rounded-md bg-violet-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Accept
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => patchOverlay.onDismiss()}
+                      className="rounded-md border border-zinc-600 px-2.5 py-1 text-[11px] text-zinc-200 hover:bg-zinc-800"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+                {!patchOverlay.canApply && patchOverlay.blockedReason ? (
+                  <p className="text-[11px] text-rose-300">
+                    {patchOverlay.blockedReason}
+                  </p>
+                ) : null}
+                <div className="prose prose-invert prose-sm max-w-none">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {patchOverlay.mergedMarkdown}
+                  </ReactMarkdown>
+                </div>
+              </div>
+            ) : (
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{preview}</ReactMarkdown>
+            )}
           </div>
         ) : null}
       </div>

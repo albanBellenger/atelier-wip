@@ -1,3 +1,8 @@
-export type SectionLayoutMode = 'markdown' | 'preview' | 'split' | 'focus'
+export type SectionLayoutMode =
+  | 'markdown'
+  | 'preview'
+  | 'split'
+  | 'context'
+  | 'focus'
 
-export type EditorViewMode = 'markdown' | 'preview' | 'split'
+export type EditorViewMode = 'markdown' | 'preview' | 'split' | 'context'

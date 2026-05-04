@@ -103,6 +103,11 @@ class Section(Base):
         secondary="work_order_sections",
         back_populates="sections",
     )
+    context_preferences = relationship(
+        "SectionContextPreference",
+        back_populates="section",
+        cascade="all, delete-orphan",
+    )
 
 
 class Artifact(Base):

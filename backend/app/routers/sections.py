@@ -14,6 +14,7 @@ from app.deps import (
     require_project_member,
 )
 from app.exceptions import ApiError
+from app.schemas.citation_health import CitationHealthOut
 from app.schemas.context_preview import ContextPreviewOut
 from app.schemas.section import (
     SectionCreate,
@@ -21,9 +22,19 @@ from app.schemas.section import (
     SectionResponse,
     SectionUpdate,
 )
+from app.schemas.section_context_preferences import (
+    SectionContextPrefsOut,
+    SectionContextPrefsPatch,
+)
+from app.schemas.section_health import SectionHealthOut
 from app.schemas.section_improve import SectionImproveBody, SectionImproveOut
+from app.services.citation_health_service import CitationHealthService
 from app.services.llm_service import LLMService
 from app.services.rag_service import RAGService
+from app.services.section_context_preferences_service import (
+    SectionContextPreferencesService,
+)
+from app.services.section_health_service import SectionHealthService
 from app.services.section_service import SectionService
 
 router = APIRouter(prefix="/projects/{project_id}/sections", tags=["sections"])
@@ -41,10 +52,16 @@ def _ensure_project(pa: ProjectAccess, project_id: UUID) -> None:
 @router.get("", response_model=list[SectionResponse])
 async def list_sections(
     project_id: UUID,
+    include_outline_health: bool = Query(
+        False,
+        description="When true, each section includes outline_health (batched drift/gap/tokens; no citation LLM).",
+    ),
     session: AsyncSession = Depends(get_db),
     _pa=Depends(get_project_access),
 ) -> list[SectionResponse]:
-    return await SectionService(session).list_sections(project_id)
+    return await SectionService(session).list_sections(
+        project_id, include_outline_health=include_outline_health
+    )
 
 
 @router.post("", response_model=SectionResponse)
@@ -85,13 +102,97 @@ async def get_section_context_preview(
 ) -> ContextPreviewOut:
     _ensure_project(pa, project_id)
     allow_debug = get_settings().env != "production"
-    return await RAGService(session).build_context_with_blocks(
+    prefs = await SectionContextPreferencesService(session).get_for_user_section(
+        pa.studio_access.user.id,
+        section_id,
+    )
+    rag = RAGService(session)
+    preview = await rag.build_context_with_blocks(
         q,
         project_id,
         section_id,
         token_budget=token_budget,
         include_git_history=include_git_history,
         include_debug_raw_rag=bool(debug_raw_rag and allow_debug),
+    )
+    if (
+        prefs.excluded_kinds
+        or prefs.pinned_artifact_ids
+        or prefs.pinned_section_ids
+        or prefs.pinned_work_order_ids
+        or prefs.extra_urls
+    ):
+        return await rag.apply_user_context_prefs_to_preview(
+            preview, project_id, prefs
+        )
+    return preview
+
+
+@router.get("/{section_id}/health", response_model=SectionHealthOut)
+async def get_section_health(
+    project_id: UUID,
+    section_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    pa: ProjectAccess = Depends(require_project_member),
+    token_budget: int = Query(6000, ge=100, le=50_000),
+) -> SectionHealthOut:
+    _ensure_project(pa, project_id)
+    return await SectionHealthService(session).get_section_health(
+        project_id=project_id,
+        section_id=section_id,
+        user_id=pa.studio_access.user.id,
+        token_budget=token_budget,
+    )
+
+
+@router.get("/{section_id}/citation-health", response_model=CitationHealthOut)
+async def get_section_citation_health(
+    project_id: UUID,
+    section_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    pa: ProjectAccess = Depends(require_project_member),
+) -> CitationHealthOut:
+    _ensure_project(pa, project_id)
+    return await CitationHealthService(session).analyze_section(
+        project_id=project_id,
+        section_id=section_id,
+        user_id=pa.studio_access.user.id,
+    )
+
+
+@router.get(
+    "/{section_id}/context-preferences",
+    response_model=SectionContextPrefsOut,
+)
+async def get_section_context_preferences(
+    project_id: UUID,
+    section_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    pa: ProjectAccess = Depends(require_project_member),
+) -> SectionContextPrefsOut:
+    _ensure_project(pa, project_id)
+    return await SectionContextPreferencesService(session).get_for_user_section(
+        pa.studio_access.user.id,
+        section_id,
+    )
+
+
+@router.patch(
+    "/{section_id}/context-preferences",
+    response_model=SectionContextPrefsOut,
+)
+async def patch_section_context_preferences(
+    project_id: UUID,
+    section_id: UUID,
+    body: SectionContextPrefsPatch,
+    session: AsyncSession = Depends(get_db),
+    pa: ProjectAccess = Depends(require_project_member),
+) -> SectionContextPrefsOut:
+    _ensure_project(pa, project_id)
+    return await SectionContextPreferencesService(session).patch_for_user_section(
+        pa.studio_access.user.id,
+        section_id,
+        body,
     )
 
 

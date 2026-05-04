@@ -14,6 +14,7 @@ import structlog
 from app.exceptions import ApiError
 from app.models import Issue, Project, Section, Software, WorkOrder, WorkOrderSection
 from app.schemas.section import SectionCreate, SectionResponse, SectionUpdate
+from app.schemas.section_outline_health import SectionOutlineHealthLite
 from app.schemas.token_context import TokenContext
 from app.services.llm_service import LLMService
 from app.services.notification_dispatch_service import NotificationDispatchService
@@ -112,7 +113,14 @@ class SectionService:
         m = r.scalar_one_or_none()
         return (m + 1) if m is not None else 0
 
-    def _to_response(self, s: Section, *, status: SectionStatusLiteral) -> SectionResponse:
+    def _to_response(
+        self,
+        s: Section,
+        *,
+        status: SectionStatusLiteral,
+        open_issue_count: int = 0,
+        outline_health: SectionOutlineHealthLite | None = None,
+    ) -> SectionResponse:
         snap = effective_section_plaintext(s.content, s.yjs_state)
         return SectionResponse(
             id=s.id,
@@ -122,6 +130,8 @@ class SectionService:
             order=s.order,
             content=snap,
             status=status,
+            open_issue_count=open_issue_count,
+            outline_health=outline_health,
             created_at=s.created_at,
             updated_at=s.updated_at,
         )
@@ -185,6 +195,41 @@ class SectionService:
             )
         return out
 
+    async def batch_open_issue_counts(
+        self, project_id: uuid.UUID, section_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, int]:
+        """Count open issues touching each section (section_a or section_b)."""
+        if not section_ids:
+            return {}
+        id_set = frozenset(section_ids)
+        rows = (
+            (
+                await self.db.execute(
+                    select(Issue).where(
+                        Issue.project_id == project_id,
+                        Issue.status == "open",
+                        or_(
+                            Issue.section_a_id.in_(section_ids),
+                            Issue.section_b_id.in_(section_ids),
+                        ),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        counts: dict[uuid.UUID, int] = {sid: 0 for sid in section_ids}
+        for iss in rows:
+            if iss.section_a_id and iss.section_a_id in id_set:
+                counts[iss.section_a_id] = counts.get(iss.section_a_id, 0) + 1
+            if (
+                iss.section_b_id
+                and iss.section_b_id in id_set
+                and iss.section_b_id != iss.section_a_id
+            ):
+                counts[iss.section_b_id] = counts.get(iss.section_b_id, 0) + 1
+        return counts
+
     async def compute_status(self, section_id: uuid.UUID) -> SectionStatusLiteral:
         s = await self.db.get(Section, section_id)
         if s is None:
@@ -196,7 +241,12 @@ class SectionService:
         m = await self.batch_section_statuses(s.project_id, [s])
         return m[section_id]
 
-    async def list_sections(self, project_id: uuid.UUID) -> list[SectionResponse]:
+    async def list_sections(
+        self,
+        project_id: uuid.UUID,
+        *,
+        include_outline_health: bool = False,
+    ) -> list[SectionResponse]:
         q = (
             select(Section)
             .where(Section.project_id == project_id)
@@ -204,7 +254,24 @@ class SectionService:
         )
         rows = list((await self.db.execute(q)).scalars().all())
         status_map = await self.batch_section_statuses(project_id, rows)
-        return [self._to_response(s, status=status_map[s.id]) for s in rows]
+        issue_map = await self.batch_open_issue_counts(project_id, [s.id for s in rows])
+        outline_map: dict[uuid.UUID, SectionOutlineHealthLite] = {}
+        if include_outline_health and rows:
+            from app.services.section_health_service import SectionHealthService
+
+            outline_map = await SectionHealthService(self.db).batch_outline_health_lite(
+                project_id=project_id,
+                sections=rows,
+            )
+        return [
+            self._to_response(
+                s,
+                status=status_map[s.id],
+                open_issue_count=issue_map.get(s.id, 0),
+                outline_health=outline_map.get(s.id) if include_outline_health else None,
+            )
+            for s in rows
+        ]
 
     async def reorder_sections(
         self,
@@ -262,7 +329,10 @@ class SectionService:
         await self.db.commit()
         await self.db.refresh(sec)
         st = await self.batch_section_statuses(project_id, [sec])
-        return self._to_response(sec, status=st[sec.id])
+        ic = await self.batch_open_issue_counts(project_id, [sec.id])
+        return self._to_response(
+            sec, status=st[sec.id], open_issue_count=ic.get(sec.id, 0)
+        )
 
     async def get_section(self, project_id: uuid.UUID, section_id: uuid.UUID) -> SectionResponse:
         s = await self.db.get(Section, section_id)
@@ -273,7 +343,8 @@ class SectionService:
                 message="Section not found",
             )
         st = await self.batch_section_statuses(project_id, [s])
-        return self._to_response(s, status=st[s.id])
+        ic = await self.batch_open_issue_counts(project_id, [s.id])
+        return self._to_response(s, status=st[s.id], open_issue_count=ic.get(s.id, 0))
 
     async def update_section(
         self,
@@ -347,7 +418,8 @@ class SectionService:
             except Exception:
                 log.warning("section_update_notification_failed", exc_info=True)
         st = await self.batch_section_statuses(project_id, [s])
-        return self._to_response(s, status=st[s.id])
+        ic = await self.batch_open_issue_counts(project_id, [s.id])
+        return self._to_response(s, status=st[s.id], open_issue_count=ic.get(s.id, 0))
 
     async def delete_section(
         self,

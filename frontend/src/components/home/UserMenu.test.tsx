@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
+import type { ReactElement } from 'react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Outlet, Route, Routes } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
 import { UserMenu, userCanSeeMeTokenUsage } from './UserMenu'
@@ -84,6 +85,33 @@ describe('UserMenu', () => {
       'href',
       '/docs/builder',
     )
+  })
+
+  it('navigates to profile when Profile link is activated', async () => {
+    const user = userEvent.setup()
+    function Shell(): ReactElement {
+      return (
+        <>
+          <UserMenu profile={baseProfile()} onLogout={vi.fn()} />
+          <Outlet />
+        </>
+      )
+    }
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route path="/" element={<Shell />}>
+            <Route index element={<div data-testid="home">home</div>} />
+            <Route path="me/profile" element={<div data-testid="profile-page">profile</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    )
+    await user.click(
+      screen.getByRole('button', { name: /open menu for alex builder/i }),
+    )
+    await user.click(screen.getByRole('link', { name: /profile/i }))
+    expect(await screen.findByTestId('profile-page')).toBeInTheDocument()
   })
 
   it('calls onLogout when Logout pressed', async () => {

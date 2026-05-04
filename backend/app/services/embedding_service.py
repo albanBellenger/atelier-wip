@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
-from app.models import AdminConfig
+from app.models import AdminConfig, EmbeddingModelRegistry
 from app.openai_compat_urls import embeddings_url
 
 log = structlog.get_logger("atelier.embedding")
@@ -34,7 +34,17 @@ class EmbeddingService:
     async def require_embedding_ready(self) -> tuple[str, str, str, str]:
         """Returns (model, api_key, provider, embeddings_url) or raises ApiError 503."""
         cfg = await self._get_config()
-        model = (cfg.embedding_model or "").strip()
+        reg_default = (
+            await self.db.execute(
+                select(EmbeddingModelRegistry).where(
+                    EmbeddingModelRegistry.default_role == "default"
+                )
+            )
+        ).scalar_one_or_none()
+        if reg_default is not None:
+            model = (reg_default.model_id or "").strip()
+        else:
+            model = (cfg.embedding_model or "").strip()
         key = (cfg.embedding_api_key or "").strip()
         provider = (cfg.embedding_provider or "").strip().lower()
         if not model or not key:

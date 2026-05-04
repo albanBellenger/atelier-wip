@@ -444,6 +444,85 @@ async def test_chat_structured_upstream_http_error_maps_to_api_error(
 _MIN_SCHEMA: dict[str, Any] = {"name": "x", "strict": True, "schema": {"type": "object"}}
 
 
+class _StructuredOkObjectResponse:
+    status_code = 200
+    text = ""
+
+    def json(self) -> dict[str, Any]:
+        return {
+            "choices": [{"message": {"content": '{"captured": true}'}}],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+        }
+
+
+class _CaptureStructuredPostClient:
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        pass
+
+    async def __aenter__(self) -> "_CaptureStructuredPostClient":
+        return self
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+    async def post(self, *args: object, **kwargs: object) -> _StructuredOkObjectResponse:
+        return _StructuredOkObjectResponse()
+
+
+@pytest.mark.asyncio
+async def test_chat_structured_posts_openai_json_schema_request_body(
+    db_session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[Any] = []
+
+    class _CaptureClient(_CaptureStructuredPostClient):
+        async def post(self, *args: object, **kwargs: object) -> _StructuredOkObjectResponse:
+            captured.append(kwargs.get("json"))
+            return _StructuredOkObjectResponse()
+
+    row = await db_session.get(AdminConfig, 1)
+    assert row is not None
+    row.llm_model = "gpt-test"
+    row.llm_api_key = "sk-test"
+    row.llm_provider = "openai"
+    await db_session.flush()
+
+    monkeypatch.setattr(
+        "app.services.llm_service.httpx.AsyncClient",
+        _CaptureClient,
+    )
+
+    llm = LLMService(db_session)
+    ctx = TokenContext(
+        studio_id=uuid.uuid4(),
+        software_id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+    )
+    schema = {"name": "hint", "strict": True, "schema": {"type": "object"}}
+    out = await llm.chat_structured(
+        system_prompt="sys",
+        user_prompt="user",
+        json_schema=schema,
+        context=ctx,
+        call_type="test",
+    )
+    assert out == {"captured": True}
+    assert len(captured) == 1
+    body = captured[0]
+    assert isinstance(body, dict)
+    assert body["model"] == "gpt-test"
+    assert body["messages"] == [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "user"},
+    ]
+    assert body["response_format"] == {
+        "type": "json_schema",
+        "json_schema": schema,
+    }
+
+
 @pytest.mark.asyncio
 async def test_chat_structured_rejects_json_schema_not_dict(
     db_session,

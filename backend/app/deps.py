@@ -47,6 +47,21 @@ async def require_tool_admin(user: User = Depends(get_current_user)) -> User:
     return user
 
 
+async def get_studio_for_tool_admin(
+    studio_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    _: User = Depends(require_tool_admin),
+) -> Studio:
+    st = await session.get(Studio, studio_id)
+    if st is None:
+        raise ApiError(
+            status_code=404,
+            code="NOT_FOUND",
+            message="Studio not found",
+        )
+    return st
+
+
 @dataclass(frozen=True)
 class StudioAccess:
     """Resolved access for a studio-scoped route (owner studio id = software.studio_id in software routes)."""
@@ -497,6 +512,24 @@ async def fetch_project_access(
         software=software,
         project=project,
     )
+
+
+async def fetch_software_access(
+    session: AsyncSession,
+    user: User,
+    software_id: UUID,
+) -> SoftwareAccess:
+    software = await session.get(Software, software_id)
+    if software is None:
+        raise ApiError(
+            status_code=404,
+            code="NOT_FOUND",
+            message="Software not found",
+        )
+    studio_access = await resolve_studio_access_for_software(
+        session, user, software
+    )
+    return SoftwareAccess(studio_access=studio_access, software=software)
 
 
 async def fetch_project_access_for_artifact_download(

@@ -2,12 +2,16 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import * as api from '../services/api'
 import { MeProfilePage } from './MeProfilePage'
 
 describe('MeProfilePage', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('loads profile and submits PATCH', async () => {
     const user = userEvent.setup()
     vi.spyOn(api, 'me').mockResolvedValue({
@@ -45,5 +49,90 @@ describe('MeProfilePage', () => {
     await waitFor(() => {
       expect(patchSpy).toHaveBeenCalledWith({ display_name: 'After' })
     })
+  })
+
+  it('lists studio memberships with friendly role labels', async () => {
+    vi.spyOn(api, 'me').mockResolvedValue({
+      user: {
+        id: 'u1',
+        email: 'a@b.com',
+        display_name: 'Alex',
+        is_tool_admin: false,
+      },
+      studios: [
+        { studio_id: 's-admin', studio_name: 'Acme', role: 'studio_admin' },
+        { studio_id: 's-build', studio_name: 'Northwind', role: 'studio_member' },
+        { studio_id: 's-view', studio_name: 'Contoso', role: 'studio_viewer' },
+        { studio_id: 's-x', studio_name: 'Fabrikam', role: 'viewer' },
+      ],
+      cross_studio_grants: [],
+    })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <MeProfilePage />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    expect(await screen.findByRole('heading', { name: /studio memberships/i })).toBeInTheDocument()
+    const acme = screen.getByRole('link', { name: 'Acme' })
+    expect(acme).toHaveAttribute('href', '/studios/s-admin')
+    expect(screen.getByText('Admin')).toBeInTheDocument()
+    const northwind = screen.getByRole('link', { name: 'Northwind' })
+    expect(northwind).toHaveAttribute('href', '/studios/s-build')
+    expect(screen.getByText('Builder')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Contoso' })).toHaveAttribute('href', '/studios/s-view')
+    const viewerLabels = screen.getAllByText('Viewer')
+    expect(viewerLabels.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('shows empty studio memberships state with link to studios', async () => {
+    vi.spyOn(api, 'me').mockResolvedValue({
+      user: {
+        id: 'u1',
+        email: 'solo@b.com',
+        display_name: 'Solo',
+        is_tool_admin: false,
+      },
+      studios: [],
+      cross_studio_grants: [],
+    })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <MeProfilePage />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    expect(
+      await screen.findByText(/you're not a member of any studio yet/i),
+    ).toBeInTheDocument()
+    const browse = screen.getByRole('link', { name: /browse studios/i })
+    expect(browse).toHaveAttribute('href', '/studios')
+  })
+
+  it('does not show tool admin badge for non-admin users', async () => {
+    vi.spyOn(api, 'me').mockResolvedValue({
+      user: {
+        id: 'u1',
+        email: 'm@b.com',
+        display_name: 'Member',
+        is_tool_admin: false,
+      },
+      studios: [{ studio_id: 's1', studio_name: 'S', role: 'studio_member' }],
+      cross_studio_grants: [],
+    })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <MeProfilePage />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    expect(await screen.findByText('Member')).toBeInTheDocument()
+    expect(screen.queryByText('Tool Admin')).not.toBeInTheDocument()
   })
 })

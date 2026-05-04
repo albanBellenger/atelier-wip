@@ -132,6 +132,27 @@ class AdminConfigUpdate(BaseModel):
         return s
 
 
+class AdminLlmProbeBody(BaseModel):
+    """Optional overrides for ``POST /admin/test/llm`` (defaults come from ``admin_config``)."""
+
+    model: str | None = None
+    api_base_url: str | None = None
+
+    @field_validator("api_base_url", mode="before")
+    @classmethod
+    def normalize_probe_api_base(cls, v: object) -> str | None:
+        if v is None:
+            return None
+        if not isinstance(v, str):
+            return None
+        s = v.strip().rstrip("/")
+        if not s:
+            return None
+        if not (s.startswith("http://") or s.startswith("https://")):
+            raise ValueError("API base URL must start with http:// or https://")
+        return s
+
+
 class AdminConnectivityResult(BaseModel):
     """Result of a tool-admin connectivity probe (LLM or embeddings)."""
 

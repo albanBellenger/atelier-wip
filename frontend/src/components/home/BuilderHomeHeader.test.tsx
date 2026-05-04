@@ -25,6 +25,47 @@ function profileTwoStudios(): MeResponse {
 }
 
 describe('BuilderHomeHeader', () => {
+  it('shows Admin console link before notifications for tool admin only', () => {
+    vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
+      items: [],
+      next_cursor: null,
+    })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const toolAdmin: MeResponse = {
+      ...profileTwoStudios(),
+      user: { ...profileTwoStudios().user, is_tool_admin: true },
+    }
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <QueryClientProvider client={qc}>
+          <BuilderHomeHeader profile={toolAdmin} onLogout={vi.fn()} />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    const adminLink = screen.getByRole('link', { name: /admin console/i })
+    expect(adminLink).toHaveAttribute('href', '/admin/console')
+    expect(adminLink).toHaveTextContent('Admin')
+    expect(screen.getByRole('button', { name: /notifications/i })).toBeInTheDocument()
+  })
+
+  it('does not show Admin console link for non-tool-admin users', () => {
+    vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
+      items: [],
+      next_cursor: null,
+    })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <QueryClientProvider client={qc}>
+          <BuilderHomeHeader profile={profileTwoStudios()} onLogout={vi.fn()} />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    expect(
+      screen.queryByRole('link', { name: /admin console/i }),
+    ).not.toBeInTheDocument()
+  })
+
   it('links the Atelier brand to the landing page', () => {
     vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
       items: [],

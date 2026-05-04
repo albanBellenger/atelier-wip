@@ -176,6 +176,9 @@ export function CopilotComposer(props: {
   onToggleSelection: () => void
   onToggleGitHistory: () => void
   onInsertSlash: (prefix: string) => void
+  /** When set with ``onScopeSelection``, shows the compact “Choose scope” row. */
+  onScopeSection?: () => void
+  onScopeSelection?: () => void
   /** Shown on the same row as the Send affordance (e.g. inline model line). */
   footerLeading?: ReactElement | null
   variant?: 'compact' | 'focus'
@@ -197,6 +200,8 @@ export function CopilotComposer(props: {
     onToggleSelection,
     onToggleGitHistory,
     onInsertSlash,
+    onScopeSection,
+    onScopeSelection,
     footerLeading,
     variant = 'compact',
   } = props
@@ -256,51 +261,108 @@ export function CopilotComposer(props: {
 
   const body = (
     <>
-      {!isFocus ? (
-        <div className="mb-2 flex flex-wrap gap-1">
-          {(['/improve', '/append', '/replace', '/edit'] as const).map((p) => (
+      {onScopeSection != null && onScopeSelection != null ? (
+        <div
+          className={`mb-2 flex flex-wrap items-center justify-between gap-2 pb-2 ${
+            isFocus
+              ? 'border-b border-zinc-800/40'
+              : 'border-b border-zinc-800/50'
+          }`}
+        >
+          <span className="text-[10px] uppercase tracking-wide text-zinc-600">
+            Choose scope
+          </span>
+          <div className="flex gap-1">
             <button
-              key={p}
               type="button"
               disabled={sending || improving}
-              className="rounded border border-zinc-700 bg-zinc-950 px-1.5 py-0.5 font-mono text-[10px] text-zinc-400 hover:border-violet-700 hover:text-violet-200 disabled:opacity-50"
-              onClick={() => onInsertSlash(`${p} `)}
+              className={`rounded border px-2 py-0.5 text-[10px] font-medium ${
+                !includeSelectionInContext
+                  ? 'border-violet-600 bg-violet-950/40 text-violet-200'
+                  : 'border-zinc-700 text-zinc-500 hover:text-zinc-300'
+              }`}
+              aria-pressed={!includeSelectionInContext}
+              onClick={() => onScopeSection()}
             >
-              {p}
+              Section
             </button>
-          ))}
-          <button
-            type="button"
-            title="Include current editor selection in LLM context for this send"
-            disabled={sending || improving}
-            className={`rounded border px-1.5 py-0.5 text-sm ${
-              includeSelectionInContext
-                ? 'border-violet-600 bg-violet-950/40 text-violet-200'
-                : 'border-zinc-700 text-zinc-500 hover:text-zinc-300'
-            }`}
-            aria-pressed={includeSelectionInContext}
-            onClick={() => onToggleSelection()}
-          >
-            📎
-          </button>
-          <button
-            type="button"
-            title="Include recent GitLab history in context for this send"
-            disabled={sending || improving}
-            className={`rounded border px-1.5 py-0.5 text-sm ${
-              includeGitHistory
-                ? 'border-violet-600 bg-violet-950/40 text-violet-200'
-                : 'border-zinc-700 text-zinc-500 hover:text-zinc-300'
-            }`}
-            aria-pressed={includeGitHistory}
-            onClick={() => onToggleGitHistory()}
-          >
-            🕓
-          </button>
+            <button
+              type="button"
+              disabled={sending || improving || !hasSelection}
+              className={`rounded border px-2 py-0.5 text-[10px] font-medium ${
+                includeSelectionInContext && hasSelection
+                  ? 'border-violet-600 bg-violet-950/40 text-violet-200'
+                  : 'border-zinc-700 text-zinc-500 hover:text-zinc-300'
+              }`}
+              aria-pressed={Boolean(
+                includeSelectionInContext && hasSelection,
+              )}
+              onClick={() => onScopeSelection()}
+            >
+              Selection
+            </button>
+          </div>
         </div>
       ) : null}
+      <div
+        className={`mb-2 flex flex-wrap gap-1 ${isFocus ? 'justify-center' : ''}`}
+        data-testid="copilot-slash-chips"
+      >
+        {(
+          [
+            '/ask ',
+            '/improve ',
+            '/append ',
+            '/replace ',
+            '/edit ',
+            '/critique ',
+          ] as const
+        ).map((p) => (
+          <button
+            key={p.trim()}
+            type="button"
+            disabled={sending || improving}
+            className="rounded border border-zinc-700 bg-zinc-950 px-1.5 py-0.5 font-mono text-[10px] text-zinc-400 hover:border-violet-700 hover:text-violet-200 disabled:opacity-50"
+            onClick={() => onInsertSlash(p)}
+          >
+            {p.trim()}
+          </button>
+        ))}
+        {!isFocus ? (
+          <>
+            <button
+              type="button"
+              title="Include current editor selection in LLM context for this send"
+              disabled={sending || improving}
+              className={`rounded border px-1.5 py-0.5 text-sm ${
+                includeSelectionInContext
+                  ? 'border-violet-600 bg-violet-950/40 text-violet-200'
+                  : 'border-zinc-700 text-zinc-500 hover:text-zinc-300'
+              }`}
+              aria-pressed={includeSelectionInContext}
+              onClick={() => onToggleSelection()}
+            >
+              📎
+            </button>
+            <button
+              type="button"
+              title="Include recent GitLab history in context for this send"
+              disabled={sending || improving}
+              className={`rounded border px-1.5 py-0.5 text-sm ${
+                includeGitHistory
+                  ? 'border-violet-600 bg-violet-950/40 text-violet-200'
+                  : 'border-zinc-700 text-zinc-500 hover:text-zinc-300'
+              }`}
+              aria-pressed={includeGitHistory}
+              onClick={() => onToggleGitHistory()}
+            >
+              🕓
+            </button>
+          </>
+        ) : null}
+      </div>
       {chip}
-      {!isFocus && hasSelection && selectionChars > 0 ? (
+      {hasSelection && selectionChars > 0 ? (
         <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
           <span className="rounded bg-zinc-800 px-2 py-0.5 text-zinc-200">
             Selection: {selectionChars} chars
@@ -337,6 +399,7 @@ export function CopilotComposer(props: {
         ) : null}
         <textarea
           ref={textareaRef}
+          data-testid="copilot-composer-textarea"
           className={
             isFocus
               ? 'mb-2 w-full resize-none rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 min-h-[44px] max-h-[180px]'

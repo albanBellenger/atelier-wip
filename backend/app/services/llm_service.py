@@ -16,6 +16,7 @@ from app.openai_compat_urls import chat_completions_url
 from app.schemas.auth import AdminConnectivityResult
 from app.schemas.token_context import TokenContext
 from app.services.embedding_service import EmbeddingService
+from app.services.llm_policy_service import LlmPolicyService
 from app.services.token_tracker import record_usage
 
 log = structlog.get_logger("atelier.llm_service")
@@ -121,7 +122,65 @@ class LLMService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
+    async def _require_openai_config_for_context(
+        self,
+        *,
+        context: TokenContext,
+        call_type: str,
+    ) -> tuple[str, str, str]:
+        policy = LlmPolicyService(self.db)
+        await policy.assert_studio_budget(context.studio_id)
+        await policy.assert_builder_budget(context.studio_id, context.user_id)
+        row = await self.db.get(AdminConfig, 1)
+        if row is None:
+            log.warning(
+                "llm_config_rejected",
+                reason="no_admin_config_row",
+            )
+            raise ApiError(
+                status_code=503,
+                code="LLM_NOT_CONFIGURED",
+                message="Tool Admin must configure LLM provider, model, and API key.",
+            )
+        override = await policy.resolve_effective_model(
+            studio_id=context.studio_id,
+            call_type=call_type,
+        )
+        model_raw = override if override else (row.llm_model or "")
+        model = model_raw.strip()
+        key = (row.llm_api_key or "").strip()
+        prov = (row.llm_provider or "").strip().lower()
+        if not model or not key:
+            log.warning(
+                "llm_config_rejected",
+                reason="missing_model_or_api_key",
+                llm_model_set=bool(model),
+                llm_api_key_set=bool(key),
+            )
+            raise ApiError(
+                status_code=503,
+                code="LLM_NOT_CONFIGURED",
+                message="Tool Admin must configure LLM model and API key.",
+            )
+        if prov and prov != "openai":
+            log.warning(
+                "llm_config_rejected",
+                reason="unsupported_provider",
+                llm_provider=prov,
+            )
+            raise ApiError(
+                status_code=503,
+                code="LLM_PROVIDER_UNSUPPORTED",
+                message=(
+                    "Set llm_provider to 'openai' (or leave empty) for OpenAI-compatible APIs; "
+                    "use LLM API base URL for a custom endpoint."
+                ),
+            )
+        chat_url = chat_completions_url(row.llm_api_base_url)
+        return model, key, chat_url
+
     async def _require_openai_config(self) -> tuple[str, str, str]:
+        """Legacy path without studio routing (admin probes only)."""
         row = await self.db.get(AdminConfig, 1)
         if row is None:
             log.warning(
@@ -186,18 +245,10 @@ class LLMService:
     ) -> dict[str, Any]:
         """Returns parsed assistant JSON object (never raw string)."""
         _validate_json_schema(json_schema)
-        model, api_key, chat_url = await self._require_openai_config()
-        body = {
-            "model": model,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": json_schema,
-            },
-        }
+        model, api_key, chat_url = await self._require_openai_config_for_context(
+            context=context,
+            call_type=call_type,
+        )
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
@@ -207,6 +258,18 @@ class LLMService:
             call_type=call_type,
             project_id=str(context.project_id),
         )
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        body: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": json_schema,
+            },
+        }
         try:
             async with httpx.AsyncClient(timeout=180.0) as client:
                 r = await client.post(chat_url, headers=headers, json=body)
@@ -292,7 +355,10 @@ class LLMService:
         call_type: str,
     ) -> AsyncIterator[str]:
         """Yield assistant token deltas (streaming). Records tokens when usage is returned."""
-        model, api_key, chat_url = await self._require_openai_config()
+        model, api_key, chat_url = await self._require_openai_config_for_context(
+            context=context,
+            call_type=call_type,
+        )
         full_messages = [{"role": "system", "content": system_prompt}, *messages]
         body: dict[str, Any] = {
             "model": model,
@@ -406,8 +472,16 @@ class LLMService:
                 output_tokens=est_out,
             )
 
-    async def admin_connectivity_probe(self) -> AdminConnectivityResult:
+    async def admin_connectivity_probe(
+        self,
+        *,
+        model_override: str | None = None,
+        api_base_url_override: str | None = None,
+    ) -> AdminConnectivityResult:
         """Tool Admin UI: minimal non-streaming chat completion against stored LLM config.
+
+        Optional ``model_override`` / ``api_base_url_override`` exercise a specific model or host
+        (e.g. from the LLM provider registry) while still using the stored API key.
 
         Does not call :func:`record_usage` — connectivity probes are excluded from
         token accounting dashboards.
@@ -417,7 +491,7 @@ class LLMService:
             row = AdminConfig(id=1)
             self.db.add(row)
             await self.db.flush()
-        model = (row.llm_model or "").strip()
+        model = (model_override or "").strip() or (row.llm_model or "").strip()
         key = (row.llm_api_key or "").strip()
         prov = (row.llm_provider or "").strip().lower()
         if not model or not key:
@@ -434,7 +508,12 @@ class LLMService:
                 ),
                 detail=f"Got llm_provider={prov!r}",
             )
-        chat_url = chat_completions_url(row.llm_api_base_url)
+        base_for_url = (
+            api_base_url_override
+            if (api_base_url_override is not None and str(api_base_url_override).strip() != "")
+            else row.llm_api_base_url
+        )
+        chat_url = chat_completions_url(base_for_url)
         body = {
             "model": model,
             "messages": [

@@ -6,11 +6,11 @@ import re
 import uuid
 from uuid import UUID
 
-from sqlalchemy import and_, delete, select
+from sqlalchemy import and_, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
-from app.models import Artifact, ArtifactChunk, Project, Software, User
+from app.models import Artifact, ArtifactChunk, Project, Section, SectionChunk, Software, User
 from app.models.artifact_exclusion import (
     ProjectArtifactExclusion,
     SoftwareArtifactExclusion,
@@ -657,6 +657,39 @@ class ArtifactService:
                 )
         acc.sort(key=lambda x: x.created_at, reverse=True)
         return acc
+
+    async def library_embedding_stats(self, studio_id: UUID) -> dict[str, int]:
+        """Counts for admin embeddings UI: full studio library list + vector chunk rows."""
+        rows = await self.list_artifacts_for_studio(studio_id)
+        ids = [r.id for r in rows]
+        embedded = sum(1 for r in rows if (r.embedding_status or "") == "embedded")
+        artifact_vector_chunks = 0
+        if ids:
+            artifact_vector_chunks = int(
+                await self.db.scalar(
+                    select(func.count())
+                    .select_from(ArtifactChunk)
+                    .where(ArtifactChunk.artifact_id.in_(ids))
+                )
+                or 0
+            )
+        section_vector_chunks = int(
+            await self.db.scalar(
+                select(func.count())
+                .select_from(SectionChunk)
+                .join(Section, SectionChunk.section_id == Section.id)
+                .join(Project, Section.project_id == Project.id)
+                .join(Software, Project.software_id == Software.id)
+                .where(Software.studio_id == studio_id)
+            )
+            or 0
+        )
+        return {
+            "artifact_count": len(rows),
+            "embedded_artifact_count": embedded,
+            "artifact_vector_chunks": artifact_vector_chunks,
+            "section_vector_chunks": section_vector_chunks,
+        }
 
     async def list_artifact_library_for_studio(
         self,

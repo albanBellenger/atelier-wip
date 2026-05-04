@@ -1,6 +1,7 @@
 """Studio and membership schemas."""
 
 from datetime import datetime
+from decimal import Decimal
 from uuid import UUID
 
 from typing import Literal
@@ -26,6 +27,7 @@ class StudioResponse(BaseModel):
     description: str | None
     logo_path: str | None
     created_at: datetime
+    budget_cap_monthly_usd: Decimal | None = None
 
 
 class StudioMemberResponse(BaseModel):

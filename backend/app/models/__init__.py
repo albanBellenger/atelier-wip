@@ -3,8 +3,21 @@
 from app.models.admin_config import AdminConfig
 from app.models.base import Base
 from app.models.cross_studio import CrossStudioAccess
+from app.models.deployment_activity import DeploymentActivity
+from app.models.embedding_registry import EmbeddingModelRegistry, EmbeddingReindexPolicy
 from app.models.graph import GraphEdge
-from app.models.messaging import ChatMessage, Issue, PrivateThread, ThreadMessage
+from app.models.llm_policy import (
+    LlmProviderRegistry,
+    LlmRoutingRule,
+    StudioLlmProviderPolicy,
+)
+from app.models.messaging import (
+    ChatMessage,
+    Issue,
+    PrivateThread,
+    SoftwareChatMessage,
+    ThreadMessage,
+)
 from app.models.mcp import McpKey, TokenUsage
 from app.models.notification import Notification
 from app.models.artifact_exclusion import (
@@ -12,6 +25,7 @@ from app.models.artifact_exclusion import (
     SoftwareArtifactExclusion,
 )
 from app.models.project import Artifact, ArtifactChunk, Project, Section, SectionChunk
+from app.models.section_context_preference import SectionContextPreference
 from app.models.software import Software
 from app.models.software_activity import SoftwareActivityEvent
 from app.models.studio import Studio, StudioMember
@@ -24,8 +38,13 @@ __all__ = [
     "Artifact",
     "ArtifactChunk",
     "ChatMessage",
-    "CrossStudioAccess",
-    "GraphEdge",
+    "SoftwareChatMessage",
+    "DeploymentActivity",
+    "EmbeddingModelRegistry",
+    "EmbeddingReindexPolicy",
+    "LlmProviderRegistry",
+    "LlmRoutingRule",
+    "StudioLlmProviderPolicy",
     "Issue",
     "McpKey",
     "Notification",
@@ -34,6 +53,7 @@ __all__ = [
     "ProjectArtifactExclusion",
     "Section",
     "SectionChunk",
+    "SectionContextPreference",
     "Software",
     "SoftwareActivityEvent",
     "SoftwareArtifactExclusion",

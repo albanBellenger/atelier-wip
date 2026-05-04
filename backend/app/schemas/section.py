@@ -6,6 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.section_outline_health import SectionOutlineHealthLite
+
 
 class SectionCreate(BaseModel):
     title: str = Field(min_length=1, max_length=512)
@@ -33,5 +35,14 @@ class SectionResponse(BaseModel):
     order: int
     content: str
     status: Literal["ready", "gaps", "conflict", "empty"]
+    open_issue_count: int = Field(
+        default=0,
+        ge=0,
+        description="Open issues referencing this section (section_a or section_b)",
+    )
+    outline_health: SectionOutlineHealthLite | None = Field(
+        default=None,
+        description="Present when list_sections include_outline_health=true (no LLM citation batch).",
+    )
     created_at: datetime
     updated_at: datetime

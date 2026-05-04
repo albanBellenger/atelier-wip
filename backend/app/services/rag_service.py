@@ -13,7 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
 from app.models import Artifact, ArtifactChunk, Project, Section, SectionChunk, Software
+from app.models.work_order import WorkOrder
 from app.schemas.context_preview import ContextBlockOut, ContextPreviewOut
+from app.schemas.section_context_preferences import SectionContextPrefsOut
 from app.schemas.token_context import TokenContext
 from app.security.field_encryption import decrypt_secret, fernet_configured
 from app.services.embedding_service import EmbeddingService
@@ -441,6 +443,130 @@ class RAGService:
             idx += 1
         return blocks
 
+    async def _pinned_preview_blocks(
+        self,
+        project_id: uuid.UUID,
+        prefs: SectionContextPrefsOut,
+        *,
+        max_blocks_chars: int,
+    ) -> list[ContextBlockOut]:
+        """Extra preview blocks from user-pinned sections, artifacts, work orders, URLs."""
+        blocks: list[ContextBlockOut] = []
+        used = 0
+        from app.services.section_service import effective_section_plaintext
+
+        for sid in prefs.pinned_section_ids[:16]:
+            if used >= max_blocks_chars:
+                break
+            sec = await self.db.get(Section, sid)
+            if sec is None or sec.project_id != project_id:
+                continue
+            body_raw = effective_section_plaintext(sec.content, sec.yjs_state)
+            cap = min(4000, max_blocks_chars - used)
+            body = (f"## Pinned section: {sec.title}\n" + body_raw)[:cap]
+            blocks.append(
+                ContextBlockOut(
+                    label=f"Pinned: {sec.title}",
+                    kind="other_section",
+                    body=body,
+                    tokens=self._approx_tokens(body),
+                    relevance=None,
+                    truncated=len(body_raw) + len(sec.title) + 20 > cap,
+                )
+            )
+            used += len(body)
+
+        for aid in prefs.pinned_artifact_ids[:16]:
+            if used >= max_blocks_chars:
+                break
+            art = await self.db.get(Artifact, aid)
+            if art is None or art.project_id != project_id:
+                continue
+            cap = min(2000, max_blocks_chars - used)
+            body = f"## Pinned artifact: {art.name}\n(Metadata pin; retrieve full text via embeddings in live RAG.)\n"[:cap]
+            blocks.append(
+                ContextBlockOut(
+                    label=f"Pinned artifact: {art.name}",
+                    kind="artifact_chunk",
+                    body=body,
+                    tokens=self._approx_tokens(body),
+                    relevance=None,
+                    truncated=False,
+                )
+            )
+            used += len(body)
+
+        for wid in prefs.pinned_work_order_ids[:16]:
+            if used >= max_blocks_chars:
+                break
+            wo = await self.db.get(WorkOrder, wid)
+            if wo is None or wo.project_id != project_id:
+                continue
+            cap = min(3000, max_blocks_chars - used)
+            blob = f"## Pinned work order: {wo.title}\n{wo.description}\n"
+            if wo.implementation_guide:
+                blob += f"\n### Implementation\n{wo.implementation_guide}\n"
+            body = blob[:cap]
+            blocks.append(
+                ContextBlockOut(
+                    label=f"Pinned WO: {wo.title}",
+                    kind="other_section",
+                    body=body,
+                    tokens=self._approx_tokens(body),
+                    relevance=None,
+                    truncated=len(blob) > cap,
+                )
+            )
+            used += len(body)
+
+        if prefs.extra_urls:
+            lines = []
+            for u in prefs.extra_urls[:24]:
+                url = str(u.get("url", "")).strip()
+                if not url:
+                    continue
+                note = str(u.get("note", "")).strip()
+                lines.append(f"- {url}" + (f" — {note}" if note else ""))
+            if lines:
+                body = "## Pinned URLs\n" + "\n".join(lines)
+                body = body[: max_blocks_chars - used]
+                blocks.append(
+                    ContextBlockOut(
+                        label="Pinned URLs",
+                        kind="other_section",
+                        body=body,
+                        tokens=self._approx_tokens(body),
+                        relevance=None,
+                        truncated=len("\n".join(lines)) > len(body),
+                    )
+                )
+        return blocks
+
+    async def apply_user_context_prefs_to_preview(
+        self,
+        base: ContextPreviewOut,
+        project_id: uuid.UUID,
+        prefs: SectionContextPrefsOut,
+    ) -> ContextPreviewOut:
+        excluded = frozenset(prefs.excluded_kinds)
+        blocks = [b for b in base.blocks if b.kind not in excluded]
+        budget_chars = max(500, base.budget_tokens * 4)
+        used = sum(len(b.body) for b in blocks)
+        extra = await self._pinned_preview_blocks(
+            project_id,
+            prefs,
+            max_blocks_chars=max(0, budget_chars - used),
+        )
+        merged = blocks + extra
+        total_tokens = sum(b.tokens for b in merged)
+        return ContextPreviewOut(
+            blocks=merged,
+            total_tokens=total_tokens,
+            budget_tokens=base.budget_tokens,
+            overflow_strategy_applied=base.overflow_strategy_applied,
+            debug_raw_rag_text=base.debug_raw_rag_text,
+        )
+
     async def build_context_with_blocks(
         self,
         query: str,
@@ -451,6 +577,7 @@ class RAGService:
         current_section_plaintext_override: str | None = None,
         include_git_history: bool = False,
         include_debug_raw_rag: bool = False,
+        user_context_prefs: SectionContextPrefsOut | None = None,
     ) -> ContextPreviewOut:
         """Structured RAG preview; same retrieval path as :meth:`build_context`."""
         asm = await self._assemble_rag_parts(
@@ -474,13 +601,43 @@ class RAGService:
             debug_raw = out
             if len(debug_raw) > asm.budget_chars:
                 debug_raw = debug_raw[: asm.budget_chars] + "\n…"
-        return ContextPreviewOut(
+        preview = ContextPreviewOut(
             blocks=blocks,
             total_tokens=total_tokens,
             budget_tokens=asm.token_budget,
             overflow_strategy_applied=overflow,
             debug_raw_rag_text=debug_raw,
         )
+        if user_context_prefs is not None:
+            return await self.apply_user_context_prefs_to_preview(
+                preview, project_id, user_context_prefs
+            )
+        return preview
+
+    async def plaintext_suffix_from_user_pins(
+        self,
+        *,
+        project_id: uuid.UUID,
+        section_id: uuid.UUID,
+        user_id: uuid.UUID,
+        max_extra_chars: int,
+    ) -> str:
+        """Append pinned context to private-thread RAG text (within char budget)."""
+        from app.services.section_context_preferences_service import (
+            SectionContextPreferencesService,
+        )
+
+        prefs = await SectionContextPreferencesService(self.db).get_for_user_section(
+            user_id, section_id
+        )
+        blocks = await self._pinned_preview_blocks(
+            project_id,
+            prefs,
+            max_blocks_chars=max(0, max_extra_chars),
+        )
+        if not blocks:
+            return ""
+        return "\n\n---\n\n" + "\n\n".join(b.body for b in blocks)
 
     async def build_context(
         self,

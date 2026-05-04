@@ -297,6 +297,9 @@ class ProjectService:
             status_map = await SectionService(self.db).batch_section_statuses(
                 p.id, ordered
             )
+            issue_map = await SectionService(self.db).batch_open_issue_counts(
+                p.id, [s.id for s in ordered]
+            )
             section_summaries = [
                 SectionSummary(
                     id=s.id,
@@ -304,6 +307,7 @@ class ProjectService:
                     slug=s.slug,
                     order=s.order,
                     status=status_map[s.id],
+                    open_issue_count=issue_map.get(s.id, 0),
                     updated_at=s.updated_at,
                 )
                 for s in ordered

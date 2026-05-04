@@ -30,6 +30,7 @@ from app.routers import (
     artifacts_by_id,
     auth,
     collab,
+    me_builder_composer,
     me_notifications,
     me_token_usage,
     mcp_api,
@@ -42,6 +43,7 @@ from app.routers import (
     projects,
     sections,
     software,
+    software_chat,
     software_workspace,
     studios,
     work_orders,
@@ -181,6 +183,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(me_notifications.router)
     app.include_router(me_token_usage.router)
+    app.include_router(me_builder_composer.router)
     app.include_router(admin.router)
     app.include_router(studios.router)
     app.include_router(mcp_api.router)
@@ -197,6 +200,7 @@ def create_app() -> FastAPI:
     app.include_router(work_orders.router)
     app.include_router(private_threads.router)
     app.include_router(project_chat.router)
+    app.include_router(software_chat.router)
     app.include_router(collab.router)
 
     if os.environ.get("PYTEST_VERSION"):

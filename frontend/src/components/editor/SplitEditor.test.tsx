@@ -4,6 +4,7 @@ import * as Y from 'yjs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { YjsCollab } from '../../hooks/useYjsCollab'
+import type { SectionPatchOverlayState } from '../../lib/sectionPatchOverlay'
 import { SplitEditor } from './SplitEditor'
 
 function minimalCollab(content: string): YjsCollab {
@@ -109,5 +110,55 @@ describe('SplitEditor', () => {
       screen.queryByRole('tablist', { name: 'Editor view' }),
     ).not.toBeInTheDocument()
     expect(screen.getByTestId('markdown-preview')).toBeInTheDocument()
+  })
+
+  it('patch overlay Accept invokes onApply', async () => {
+    const user = userEvent.setup()
+    const onApply = vi.fn()
+    const onDismiss = vi.fn()
+    const collab = minimalCollab('# Hello')
+    const patchOverlay: SectionPatchOverlayState = {
+      mergedMarkdown: '## Patched',
+      canApply: true,
+      blockedReason: null,
+      onApply,
+      onDismiss,
+    }
+    render(
+      <SplitEditor
+        collab={collab}
+        viewMode="preview"
+        onViewModeChange={vi.fn()}
+        patchOverlay={patchOverlay}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Accept' }))
+    expect(onApply).toHaveBeenCalledTimes(1)
+    expect(onDismiss).not.toHaveBeenCalled()
+  })
+
+  it('patch overlay Reject invokes onDismiss', async () => {
+    const user = userEvent.setup()
+    const onApply = vi.fn()
+    const onDismiss = vi.fn()
+    const collab = minimalCollab('# Hello')
+    const patchOverlay: SectionPatchOverlayState = {
+      mergedMarkdown: '## Patched',
+      canApply: true,
+      blockedReason: null,
+      onApply,
+      onDismiss,
+    }
+    render(
+      <SplitEditor
+        collab={collab}
+        viewMode="preview"
+        onViewModeChange={vi.fn()}
+        patchOverlay={patchOverlay}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Reject' }))
+    expect(onDismiss).toHaveBeenCalledTimes(1)
+    expect(onApply).not.toHaveBeenCalled()
   })
 })

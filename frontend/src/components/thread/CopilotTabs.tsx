@@ -8,10 +8,17 @@ export function CopilotTabs(props: {
   onSelectTab: (tab: CopilotSideTab) => void
   critiqueBadge: number | null
   diffBadge: number | null
+  sourcesBadge?: number | null
   variant?: 'bar' | 'inline-overflow'
 }): ReactElement {
-  const { sideTab, onSelectTab, critiqueBadge, diffBadge, variant = 'bar' } =
-    props
+  const {
+    sideTab,
+    onSelectTab,
+    critiqueBadge,
+    diffBadge,
+    sourcesBadge = null,
+    variant = 'bar',
+  } = props
   const [moreOpen, setMoreOpen] = useState(false)
   const moreWrapRef = useRef<HTMLDivElement | null>(null)
 
@@ -70,6 +77,21 @@ export function CopilotTabs(props: {
                 type="button"
                 className="block w-full px-3 py-1.5 text-left text-xs text-zinc-200 hover:bg-zinc-800"
                 onClick={() => {
+                  onSelectTab('sources')
+                  setMoreOpen(false)
+                }}
+              >
+                Sources
+                {sourcesBadge != null && sourcesBadge > 0 ? (
+                  <sup className="ml-0.5 text-[10px] text-violet-400">
+                    {sourcesBadge}
+                  </sup>
+                ) : null}
+              </button>
+              <button
+                type="button"
+                className="block w-full px-3 py-1.5 text-left text-xs text-zinc-200 hover:bg-zinc-800"
+                onClick={() => {
                   onSelectTab('context')
                   setMoreOpen(false)
                 }}
@@ -121,6 +143,7 @@ export function CopilotTabs(props: {
       {tabBtn('chat', 'Chat', null)}
       {tabBtn('context', 'Context', null)}
       {tabBtn('critique', 'Critique', critiqueBadge)}
+      {tabBtn('sources', 'Sources', sourcesBadge)}
       {tabBtn('diff', 'Diff', diffBadge)}
     </div>
   )

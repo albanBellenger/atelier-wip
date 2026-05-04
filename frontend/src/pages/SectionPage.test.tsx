@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -135,6 +135,45 @@ describe('SectionPage', () => {
     vi.spyOn(api, 'improveSection').mockResolvedValue({
       improved_markdown: '## X\n',
     })
+    vi.spyOn(api, 'listSections').mockResolvedValue([
+      {
+        id: 'sec-1',
+        project_id: 'p1',
+        title: 'API design',
+        slug: 'api-design',
+        order: 1,
+        content: '',
+        status: 'ready',
+        open_issue_count: 0,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+    ])
+    vi.spyOn(api, 'getSectionHealth').mockResolvedValue({
+      drift_count: 0,
+      gap_count: 0,
+      token_used: 0,
+      token_budget: 6000,
+      citations_resolved: 0,
+      citations_missing: 0,
+      drawer_drift: null,
+      drawer_gap: null,
+      drawer_tokens: null,
+      drawer_sources: null,
+    })
+    vi.spyOn(api, 'getSectionContextPreferences').mockResolvedValue({
+      excluded_kinds: [],
+      pinned_artifact_ids: [],
+      pinned_section_ids: [],
+      pinned_work_order_ids: [],
+      extra_urls: [],
+    })
+    vi.spyOn(api, 'getCitationHealth').mockResolvedValue({
+      citations_resolved: 0,
+      citations_missing: 0,
+      missing_items: [],
+    })
+    vi.spyOn(api, 'listArtifacts').mockResolvedValue([])
   })
 
   it('renders builder header and footer when section loads', async () => {
@@ -147,6 +186,8 @@ describe('SectionPage', () => {
       slug: 'api-design',
       order: 1,
       content: '',
+      status: 'ready',
+      open_issue_count: 0,
       created_at: '2026-01-01T00:00:00Z',
       updated_at: '2026-01-01T00:00:00Z',
     })
@@ -181,6 +222,8 @@ describe('SectionPage', () => {
       slug: 'r',
       order: 0,
       content: '',
+      status: 'ready',
+      open_issue_count: 0,
       created_at: '2026-01-01T00:00:00Z',
       updated_at: '2026-01-01T00:00:00Z',
     })
@@ -214,6 +257,8 @@ describe('SectionPage', () => {
       slug: 'api-design',
       order: 1,
       content: '',
+      status: 'ready',
+      open_issue_count: 0,
       created_at: '2026-01-01T00:00:00Z',
       updated_at: '2026-01-01T00:00:00Z',
     })
@@ -249,6 +294,8 @@ describe('SectionPage', () => {
       slug: 'api-design',
       order: 1,
       content: '',
+      status: 'ready',
+      open_issue_count: 0,
       created_at: '2026-01-01T00:00:00Z',
       updated_at: '2026-01-01T00:00:00Z',
     })
@@ -290,5 +337,92 @@ describe('SectionPage', () => {
     await waitFor(() => {
       expect(screen.getByTestId('codemirror-host')).toBeInTheDocument()
     })
+  })
+
+  it('shows section rail and health rail when section loads', async () => {
+    HTMLElement.prototype.scrollIntoView = vi.fn()
+    vi.spyOn(api, 'me').mockResolvedValue(memberMe)
+    vi.spyOn(api, 'getSection').mockResolvedValue({
+      id: 'sec-1',
+      project_id: 'p1',
+      title: 'API design',
+      slug: 'api-design',
+      order: 1,
+      content: '',
+      status: 'ready',
+      open_issue_count: 0,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    })
+    vi.spyOn(api, 'getSoftware').mockResolvedValue(mockSoftware)
+    vi.spyOn(api, 'listSoftware').mockResolvedValue([mockSoftware])
+    vi.spyOn(api, 'getProject').mockResolvedValue(mockProject)
+    vi.spyOn(api, 'listProjects').mockResolvedValue([mockProject])
+
+    renderSection(
+      '/studios/s1/software/sw1/projects/p1/sections/sec-1',
+    )
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Section outline')).toBeInTheDocument()
+    })
+    expect(screen.getAllByRole('button', { name: /Drift/i })[0]).toBeInTheDocument()
+  })
+
+  it('viewer does not see context kind preference toggles', async () => {
+    const user = userEvent.setup()
+    HTMLElement.prototype.scrollIntoView = vi.fn()
+    vi.spyOn(api, 'me').mockResolvedValue(viewerMe)
+    vi.spyOn(api, 'getSection').mockResolvedValue({
+      id: 'sec-1',
+      project_id: 'p1',
+      title: 'Readonly sec',
+      slug: 'r',
+      order: 0,
+      content: '',
+      status: 'ready',
+      open_issue_count: 0,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    })
+    vi.spyOn(api, 'getSoftware').mockResolvedValue(mockSoftware)
+    vi.spyOn(api, 'listSoftware').mockResolvedValue([mockSoftware])
+    vi.spyOn(api, 'getProject').mockResolvedValue(mockProject)
+    vi.spyOn(api, 'listProjects').mockResolvedValue([mockProject])
+    vi.spyOn(api, 'getContextPreview').mockResolvedValue({
+      blocks: [
+        {
+          label: 'x',
+          kind: 'git_history',
+          tokens: 1,
+          relevance: null,
+          truncated: false,
+          body: 'body',
+        },
+      ],
+      total_tokens: 1,
+      budget_tokens: 8000,
+      overflow_strategy_applied: null,
+    })
+
+    renderSection(
+      '/studios/s1/software/sw1/projects/p1/sections/sec-1',
+    )
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { level: 1, name: /Readonly sec/ }),
+      ).toBeInTheDocument()
+    })
+    await user.click(
+      within(screen.getByTestId('section-layout-switcher')).getByRole(
+        'tab',
+        { name: /Context/ },
+      ),
+    )
+    await waitFor(() => {
+      expect(screen.getByTestId('context-tab')).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('context-kind-prefs')).not.toBeInTheDocument()
   })
 })

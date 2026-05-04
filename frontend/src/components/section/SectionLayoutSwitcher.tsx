@@ -6,6 +6,7 @@ const SEGMENTS: { id: SectionLayoutMode; label: string; prefix?: string }[] = [
   { id: 'markdown', label: 'Markdown' },
   { id: 'preview', label: 'Preview' },
   { id: 'split', label: 'Split' },
+  { id: 'context', label: 'Context' },
   { id: 'focus', label: 'Focus', prefix: '✦ ' },
 ]
 

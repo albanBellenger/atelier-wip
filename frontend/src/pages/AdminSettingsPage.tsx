@@ -72,7 +72,7 @@ export function AdminSettingsPage(): ReactElement {
   }, [configQ.data, hydrated])
 
   const testLlmMut = useMutation({
-    mutationFn: () => postAdminTestLlm(),
+    mutationFn: () => postAdminTestLlm({}),
   })
 
   const testEmbedMut = useMutation({
@@ -83,6 +83,7 @@ export function AdminSettingsPage(): ReactElement {
     mutationFn: (body: AdminConfigUpdateBody) => putAdminConfig(body),
     onSuccess: (data: AdminConfigPublic) => {
       void qc.setQueryData(['admin', 'config'], data)
+      void qc.invalidateQueries({ queryKey: ['admin', 'llm', 'deployment'] })
       setLlmKey('')
       setEmbedKey('')
       setClearLlmKey(false)
@@ -152,6 +153,9 @@ export function AdminSettingsPage(): ReactElement {
         <div className="mb-6 flex flex-wrap gap-4 text-sm">
           <Link to="/" className="text-violet-400 hover:underline">
             ← Home
+          </Link>
+          <Link to="/admin/console" className="text-zinc-400 hover:text-zinc-200">
+            Admin console
           </Link>
           <Link to="/admin/cross-studio" className="text-zinc-400 hover:text-zinc-200">
             Cross-studio

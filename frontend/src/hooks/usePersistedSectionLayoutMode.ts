@@ -15,6 +15,7 @@ function readStoredLayoutMode(sectionId: string): SectionLayoutMode {
       raw === 'markdown' ||
       raw === 'preview' ||
       raw === 'split' ||
+      raw === 'context' ||
       raw === 'focus'
     ) {
       return raw

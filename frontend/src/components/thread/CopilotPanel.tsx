@@ -31,6 +31,7 @@ import {
   previewAfterReplace,
   summarizeTextChange,
 } from '../../lib/sectionPatchPreview'
+import type { SectionPatchOverlayState } from '../../lib/sectionPatchOverlay'
 import {
   collaboratorCountFromAwareness,
   safeAwarenessStates,
@@ -45,6 +46,7 @@ import {
   listProjectIssues,
   listWorkOrders,
   resetPrivateThread,
+  type SectionHealth,
 } from '../../services/api'
 import { ContextTab } from './ContextTab'
 import { ContextTruncationBanner } from './ContextTruncationBanner'
@@ -58,6 +60,7 @@ import { ConversationView } from './ConversationView'
 import { CritiqueTab } from './CritiqueTab'
 import { DiffTab } from './DiffTab'
 import { RecentUpdatesFeed, type RecentUpdateItem } from './RecentUpdatesFeed'
+import { SourcesTab } from './SourcesTab'
 
 function remoteEditorNamesFromAwareness(collab: YjsCollab): string[] {
   const awareness = collab.awareness as unknown
@@ -109,6 +112,17 @@ export function CopilotPanel(props: {
   onClearEditorSelection: () => void
   density?: CopilotDensity
   onDraftEmptyChange?: (empty: boolean) => void
+  /** When set, status strip uses server health metrics instead of client-only heuristics. */
+  healthSummary?: SectionHealth | null
+  /** When true, context prefs and Sources pin actions are enabled (studio editor). */
+  canEditContext?: boolean
+  /** Live patch preview for the section editor preview pane (Accept / Reject). */
+  onPatchOverlayChange?: (state: SectionPatchOverlayState | null) => void
+  /** Synced context preview query (main column Context mode + copilot Context tab). */
+  contextRagQuerySynced?: string
+  onContextRagQuerySyncedChange?: (q: string) => void
+  /** Parent-driven tab switch (e.g. HealthRail “Open … tab”). */
+  copilotTabRequest?: { id: number; tab: CopilotSideTab } | null
 }): ReactElement {
   const {
     projectId,
@@ -119,6 +133,12 @@ export function CopilotPanel(props: {
     onClearEditorSelection,
     density = 'compact',
     onDraftEmptyChange,
+    healthSummary,
+    canEditContext = false,
+    onPatchOverlayChange,
+    contextRagQuerySynced = '',
+    onContextRagQuerySyncedChange,
+    copilotTabRequest,
   } = props
   const { streamPrivateThread } = useStream()
   const qc = useQueryClient()
@@ -168,6 +188,13 @@ export function CopilotPanel(props: {
     }, delay)
     return () => window.clearTimeout(id)
   }, [draft])
+
+  useEffect(() => {
+    if (copilotTabRequest == null) {
+      return
+    }
+    setSideTab(copilotTabRequest.tab)
+  }, [copilotTabRequest?.id, copilotTabRequest?.tab])
 
   useEffect(() => {
     if (!collab?.awareness) {
@@ -281,6 +308,9 @@ export function CopilotPanel(props: {
   })
 
   const woList = woSectionQ.data ?? []
+  const contextTabRagQuery =
+    contextRagQuerySynced.trim() !== '' ? contextRagQuerySynced : draft
+
   const woDetailsQueries = useQueries({
     queries: woList.map((wo) => ({
       queryKey: ['workOrder', projectId, wo.id, 'copilot-feed'],
@@ -588,6 +618,62 @@ export function CopilotPanel(props: {
     !('error' in patchProposal && patchProposal.error) &&
     applyPatchBlocked == null
 
+  const applyPatchRef = useRef(onApplyPatch)
+  applyPatchRef.current = onApplyPatch
+  const dismissPatchRef = useRef(onDismissPatch)
+  dismissPatchRef.current = onDismissPatch
+
+  const patchOverlayPrevRef = useRef<{
+    merged: string
+    canApply: boolean
+    blocked: string | null
+  } | null>(null)
+
+  useLayoutEffect(() => {
+    if (onPatchOverlayChange == null) {
+      return
+    }
+    if (!collab?.ytext || patchProposal == null || anchorGate == null) {
+      patchOverlayPrevRef.current = null
+      onPatchOverlayChange(null)
+      return
+    }
+    const merged = previewFromProposal(anchorGate.snapshot, patchProposal)
+    const prev = patchOverlayPrevRef.current
+    if (
+      prev != null &&
+      prev.merged === merged &&
+      prev.canApply === applyPatchEnabled &&
+      prev.blocked === applyPatchBlocked
+    ) {
+      return
+    }
+    patchOverlayPrevRef.current = {
+      merged,
+      canApply: applyPatchEnabled,
+      blocked: applyPatchBlocked,
+    }
+    onPatchOverlayChange({
+      mergedMarkdown: merged,
+      canApply: applyPatchEnabled,
+      blockedReason: applyPatchBlocked,
+      onApply: () => {
+        applyPatchRef.current()
+      },
+      onDismiss: () => {
+        dismissPatchRef.current()
+      },
+    })
+  }, [
+    onPatchOverlayChange,
+    collab?.ytext,
+    patchProposal,
+    anchorGate,
+    applyPatchEnabled,
+    applyPatchBlocked,
+    docBump,
+  ])
+
   const staleWoCount =
     woSectionQ.data?.filter((w) => w.is_stale).length ?? 0
   const gapCount = findings.filter((f) => f.finding_type === 'gap').length
@@ -674,6 +760,17 @@ export function CopilotPanel(props: {
       ? new Set(meterBlocks.map((b) => b.kind)).size
       : null
 
+  const stripDrift = healthSummary?.drift_count ?? staleWoCount
+  const stripGap = healthSummary?.gap_count ?? gapCount
+  const stripTokUsed =
+    healthSummary?.token_used ?? contextMeterQ.data?.total_tokens ?? null
+  const stripTokBudget =
+    healthSummary?.token_budget ?? contextMeterQ.data?.budget_tokens ?? null
+  const stripSourcesCount =
+    healthSummary != null
+      ? healthSummary.citations_resolved + healthSummary.citations_missing
+      : uniqueKinds
+
   const modelDisplayLine = useMemo(() => {
     if (llmRtQ.isError) {
       return 'Could not load model info'
@@ -730,6 +827,12 @@ export function CopilotPanel(props: {
       onToggleSelection={() => setIncludeSelectionInContext((v) => !v)}
       onToggleGitHistory={() => setIncludeGitHistory((v) => !v)}
       onInsertSlash={(prefix) => setDraft(prefix)}
+      onScopeSection={() => setIncludeSelectionInContext(false)}
+      onScopeSelection={() => {
+        if (hasNonEmptySelection) {
+          setIncludeSelectionInContext(true)
+        }
+      }}
       variant={isFocusLayout ? 'focus' : 'compact'}
       footerLeading={
         <CopilotModelStrip
@@ -837,8 +940,24 @@ export function CopilotPanel(props: {
         <ContextTab
           projectId={projectId}
           sectionId={sectionId}
-          ragQuery={draft}
+          ragQuery={contextTabRagQuery}
           includeGitHistory={includeGitHistory}
+          canEditContext={canEditContext}
+          onRagQueryChange={onContextRagQuerySyncedChange}
+        />
+      </div>
+    ) : sideTab === 'sources' ? (
+      <div
+        className={
+          isFocusLayout
+            ? 'mx-auto flex min-h-0 w-full max-w-[840px] flex-1 flex-col overflow-hidden px-4'
+            : 'flex min-h-0 flex-1 flex-col overflow-hidden'
+        }
+      >
+        <SourcesTab
+          projectId={projectId}
+          sectionId={sectionId}
+          canEditContext={canEditContext}
         />
       </div>
     ) : sideTab === 'critique' ? (
@@ -882,14 +1001,19 @@ export function CopilotPanel(props: {
             onSelectTab={(tab) => setSideTab(tab)}
             critiqueBadge={critiqueBadge}
             diffBadge={diffBadge}
+            sourcesBadge={
+              healthSummary != null && healthSummary.citations_missing > 0
+                ? healthSummary.citations_missing
+                : null
+            }
             variant="inline-overflow"
           />
           <CopilotStatusStrip
-            driftCount={staleWoCount}
-            gapCount={gapCount}
-            tokenUsed={contextMeterQ.data?.total_tokens ?? null}
-            tokenBudget={contextMeterQ.data?.budget_tokens ?? null}
-            sourcesCount={uniqueKinds}
+            driftCount={stripDrift}
+            gapCount={stripGap}
+            tokenUsed={stripTokUsed}
+            tokenBudget={stripTokBudget}
+            sourcesCount={stripSourcesCount}
             onSelectTab={(tab) => setSideTab(tab)}
             variant="inline"
           />
@@ -907,11 +1031,11 @@ export function CopilotPanel(props: {
         onNewThread={() => resetMut.mutate()}
       />
       <CopilotStatusStrip
-        driftCount={staleWoCount}
-        gapCount={gapCount}
-        tokenUsed={contextMeterQ.data?.total_tokens ?? null}
-        tokenBudget={contextMeterQ.data?.budget_tokens ?? null}
-        sourcesCount={uniqueKinds}
+        driftCount={stripDrift}
+        gapCount={stripGap}
+        tokenUsed={stripTokUsed}
+        tokenBudget={stripTokBudget}
+        sourcesCount={stripSourcesCount}
         onSelectTab={(tab) => setSideTab(tab)}
       />
       <CopilotTabs
@@ -919,6 +1043,11 @@ export function CopilotPanel(props: {
         onSelectTab={(tab) => setSideTab(tab)}
         critiqueBadge={critiqueBadge}
         diffBadge={diffBadge}
+        sourcesBadge={
+          healthSummary != null && healthSummary.citations_missing > 0
+            ? healthSummary.citations_missing
+            : null
+        }
       />
       {tabPanel}
     </aside>

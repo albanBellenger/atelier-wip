@@ -1,5 +1,26 @@
 import '@testing-library/jest-dom/vitest'
-import { afterEach } from 'vitest'
+import { setupServer } from 'msw/node'
+import { afterAll, afterEach, beforeAll } from 'vitest'
+
+/** Empty handler list — each test file installs handlers via `server.use(...)`. */
+export const mswServer = setupServer()
+
+beforeAll(() =>
+  mswServer.listen({
+    // Many integration-style component tests call real `fetch` via React Query without MSW
+    // handlers; strict `error` breaks those runs. Service-layer tests register handlers for
+    // `http://api.test` via `vi.stubEnv` + `server.use(...)`.
+    onUnhandledRequest: 'warn',
+  }),
+)
+
+afterEach(() => {
+  mswServer.resetHandlers()
+})
+
+afterAll(() => {
+  mswServer.close()
+})
 
 function captureScrollIntoView(): PropertyDescriptor {
   const existing = Object.getOwnPropertyDescriptor(

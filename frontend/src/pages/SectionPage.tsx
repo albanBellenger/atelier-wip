@@ -14,12 +14,17 @@ import {
   type EditorSelectionState,
 } from '../components/editor/SplitEditor'
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
+import { HealthRail } from '../components/section/HealthRail'
 import { SectionLayoutSwitcher } from '../components/section/SectionLayoutSwitcher'
+import { SectionRail } from '../components/section/SectionRail'
+import { ContextTab } from '../components/thread/ContextTab'
+import type { CopilotSideTab } from '../components/thread/CopilotStatusStrip'
 import { ThreadPanel } from '../components/thread/ThreadPanel'
 import { usePersistedSectionLayoutMode } from '../hooks/usePersistedSectionLayoutMode'
 import { colorsForUser, useYjsCollab } from '../hooks/useYjsCollab'
 import { useStudioAccess } from '../hooks/useStudioAccess'
-import { collaboratorCountFromAwareness } from '../lib/copilotAwareness'
+import { collaboratorCountFromAwareness, remoteAwarenessPeers } from '../lib/copilotAwareness'
+import type { SectionPatchOverlayState } from '../lib/sectionPatchOverlay'
 import {
   getHostedEnvironment,
   hostedEnvironmentLabel,
@@ -28,8 +33,10 @@ import { APP_VERSION } from '../version'
 import {
   getProject,
   getSection,
+  getSectionHealth,
   getSoftware,
   listProjects,
+  listSections,
   listSoftware,
   logout as logoutApi,
   me,
@@ -76,6 +83,18 @@ export function SectionPage(): ReactElement {
   const sectionQ = useQuery({
     queryKey: ['section', pid, secid],
     queryFn: () => getSection(pid, secid),
+    enabled: Boolean(pid && secid && access.isMember),
+  })
+
+  const sectionsListQ = useQuery({
+    queryKey: ['sections', pid, 'outlineHealth'],
+    queryFn: () => listSections(pid, { includeOutlineHealth: true }),
+    enabled: Boolean(pid && access.isMember),
+  })
+
+  const sectionHealthQ = useQuery({
+    queryKey: ['sectionHealth', pid, secid],
+    queryFn: () => getSectionHealth(pid, secid),
     enabled: Boolean(pid && secid && access.isMember),
   })
 
@@ -191,7 +210,47 @@ export function SectionPage(): ReactElement {
   )
 
   const [layoutMode, setLayoutMode] = usePersistedSectionLayoutMode(secid)
-  const prevNonFocusRef = useRef<'markdown' | 'preview' | 'split'>('split')
+  const prevNonFocusRef = useRef<'markdown' | 'preview' | 'split' | 'context'>(
+    'split',
+  )
+  const [railCollapsed, setRailCollapsed] = useState(false)
+  const [healthOpen, setHealthOpen] = useState<
+    'drift' | 'gap' | 'tok' | 'src' | null
+  >(null)
+  const [patchOverlay, setPatchOverlay] =
+    useState<SectionPatchOverlayState | null>(null)
+  const [syncedContextRagQuery, setSyncedContextRagQuery] = useState('')
+  const copilotTabReqIdRef = useRef(0)
+  const [copilotTabRequest, setCopilotTabRequest] = useState<{
+    id: number
+    tab: CopilotSideTab
+  } | null>(null)
+
+  const requestCopilotTab = useCallback((tab: CopilotSideTab) => {
+    copilotTabReqIdRef.current += 1
+    setCopilotTabRequest({ id: copilotTabReqIdRef.current, tab })
+  }, [])
+  const handlePatchOverlay = useCallback(
+    (next: SectionPatchOverlayState | null) => {
+      setPatchOverlay((prev) => {
+        if (next == null) {
+          return prev == null ? prev : null
+        }
+        if (prev == null) {
+          return next
+        }
+        if (
+          prev.mergedMarkdown === next.mergedMarkdown &&
+          prev.canApply === next.canApply &&
+          prev.blockedReason === next.blockedReason
+        ) {
+          return prev
+        }
+        return next
+      })
+    },
+    [],
+  )
   const [focusComposerEmpty, setFocusComposerEmpty] = useState(true)
   const [breadcrumbSaveState, setBreadcrumbSaveState] = useState<
     'saving' | 'saved'
@@ -206,6 +265,10 @@ export function SectionPage(): ReactElement {
       prevNonFocusRef.current = layoutMode
     }
   }, [layoutMode])
+
+  useEffect(() => {
+    setSyncedContextRagQuery('')
+  }, [secid])
 
   useEffect(() => {
     if (layoutMode === 'focus') {
@@ -250,6 +313,11 @@ export function SectionPage(): ReactElement {
       if ((e.metaKey || e.ctrlKey) && e.key === '4') {
         e.preventDefault()
         setLayoutMode('focus')
+        return
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === '5') {
+        e.preventDefault()
+        setLayoutMode('context')
         return
       }
     }
@@ -351,6 +419,28 @@ export function SectionPage(): ReactElement {
     [collab, sectionAwareBump],
   )
 
+  const remotePeers = useMemo(
+    () => remoteAwarenessPeers(collab),
+    [collab, sectionAwareBump],
+  )
+
+  const peerInitials = (name: string): string => {
+    const parts = name.trim().split(/\s+/)
+    if (parts.length >= 2 && parts[0] && parts[parts.length - 1]) {
+      return (
+        parts[0].charAt(0) + parts[parts.length - 1].charAt(0)
+      ).toUpperCase()
+    }
+    return name.slice(0, 2).toUpperCase() || '?'
+  }
+
+  const editorViewMode =
+    layoutMode === 'markdown' ||
+    layoutMode === 'preview' ||
+    layoutMode === 'split'
+      ? layoutMode
+      : 'split'
+
   if (!sid || !sfid || !pid || !secid) {
     void navigate('/studios', { replace: true })
     return <div className="min-h-screen bg-zinc-950" />
@@ -377,6 +467,82 @@ export function SectionPage(): ReactElement {
 
   const projectHref = `/studios/${sid}/software/${sfid}/projects/${pid}`
 
+  const sectionTitleToolbar =
+    sectionQ.data != null ? (
+      <div
+        className={`flex flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between ${
+          layoutMode === 'focus'
+            ? 'rounded-lg border border-zinc-800 bg-zinc-900/40'
+            : 'shrink-0 border-b border-zinc-800/60 bg-zinc-900/40'
+        }`}
+      >
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <h1 className="truncate font-serif text-base font-semibold leading-tight tracking-tight text-zinc-100">
+            {sectionQ.data.title}
+          </h1>
+          <span className="shrink-0 font-mono text-[11px] text-zinc-500">
+            {sectionQ.data.slug}
+          </span>
+        </div>
+        {layoutMode !== 'focus' && remotePeers.length > 0 ? (
+          <div
+            className="flex items-center gap-1.5 sm:order-none"
+            aria-label="Collaborators on this section"
+          >
+            {remotePeers.map((p, i) => (
+              <span
+                key={`${p.name}-${i}`}
+                title={p.name}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 text-[10px] font-medium text-zinc-100"
+                style={{
+                  borderColor: p.color,
+                  backgroundColor: 'rgb(24 24 27)',
+                }}
+              >
+                {peerInitials(p.name)}
+              </span>
+            ))}
+          </div>
+        ) : null}
+        {layoutMode === 'focus' ? (
+          <div
+            data-testid="section-title-breadcrumb"
+            className="flex shrink-0 flex-wrap items-center gap-3 text-xs text-zinc-500"
+          >
+            <span
+              title={`Private · ${focusCollaboratorCount} collaborator${
+                focusCollaboratorCount === 1 ? '' : 's'
+              }`}
+            >
+              👥 {focusCollaboratorCount}
+            </span>
+            <span className="text-zinc-600">·</span>
+            <span>
+              {breadcrumbSaveState === 'saving' ? 'Saving…' : 'Saved'}
+            </span>
+            <span className="text-zinc-600">·</span>
+            <span>{breadcrumbLineCount} lines</span>
+            <button
+              type="button"
+              onClick={() => setLayoutMode('split')}
+              className="rounded-md px-2 py-0.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+            >
+              Open editor →
+            </button>
+            <button
+              type="button"
+              disabled={resetThreadMut.isPending}
+              onClick={() => resetThreadMut.mutate()}
+              className="rounded-md px-2 py-0.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-50"
+            >
+              New thread
+            </button>
+          </div>
+        ) : null}
+        <SectionLayoutSwitcher mode={layoutMode} onChange={setLayoutMode} />
+      </div>
+    ) : null
+
   return (
     <div
       className={`min-h-screen bg-[#0a0a0b] px-8 pt-8 font-sans text-zinc-100 ${
@@ -386,7 +552,7 @@ export function SectionPage(): ReactElement {
       }`}
     >
       <div
-        className={`mx-auto max-w-[1240px] ${
+        className={`mx-auto w-full max-w-[min(1840px,calc(100vw-2rem))] ${
           layoutMode === 'focus' ? 'flex min-h-0 flex-1 flex-col' : ''
         }`}
       >
@@ -405,62 +571,11 @@ export function SectionPage(): ReactElement {
           <p className="text-red-400">Could not load section.</p>
         )}
         {sectionQ.data && (
-          <div
-            className={
-              layoutMode === 'focus' ? 'flex min-h-0 flex-1 flex-col' : ''
-            }
-          >
-            <div className="flex flex-col gap-2 rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                <h1 className="truncate text-base font-semibold leading-tight text-zinc-100">
-                  {sectionQ.data.title}
-                </h1>
-                <span className="shrink-0 font-mono text-[11px] text-zinc-500">
-                  {sectionQ.data.slug}
-                </span>
-              </div>
-              {layoutMode === 'focus' ? (
-                <div
-                  data-testid="section-title-breadcrumb"
-                  className="flex shrink-0 flex-wrap items-center gap-3 text-xs text-zinc-500"
-                >
-                  <span
-                    title={`Private · ${focusCollaboratorCount} collaborator${
-                      focusCollaboratorCount === 1 ? '' : 's'
-                    }`}
-                  >
-                    👥 {focusCollaboratorCount}
-                  </span>
-                  <span className="text-zinc-600">·</span>
-                  <span>
-                    {breadcrumbSaveState === 'saving' ? 'Saving…' : 'Saved'}
-                  </span>
-                  <span className="text-zinc-600">·</span>
-                  <span>{breadcrumbLineCount} lines</span>
-                  <button
-                    type="button"
-                    onClick={() => setLayoutMode('split')}
-                    className="rounded-md px-2 py-0.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-                  >
-                    Open editor →
-                  </button>
-                  <button
-                    type="button"
-                    disabled={resetThreadMut.isPending}
-                    onClick={() => resetThreadMut.mutate()}
-                    className="rounded-md px-2 py-0.5 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 disabled:opacity-50"
-                  >
-                    New thread
-                  </button>
-                </div>
-              ) : null}
-              <SectionLayoutSwitcher
-                mode={layoutMode}
-                onChange={setLayoutMode}
-              />
-            </div>
+          <div className="flex min-h-0 flex-1 flex-col">
             {layoutMode === 'focus' ? (
-              <div className="mt-4 flex min-h-0 flex-1 flex-col bg-[radial-gradient(ellipse_at_top,rgba(91,33,182,0.08),transparent_60%)] transition-opacity duration-150">
+              <>
+                {sectionTitleToolbar}
+                <div className="mt-4 flex min-h-0 flex-1 flex-col bg-[radial-gradient(ellipse_at_top,rgba(91,33,182,0.08),transparent_60%)] transition-opacity duration-150">
                 <div className="min-h-0 flex-1">
                   <ThreadPanel
                     projectId={pid}
@@ -471,12 +586,65 @@ export function SectionPage(): ReactElement {
                     onClearEditorSelection={() => setEditorSelection(null)}
                     density="focus"
                     onDraftEmptyChange={setFocusComposerEmpty}
+                    healthSummary={sectionHealthQ.data ?? null}
+                    canEditContext={access.isStudioEditor}
+                    onPatchOverlayChange={handlePatchOverlay}
+                    contextRagQuerySynced={syncedContextRagQuery}
+                    onContextRagQuerySyncedChange={setSyncedContextRagQuery}
+                    copilotTabRequest={copilotTabRequest}
                   />
                 </div>
               </div>
+              </>
             ) : (
-              <div className="mt-4 grid min-h-0 gap-6 transition-opacity duration-150 lg:grid-cols-[minmax(280px,420px)_minmax(0,1fr)] lg:items-start">
-                <div className="min-h-0 min-w-0">
+              <div className="section-workspace mt-4 grid min-h-0 flex-1 gap-4 transition-opacity duration-150 lg:min-h-[calc(100vh-10rem)] lg:grid-cols-[auto_minmax(0,1fr)_minmax(300px,420px)] lg:items-stretch">
+                <SectionRail
+                  studioId={sid}
+                  softwareId={sfid}
+                  projectId={pid}
+                  sections={sectionsListQ.data ?? []}
+                  activeSectionId={secid}
+                  collapsed={railCollapsed}
+                  onToggleCollapsed={() => setRailCollapsed((c) => !c)}
+                />
+                <div className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-zinc-800/80 bg-zinc-950/30">
+                  {sectionTitleToolbar}
+                  <HealthRail
+                    health={sectionHealthQ.data}
+                    openKey={healthOpen}
+                    onToggle={(key) => {
+                      setHealthOpen((open) => (open === key ? null : key))
+                    }}
+                    onOpenInCopilot={requestCopilotTab}
+                  />
+                  {layoutMode === 'context' ? (
+                    <div className="min-h-0 flex-1 overflow-hidden">
+                      <ContextTab
+                        projectId={pid}
+                        sectionId={secid}
+                        ragQuery={syncedContextRagQuery}
+                        includeGitHistory={false}
+                        canEditContext={access.isStudioEditor}
+                        onRagQueryChange={setSyncedContextRagQuery}
+                      />
+                    </div>
+                  ) : !collab ? (
+                    <p className="px-3 py-4 text-zinc-500">Connecting editor…</p>
+                  ) : (
+                    <div className="min-h-0 flex-1">
+                      <SplitEditor
+                        collab={collab}
+                        onSelectionChange={onEditorSelectionChange}
+                        viewMode={editorViewMode}
+                        onViewModeChange={setLayoutMode}
+                        patchOverlay={
+                          layoutMode === 'context' ? null : patchOverlay
+                        }
+                      />
+                    </div>
+                  )}
+                </div>
+                <div className="flex min-h-0 min-w-0 flex-col lg:max-w-[420px]">
                   <ThreadPanel
                     projectId={pid}
                     sectionId={secid}
@@ -484,19 +652,13 @@ export function SectionPage(): ReactElement {
                     collab={collab}
                     editorSelection={editorSelection}
                     onClearEditorSelection={() => setEditorSelection(null)}
+                    healthSummary={sectionHealthQ.data ?? null}
+                    canEditContext={access.isStudioEditor}
+                    onPatchOverlayChange={handlePatchOverlay}
+                    contextRagQuerySynced={syncedContextRagQuery}
+                    onContextRagQuerySyncedChange={setSyncedContextRagQuery}
+                    copilotTabRequest={copilotTabRequest}
                   />
-                </div>
-                <div className="min-w-0">
-                  {!collab ? (
-                    <p className="text-zinc-500">Connecting editor…</p>
-                  ) : (
-                    <SplitEditor
-                      collab={collab}
-                      onSelectionChange={onEditorSelectionChange}
-                      viewMode={layoutMode}
-                      onViewModeChange={setLayoutMode}
-                    />
-                  )}
                 </div>
               </div>
             )}

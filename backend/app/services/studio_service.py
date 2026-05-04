@@ -32,6 +32,7 @@ class StudioService:
                     Studio.description,
                     Studio.logo_path,
                     Studio.created_at,
+                    Studio.budget_cap_monthly_usd,
                 )
                 .order_by(Studio.name)
             )
@@ -43,6 +44,7 @@ class StudioService:
                     Studio.description,
                     Studio.logo_path,
                     Studio.created_at,
+                    Studio.budget_cap_monthly_usd,
                 )
                 .join(StudioMember, StudioMember.studio_id == Studio.id)
                 .where(StudioMember.user_id == user.id)
@@ -56,6 +58,9 @@ class StudioService:
                 description=r.description,
                 logo_path=r.logo_path,
                 created_at=r.created_at,
+                budget_cap_monthly_usd=r.budget_cap_monthly_usd
+                if user.is_tool_admin
+                else None,
             )
             for r in rows
         ]

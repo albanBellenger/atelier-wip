@@ -35,7 +35,7 @@ export function collabWebSocketBaseUrl(): string {
   const base = import.meta.env.VITE_API_BASE_URL ?? ''
   if (base) {
     const u = new URL(base)
-    return `${wsSchemeForHttp(u)}//${u.host}/ws`
+    return `${wsSchemeForHttp(u)}://${u.host}/ws`
   }
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   return `${proto}//${window.location.host}/ws`
@@ -61,6 +61,20 @@ export function projectChatWebSocketUrl(projectId: string): string {
 export function openProjectChatWebSocket(projectId: string): WebSocket {
   const token = atelierTokenForWebSocket()
   const url = new URL(projectChatWebSocketUrl(projectId))
+  if (token) url.searchParams.set('token', token)
+  return new WebSocket(url.toString())
+}
+
+/** WebSocket URL for software-wide chat. */
+export function softwareChatWebSocketUrl(softwareId: string): string {
+  const base = collabWebSocketBaseUrl()
+  return `${base}/software/${softwareId}/chat`
+}
+
+/** Opens software chat WebSocket (same-origin `/ws` proxy, optional `?token=`). */
+export function openSoftwareChatWebSocket(softwareId: string): WebSocket {
+  const token = atelierTokenForWebSocket()
+  const url = new URL(softwareChatWebSocketUrl(softwareId))
   if (token) url.searchParams.set('token', token)
   return new WebSocket(url.toString())
 }

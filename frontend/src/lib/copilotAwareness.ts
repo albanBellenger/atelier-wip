@@ -46,3 +46,51 @@ export function collaboratorCountFromAwareness(collab: YjsCollab | null): number
   })
   return Math.max(1, names.size)
 }
+
+/** Remote collaborators (excludes local client) for presence UI. */
+export function remoteAwarenessPeers(
+  collab: YjsCollab | null,
+): { name: string; color: string }[] {
+  if (collab == null) {
+    return []
+  }
+  const awareness = collab.awareness as unknown
+  if (
+    awareness == null ||
+    typeof awareness !== 'object' ||
+    !('getStates' in awareness) ||
+    typeof (awareness as { getStates?: unknown }).getStates !== 'function' ||
+    !('clientID' in awareness) ||
+    typeof (awareness as { clientID?: unknown }).clientID !== 'number'
+  ) {
+    return []
+  }
+  const localId = (awareness as { clientID: number }).clientID
+  const states = safeAwarenessStates(
+    awareness as { getStates: () => Map<number, unknown> },
+  )
+  if (states == null) {
+    return []
+  }
+  const out: { name: string; color: string }[] = []
+  states.forEach((state: unknown, clientId: number) => {
+    if (clientId === localId) {
+      return
+    }
+    if (
+      state != null &&
+      typeof state === 'object' &&
+      'user' in state &&
+      state.user != null &&
+      typeof state.user === 'object' &&
+      'name' in state.user &&
+      typeof (state.user as { name?: unknown }).name === 'string'
+    ) {
+      const u = state.user as { name: string; color?: unknown }
+      const color =
+        typeof u.color === 'string' && u.color.length > 0 ? u.color : '#71717a'
+      out.push({ name: u.name, color })
+    }
+  })
+  return out
+}
