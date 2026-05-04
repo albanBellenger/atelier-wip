@@ -6,8 +6,6 @@ __pycache__/
 .venv/
 venv/
 ENV/
-.env
-.env.local
 *.egg-info/
 .eggs/
 dist/
@@ -19,12 +17,29 @@ coverage.xml
 *.cover
 backend/.pytest_cache/
 
+# Python tooling caches
+.ruff_cache/
+.mypy_cache/
+.pytype/
+.tox/
+
 # Node
 node_modules/
 frontend/dist/
+frontend/build/
+frontend/coverage/
+frontend/.vite/
+frontend/.turbo/
 .npm
 *.log
 npm-debug.log*
+
+# TypeScript / JS test output
+*.tsbuildinfo
+coverage/
+.nyc_output/
+junit*.xml
+llm-test-results.xml
 
 # IDE / OS
 .idea/
@@ -32,6 +47,9 @@ npm-debug.log*
 *.swp
 .DS_Store
 Thumbs.db
+
+# Cursor agent cache (rules stay tracked; cache does not)
+.cursor/cache/
 
 # Playwright (reports, artifacts, MCP browser snapshots)
 .playwright-mcp/
@@ -41,6 +59,22 @@ blob-report/
 .playwright/
 e2e/playwright-report/
 e2e/test-results/
+
+# Local Docker volume data (in case bind-mounted in-tree)
+postgres_data/
+minio_data/
+
+# Local databases
+*.sqlite
+*.sqlite3
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Environment files (allow example)
+.env
+.env.*
+!.env.example
 
 # Alembic (keep versions; ignore local overrides if any)
 # backend/alembic/versions/*.pyc
