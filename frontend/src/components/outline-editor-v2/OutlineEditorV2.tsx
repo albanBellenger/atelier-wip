@@ -17,6 +17,7 @@ import { useAnnotations } from './annotations/useAnnotations'
 import { DocCanvas } from './canvas/DocCanvas'
 import { SelectionToolbar } from './canvas/SelectionToolbar'
 import { CopilotOverlay } from './copilot/CopilotOverlay'
+import { CopilotToggle } from './chrome/CopilotToggle'
 import { OutlineRail } from './chrome/OutlineRail'
 import { StatusBar } from './chrome/StatusBar'
 import { TopBar } from './chrome/TopBar'
@@ -375,7 +376,17 @@ export function OutlineEditorV2(): ReactElement {
 
         {sectionQ.data && (
           <div className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-zinc-800/80 bg-[#08080a]">
-            <TopBar title={sectionQ.data.title} slug={sectionQ.data.slug} />
+            <TopBar
+              title={sectionQ.data.title}
+              slug={sectionQ.data.slug}
+              trailing={
+                <CopilotToggle
+                  open={copilotOpen}
+                  onToggle={() => setCopilotOpen((o) => !o)}
+                  badgeCount={patchOverlay != null ? 1 : 0}
+                />
+              }
+            />
             <div className="flex min-h-0 flex-1">
               <OutlineRail
                 studioId={sid}

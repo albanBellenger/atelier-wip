@@ -2,11 +2,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { HttpResponse, http } from 'msw'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import * as sonner from 'sonner'
 
+import type { ReactElement } from 'react'
+
 import { BuilderHomeComposer } from './BuilderHomeComposer'
+import { SOFTWARE_COMPOSER_CHAT_MODEL_KEY } from '../../lib/softwareComposerNav'
 import { mswServer } from '../../test-setup'
 import type { MeResponse } from '../../services/api'
 
@@ -38,6 +41,13 @@ function mswLlmChatModelsOk() {
         workspace_default_model: 'gpt-4o-mini',
         allowed_models: ['gpt-4o-mini'],
       }),
+  )
+}
+
+function LocationStateDump(): ReactElement {
+  const loc = useLocation()
+  return (
+    <pre data-testid="location-state">{JSON.stringify(loc.state ?? {})}</pre>
   )
 }
 
@@ -212,7 +222,72 @@ describe('BuilderHomeComposer', () => {
       </MemoryRouter>,
     )
     await waitFor(() =>
-      expect(screen.getByText(/^Model · gpt-4o-mini$/)).toBeInTheDocument(),
+      expect(screen.getByText(/^gpt-4o-mini$/)).toBeInTheDocument(),
     )
+  })
+
+  it('when multiple models allowed, includes selected model in navigation state', async () => {
+    const user = userEvent.setup()
+    mswServer.use(
+      http.get('http://api.test/studios/:studioId/llm-chat-models', async () =>
+        HttpResponse.json({
+          effective_model: 'gpt-4o-mini',
+          workspace_default_model: 'gpt-4o-mini',
+          allowed_models: ['gpt-4o-mini', 'gpt-4o'],
+        }),
+      ),
+      http.post('http://api.test/me/builder-composer-hint', async () =>
+        HttpResponse.json({
+          headline: 'Hi',
+          input_placeholder: 'Ask…',
+        }),
+      ),
+    )
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <QueryClientProvider client={qc}>
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <BuilderHomeComposer
+                  profile={editorProfile()}
+                  studioId="s1"
+                  softwareId="sw1"
+                  projectId={null}
+                  projectName={null}
+                  softwareName="SW"
+                  canUseSoftwareChat
+                  canSeeComposerHint
+                />
+              }
+            />
+            <Route
+              path="/studios/s1/software/sw1"
+              element={<LocationStateDump />}
+            />
+          </Routes>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    await waitFor(() =>
+      expect(
+        screen.getByRole('combobox', { name: /chat model/i }),
+      ).toBeInTheDocument(),
+    )
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: /chat model/i }),
+      'gpt-4o',
+    )
+    await user.type(screen.getByPlaceholderText('Ask…'), 'hello')
+    await user.keyboard('{Enter}')
+    await waitFor(() =>
+      expect(screen.getByTestId('location-state')).toBeInTheDocument(),
+    )
+    const raw = screen.getByTestId('location-state').textContent ?? '{}'
+    const st = JSON.parse(raw) as Record<string, unknown>
+    expect(st.softwareComposerDraft).toBe('hello')
+    expect(st[SOFTWARE_COMPOSER_CHAT_MODEL_KEY]).toBe('gpt-4o')
   })
 })

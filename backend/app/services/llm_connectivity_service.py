@@ -18,7 +18,12 @@ from app.schemas.admin_console import (
     StudioLlmPolicyUpdate,
     StudioLlmPolicyRowResponse,
 )
+from app.security.field_encryption import admin_secret_suffix_hint, encode_admin_stored_secret
 from app.services.llm_provider_logo_service import resolve_llm_provider_logo_url
+
+
+def _mask_secret(s: str | None) -> bool:
+    return bool(s and s.strip())
 
 
 class LlmConnectivityService:
@@ -40,6 +45,8 @@ class LlmConnectivityService:
             status=row.status,
             is_default=row.is_default,
             sort_order=row.sort_order,
+            llm_api_key_set=_mask_secret(row.api_key),
+            llm_api_key_hint=admin_secret_suffix_hint(row.api_key),
         )
 
     async def list_providers(self) -> list[LlmProviderRegistryResponse]:
@@ -74,6 +81,13 @@ class LlmConnectivityService:
             row.status = body.status
             row.is_default = body.is_default
             row.sort_order = body.sort_order
+            if "llm_api_key" in body.model_fields_set:
+                if body.llm_api_key is None:
+                    row.api_key = None
+                elif str(body.llm_api_key).strip() == "":
+                    row.api_key = None
+                else:
+                    row.api_key = encode_admin_stored_secret(str(body.llm_api_key).strip())
             await self.db.flush()
             row.logo_url = resolve_llm_provider_logo_url(
                 provider_key=pk,
@@ -82,12 +96,19 @@ class LlmConnectivityService:
             await self.db.flush()
             return self._row_to_out(row)
         api_raw = body.api_base_url.strip() if body.api_base_url else ""
+        api_key_val: str | None = None
+        if "llm_api_key" in body.model_fields_set and body.llm_api_key is not None:
+            if str(body.llm_api_key).strip() == "":
+                api_key_val = None
+            else:
+                api_key_val = encode_admin_stored_secret(str(body.llm_api_key).strip())
         ent = LlmProviderRegistry(
             id=uuid4(),
             provider_key=pk,
             display_name=body.display_name,
             models_json=payload,
             api_base_url=api_raw or None,
+            api_key=api_key_val,
             status=body.status,
             is_default=body.is_default,
             sort_order=body.sort_order,

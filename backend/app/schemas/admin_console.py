@@ -56,6 +56,8 @@ class LlmProviderRegistryResponse(BaseModel):
     status: str
     is_default: bool
     sort_order: int
+    llm_api_key_set: bool = False
+    llm_api_key_hint: str | None = None
 
 
 class LlmProviderRegistryUpdate(BaseModel):
@@ -65,6 +67,7 @@ class LlmProviderRegistryUpdate(BaseModel):
     status: str = "connected"
     is_default: bool = False
     sort_order: int = 0
+    llm_api_key: str | None = None
 
 
 class LlmDeploymentResponse(BaseModel):

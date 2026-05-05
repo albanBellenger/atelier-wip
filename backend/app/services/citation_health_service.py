@@ -84,7 +84,7 @@ class CitationHealthService:
             user_id=user_id,
         )
         llm = LLMService(self.db)
-        await llm.ensure_openai_llm_ready()
+        await llm.ensure_openai_llm_ready(context=ctx, call_type="citation_health")
         user_prompt = (
             "Analyze the following specification markdown. Count statements that are "
             "grounded with explicit traceability (e.g. links to work orders, artifacts, "

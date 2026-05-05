@@ -1,15 +1,37 @@
 import { useQuery } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 
-import { SOFTWARE_COMPOSER_DRAFT_STATE_KEY } from '../../lib/softwareComposerNav'
+import {
+  SOFTWARE_COMPOSER_CHAT_MODEL_KEY,
+  SOFTWARE_COMPOSER_DRAFT_STATE_KEY,
+  readStoredSoftwareChatModel,
+  softwareChatModelStorageKey,
+} from '../../lib/softwareComposerNav'
+import type { StudioChatLlmModels } from '../../services/api'
 import {
   getStudioChatLlmModels,
   postBuilderComposerHint,
 } from '../../services/api'
 import type { MeResponse } from '../../services/api'
+
+/** Stable order: effective → workspace default → policy/registry allow-list. */
+function buildChatModelOptions(d: StudioChatLlmModels): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  const push = (m: string | null | undefined): void => {
+    const t = m?.trim()
+    if (!t || seen.has(t)) return
+    seen.add(t)
+    out.push(t)
+  }
+  push(d.effective_model)
+  push(d.workspace_default_model)
+  for (const a of d.allowed_models) push(a)
+  return out
+}
 
 export type BuilderHomeComposerProps = {
   profile: MeResponse
@@ -35,6 +57,7 @@ export function BuilderHomeComposer({
   const navigate = useNavigate()
   const [draft, setDraft] = useState('')
   const [plusOpen, setPlusOpen] = useState(false)
+  const [selectedChatModel, setSelectedChatModel] = useState<string | null>(null)
 
   const hintQ = useQuery({
     queryKey: [
@@ -61,6 +84,28 @@ export function BuilderHomeComposer({
     staleTime: 60_000,
     retry: 1,
   })
+
+  const chatModelOptions = useMemo((): string[] => {
+    if (!modelsQ.data) return []
+    return buildChatModelOptions(modelsQ.data)
+  }, [modelsQ.data])
+
+  useEffect(() => {
+    if (chatModelOptions.length === 0) {
+      setSelectedChatModel(null)
+      return
+    }
+    let cancelled = false
+    const stored = readStoredSoftwareChatModel(studioId)
+    const pick =
+      stored && chatModelOptions.includes(stored)
+        ? stored
+        : chatModelOptions[0] ?? null
+    if (!cancelled) setSelectedChatModel(pick)
+    return () => {
+      cancelled = true
+    }
+  }, [chatModelOptions, studioId])
 
   const headline = hintQ.data?.headline?.trim() || null
   const placeholder =
@@ -112,10 +157,22 @@ export function BuilderHomeComposer({
       return
     }
     void navigate(`${basePath}?tab=chat`, {
-      state: { [SOFTWARE_COMPOSER_DRAFT_STATE_KEY]: text },
+      state: {
+        [SOFTWARE_COMPOSER_DRAFT_STATE_KEY]: text,
+        ...(selectedChatModel
+          ? { [SOFTWARE_COMPOSER_CHAT_MODEL_KEY]: selectedChatModel }
+          : {}),
+      },
     })
     setDraft('')
-  }, [basePath, canUseSoftwareChat, draft, navigate, trySlashCommand])
+  }, [
+    basePath,
+    canUseSoftwareChat,
+    draft,
+    navigate,
+    selectedChatModel,
+    trySlashCommand,
+  ])
 
   const firstName =
     profile.user.display_name.split(/\s+/)[0] ?? profile.user.display_name
@@ -129,41 +186,23 @@ export function BuilderHomeComposer({
     return `${firstName}, you're building ${softwareName}.`
   }, [firstName, headline, hintQ.isPending, projectName, softwareName])
 
-  const { modelLabel, modelTitle } = useMemo(() => {
-    if (modelsQ.isPending) {
-      return {
-        modelLabel: 'Model · …',
-        modelTitle: 'Loading models from workspace…',
-      }
-    }
-    if (modelsQ.isError || !modelsQ.data) {
-      return {
-        modelLabel: 'Model · —',
-        modelTitle: 'Could not load workspace models.',
-      }
-    }
+  const modelTitle = useMemo(() => {
+    if (modelsQ.isPending) return 'Loading models from workspace…'
+    if (modelsQ.isError || !modelsQ.data) return 'Could not load workspace models.'
     const d = modelsQ.data
+    const allowed = d.allowed_models.filter((m) => m.trim().length > 0)
     const eff = d.effective_model?.trim()
     const fallback = d.workspace_default_model?.trim()
-    const allowed = d.allowed_models.filter((m) => m.trim().length > 0)
-    const primary = eff || fallback
-    if (primary) {
-      const rest =
-        allowed.length > 0
-          ? ` Allowed (connected providers): ${allowed.join(', ')}.`
-          : ''
-      return {
-        modelLabel: `Model · ${primary}`,
-        modelTitle: `Effective chat model for this studio.${rest}`,
-      }
+    const rest =
+      allowed.length > 0
+        ? ` Allowed (connected providers): ${allowed.join(', ')}.`
+        : ''
+    if (eff || fallback) {
+      return `Software chat uses the selected model when you send a message.${rest}`
     }
-    return {
-      modelLabel: 'Model · not configured',
-      modelTitle:
-        allowed.length > 0
-          ? `No routing override; connected models: ${allowed.join(', ')}.`
-          : 'No connected LLM provider model is configured for chat in this studio.',
-    }
+    return allowed.length > 0
+      ? `No routing override; connected models: ${allowed.join(', ')}.`
+      : 'No connected LLM provider model is configured for chat in this studio.'
   }, [modelsQ.data, modelsQ.isError, modelsQ.isPending])
 
   return (
@@ -216,10 +255,66 @@ export function BuilderHomeComposer({
               </div>
             ) : null}
           </div>
-          <div className="flex min-w-0 items-center gap-3 text-[11px] text-zinc-500">
-            <span className="truncate" title={modelTitle}>
-              {modelLabel}
-            </span>
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="min-w-0 text-[11px] text-zinc-500">
+              {modelsQ.isPending ? (
+                <span className="truncate" title={modelTitle}>
+                  …
+                </span>
+              ) : modelsQ.isError || !modelsQ.data ? (
+                <span className="truncate" title={modelTitle}>
+                  —
+                </span>
+              ) : chatModelOptions.length === 0 ? (
+                <span className="truncate" title={modelTitle}>
+                  Not configured
+                </span>
+              ) : chatModelOptions.length === 1 ? (
+                <span className="truncate text-zinc-100" title={modelTitle}>
+                  {chatModelOptions[0]}
+                </span>
+              ) : (
+                <div className="relative flex max-w-[min(240px,55vw)] min-w-0 items-center">
+                  <select
+                    aria-label="Chat model"
+                    className="block max-w-full cursor-pointer appearance-none truncate bg-transparent py-1 pl-0 pr-5 text-[11px] font-semibold text-zinc-100 hover:text-zinc-50 focus:outline-none focus-visible:ring-1 focus-visible:ring-violet-500/35 disabled:cursor-not-allowed"
+                    title={modelTitle}
+                    value={selectedChatModel ?? chatModelOptions[0] ?? ''}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setSelectedChatModel(v)
+                      window.localStorage.setItem(
+                        softwareChatModelStorageKey(studioId),
+                        v,
+                      )
+                    }}
+                  >
+                    {chatModelOptions.map((id) => (
+                      <option key={id} value={id}>
+                        {id}
+                      </option>
+                    ))}
+                  </select>
+                  <span
+                    className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 text-[10px] leading-none text-zinc-500"
+                    aria-hidden
+                  >
+                    ▾
+                  </span>
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              aria-label="Send to software chat"
+              disabled={!canUseSoftwareChat || !draft.trim()}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-600/35 text-white shadow-sm transition hover:bg-violet-500/45 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 disabled:cursor-not-allowed disabled:opacity-40"
+              onClick={() => onSubmitIntent()}
+            >
+              <span className="text-base leading-none" aria-hidden>
+                ↑
+              </span>
+            </button>
           </div>
         </div>
       </div>

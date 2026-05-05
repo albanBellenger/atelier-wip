@@ -263,6 +263,7 @@ function AddProviderModal({
   const [displayName, setDisplayName] = useState('')
   const [modelsText, setModelsText] = useState('')
   const [apiBaseUrl, setApiBaseUrl] = useState('')
+  const [llmApiKey, setLlmApiKey] = useState('')
   const [status, setStatus] = useState<'connected' | 'disabled' | 'needs-key'>('needs-key')
   const [isDefault, setIsDefault] = useState(false)
 
@@ -272,6 +273,7 @@ function AddProviderModal({
     setDisplayName('')
     setModelsText('')
     setApiBaseUrl('')
+    setLlmApiKey('')
     setStatus('needs-key')
     setIsDefault(false)
   }, [open])
@@ -294,6 +296,9 @@ function AddProviderModal({
       status,
       is_default: isDefault,
       sort_order: 0,
+    }
+    if (llmApiKey.trim()) {
+      body.llm_api_key = llmApiKey.trim()
     }
     onRegister({ providerKey: pk, body })
   }
@@ -318,12 +323,14 @@ function AddProviderModal({
           Register LLM provider
         </h2>
         <p className="mt-1 text-[12px] text-zinc-500">
-          Adds a row to the routing registry (model allow-list for policy). Inference still uses the
-          OpenAI-compatible API key and base URL from{' '}
+          Adds a row to the routing registry (model allow-list for policy). Optional per-provider
+          OpenAI-compatible API key (encrypted at rest when{' '}
+          <span className="font-mono text-zinc-400">ENCRYPTION_KEY</span> is set). If omitted,
+          inference falls back to the key from{' '}
           <Link className="text-violet-400 hover:underline" to="/admin/settings">
             Tool admin settings
           </Link>
-          ; Phase 3 may add per-provider encrypted keys.
+          .
         </p>
         <div className="mt-4 space-y-3">
           <div>
@@ -374,7 +381,21 @@ function AddProviderModal({
               onChange={(e) => setApiBaseUrl(e.target.value)}
               autoComplete="off"
               placeholder="https://api.example.com/v1"
-              title="Optional. Saved on this registry row. Live LLM calls still use the base URL from Tool admin settings until per-provider routing uses this field."
+              title="Optional. When set, chat completions use this host for this provider when a per-provider key is configured; otherwise falls back to Tool settings."
+              className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
+            />
+          </div>
+          <div>
+            <StatLabel>
+              <label htmlFor="llm-add-provider-llm-key">API key (optional)</label>
+            </StatLabel>
+            <input
+              id="llm-add-provider-llm-key"
+              type="password"
+              value={llmApiKey}
+              onChange={(e) => setLlmApiKey(e.target.value)}
+              autoComplete="off"
+              placeholder="Per-provider OpenAI-compatible secret"
               className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
             />
           </div>
@@ -468,6 +489,8 @@ function EditProviderModal({
   const [displayName, setDisplayName] = useState('')
   const [modelsText, setModelsText] = useState('')
   const [apiBaseUrl, setApiBaseUrl] = useState('')
+  const [llmApiKey, setLlmApiKey] = useState('')
+  const [clearLlmKey, setClearLlmKey] = useState(false)
   const [status, setStatus] = useState<'connected' | 'disabled' | 'needs-key'>('needs-key')
   const [isDefault, setIsDefault] = useState(false)
 
@@ -476,6 +499,8 @@ function EditProviderModal({
     setDisplayName(provider.display_name)
     setModelsText(provider.models.join(', '))
     setApiBaseUrl(provider.api_base_url ?? '')
+    setLlmApiKey('')
+    setClearLlmKey(false)
     setStatus(
       provider.status === 'connected' || provider.status === 'disabled' || provider.status === 'needs-key'
         ? provider.status
@@ -502,6 +527,11 @@ function EditProviderModal({
       is_default: isDefault,
       sort_order: provider.sort_order,
     }
+    if (clearLlmKey) {
+      body.llm_api_key = ''
+    } else if (llmApiKey.trim()) {
+      body.llm_api_key = llmApiKey.trim()
+    }
     onSave({ providerKey: provider.provider_key, body })
   }
 
@@ -526,8 +556,8 @@ function EditProviderModal({
         </h2>
         <p className="mt-1 text-[12px] text-zinc-500">
           Update registry metadata for{' '}
-          <span className="font-mono text-zinc-400">{provider.provider_key}</span>. Live inference
-          keys stay in{' '}
+          <span className="font-mono text-zinc-400">{provider.provider_key}</span>. Per-provider API
+          keys are optional; leave blank to keep the stored key, or use remove to fall back to{' '}
           <Link className="text-violet-400 hover:underline" to="/admin/settings">
             Tool admin settings
           </Link>
@@ -577,6 +607,50 @@ function EditProviderModal({
               autoComplete="off"
               className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
             />
+          </div>
+          <div>
+            <StatLabel>Stored API key</StatLabel>
+            <p className="mt-1 text-[12px] text-zinc-400">
+              {provider.llm_api_key_set ? (
+                <>
+                  <span className="text-emerald-400/90">Stored</span>
+                  {provider.llm_api_key_hint ? (
+                    <span className="ml-1 font-mono text-zinc-300">{provider.llm_api_key_hint}</span>
+                  ) : null}
+                </>
+              ) : (
+                <span className="text-zinc-500">None — uses Tool settings fallback</span>
+              )}
+            </p>
+            <div className="mt-3">
+              <StatLabel>
+                <label htmlFor="llm-edit-provider-llm-key">New API key (optional)</label>
+              </StatLabel>
+            </div>
+            <input
+              id="llm-edit-provider-llm-key"
+              type="password"
+              value={llmApiKey}
+              onChange={(e) => {
+                setLlmApiKey(e.target.value)
+                setClearLlmKey(false)
+              }}
+              autoComplete="off"
+              placeholder="Leave blank to keep current key"
+              className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
+            />
+            <label className="mt-2 flex cursor-pointer items-center gap-2 text-[12px] text-zinc-400">
+              <input
+                type="checkbox"
+                checked={clearLlmKey}
+                onChange={(e) => {
+                  setClearLlmKey(e.target.checked)
+                  if (e.target.checked) setLlmApiKey('')
+                }}
+                className="rounded border-zinc-600 bg-zinc-950"
+              />
+              Remove stored API key for this provider
+            </label>
           </div>
           <div>
             <StatLabel>
@@ -813,14 +887,14 @@ export function LlmSection(): ReactElement {
             <div className="space-y-4 px-5 py-4">
               <StatLabel>Live inference credentials</StatLabel>
               <p className="mt-2 text-[12px] leading-relaxed text-zinc-400">
-                All LLM calls use the{' '}
-                <span className="text-zinc-200">OpenAI-compatible</span> endpoint, API key, and
-                fallback model from{' '}
+                Default <span className="text-zinc-200">OpenAI-compatible</span> endpoint, API key,
+                and fallback model come from{' '}
                 <Link className="text-violet-400 hover:underline" to="/admin/settings">
                   /admin/settings
                 </Link>
-                . When the registry and routing rules below are configured, the effective model
-                can override the fallback per studio and call type.
+                . Registry rows may supply a per-provider API key and base URL; when a provider key
+                is set it takes precedence for routes that resolve to that provider. Otherwise the
+                Tool settings key is used.
               </p>
               <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
@@ -882,8 +956,8 @@ export function LlmSection(): ReactElement {
             <div className="px-5 py-4">
               <StatLabel>Model registry</StatLabel>
               <p className="mt-2 text-[12px] text-zinc-500">
-                Registered providers and model IDs for routing and studio allow-lists. Keys remain in
-                Tool settings.
+                Registered providers and model IDs for routing and studio allow-lists. Optional
+                per-provider API keys are stored encrypted when configured server-side.
               </p>
               {providers.length === 0 ? (
                 <p className="mt-4 px-0 py-2 text-[13px] text-zinc-500">
@@ -898,11 +972,11 @@ export function LlmSection(): ReactElement {
                         'Provider',
                         'Models',
                         'API base',
-                        'Last used',
+                        'API key',
                         'Status',
                         'Actions',
                       ]}
-                      grid="grid-cols-[1.05fr_1.5fr_1fr_0.45fr_0.65fr_0.9fr]"
+                      grid="grid-cols-[1.05fr_1.5fr_1fr_0.55fr_0.65fr_0.9fr]"
                     />
                     {providers.map((p) => {
                       const savingThis =
@@ -910,7 +984,7 @@ export function LlmSection(): ReactElement {
                       return (
                         <TRow
                           key={p.id}
-                          grid="grid-cols-[1.05fr_1.5fr_1fr_0.45fr_0.65fr_0.9fr]"
+                          grid="grid-cols-[1.05fr_1.5fr_1fr_0.55fr_0.65fr_0.9fr]"
                         >
                           <div className="flex items-center gap-2">
                             <ProviderGlyph name={p.display_name} logoUrl={p.logo_url} />
@@ -931,7 +1005,16 @@ export function LlmSection(): ReactElement {
                           >
                             {p.api_base_url ?? '—'}
                           </span>
-                          <span className="text-[11px] text-zinc-500">—</span>
+                          <span
+                            className="truncate font-mono text-[10px] text-zinc-400"
+                            title={p.llm_api_key_hint ?? undefined}
+                          >
+                            {p.llm_api_key_set && p.llm_api_key_hint
+                              ? p.llm_api_key_hint
+                              : p.llm_api_key_set
+                                ? 'stored'
+                                : '—'}
+                          </span>
                           <span>
                             {p.status === 'connected' ? (
                               <Pill tone="emerald">
@@ -960,7 +1043,9 @@ export function LlmSection(): ReactElement {
                               onClick={() => {
                                 const model = p.models[0]
                                 const trimmedBase = p.api_base_url?.trim()
-                                const body: AdminLlmProbeBody = {}
+                                const body: AdminLlmProbeBody = {
+                                  provider_key: p.provider_key,
+                                }
                                 if (model) body.model = model
                                 if (trimmedBase) body.api_base_url = trimmedBase
                                 testLlmMut.mutate(body)

@@ -130,6 +130,23 @@ describe('CopilotComposer', () => {
     expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
   })
 
+  it('compact layout shows scope summary and choose scope control', () => {
+    render(
+      <CopilotComposer
+        {...baseProps()}
+        onScopeSection={vi.fn()}
+        onScopeSelection={vi.fn()}
+      />,
+    )
+    expect(
+      screen.getByText(/No selection — copilot operates on the whole section/),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Choose scope →' }),
+    ).toBeInTheDocument()
+    expect(screen.getByTestId('copilot-composer-compact')).toBeInTheDocument()
+  })
+
   it('renders footerLeading on the composer row', () => {
     render(
       <CopilotComposer

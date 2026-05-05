@@ -72,6 +72,8 @@ function renderStudios(): {
         status: 'connected',
         is_default: true,
         sort_order: 0,
+        llm_api_key_set: true,
+        llm_api_key_hint: '…abcd',
       },
     ],
   })

@@ -20,15 +20,17 @@ export function CopilotModelStrip(props: {
   if (variant === 'inline') {
     return (
       <div
-        className="flex min-w-0 max-w-full items-center gap-1.5 text-[10px] text-zinc-500"
+        className="flex min-w-0 max-w-full items-center gap-2 rounded-full border border-zinc-700/80 bg-zinc-950/80 py-1 pl-2 pr-2.5 text-[10px]"
         title={`${displayLine} · ${scopeBadge}`}
       >
         <span
           className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${dot}`}
           aria-hidden
         />
-        <span className="min-w-0 truncate text-zinc-400">{displayLine}</span>
-        <span className="shrink-0 rounded bg-zinc-800/90 px-1 py-px text-[9px] font-medium uppercase tracking-wide text-zinc-500">
+        <span className="min-w-0 truncate font-mono text-[11px] text-zinc-100">
+          {displayLine}
+        </span>
+        <span className="shrink-0 rounded-md border border-zinc-700/60 bg-zinc-900/90 px-1.5 py-px font-mono text-[9px] font-medium uppercase tracking-wide text-zinc-400">
           {scopeBadge}
         </span>
       </div>

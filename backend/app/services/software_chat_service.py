@@ -135,6 +135,7 @@ class SoftwareChatService:
         software_id: uuid.UUID,
         user_id: uuid.UUID,
         user_content: str,
+        preferred_model: str | None = None,
     ) -> AsyncIterator[tuple[str, TokenContext]]:
         """Yield LLM token strings; caller persists assistant message after iteration."""
         software = await self.db.get(Software, software_id)
@@ -162,6 +163,7 @@ class SoftwareChatService:
                 messages=openai_msgs,
                 context=ctx,
                 call_type="chat",
+                preferred_model=preferred_model,
             ):
                 yield piece, ctx
         except Exception:

@@ -5,7 +5,10 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { SoftwareChatRoom } from './SoftwareChatRoom'
-import { SOFTWARE_COMPOSER_DRAFT_STATE_KEY } from '../../lib/softwareComposerNav'
+import {
+  SOFTWARE_COMPOSER_CHAT_MODEL_KEY,
+  SOFTWARE_COMPOSER_DRAFT_STATE_KEY,
+} from '../../lib/softwareComposerNav'
 import { mswServer } from '../../test-setup'
 import * as ws from '../../services/ws'
 
@@ -103,6 +106,59 @@ describe('SoftwareChatRoom', () => {
     await waitFor(() => expect(send).toHaveBeenCalled())
     expect(send).toHaveBeenCalledWith(
       JSON.stringify({ type: 'user_message', content: 'from home' }),
+    )
+  })
+
+  it('auto-send includes model when location.state provides chat model key', async () => {
+    mswServer.use(
+      http.get('http://api.test/software/sw1/chat', () =>
+        HttpResponse.json({ messages: [], next_before: null }),
+      ),
+    )
+    const send = vi.fn()
+    const fakeWs = {
+      readyState: 0,
+      send,
+      close: vi.fn(),
+      onopen: null as (() => void) | null,
+      onmessage: null as ((ev: { data: string }) => void) | null,
+      onclose: null as (() => void) | null,
+    }
+    vi.spyOn(ws, 'openSoftwareChatWebSocket').mockImplementation(() => {
+      queueMicrotask(() => {
+        fakeWs.readyState = 1
+        fakeWs.onopen?.()
+      })
+      return fakeWs as unknown as WebSocket
+    })
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: '/',
+            state: {
+              [SOFTWARE_COMPOSER_DRAFT_STATE_KEY]: 'from home',
+              [SOFTWARE_COMPOSER_CHAT_MODEL_KEY]: 'gpt-4o',
+            },
+          },
+        ]}
+      >
+        <QueryClientProvider client={qc}>
+          <Routes>
+            <Route path="/" element={<SoftwareChatRoom softwareId="sw1" />} />
+          </Routes>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(send).toHaveBeenCalled())
+    expect(send).toHaveBeenCalledWith(
+      JSON.stringify({
+        type: 'user_message',
+        content: 'from home',
+        model: 'gpt-4o',
+      }),
     )
   })
 })

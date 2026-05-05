@@ -15,6 +15,7 @@ from app.exceptions import ApiError
 from app.schemas.project_chat import ChatHistoryResponse, ChatMessageOut
 from app.services.auth_service import AuthService
 from app.services.chat_room_registry import broadcast_json, register, unregister
+from app.schemas.token_context import TokenContext
 from app.services.llm_service import LLMService
 from app.services.project_chat_service import ProjectChatService
 
@@ -77,6 +78,8 @@ async def project_chat_websocket(
     close_on_fail = {401: 4401, 403: 4403}
 
     user_id: UUID
+    studio_id_scope: UUID
+    software_id_scope: UUID
     async with async_session_factory() as session:
         try:
             token = await _ws_user_token(websocket)
@@ -88,6 +91,8 @@ async def project_chat_websocket(
                 return
             # Read PK while session is still open (commit expires instances).
             user_id = user.id
+            studio_id_scope = pa.studio_access.studio_id
+            software_id_scope = pa.software.id
             await session.commit()
         except ApiError as e:
             await session.rollback()
@@ -123,7 +128,15 @@ async def project_chat_websocket(
                 continue
 
             async with async_session_factory() as session:
-                await LLMService(session).ensure_openai_llm_ready()
+                probe_ctx = TokenContext(
+                    studio_id=studio_id_scope,
+                    software_id=software_id_scope,
+                    project_id=project_id,
+                    user_id=user_id,
+                )
+                await LLMService(session).ensure_openai_llm_ready(
+                    context=probe_ctx, call_type="chat"
+                )
                 svc = ProjectChatService(session)
                 user_msg = await svc.append_message(
                     project_id=project_id,

@@ -13,10 +13,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.exceptions import ApiError
 from app.models import AdminConfig
 from app.openai_compat_urls import chat_completions_url
-from app.security.field_encryption import decode_admin_stored_secret
 from app.schemas.auth import AdminConnectivityResult
 from app.schemas.token_context import TokenContext
 from app.services.embedding_service import EmbeddingService
+from app.services.llm_registry_credentials import (
+    assert_openai_compatible_provider_field,
+    resolve_openai_compatible_llm_credentials,
+    resolve_provider_key_for_model,
+)
 from app.services.llm_policy_service import LlmPolicyService
 from app.services.token_tracker import record_usage
 
@@ -128,6 +132,7 @@ class LLMService:
         *,
         context: TokenContext,
         call_type: str,
+        preferred_model: str | None = None,
     ) -> tuple[str, str, str]:
         policy = LlmPolicyService(self.db)
         await policy.assert_studio_budget(context.studio_id)
@@ -143,41 +148,36 @@ class LLMService:
                 code="LLM_NOT_CONFIGURED",
                 message="Tool Admin must configure LLM provider, model, and API key.",
             )
-        override = await policy.resolve_effective_model(
+        eff_choice: str | None = None
+        if call_type == "chat" and preferred_model:
+            eff_choice = await policy.resolve_preferred_chat_model(
+                studio_id=context.studio_id,
+                preferred_model=preferred_model,
+            )
+        route_model, route_pk = await policy.resolve_effective_llm_route(
             studio_id=context.studio_id,
             call_type=call_type,
         )
-        model_raw = override if override else (row.llm_model or "")
-        model = model_raw.strip()
-        key = (decode_admin_stored_secret(row.llm_api_key) or "").strip()
-        prov = (row.llm_provider or "").strip().lower()
-        if not model or not key:
+        eff = ((route_model if route_model else (row.llm_model or "")) or "").strip()
+        if eff_choice:
+            eff = eff_choice
+        if not route_pk and eff:
+            route_pk = await resolve_provider_key_for_model(self.db, eff)
+        assert_openai_compatible_provider_field(row)
+        try:
+            model, key, chat_url = await resolve_openai_compatible_llm_credentials(
+                self.db,
+                admin=row,
+                effective_model=eff,
+                route_provider_key=route_pk,
+            )
+        except ApiError as e:
             log.warning(
                 "llm_config_rejected",
                 reason="missing_model_or_api_key",
-                llm_model_set=bool(model),
-                llm_api_key_set=bool(key),
+                detail=str(e.detail),
             )
-            raise ApiError(
-                status_code=503,
-                code="LLM_NOT_CONFIGURED",
-                message="Tool Admin must configure LLM model and API key.",
-            )
-        if prov and prov != "openai":
-            log.warning(
-                "llm_config_rejected",
-                reason="unsupported_provider",
-                llm_provider=prov,
-            )
-            raise ApiError(
-                status_code=503,
-                code="LLM_PROVIDER_UNSUPPORTED",
-                message=(
-                    "Set llm_provider to 'openai' (or leave empty) for OpenAI-compatible APIs; "
-                    "use LLM API base URL for a custom endpoint."
-                ),
-            )
-        chat_url = chat_completions_url(row.llm_api_base_url)
+            raise
         return model, key, chat_url
 
     async def _require_openai_config(self) -> tuple[str, str, str]:
@@ -193,39 +193,32 @@ class LLMService:
                 code="LLM_NOT_CONFIGURED",
                 message="Tool Admin must configure LLM provider, model, and API key.",
             )
-        model = (row.llm_model or "").strip()
-        key = (decode_admin_stored_secret(row.llm_api_key) or "").strip()
-        prov = (row.llm_provider or "").strip().lower()
-        if not model or not key:
+        model_raw = (row.llm_model or "").strip()
+        route_pk = await resolve_provider_key_for_model(self.db, model_raw)
+        assert_openai_compatible_provider_field(row)
+        try:
+            model, key, chat_url = await resolve_openai_compatible_llm_credentials(
+                self.db,
+                admin=row,
+                effective_model=model_raw,
+                route_provider_key=route_pk,
+            )
+        except ApiError as e:
             log.warning(
                 "llm_config_rejected",
                 reason="missing_model_or_api_key",
-                llm_model_set=bool(model),
-                llm_api_key_set=bool(key),
+                detail=str(e.detail),
             )
-            raise ApiError(
-                status_code=503,
-                code="LLM_NOT_CONFIGURED",
-                message="Tool Admin must configure LLM model and API key.",
-            )
-        if prov and prov != "openai":
-            log.warning(
-                "llm_config_rejected",
-                reason="unsupported_provider",
-                llm_provider=prov,
-            )
-            raise ApiError(
-                status_code=503,
-                code="LLM_PROVIDER_UNSUPPORTED",
-                message=(
-                    "Set llm_provider to 'openai' (or leave empty) for OpenAI-compatible APIs; "
-                    "use LLM API base URL for a custom endpoint."
-                ),
-            )
-        chat_url = chat_completions_url(row.llm_api_base_url)
+            raise
         return model, key, chat_url
 
-    async def ensure_openai_llm_ready(self) -> None:
+    async def ensure_openai_llm_ready(
+        self,
+        *,
+        context: TokenContext | None = None,
+        call_type: str = "chat",
+        preferred_model: str | None = None,
+    ) -> None:
         """Validate Tool Admin LLM config before returning a StreamingResponse.
 
         Streaming endpoints must call this in the route handler *before* constructing
@@ -233,7 +226,14 @@ class LLMService:
         runs, so :class:`ApiError` raised inside the stream iterator cannot be turned
         into JSON and causes ``RuntimeError: response already started``.
         """
-        await self._require_openai_config()
+        if context is not None:
+            await self._require_openai_config_for_context(
+                context=context,
+                call_type=call_type,
+                preferred_model=preferred_model,
+            )
+        else:
+            await self._require_openai_config()
 
     async def chat_structured(
         self,
@@ -249,6 +249,7 @@ class LLMService:
         model, api_key, chat_url = await self._require_openai_config_for_context(
             context=context,
             call_type=call_type,
+            preferred_model=None,
         )
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -354,11 +355,13 @@ class LLMService:
         messages: list[dict[str, Any]],
         context: TokenContext,
         call_type: str,
+        preferred_model: str | None = None,
     ) -> AsyncIterator[str]:
         """Yield assistant token deltas (streaming). Records tokens when usage is returned."""
         model, api_key, chat_url = await self._require_openai_config_for_context(
             context=context,
             call_type=call_type,
+            preferred_model=preferred_model,
         )
         full_messages = [{"role": "system", "content": system_prompt}, *messages]
         body: dict[str, Any] = {
@@ -478,11 +481,13 @@ class LLMService:
         *,
         model_override: str | None = None,
         api_base_url_override: str | None = None,
+        provider_key: str | None = None,
     ) -> AdminConnectivityResult:
         """Tool Admin UI: minimal non-streaming chat completion against stored LLM config.
 
-        Optional ``model_override`` / ``api_base_url_override`` exercise a specific model or host
-        (e.g. from the LLM provider registry) while still using the stored API key.
+        Resolves API key and base URL from the provider registry when a per-provider key
+        is set, else Tool admin global settings. Optional overrides select model, host, or
+        registry row (``provider_key``) for the probe.
 
         Does not call :func:`record_usage` — connectivity probes are excluded from
         token accounting dashboards.
@@ -493,28 +498,34 @@ class LLMService:
             self.db.add(row)
             await self.db.flush()
         model = (model_override or "").strip() or (row.llm_model or "").strip()
-        key = (decode_admin_stored_secret(row.llm_api_key) or "").strip()
-        prov = (row.llm_provider or "").strip().lower()
-        if not model or not key:
+        pk = (provider_key or "").strip().lower() or None
+        if not pk and model:
+            pk = await resolve_provider_key_for_model(self.db, model)
+        try:
+            assert_openai_compatible_provider_field(row)
+        except ApiError as e:
+            d = e.detail
+            return AdminConnectivityResult(
+                ok=False,
+                message="LLM provider configuration is invalid.",
+                detail=d if isinstance(d, str) else str(d),
+            )
+        try:
+            _model_eff, key, chat_url = await resolve_openai_compatible_llm_credentials(
+                self.db,
+                admin=row,
+                effective_model=model,
+                route_provider_key=pk,
+            )
+        except ApiError as e:
+            d = e.detail
             return AdminConnectivityResult(
                 ok=False,
                 message="Configure LLM model and API key before testing.",
-                detail=None,
+                detail=d if isinstance(d, str) else str(d),
             )
-        if prov and prov != "openai":
-            return AdminConnectivityResult(
-                ok=False,
-                message=(
-                    "Set LLM provider to 'openai' (or leave empty) for OpenAI-compatible APIs."
-                ),
-                detail=f"Got llm_provider={prov!r}",
-            )
-        base_for_url = (
-            api_base_url_override
-            if (api_base_url_override is not None and str(api_base_url_override).strip() != "")
-            else row.llm_api_base_url
-        )
-        chat_url = chat_completions_url(base_for_url)
+        if api_base_url_override is not None and str(api_base_url_override).strip():
+            chat_url = chat_completions_url(api_base_url_override)
         body = {
             "model": model,
             "messages": [

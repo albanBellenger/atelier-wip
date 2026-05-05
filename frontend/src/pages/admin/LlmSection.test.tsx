@@ -41,6 +41,8 @@ describe('LlmSection', () => {
       status: 'needs-key',
       is_default: false,
       sort_order: 0,
+      llm_api_key_set: false,
+      llm_api_key_hint: null,
     })
 
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -104,6 +106,8 @@ describe('LlmSection', () => {
           status: 'connected',
           is_default: false,
           sort_order: 0,
+          llm_api_key_set: false,
+          llm_api_key_hint: null,
         },
       ],
     }
@@ -151,6 +155,8 @@ describe('LlmSection', () => {
         status: body.status ?? 'needs-key',
         is_default: body.is_default ?? false,
         sort_order: body.sort_order ?? 0,
+        llm_api_key_set: row?.llm_api_key_set ?? false,
+        llm_api_key_hint: row?.llm_api_key_hint ?? null,
       }
     })
     const probeSpy = vi.spyOn(api, 'postAdminTestLlm').mockResolvedValue({
@@ -197,6 +203,7 @@ describe('LlmSection', () => {
       expect(probeSpy).toHaveBeenCalledWith({
         model: 'alpha',
         api_base_url: 'https://api.moonshot.example/v1',
+        provider_key: 'moonshot',
       })
     })
 

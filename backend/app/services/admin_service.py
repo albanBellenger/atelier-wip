@@ -124,6 +124,7 @@ class AdminService:
         return await LLMService(self.db).admin_connectivity_probe(
             model_override=b.model,
             api_base_url_override=b.api_base_url,
+            provider_key=b.provider_key,
         )
 
     async def test_embedding(self) -> AdminConnectivityResult:

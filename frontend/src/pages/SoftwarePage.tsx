@@ -472,7 +472,7 @@ export function SoftwarePage(): ReactElement {
 
             {softwareView === 'chat' ? (
               <div className="mt-8">
-                <SoftwareChatRoom softwareId={sfid} />
+                <SoftwareChatRoom softwareId={sfid} studioId={sid} />
               </div>
             ) : (
               <>

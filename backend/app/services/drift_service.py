@@ -91,7 +91,7 @@ class DriftService:
 
         llm = LLMService(self.db)
         try:
-            await llm.ensure_openai_llm_ready()
+            await llm.ensure_openai_llm_ready(context=ctx, call_type="section_drift")
         except ApiError as e:
             log.warning(
                 "drift_skipped_llm_unavailable",

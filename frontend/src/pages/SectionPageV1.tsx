@@ -644,7 +644,7 @@ export function SectionPageV1(): ReactElement {
                     </div>
                   )}
                 </div>
-                <div className="flex min-h-0 min-w-0 flex-col lg:max-w-[420px]">
+                <div className="flex h-full min-h-0 min-w-0 flex-col lg:max-w-[420px]">
                   <ThreadPanel
                     projectId={pid}
                     sectionId={secid}

@@ -431,6 +431,14 @@ async def test_admin_post_test_llm_accepts_body(client: AsyncClient, db_session:
     assert "ok" in body1
     assert "message" in body1
 
+    r2 = await client.post(
+        "/admin/test/llm",
+        json={"provider_key": "any", "model": "m1"},
+    )
+    assert r2.status_code == 200
+    body2 = r2.json()
+    assert "ok" in body2
+
 
 @pytest.mark.asyncio
 async def test_admin_patch_studio_budget_overage_action(

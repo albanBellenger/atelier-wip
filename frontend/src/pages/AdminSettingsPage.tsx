@@ -170,7 +170,9 @@ export function AdminSettingsPage(): ReactElement {
         <p className="mt-2 text-sm text-zinc-400">
           OpenAI-compatible LLM and embedding configuration. Use provider{' '}
           <span className="font-mono text-zinc-300">openai</span> (or leave empty) and optional API
-          base URLs for non-default hosts. API keys are encrypted at rest (Fernet) when{' '}
+          base URLs for non-default hosts. The LLM API key here acts as a{' '}
+          <span className="text-zinc-300">global fallback</span> when a registry provider row has no
+          per-provider key. API keys are encrypted at rest (Fernet) when{' '}
           <span className="font-mono text-zinc-300">ENCRYPTION_KEY</span> is set. The full key is
           never sent to the browser; when a key is stored you see a short suffix hint (like the
           visible model id). Leave &quot;New API key&quot; blank to keep the stored key, or use

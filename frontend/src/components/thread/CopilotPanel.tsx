@@ -924,7 +924,7 @@ export function CopilotPanel(props: {
             {composerEl}
           </div>
         ) : (
-          <div className="shrink-0 border-t border-zinc-800/70 bg-zinc-900/95">
+          <div className="shrink-0 w-full border-t border-zinc-800/80 bg-[#0a0a0b]">
             {composerEl}
           </div>
         )}
@@ -1024,7 +1024,7 @@ export function CopilotPanel(props: {
   }
 
   return (
-    <aside className="flex h-[min(80vh,720px)] min-h-0 max-w-[420px] flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60">
+    <aside className="flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-zinc-900/60">
       <CopilotHeader
         collaboratorCount={collaboratorCount}
         newThreadPending={resetMut.isPending}

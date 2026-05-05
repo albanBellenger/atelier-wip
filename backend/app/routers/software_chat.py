@@ -17,6 +17,7 @@ from app.schemas.software_chat import (
     SoftwareChatMessageOut,
 )
 from app.services.auth_service import AuthService
+from app.schemas.token_context import TokenContext
 from app.services.llm_service import LLMService
 from app.services.software_chat_room_registry import (
     broadcast_json,
@@ -84,6 +85,7 @@ async def software_chat_websocket(
     close_on_fail = {401: 4401, 403: 4403}
 
     user_id: UUID
+    studio_id_scope: UUID
     async with async_session_factory() as session:
         try:
             token = await _ws_user_token(websocket)
@@ -94,6 +96,7 @@ async def software_chat_websocket(
                 await websocket.close(code=4403)
                 return
             user_id = user.id
+            studio_id_scope = sa.studio_access.studio_id
             await session.commit()
         except ApiError as e:
             await session.rollback()
@@ -128,16 +131,40 @@ async def software_chat_websocket(
                 )
                 continue
 
-            async with async_session_factory() as session:
-                await LLMService(session).ensure_openai_llm_ready()
-                svc = SoftwareChatService(session)
-                user_msg = await svc.append_message(
-                    software_id=software_id,
-                    user_id=user_id,
-                    role="user",
-                    content=content,
+            raw_m = data.get("model")
+            preferred_model: str | None = None
+            if isinstance(raw_m, str) and raw_m.strip():
+                preferred_model = raw_m.strip()
+
+            try:
+                async with async_session_factory() as session:
+                    probe_ctx = TokenContext(
+                        studio_id=studio_id_scope,
+                        software_id=software_id,
+                        user_id=user_id,
+                    )
+                    await LLMService(session).ensure_openai_llm_ready(
+                        context=probe_ctx,
+                        call_type="chat",
+                        preferred_model=preferred_model,
+                    )
+                    svc = SoftwareChatService(session)
+                    user_msg = await svc.append_message(
+                        software_id=software_id,
+                        user_id=user_id,
+                        role="user",
+                        content=content,
+                    )
+                    await session.commit()
+            except ApiError as e:
+                det = e.detail
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "message": det if isinstance(det, str) else str(det),
+                    }
                 )
-                await session.commit()
+                continue
 
             await broadcast_json(
                 software_id,
@@ -157,6 +184,7 @@ async def software_chat_websocket(
                     software_id=software_id,
                     user_id=user_id,
                     user_content=content,
+                    preferred_model=preferred_model,
                 ):
                     buf.append(piece)
                     await broadcast_json(

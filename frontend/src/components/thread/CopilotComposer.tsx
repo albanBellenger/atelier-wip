@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react'
+import type { KeyboardEvent, ReactElement } from 'react'
 import {
   useCallback,
   useEffect,
@@ -212,6 +212,7 @@ export function CopilotComposer(props: {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const [slashDismissed, setSlashDismissed] = useState(false)
   const [slashIndex, setSlashIndex] = useState(0)
+  const [scopeChooserOpen, setScopeChooserOpen] = useState(false)
 
   useEffect(() => {
     if (!shouldShowSlashPopover(draft) || draft.includes(' ')) {
@@ -251,24 +252,75 @@ export function CopilotComposer(props: {
   const showNoSelectionHint =
     !isFocus && !(hasSelection && selectionChars > 0)
 
-  const outerClass = isFocus
-    ? 'relative shrink-0 px-0 py-0'
-    : 'shrink-0 border-t border-zinc-800 p-2'
+  const showLegacyNoSelectionHint =
+    showNoSelectionHint &&
+    (onScopeSection == null || onScopeSelection == null)
 
-  const innerComposerClass = isFocus
-    ? 'mx-auto w-full max-w-[760px] rounded-2xl border border-zinc-800/80 bg-zinc-900/95 px-4 py-3 shadow-xl shadow-black/40 backdrop-blur focus-within:ring-1 focus-within:ring-violet-500/40'
-    : ''
+  const outerClass = 'relative shrink-0 px-0 py-0'
 
-  const body = (
+  const innerComposerClass =
+    'mx-auto w-full max-w-[760px] rounded-2xl border border-zinc-800/80 bg-zinc-900/95 px-4 py-3 shadow-xl shadow-black/40 backdrop-blur focus-within:ring-1 focus-within:ring-violet-500/40'
+
+  const onTextAreaKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (showSlashPopover) {
+        const items = filteredSlashCommands(draft)
+        if (e.key === 'ArrowDown') {
+          e.preventDefault()
+          setSlashIndex((i) =>
+            Math.min(i + 1, Math.max(0, items.length - 1)),
+          )
+          return
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault()
+          setSlashIndex((i) => Math.max(0, i - 1))
+          return
+        }
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault()
+          const pick = items[slashIndex]
+          if (pick) {
+            onInsertSlash(pick.prefix)
+            setSlashDismissed(true)
+          }
+          return
+        }
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault()
+        if (
+          !draft.trim() ||
+          sending ||
+          improving ||
+          replaceBlocked ||
+          !canSend
+        ) {
+          return
+        }
+        onSend()
+      }
+    },
+    [
+      showSlashPopover,
+      draft,
+      slashIndex,
+      sending,
+      improving,
+      replaceBlocked,
+      canSend,
+      onSend,
+      onInsertSlash,
+    ],
+  )
+
+  const chipPillClass =
+    'rounded-full border border-zinc-700/90 bg-zinc-950 px-2 py-1 font-mono text-[10px] text-zinc-200 hover:border-indigo-500/50 hover:text-zinc-50 disabled:opacity-50'
+
+  const focusComposerContent = (
     <>
       {onScopeSection != null && onScopeSelection != null ? (
-        <div
-          className={`mb-2 flex flex-wrap items-center justify-between gap-2 pb-2 ${
-            isFocus
-              ? 'border-b border-zinc-800/40'
-              : 'border-b border-zinc-800/50'
-          }`}
-        >
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800/40 pb-2">
           <span className="text-[10px] uppercase tracking-wide text-zinc-600">
             Choose scope
           </span>
@@ -305,7 +357,7 @@ export function CopilotComposer(props: {
         </div>
       ) : null}
       <div
-        className={`mb-2 flex flex-wrap gap-1 ${isFocus ? 'justify-center' : ''}`}
+        className="mb-2 flex flex-wrap justify-center gap-1"
         data-testid="copilot-slash-chips"
       >
         {(
@@ -328,38 +380,6 @@ export function CopilotComposer(props: {
             {p.trim()}
           </button>
         ))}
-        {!isFocus ? (
-          <>
-            <button
-              type="button"
-              title="Include current editor selection in LLM context for this send"
-              disabled={sending || improving}
-              className={`rounded border px-1.5 py-0.5 text-sm ${
-                includeSelectionInContext
-                  ? 'border-violet-600 bg-violet-950/40 text-violet-200'
-                  : 'border-zinc-700 text-zinc-500 hover:text-zinc-300'
-              }`}
-              aria-pressed={includeSelectionInContext}
-              onClick={() => onToggleSelection()}
-            >
-              📎
-            </button>
-            <button
-              type="button"
-              title="Include recent GitLab history in context for this send"
-              disabled={sending || improving}
-              className={`rounded border px-1.5 py-0.5 text-sm ${
-                includeGitHistory
-                  ? 'border-violet-600 bg-violet-950/40 text-violet-200'
-                  : 'border-zinc-700 text-zinc-500 hover:text-zinc-300'
-              }`}
-              aria-pressed={includeGitHistory}
-              onClick={() => onToggleGitHistory()}
-            >
-              🕓
-            </button>
-          </>
-        ) : null}
       </div>
       {chip}
       {hasSelection && selectionChars > 0 ? (
@@ -376,7 +396,7 @@ export function CopilotComposer(props: {
           </button>
         </div>
       ) : null}
-      {isFocus && replaceBlocked && replaceBlockedReason ? (
+      {replaceBlocked && replaceBlockedReason ? (
         <p className="mb-2 text-[11px] text-amber-300/90">{replaceBlockedReason}</p>
       ) : null}
       {showNoSelectionHint ? (
@@ -385,68 +405,28 @@ export function CopilotComposer(props: {
           <span className="font-mono">/replace</span>.
         </p>
       ) : null}
-      <div className={isFocus ? 'relative' : ''}>
+      <div className="relative">
         {showSlashPopover ? (
           <SlashCommandPopover
             draft={draft}
             activeIndex={slashIndex}
-          onClose={() => setSlashDismissed(true)}
-          onPick={(prefix) => {
-            onInsertSlash(prefix)
-            setSlashDismissed(true)
-          }}
+            onClose={() => setSlashDismissed(true)}
+            onPick={(prefix) => {
+              onInsertSlash(prefix)
+              setSlashDismissed(true)
+            }}
           />
         ) : null}
         <textarea
           ref={textareaRef}
           data-testid="copilot-composer-textarea"
-          className={
-            isFocus
-              ? 'mb-2 w-full resize-none rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 min-h-[44px] max-h-[180px]'
-              : 'mb-2 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100'
-          }
-          rows={isFocus ? 1 : 3}
+          className="mb-2 min-h-[44px] max-h-[180px] w-full resize-none rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+          rows={1}
           placeholder="Ask the copilot to write…"
           value={draft}
           disabled={sending}
           onChange={(e) => onDraftChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (showSlashPopover) {
-              const items = filteredSlashCommands(draft)
-              if (e.key === 'ArrowDown') {
-                e.preventDefault()
-                setSlashIndex((i) => Math.min(i + 1, Math.max(0, items.length - 1)))
-                return
-              }
-              if (e.key === 'ArrowUp') {
-                e.preventDefault()
-                setSlashIndex((i) => Math.max(0, i - 1))
-                return
-              }
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                const pick = items[slashIndex]
-                if (pick) {
-                  onInsertSlash(pick.prefix)
-                  setSlashDismissed(true)
-                }
-                return
-              }
-            }
-            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-              e.preventDefault()
-              if (
-                !draft.trim() ||
-                sending ||
-                improving ||
-                replaceBlocked ||
-                !canSend
-              ) {
-                return
-              }
-              onSend()
-            }
-          }}
+          onKeyDown={onTextAreaKeyDown}
         />
       </div>
       <div className="mt-1 flex min-h-[32px] flex-wrap items-center gap-2">
@@ -467,11 +447,196 @@ export function CopilotComposer(props: {
               !canSend
             }
             title={replaceBlocked ? replaceBlockedReason : undefined}
-            className={
-              isFocus
-                ? 'rounded-xl bg-violet-600 px-5 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50'
-                : 'min-w-[120px] rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50'
+            className="rounded-xl bg-violet-600 px-5 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+            onClick={() => onSend()}
+          >
+            {sending ? 'Sending…' : improving ? 'Improving…' : 'Send'}
+          </button>
+        </div>
+      </div>
+    </>
+  )
+
+  const compactComposerContent = (
+    <>
+      {onScopeSection != null && onScopeSelection != null ? (
+        <div className="border-b border-zinc-800/80 pb-2.5 pt-1">
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-xs leading-snug text-zinc-500">
+              {includeSelectionInContext && hasSelection
+                ? `Selection context (${selectionChars} chars) — copilot uses the highlighted range.`
+                : 'No selection — copilot operates on the whole section.'}
+            </p>
+            <button
+              type="button"
+              aria-expanded={scopeChooserOpen}
+              className="shrink-0 text-xs text-zinc-400 transition hover:text-zinc-200"
+              onClick={() => setScopeChooserOpen((v) => !v)}
+            >
+              Choose scope →
+            </button>
+          </div>
+          {scopeChooserOpen ? (
+            <div className="mt-2 flex flex-wrap gap-1">
+              <button
+                type="button"
+                disabled={sending || improving}
+                className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${
+                  !includeSelectionInContext
+                    ? 'border-violet-600 bg-violet-950/40 text-violet-200'
+                    : 'border-zinc-700 text-zinc-500 hover:text-zinc-300'
+                }`}
+                aria-pressed={!includeSelectionInContext}
+                onClick={() => onScopeSection()}
+              >
+                Section
+              </button>
+              <button
+                type="button"
+                disabled={sending || improving || !hasSelection}
+                className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${
+                  includeSelectionInContext && hasSelection
+                    ? 'border-violet-600 bg-violet-950/40 text-violet-200'
+                    : 'border-zinc-700 text-zinc-500 hover:text-zinc-300'
+                }`}
+                aria-pressed={Boolean(
+                  includeSelectionInContext && hasSelection,
+                )}
+                onClick={() => onScopeSelection()}
+              >
+                Selection
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="relative mt-3">
+        <textarea
+          data-testid="copilot-composer-textarea"
+          className="mb-3 min-h-[88px] w-full resize-y rounded-lg border border-indigo-500/55 bg-[#121214] px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500/35"
+          rows={4}
+          placeholder="Ask the copilot, or type / for commands…"
+          value={draft}
+          disabled={sending}
+          onChange={(e) => onDraftChange(e.target.value)}
+          onKeyDown={onTextAreaKeyDown}
+        />
+      </div>
+
+      {chip}
+      {hasSelection && selectionChars > 0 ? (
+        <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-zinc-400">
+          <span className="rounded bg-zinc-800 px-2 py-0.5 text-zinc-200">
+            Selection: {selectionChars} chars
+          </span>
+          <button
+            type="button"
+            className="text-violet-400 hover:underline"
+            onClick={() => onClearEditorSelection()}
+          >
+            Clear selection (editor)
+          </button>
+        </div>
+      ) : null}
+      {replaceBlocked && replaceBlockedReason ? (
+        <p className="mb-2 text-[11px] text-amber-300/90">{replaceBlockedReason}</p>
+      ) : null}
+      {showLegacyNoSelectionHint ? (
+        <p className="mb-2 text-[11px] text-zinc-600">
+          No selection — select text in the editor to narrow context or use{' '}
+          <span className="font-mono">/replace</span>.
+        </p>
+      ) : null}
+
+      <div className="flex flex-col gap-2" data-testid="copilot-slash-chips">
+        <div className="flex flex-wrap gap-1.5">
+          {(['/improve ', '/append ', '/replace ', '/edit '] as const).map(
+            (p) => (
+              <button
+                key={p.trim()}
+                type="button"
+                disabled={sending || improving}
+                className={chipPillClass}
+                onClick={() => onInsertSlash(p)}
+              >
+                {p.trim()}
+              </button>
+            ),
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {(['/ask ', '/critique '] as const).map((p) => (
+            <button
+              key={p.trim()}
+              type="button"
+              disabled={sending || improving}
+              className={chipPillClass}
+              onClick={() => onInsertSlash(p)}
+            >
+              {p.trim()}
+            </button>
+          ))}
+          <button
+            type="button"
+            title="Include current editor selection in LLM context for this send"
+            disabled={sending || improving}
+            className={`rounded-full border px-2 py-1 text-xs ${
+              includeSelectionInContext
+                ? 'border-violet-600 bg-violet-950/40 text-violet-200'
+                : 'border-zinc-700 bg-zinc-950 text-zinc-500 hover:text-zinc-300'
+            }`}
+            aria-pressed={includeSelectionInContext}
+            onClick={() => onToggleSelection()}
+          >
+            📎
+          </button>
+          <button
+            type="button"
+            title="Include recent GitLab history in context for this send"
+            disabled={sending || improving}
+            className={`rounded-full border px-2 py-1 text-xs ${
+              includeGitHistory
+                ? 'border-violet-600 bg-violet-950/40 text-violet-200'
+                : 'border-zinc-700 bg-zinc-950 text-zinc-500 hover:text-zinc-300'
+            }`}
+            aria-pressed={includeGitHistory}
+            onClick={() => onToggleGitHistory()}
+          >
+            🕓
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-3 flex min-h-[40px] w-full flex-wrap items-center justify-between gap-3 border-t border-zinc-800/60 pt-3">
+        {footerLeading ? (
+          <div className="min-w-0 flex-1">{footerLeading}</div>
+        ) : (
+          <div className="min-w-0 flex-1" />
+        )}
+        <div className="flex shrink-0 items-center gap-2">
+          <div
+            className="flex items-center gap-1"
+            aria-label="Keyboard shortcut: Ctrl or Command plus Enter to send"
+          >
+            <span className="flex h-7 w-7 items-center justify-center rounded border border-zinc-700 bg-zinc-950 text-[11px] text-zinc-500">
+              ⌘
+            </span>
+            <span className="flex h-7 w-7 items-center justify-center rounded border border-zinc-700 bg-zinc-950 text-[11px] text-zinc-500">
+              ↵
+            </span>
+          </div>
+          <button
+            type="button"
+            disabled={
+              !draft.trim() ||
+              sending ||
+              improving ||
+              replaceBlocked ||
+              !canSend
             }
+            title={replaceBlocked ? replaceBlockedReason : undefined}
+            className="min-w-[96px] rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
             onClick={() => onSend()}
           >
             {sending ? 'Sending…' : improving ? 'Improving…' : 'Send'}
@@ -483,14 +648,18 @@ export function CopilotComposer(props: {
 
   if (isFocus) {
     return (
-      <div
-        className={outerClass}
-        data-testid="copilot-composer-focus"
-      >
-        <div className={innerComposerClass}>{body}</div>
+      <div className={outerClass} data-testid="copilot-composer-focus">
+        <div className={innerComposerClass}>{focusComposerContent}</div>
       </div>
     )
   }
 
-  return <div className={outerClass}>{body}</div>
+  return (
+    <div
+      className="shrink-0 w-full px-3 pb-3 pt-2"
+      data-testid="copilot-composer-compact"
+    >
+      {compactComposerContent}
+    </div>
+  )
 }

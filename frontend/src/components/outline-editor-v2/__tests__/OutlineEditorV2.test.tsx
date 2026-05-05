@@ -1,3 +1,4 @@
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -156,6 +157,37 @@ describe('OutlineEditorV2', () => {
       bubbles: true,
     })
     window.dispatchEvent(evt)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('copilot-overlay')).toBeInTheDocument()
+    })
+  })
+
+  it('opens copilot overlay when header toggle is clicked', async () => {
+    const user = userEvent.setup()
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter
+        initialEntries={[
+          '/studios/s1/software/sw1/projects/p1/sections/sec-1',
+        ]}
+      >
+        <QueryClientProvider client={qc}>
+          <Routes>
+            <Route
+              path="/studios/:studioId/software/:softwareId/projects/:projectId/sections/:sectionId"
+              element={<OutlineEditorV2 />}
+            />
+          </Routes>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-canvas')).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByTestId('copilot-header-toggle'))
 
     await waitFor(() => {
       expect(screen.getByTestId('copilot-overlay')).toBeInTheDocument()

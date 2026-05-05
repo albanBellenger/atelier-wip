@@ -50,7 +50,7 @@ async def test_section_improve_returns_markdown(
     assert s1.status_code == 200
     sid = s1.json()["id"]
 
-    async def fake_ready(self) -> None:
+    async def fake_ready(self, **_kw: object) -> None:
         return None
 
     async def fake_improve(self, *a, **k):

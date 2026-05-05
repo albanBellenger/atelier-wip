@@ -54,25 +54,25 @@ class LlmPolicyService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    async def resolve_effective_model(
+    async def resolve_effective_llm_route(
         self,
         *,
         studio_id: UUID,
         call_type: str,
-    ) -> str | None:
-        """Return override model id or None to use AdminConfig.llm_model."""
+    ) -> tuple[str | None, str | None]:
+        """Return (effective_model_override, provider_key) or (None, None) for AdminConfig defaults."""
         use_case = use_case_for_call_type(call_type)
         reg_count = await self.db.scalar(
             select(func.count()).select_from(LlmProviderRegistry)
         )
         if not reg_count:
-            return None
+            return None, None
 
         routing = await self.db.get(LlmRoutingRule, use_case)
         if routing is None:
             routing = await self.db.get(LlmRoutingRule, "chat")
         if routing is None:
-            return None
+            return None, None
 
         candidates: list[str] = []
         if routing.primary_model.strip():
@@ -81,7 +81,16 @@ class LlmPolicyService:
             candidates.append(routing.fallback_model.strip())
 
         providers = list(
-            (await self.db.execute(select(LlmProviderRegistry))).scalars().all()
+            (
+                await self.db.execute(
+                    select(LlmProviderRegistry).order_by(
+                        LlmProviderRegistry.sort_order,
+                        LlmProviderRegistry.provider_key,
+                    )
+                )
+            )
+            .scalars()
+            .all()
         )
         policy_rows = list(
             (
@@ -118,8 +127,21 @@ class LlmPolicyService:
             else:
                 # Registry populated but studio not configured yet — allow routing candidate.
                 pass
-            return cand
-        return None
+            return cand, pk
+        return None, None
+
+    async def resolve_effective_model(
+        self,
+        *,
+        studio_id: UUID,
+        call_type: str,
+    ) -> str | None:
+        """Return override model id or None to use AdminConfig.llm_model."""
+        m, _pk = await self.resolve_effective_llm_route(
+            studio_id=studio_id,
+            call_type=call_type,
+        )
+        return m
 
     async def studio_chat_llm_models(self, studio_id: UUID) -> StudioChatLlmModelsOut:
         """Models allowed for chat in this studio (connected registry + policy / routing)."""
@@ -133,7 +155,16 @@ class LlmPolicyService:
         )
 
         providers_all = list(
-            (await self.db.execute(select(LlmProviderRegistry))).scalars().all()
+            (
+                await self.db.execute(
+                    select(LlmProviderRegistry).order_by(
+                        LlmProviderRegistry.sort_order,
+                        LlmProviderRegistry.provider_key,
+                    )
+                )
+            )
+            .scalars()
+            .all()
         )
         policy_rows = list(
             (
@@ -193,6 +224,38 @@ class LlmPolicyService:
             workspace_default_model=workspace_default,
             allowed_models=allowed,
         )
+
+    async def resolve_preferred_chat_model(
+        self,
+        *,
+        studio_id: UUID,
+        preferred_model: str | None,
+    ) -> str | None:
+        """Return trimmed model id if allowed for studio chat, else raise ApiError 400.
+
+        Allowed set is ``allowed_models`` from :meth:`studio_chat_llm_models`, plus
+        ``effective_model`` and ``workspace_default_model`` when non-empty (so defaults
+        remain valid when the explicit allow-list is empty).
+        """
+        if preferred_model is None or str(preferred_model).strip() == "":
+            return None
+        pref = str(preferred_model).strip()
+        out = await self.studio_chat_llm_models(studio_id)
+        choices: set[str] = set()
+        for m in out.allowed_models:
+            t = m.strip()
+            if t:
+                choices.add(t)
+        for m in (out.effective_model, out.workspace_default_model):
+            if m and str(m).strip():
+                choices.add(str(m).strip())
+        if pref not in choices:
+            raise ApiError(
+                status_code=400,
+                code="CHAT_MODEL_NOT_ALLOWED",
+                message="Requested model is not allowed for chat in this studio.",
+            )
+        return pref
 
     async def assert_studio_budget(self, studio_id: UUID) -> None:
         st = await self.db.get(Studio, studio_id)

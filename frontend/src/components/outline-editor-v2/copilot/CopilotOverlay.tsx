@@ -18,6 +18,7 @@ export function CopilotOverlay(props: {
         onClick={onClose}
       />
       <aside
+        id="copilot-overlay-panel"
         data-testid="copilot-overlay"
         className="fixed inset-y-0 right-0 z-50 flex w-[min(460px,100vw)] flex-col border-l border-zinc-800/80 bg-[#0a0a0b] shadow-2xl"
       >
@@ -32,7 +33,9 @@ export function CopilotOverlay(props: {
             Close
           </button>
         </div>
-        <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {children}
+        </div>
       </aside>
     </>
   )

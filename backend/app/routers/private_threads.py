@@ -15,6 +15,7 @@ from app.schemas.private_thread import (
     PrivateThreadStreamBody,
     ThreadMessageOut,
 )
+from app.schemas.token_context import TokenContext
 from app.services.llm_service import LLMService
 from app.services.private_thread_service import PrivateThreadService
 
@@ -85,7 +86,13 @@ async def stream_private_thread_reply(
     _ensure_project(pa, project_id)
     # Must validate LLM config before StreamingResponse: headers are sent before the
     # stream body runs; ApiError inside the iterator surfaces as a 500 / runtime error.
-    await LLMService(session).ensure_openai_llm_ready()
+    ctx = TokenContext(
+        studio_id=pa.studio_access.studio_id,
+        software_id=pa.software.id,
+        project_id=project_id,
+        user_id=pa.studio_access.user.id,
+    )
+    await LLMService(session).ensure_openai_llm_ready(context=ctx, call_type="chat")
     svc = PrivateThreadService(session)
     await svc.assert_thread_stream_request_valid(
         project_id=project_id,

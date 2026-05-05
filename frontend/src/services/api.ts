@@ -490,6 +490,7 @@ export interface AdminConnectivityResult {
 export type AdminLlmProbeBody = {
   model?: string | null
   api_base_url?: string | null
+  provider_key?: string | null
 }
 
 export async function postAdminTestLlm(
@@ -655,6 +656,8 @@ export interface LlmProviderRegistryRow {
   status: string
   is_default: boolean
   sort_order: number
+  llm_api_key_set: boolean
+  llm_api_key_hint: string | null
 }
 
 export type LlmProviderUpsertBody = {
@@ -664,6 +667,7 @@ export type LlmProviderUpsertBody = {
   status?: string
   is_default?: boolean
   sort_order?: number
+  llm_api_key?: string | null
 }
 
 /** Combined Tool admin config + LLM provider registry for the LLM connectivity page. */

@@ -41,7 +41,7 @@ async def test_drift_service_marks_work_order_stale(
     assert create.status_code == 200
     wid = uuid.UUID(create.json()["id"])
 
-    async def fake_ready(_self: LLMService) -> None:
+    async def fake_ready(_self: LLMService, **_kw: object) -> None:
         return None
 
     async def fake_chat(_self: LLMService, **_kwargs: object) -> dict[str, object]:
@@ -92,7 +92,7 @@ async def test_drift_skips_done_work_orders(
 
     calls: list[int] = []
 
-    async def fake_ready(_self: LLMService) -> None:
+    async def fake_ready(_self: LLMService, **_kw: object) -> None:
         return None
 
     async def fake_chat(_self: LLMService, **_kwargs: object) -> dict[str, object]:

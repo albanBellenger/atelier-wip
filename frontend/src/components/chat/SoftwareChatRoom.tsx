@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 
 import {
+  SOFTWARE_COMPOSER_CHAT_MODEL_KEY,
   SOFTWARE_COMPOSER_DRAFT_STATE_KEY,
+  readStoredSoftwareChatModel,
   type SoftwareComposerLocationState,
 } from '../../lib/softwareComposerNav'
 import type { SoftwareChatMessageRow } from '../../services/api'
@@ -19,10 +21,15 @@ type WsPayload =
 
 export interface SoftwareChatRoomProps {
   softwareId: string
+  /** When set, restores persisted chat model preference from localStorage. */
+  studioId?: string
 }
 
 /** Shared software chat: loads history, opens WebSocket for live send/stream. */
-export function SoftwareChatRoom({ softwareId }: SoftwareChatRoomProps): ReactElement {
+export function SoftwareChatRoom({
+  softwareId,
+  studioId,
+}: SoftwareChatRoomProps): ReactElement {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const location = useLocation()
@@ -37,17 +44,24 @@ export function SoftwareChatRoom({ softwareId }: SoftwareChatRoomProps): ReactEl
   const pendingAutoRef = useRef<string | null>(null)
   const autoSentRef = useRef(false)
   const seededPendingRef = useRef(false)
+  const preferredModelRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (seededPendingRef.current) return
-    const s = (location.state as SoftwareComposerLocationState | null)?.[
-      SOFTWARE_COMPOSER_DRAFT_STATE_KEY
-    ]
+    const state = location.state as SoftwareComposerLocationState | null
+    const m = state?.[SOFTWARE_COMPOSER_CHAT_MODEL_KEY]
+    if (typeof m === 'string' && m.trim()) {
+      preferredModelRef.current = m.trim()
+    } else if (studioId) {
+      const fromLs = readStoredSoftwareChatModel(studioId)
+      if (fromLs) preferredModelRef.current = fromLs
+    }
+    const s = state?.[SOFTWARE_COMPOSER_DRAFT_STATE_KEY]
     if (typeof s === 'string' && s.trim()) {
       pendingAutoRef.current = s.trim()
     }
     seededPendingRef.current = true
-  }, [location.state])
+  }, [location.state, studioId])
 
   const historyQ = useQuery({
     queryKey: ['softwareChat', softwareId],
@@ -116,6 +130,14 @@ export function SoftwareChatRoom({ softwareId }: SoftwareChatRoomProps): ReactEl
     }
   }, [softwareId, qc])
 
+  const userMessagePayload = useCallback((content: string): Record<string, string> => {
+    const pm = preferredModelRef.current
+    if (pm) {
+      return { type: 'user_message', content, model: pm }
+    }
+    return { type: 'user_message', content }
+  }, [])
+
   useEffect(() => {
     if (wsStatus !== 'open') return
     const pending = pendingAutoRef.current
@@ -125,12 +147,12 @@ export function SoftwareChatRoom({ softwareId }: SoftwareChatRoomProps): ReactEl
     autoSentRef.current = true
     pendingAutoRef.current = null
     setWsError(null)
-    ws.send(JSON.stringify({ type: 'user_message', content: pending }))
+    ws.send(JSON.stringify(userMessagePayload(pending)))
     void navigate(
       { pathname: location.pathname, search: location.search },
       { replace: true, state: {} },
     )
-  }, [wsStatus, navigate, location.pathname, location.search])
+  }, [wsStatus, navigate, location.pathname, location.search, userMessagePayload])
 
   function send(): void {
     const text = draft.trim()
@@ -141,7 +163,7 @@ export function SoftwareChatRoom({ softwareId }: SoftwareChatRoomProps): ReactEl
       return
     }
     setWsError(null)
-    ws.send(JSON.stringify({ type: 'user_message', content: text }))
+    ws.send(JSON.stringify(userMessagePayload(text)))
     setDraft('')
   }
 
