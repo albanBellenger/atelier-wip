@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 import { me, patchMeProfile } from '../services/api'
+import { useEditorV2Prefs } from '../components/outline-editor-v2/hooks/useEditorV2Prefs'
 
 function studioRoleLabel(role: string): string {
   switch (role) {
@@ -22,6 +23,7 @@ function studioRoleLabel(role: string): string {
 export function MeProfilePage(): ReactElement {
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const outlinePrefs = useEditorV2Prefs()
   const { data: profile, isPending, isError } = useQuery({
     queryKey: ['auth', 'me'],
     queryFn: () => me(),
@@ -132,6 +134,36 @@ export function MeProfilePage(): ReactElement {
             Save
           </button>
         </form>
+
+        <section className="mt-12" aria-labelledby="outline-editor-beta-heading">
+          <h2
+            id="outline-editor-beta-heading"
+            className="font-serif text-xl font-medium tracking-tight text-zinc-100"
+          >
+            Outline editor (beta)
+          </h2>
+          <p className="mt-2 text-sm leading-relaxed text-zinc-500">
+            Document-first layout with a slide-in copilot. Changes apply on the next
+            section visit or refresh — not mid-session.
+          </p>
+          <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border border-zinc-800 bg-zinc-950/50 px-4 py-3">
+            <input
+              type="checkbox"
+              data-testid="pref-outline-editor-v2"
+              className="mt-1 h-4 w-4 rounded border-zinc-600 bg-zinc-950 text-violet-600"
+              checked={outlinePrefs.outlineEditorV2}
+              onChange={(e) => outlinePrefs.setOutlineEditorV2(e.target.checked)}
+            />
+            <span>
+              <span className="block text-sm font-medium text-zinc-200">
+                Use new outline editor (V2)
+              </span>
+              <span className="mt-1 block text-xs text-zinc-500">
+                Document-first layout + slide-in copilot; reversible anytime.
+              </span>
+            </span>
+          </label>
+        </section>
 
         <section className="mt-12" aria-labelledby="studio-memberships-heading">
           <h2
