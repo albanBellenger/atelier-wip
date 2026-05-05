@@ -56,6 +56,28 @@ class AuthService:
         await self.db.flush()
         return create_access_token(user.id)
 
+    async def create_user_by_admin(self, body: UserCreate) -> UserPublic:
+        """Create a registered user without issuing a session (tool admin provisioning)."""
+        existing_id = await self.db.scalar(
+            select(User.id).where(User.email == body.email.lower().strip())
+        )
+        if existing_id is not None:
+            raise ApiError(
+                status_code=409,
+                code="EMAIL_IN_USE",
+                message="An account with this email already exists",
+            )
+        user = User(
+            id=uuid.uuid4(),
+            email=body.email.lower().strip(),
+            password_hash=hash_password(body.password),
+            display_name=body.display_name.strip(),
+            is_tool_admin=False,
+        )
+        self.db.add(user)
+        await self.db.flush()
+        return UserPublic.model_validate(user)
+
     async def login(self, email: str, password: str) -> str:
         row = (
             await self.db.execute(

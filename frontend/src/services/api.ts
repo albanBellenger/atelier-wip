@@ -517,11 +517,45 @@ export interface DeploymentActivityRow {
 export interface StudioOverviewRow {
   studio_id: string
   name: string
+  description: string | null
+  created_at: string
   software_count: number
   member_count: number
   mtd_spend_usd: string
   budget_cap_monthly_usd: string | null
   budget_overage_action: string
+}
+
+/** GitLab summary from GET/PATCH /admin/studios/{id}/gitlab or nested in studio detail. */
+export interface AdminStudioGitlabSummary {
+  git_provider: string | null
+  git_repo_url: string | null
+  git_branch: string | null
+  git_publish_strategy: string | null
+  git_token_set: boolean
+}
+
+/** GET /admin/studios/{id} — profile, aggregates, nested gitlab. */
+export interface AdminStudioDetail {
+  id: string
+  name: string
+  description: string | null
+  logo_path: string | null
+  created_at: string
+  budget_cap_monthly_usd: string | null
+  budget_overage_action: string
+  software_count: number
+  member_count: number
+  mtd_spend_usd: string
+  gitlab: AdminStudioGitlabSummary
+}
+
+export type AdminStudioGitlabPatchBody = {
+  git_provider?: string | null
+  git_repo_url?: string | null
+  git_branch?: string | null
+  git_publish_strategy?: string | null
+  git_token?: string | null
 }
 
 export interface AdminConsoleOverview {
@@ -534,6 +568,28 @@ export interface AdminConsoleOverview {
 
 export async function getAdminConsoleOverview(): Promise<AdminConsoleOverview> {
   return request<AdminConsoleOverview>('GET', '/admin/console/overview')
+}
+
+export async function listAdminStudios(): Promise<StudioOverviewRow[]> {
+  return request<StudioOverviewRow[]>('GET', '/admin/studios')
+}
+
+export async function getAdminStudio(studioId: string): Promise<AdminStudioDetail> {
+  return request<AdminStudioDetail>(
+    'GET',
+    `/admin/studios/${encodeURIComponent(studioId)}`,
+  )
+}
+
+export async function patchAdminStudioGitlab(
+  studioId: string,
+  body: AdminStudioGitlabPatchBody,
+): Promise<AdminStudioGitlabSummary> {
+  return request<AdminStudioGitlabSummary>(
+    'PATCH',
+    `/admin/studios/${encodeURIComponent(studioId)}/gitlab`,
+    body,
+  )
 }
 
 export interface AdminStudioMembershipRow {
@@ -560,6 +616,13 @@ export async function getAdminUsers(params?: {
   if (params?.offset != null) sp.set('offset', String(params.offset))
   const q = sp.toString()
   return request<AdminUserDirectoryRow[]>('GET', `/admin/users${q ? `?${q}` : ''}`)
+}
+
+/** Tool admin: create a registered user (does not change the current session). */
+export async function postAdminCreateUser(
+  body: RegisterRequestBody,
+): Promise<AdminUserPublic> {
+  return request<AdminUserPublic>('POST', '/admin/users', body)
 }
 
 export interface AdminUserPublic {
@@ -857,6 +920,11 @@ export async function listStudios(): Promise<Studio[]> {
 
 export async function createStudio(body: StudioCreateBody): Promise<Studio> {
   return request<Studio>('POST', '/studios', body)
+}
+
+/** Tool-admin create studio (same semantics as POST /studios). */
+export async function postAdminStudio(body: StudioCreateBody): Promise<Studio> {
+  return request<Studio>('POST', '/admin/studios', body)
 }
 
 export async function getStudio(studioId: string): Promise<Studio> {

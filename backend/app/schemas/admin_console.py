@@ -12,7 +12,7 @@ from app.schemas.auth import AdminConfigResponse
 from app.schemas.studio_budget_overage import StudioBudgetOverageAction
 
 
-class DeploymentActivityOut(BaseModel):
+class DeploymentActivityResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
@@ -24,9 +24,11 @@ class DeploymentActivityOut(BaseModel):
     summary: str | None
 
 
-class StudioOverviewRowOut(BaseModel):
+class StudioOverviewRowResponse(BaseModel):
     studio_id: UUID
     name: str
+    description: str | None = None
+    created_at: datetime
     software_count: int
     member_count: int
     mtd_spend_usd: Decimal
@@ -34,15 +36,15 @@ class StudioOverviewRowOut(BaseModel):
     budget_overage_action: str
 
 
-class AdminConsoleOverviewOut(BaseModel):
-    studios: list[StudioOverviewRowOut]
+class AdminConsoleOverviewResponse(BaseModel):
+    studios: list[StudioOverviewRowResponse]
     mtd_spend_total_usd: Decimal
     active_builders_count: int
     embedding_collection_count: int
-    recent_activity: list[DeploymentActivityOut]
+    recent_activity: list[DeploymentActivityResponse]
 
 
-class LlmProviderRegistryOut(BaseModel):
+class LlmProviderRegistryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
@@ -56,7 +58,7 @@ class LlmProviderRegistryOut(BaseModel):
     sort_order: int
 
 
-class LlmProviderRegistryUpsert(BaseModel):
+class LlmProviderRegistryUpdate(BaseModel):
     display_name: str = Field(min_length=1, max_length=255)
     models: list[str] = Field(min_length=1)
     api_base_url: str | None = Field(default=None, max_length=512)
@@ -65,34 +67,34 @@ class LlmProviderRegistryUpsert(BaseModel):
     sort_order: int = 0
 
 
-class LlmDeploymentOut(BaseModel):
+class LlmDeploymentResponse(BaseModel):
     """Tool-admin LLM page: singleton credentials + provider registry in one response."""
 
     credentials: AdminConfigResponse
-    providers: list[LlmProviderRegistryOut]
+    providers: list[LlmProviderRegistryResponse]
 
 
-class StudioLlmPolicyRowOut(BaseModel):
+class StudioLlmPolicyRowResponse(BaseModel):
     provider_key: str
     enabled: bool
     selected_model: str | None
 
 
-class StudioLlmPolicyPatch(BaseModel):
-    rows: list[StudioLlmPolicyRowOut]
+class StudioLlmPolicyUpdate(BaseModel):
+    rows: list[StudioLlmPolicyRowResponse]
 
 
-class LlmRoutingRuleOut(BaseModel):
+class LlmRoutingRuleResponse(BaseModel):
     use_case: str
     primary_model: str
     fallback_model: str | None
 
 
-class LlmRoutingRulePatch(BaseModel):
-    rules: list[LlmRoutingRuleOut]
+class LlmRoutingRuleUpdate(BaseModel):
+    rules: list[LlmRoutingRuleResponse]
 
 
-class StudioGitLabOut(BaseModel):
+class StudioGitLabResponse(BaseModel):
     git_provider: str | None
     git_repo_url: str | None
     git_branch: str | None
@@ -100,7 +102,23 @@ class StudioGitLabOut(BaseModel):
     git_token_set: bool
 
 
-class StudioGitLabPatch(BaseModel):
+class AdminStudioDetailResponse(BaseModel):
+    """Tool-admin studio detail: profile, aggregates, GitLab summary."""
+
+    id: UUID
+    name: str
+    description: str | None
+    logo_path: str | None
+    created_at: datetime
+    budget_cap_monthly_usd: Decimal | None
+    budget_overage_action: str
+    software_count: int
+    member_count: int
+    mtd_spend_usd: Decimal
+    gitlab: StudioGitLabResponse
+
+
+class StudioGitLabUpdate(BaseModel):
     git_provider: str | None = None
     git_repo_url: str | None = None
     git_branch: str | None = None
@@ -108,12 +126,12 @@ class StudioGitLabPatch(BaseModel):
     git_token: str | None = None
 
 
-class StudioToolAdminPatch(BaseModel):
+class StudioToolAdminUpdate(BaseModel):
     budget_cap_monthly_usd: Decimal | None = None
     budget_overage_action: StudioBudgetOverageAction | None = None
 
 
-class MemberBudgetRowOut(BaseModel):
+class MemberBudgetRowResponse(BaseModel):
     user_id: UUID
     email: str
     display_name: str
@@ -122,11 +140,11 @@ class MemberBudgetRowOut(BaseModel):
     mtd_spend_usd: Decimal
 
 
-class MemberBudgetPatch(BaseModel):
+class MemberBudgetUpdate(BaseModel):
     budget_cap_monthly_usd: Decimal | None = None
 
 
-class AdminEmbeddingLibraryStudioOut(BaseModel):
+class AdminEmbeddingLibraryStudioResponse(BaseModel):
     """Per-studio aggregates for the artifact + section vector indexes (admin embeddings UI)."""
 
     studio_id: UUID
@@ -137,7 +155,7 @@ class AdminEmbeddingLibraryStudioOut(BaseModel):
     section_vector_chunks: int
 
 
-class EmbeddingModelRegistryOut(BaseModel):
+class EmbeddingModelRegistryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
@@ -149,7 +167,7 @@ class EmbeddingModelRegistryOut(BaseModel):
     default_role: str | None
 
 
-class EmbeddingModelRegistryUpsert(BaseModel):
+class EmbeddingModelRegistryUpdate(BaseModel):
     model_id: str = Field(min_length=1, max_length=256)
     provider_name: str = Field(min_length=1, max_length=128)
     dim: int = Field(ge=1, le=16384)
@@ -158,7 +176,7 @@ class EmbeddingModelRegistryUpsert(BaseModel):
     default_role: str | None = None
 
 
-class EmbeddingReindexPolicyOut(BaseModel):
+class EmbeddingReindexPolicyResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -168,14 +186,14 @@ class EmbeddingReindexPolicyOut(BaseModel):
     retention_days: int
 
 
-class EmbeddingReindexPolicyPatch(BaseModel):
+class EmbeddingReindexPolicyUpdate(BaseModel):
     auto_reindex_trigger: str | None = Field(default=None, max_length=64)
     debounce_seconds: int | None = Field(default=None, ge=0, le=86400)
     drift_threshold_pct: Decimal | None = Field(default=None, ge=0, le=100)
     retention_days: int | None = Field(default=None, ge=1, le=3650)
 
 
-class AdminUserDirectoryRowOut(BaseModel):
+class AdminUserDirectoryRowResponse(BaseModel):
     user_id: UUID
     email: str
     display_name: str

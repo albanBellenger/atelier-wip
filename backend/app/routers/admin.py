@@ -3,7 +3,7 @@
 from datetime import date
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, Query, Request, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,41 +16,48 @@ from app.schemas.auth import (
     AdminConnectivityResult,
     AdminLlmProbeBody,
     AdminStatusUpdate,
+    UserCreate,
     UserPublic,
 )
 from app.schemas.admin_console import (
-    AdminConsoleOverviewOut,
-    AdminEmbeddingLibraryStudioOut,
-    AdminUserDirectoryRowOut,
-    EmbeddingModelRegistryOut,
-    EmbeddingModelRegistryUpsert,
-    EmbeddingReindexPolicyOut,
-    EmbeddingReindexPolicyPatch,
-    LlmDeploymentOut,
-    LlmProviderRegistryOut,
-    LlmProviderRegistryUpsert,
-    LlmRoutingRuleOut,
-    LlmRoutingRulePatch,
-    MemberBudgetPatch,
-    MemberBudgetRowOut,
-    StudioGitLabOut,
-    StudioGitLabPatch,
-    StudioLlmPolicyPatch,
-    StudioLlmPolicyRowOut,
-    StudioToolAdminPatch,
+    AdminConsoleOverviewResponse,
+    AdminEmbeddingLibraryStudioResponse,
+    AdminStudioDetailResponse,
+    AdminUserDirectoryRowResponse,
+    EmbeddingModelRegistryResponse,
+    EmbeddingModelRegistryUpdate,
+    EmbeddingReindexPolicyResponse,
+    EmbeddingReindexPolicyUpdate,
+    LlmDeploymentResponse,
+    LlmProviderRegistryResponse,
+    LlmProviderRegistryUpdate,
+    LlmRoutingRuleResponse,
+    LlmRoutingRuleUpdate,
+    MemberBudgetUpdate,
+    MemberBudgetRowResponse,
+    StudioGitLabResponse,
+    StudioGitLabUpdate,
+    StudioLlmPolicyUpdate,
+    StudioLlmPolicyRowResponse,
+    StudioOverviewRowResponse,
+    StudioToolAdminUpdate,
 )
 from app.schemas.cross_studio import (
     CrossStudioAccessAdminRow,
     CrossStudioResolveBody,
     CrossStudioRequestResult,
 )
+from app.schemas.studio import StudioCreate, StudioResponse
+from app.services.auth_service import AuthService
 from app.services.admin_overview_service import AdminOverviewService
 from app.services.admin_service import AdminService
+from app.services.admin_studio_console_service import AdminStudioConsoleService
 from app.services.admin_user_directory_service import AdminUserDirectoryService
 from app.services.cross_studio_service import CrossStudioService
 from app.services.embedding_admin_service import EmbeddingAdminService
 from app.services.llm_connectivity_service import LlmConnectivityService
 from app.services.studio_member_budget_admin_service import StudioMemberBudgetAdminService
+from app.services.studio_service import StudioService
 from app.services.studio_tool_admin_service import StudioToolAdminService
 from app.schemas.token_usage_report import (
     TokenUsageReportOut,
@@ -210,49 +217,86 @@ async def admin_token_usage(
     )
 
 
-@router.get("/console/overview", response_model=AdminConsoleOverviewOut)
+@router.get("/console/overview", response_model=AdminConsoleOverviewResponse)
 async def admin_console_overview(
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_tool_admin),
-) -> AdminConsoleOverviewOut:
+) -> AdminConsoleOverviewResponse:
     return await AdminOverviewService(session).overview()
 
 
-@router.get("/users", response_model=list[AdminUserDirectoryRowOut])
+@router.get("/studios", response_model=list[StudioOverviewRowResponse])
+async def admin_list_studios(
+    session: AsyncSession = Depends(get_db),
+    _: User = Depends(require_tool_admin),
+) -> list[StudioOverviewRowResponse]:
+    return await AdminStudioConsoleService(session).list_studios()
+
+
+@router.post("/studios", response_model=StudioResponse)
+async def admin_create_studio(
+    body: StudioCreate,
+    session: AsyncSession = Depends(get_db),
+    admin_user: User = Depends(require_tool_admin),
+) -> StudioResponse:
+    return await StudioService(session).create_studio(admin_user, body)
+
+
+@router.get("/studios/{studio_id}", response_model=AdminStudioDetailResponse)
+async def admin_get_studio(
+    studio_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    _: User = Depends(require_tool_admin),
+    studio: Studio = Depends(get_studio_for_tool_admin),
+) -> AdminStudioDetailResponse:
+    assert studio.id == studio_id
+    return await AdminStudioConsoleService(session).get_studio(studio)
+
+
+@router.get("/users", response_model=list[AdminUserDirectoryRowResponse])
 async def admin_list_users(
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_tool_admin),
     limit: int = Query(200, ge=1, le=500),
     offset: int = Query(0, ge=0),
-) -> list[AdminUserDirectoryRowOut]:
+) -> list[AdminUserDirectoryRowResponse]:
     return await AdminUserDirectoryService(session).list_users(limit=limit, offset=offset)
 
 
-@router.get("/llm/deployment", response_model=LlmDeploymentOut)
+@router.post("/users", response_model=UserPublic, status_code=status.HTTP_201_CREATED)
+async def admin_create_user(
+    body: UserCreate,
+    session: AsyncSession = Depends(get_db),
+    _: User = Depends(require_tool_admin),
+) -> UserPublic:
+    return await AuthService(session).create_user_by_admin(body)
+
+
+@router.get("/llm/deployment", response_model=LlmDeploymentResponse)
 async def get_llm_deployment(
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_tool_admin),
-) -> LlmDeploymentOut:
+) -> LlmDeploymentResponse:
     credentials = await AdminService(session).get_public()
     providers = await LlmConnectivityService(session).list_providers()
-    return LlmDeploymentOut(credentials=credentials, providers=providers)
+    return LlmDeploymentResponse(credentials=credentials, providers=providers)
 
 
-@router.get("/llm/providers", response_model=list[LlmProviderRegistryOut])
+@router.get("/llm/providers", response_model=list[LlmProviderRegistryResponse])
 async def list_llm_providers(
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_tool_admin),
-) -> list[LlmProviderRegistryOut]:
+) -> list[LlmProviderRegistryResponse]:
     return await LlmConnectivityService(session).list_providers()
 
 
-@router.put("/llm/providers/{provider_key}", response_model=LlmProviderRegistryOut)
+@router.put("/llm/providers/{provider_key}", response_model=LlmProviderRegistryResponse)
 async def upsert_llm_provider(
     provider_key: str,
-    body: LlmProviderRegistryUpsert,
+    body: LlmProviderRegistryUpdate,
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_tool_admin),
-) -> LlmProviderRegistryOut:
+) -> LlmProviderRegistryResponse:
     return await LlmConnectivityService(session).upsert_provider(provider_key, body)
 
 
@@ -266,71 +310,71 @@ async def delete_llm_provider(
     return Response(status_code=204)
 
 
-@router.get("/llm/routing", response_model=list[LlmRoutingRuleOut])
+@router.get("/llm/routing", response_model=list[LlmRoutingRuleResponse])
 async def get_llm_routing(
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_tool_admin),
-) -> list[LlmRoutingRuleOut]:
+) -> list[LlmRoutingRuleResponse]:
     return await LlmConnectivityService(session).list_routing()
 
 
-@router.put("/llm/routing", response_model=list[LlmRoutingRuleOut])
+@router.put("/llm/routing", response_model=list[LlmRoutingRuleResponse])
 async def put_llm_routing(
-    body: LlmRoutingRulePatch,
+    body: LlmRoutingRuleUpdate,
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_tool_admin),
-) -> list[LlmRoutingRuleOut]:
+) -> list[LlmRoutingRuleResponse]:
     return await LlmConnectivityService(session).put_routing(body)
 
 
 @router.get(
     "/studios/{studio_id}/llm-policy",
-    response_model=list[StudioLlmPolicyRowOut],
+    response_model=list[StudioLlmPolicyRowResponse],
 )
 async def get_studio_llm_policy(
     studio_id: UUID,
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_tool_admin),
     studio: Studio = Depends(get_studio_for_tool_admin),
-) -> list[StudioLlmPolicyRowOut]:
+) -> list[StudioLlmPolicyRowResponse]:
     assert studio.id == studio_id
     return await LlmConnectivityService(session).get_studio_policy(studio_id)
 
 
 @router.put(
     "/studios/{studio_id}/llm-policy",
-    response_model=list[StudioLlmPolicyRowOut],
+    response_model=list[StudioLlmPolicyRowResponse],
 )
 async def put_studio_llm_policy(
     studio_id: UUID,
-    body: StudioLlmPolicyPatch,
+    body: StudioLlmPolicyUpdate,
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_tool_admin),
     studio: Studio = Depends(get_studio_for_tool_admin),
-) -> list[StudioLlmPolicyRowOut]:
+) -> list[StudioLlmPolicyRowResponse]:
     assert studio.id == studio_id
     return await LlmConnectivityService(session).put_studio_policy(studio_id, body)
 
 
-@router.get("/studios/{studio_id}/gitlab", response_model=StudioGitLabOut)
+@router.get("/studios/{studio_id}/gitlab", response_model=StudioGitLabResponse)
 async def get_studio_gitlab(
     studio_id: UUID,
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_tool_admin),
     studio: Studio = Depends(get_studio_for_tool_admin),
-) -> StudioGitLabOut:
+) -> StudioGitLabResponse:
     assert studio.id == studio_id
     return await StudioToolAdminService(session).get_gitlab(studio)
 
 
-@router.patch("/studios/{studio_id}/gitlab", response_model=StudioGitLabOut)
+@router.patch("/studios/{studio_id}/gitlab", response_model=StudioGitLabResponse)
 async def patch_studio_gitlab(
     studio_id: UUID,
-    body: StudioGitLabPatch,
+    body: StudioGitLabUpdate,
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_tool_admin),
     studio: Studio = Depends(get_studio_for_tool_admin),
-) -> StudioGitLabOut:
+) -> StudioGitLabResponse:
     assert studio.id == studio_id
     return await StudioToolAdminService(session).patch_gitlab(studio, body)
 
@@ -338,7 +382,7 @@ async def patch_studio_gitlab(
 @router.patch("/studios/{studio_id}/budget", status_code=204)
 async def patch_studio_budget(
     studio_id: UUID,
-    body: StudioToolAdminPatch,
+    body: StudioToolAdminUpdate,
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_tool_admin),
     studio: Studio = Depends(get_studio_for_tool_admin),
@@ -350,59 +394,59 @@ async def patch_studio_budget(
 
 @router.get(
     "/studios/{studio_id}/member-budgets",
-    response_model=list[MemberBudgetRowOut],
+    response_model=list[MemberBudgetRowResponse],
 )
 async def list_studio_member_budgets(
     studio_id: UUID,
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_tool_admin),
     studio: Studio = Depends(get_studio_for_tool_admin),
-) -> list[MemberBudgetRowOut]:
+) -> list[MemberBudgetRowResponse]:
     assert studio.id == studio_id
     return await StudioMemberBudgetAdminService(session).list_member_budgets(studio_id)
 
 
 @router.patch(
     "/studios/{studio_id}/members/{user_id}/budget",
-    response_model=MemberBudgetRowOut,
+    response_model=MemberBudgetRowResponse,
 )
 async def patch_studio_member_budget(
     studio_id: UUID,
     user_id: UUID,
-    body: MemberBudgetPatch,
+    body: MemberBudgetUpdate,
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_tool_admin),
     studio: Studio = Depends(get_studio_for_tool_admin),
-) -> MemberBudgetRowOut:
+) -> MemberBudgetRowResponse:
     assert studio.id == studio_id
     return await StudioMemberBudgetAdminService(session).patch_member_budget(
         studio_id, user_id, body
     )
 
 
-@router.get("/embeddings/library", response_model=list[AdminEmbeddingLibraryStudioOut])
+@router.get("/embeddings/library", response_model=list[AdminEmbeddingLibraryStudioResponse])
 async def list_embedding_library_overview(
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_tool_admin),
-) -> list[AdminEmbeddingLibraryStudioOut]:
+) -> list[AdminEmbeddingLibraryStudioResponse]:
     return await EmbeddingAdminService(session).library_overview()
 
 
-@router.get("/embeddings/models", response_model=list[EmbeddingModelRegistryOut])
+@router.get("/embeddings/models", response_model=list[EmbeddingModelRegistryResponse])
 async def list_embedding_models(
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_tool_admin),
-) -> list[EmbeddingModelRegistryOut]:
+) -> list[EmbeddingModelRegistryResponse]:
     return await EmbeddingAdminService(session).list_models()
 
 
-@router.put("/embeddings/models/{model_id}", response_model=EmbeddingModelRegistryOut)
+@router.put("/embeddings/models/{model_id}", response_model=EmbeddingModelRegistryResponse)
 async def upsert_embedding_model(
     model_id: str,
-    body: EmbeddingModelRegistryUpsert,
+    body: EmbeddingModelRegistryUpdate,
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_tool_admin),
-) -> EmbeddingModelRegistryOut:
+) -> EmbeddingModelRegistryResponse:
     return await EmbeddingAdminService(session).upsert_model(body, model_id=model_id)
 
 
@@ -416,18 +460,18 @@ async def delete_embedding_model(
     return Response(status_code=204)
 
 
-@router.get("/embeddings/reindex-policy", response_model=EmbeddingReindexPolicyOut)
+@router.get("/embeddings/reindex-policy", response_model=EmbeddingReindexPolicyResponse)
 async def get_embedding_reindex_policy(
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_tool_admin),
-) -> EmbeddingReindexPolicyOut:
+) -> EmbeddingReindexPolicyResponse:
     return await EmbeddingAdminService(session).get_reindex_policy()
 
 
-@router.patch("/embeddings/reindex-policy", response_model=EmbeddingReindexPolicyOut)
+@router.patch("/embeddings/reindex-policy", response_model=EmbeddingReindexPolicyResponse)
 async def patch_embedding_reindex_policy(
-    body: EmbeddingReindexPolicyPatch,
+    body: EmbeddingReindexPolicyUpdate,
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_tool_admin),
-) -> EmbeddingReindexPolicyOut:
+) -> EmbeddingReindexPolicyResponse:
     return await EmbeddingAdminService(session).patch_reindex_policy(body)

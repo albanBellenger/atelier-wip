@@ -11,12 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import LlmProviderRegistry, LlmRoutingRule, StudioLlmProviderPolicy
 from app.schemas.admin_console import (
-    LlmProviderRegistryOut,
-    LlmProviderRegistryUpsert,
-    LlmRoutingRuleOut,
-    LlmRoutingRulePatch,
-    StudioLlmPolicyPatch,
-    StudioLlmPolicyRowOut,
+    LlmProviderRegistryResponse,
+    LlmProviderRegistryUpdate,
+    LlmRoutingRuleResponse,
+    LlmRoutingRuleUpdate,
+    StudioLlmPolicyUpdate,
+    StudioLlmPolicyRowResponse,
 )
 from app.services.llm_provider_logo_service import resolve_llm_provider_logo_url
 
@@ -25,12 +25,12 @@ class LlmConnectivityService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    def _row_to_out(self, row: LlmProviderRegistry) -> LlmProviderRegistryOut:
+    def _row_to_out(self, row: LlmProviderRegistry) -> LlmProviderRegistryResponse:
         try:
             models = json.loads(row.models_json or "[]")
         except json.JSONDecodeError:
             models = []
-        return LlmProviderRegistryOut(
+        return LlmProviderRegistryResponse(
             id=row.id,
             provider_key=row.provider_key,
             display_name=row.display_name,
@@ -42,7 +42,7 @@ class LlmConnectivityService:
             sort_order=row.sort_order,
         )
 
-    async def list_providers(self) -> list[LlmProviderRegistryOut]:
+    async def list_providers(self) -> list[LlmProviderRegistryResponse]:
         rows = (
             (
                 await self.db.execute(
@@ -59,8 +59,8 @@ class LlmConnectivityService:
     async def upsert_provider(
         self,
         provider_key: str,
-        body: LlmProviderRegistryUpsert,
-    ) -> LlmProviderRegistryOut:
+        body: LlmProviderRegistryUpdate,
+    ) -> LlmProviderRegistryResponse:
         pk = provider_key.strip().lower()
         row = await self.db.scalar(
             select(LlmProviderRegistry).where(LlmProviderRegistry.provider_key == pk)
@@ -107,10 +107,10 @@ class LlmConnectivityService:
         )
         await self.db.flush()
 
-    async def list_routing(self) -> list[LlmRoutingRuleOut]:
+    async def list_routing(self) -> list[LlmRoutingRuleResponse]:
         rows = (await self.db.execute(select(LlmRoutingRule))).scalars().all()
         return [
-            LlmRoutingRuleOut(
+            LlmRoutingRuleResponse(
                 use_case=r.use_case,
                 primary_model=r.primary_model,
                 fallback_model=r.fallback_model,
@@ -118,7 +118,7 @@ class LlmConnectivityService:
             for r in rows
         ]
 
-    async def put_routing(self, body: LlmRoutingRulePatch) -> list[LlmRoutingRuleOut]:
+    async def put_routing(self, body: LlmRoutingRuleUpdate) -> list[LlmRoutingRuleResponse]:
         await self.db.execute(delete(LlmRoutingRule))
         for rule in body.rules:
             self.db.add(
@@ -131,7 +131,7 @@ class LlmConnectivityService:
         await self.db.flush()
         return await self.list_routing()
 
-    async def get_studio_policy(self, studio_id: UUID) -> list[StudioLlmPolicyRowOut]:
+    async def get_studio_policy(self, studio_id: UUID) -> list[StudioLlmPolicyRowResponse]:
         rows = (
             (
                 await self.db.execute(
@@ -144,7 +144,7 @@ class LlmConnectivityService:
             .all()
         )
         return [
-            StudioLlmPolicyRowOut(
+            StudioLlmPolicyRowResponse(
                 provider_key=r.provider_key,
                 enabled=r.enabled,
                 selected_model=r.selected_model,
@@ -153,8 +153,8 @@ class LlmConnectivityService:
         ]
 
     async def put_studio_policy(
-        self, studio_id: UUID, body: StudioLlmPolicyPatch
-    ) -> list[StudioLlmPolicyRowOut]:
+        self, studio_id: UUID, body: StudioLlmPolicyUpdate
+    ) -> list[StudioLlmPolicyRowResponse]:
         await self.db.execute(
             delete(StudioLlmProviderPolicy).where(
                 StudioLlmProviderPolicy.studio_id == studio_id

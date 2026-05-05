@@ -1,10 +1,25 @@
 import { createRef } from 'react'
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
 
 import type { PatchProposalMeta } from '../../lib/sectionPatchApply'
 import type { PrivateThreadMessage } from '../../services/api'
 import { ConversationView } from './ConversationView'
+
+const mocks = vi.hoisted(() => ({
+  toastSuccess: vi.fn(),
+  toastError: vi.fn(),
+  writeText: vi.fn<(text: string) => Promise<void>>(),
+}))
+
+vi.mock('sonner', () => ({
+  toast: {
+    success: mocks.toastSuccess,
+    error: mocks.toastError,
+  },
+}))
+
+let clipboardWriteSpy: ReturnType<typeof vi.spyOn> | undefined
 
 const noop = (): void => {}
 
@@ -34,6 +49,26 @@ function renderConversation(
 }
 
 describe('ConversationView', () => {
+  // Clipboard tests use HTMLElement.click(): @testing-library/user-event does not reliably
+  // activate these buttons in jsdom; Testing Library's legacy synthetic event helper is disallowed.
+  beforeEach(() => {
+    mocks.toastSuccess.mockClear()
+    mocks.toastError.mockClear()
+    mocks.writeText.mockClear()
+    mocks.writeText.mockResolvedValue(undefined)
+    clipboardWriteSpy?.mockRestore()
+    if (!globalThis.navigator.clipboard) {
+      Object.defineProperty(globalThis.navigator, 'clipboard', {
+        value: { writeText: () => Promise.resolve() },
+        configurable: true,
+        writable: true,
+      })
+    }
+    clipboardWriteSpy = vi
+      .spyOn(globalThis.navigator.clipboard, 'writeText')
+      .mockImplementation(mocks.writeText)
+  })
+
   it('renders You and Copilot role labels for user and assistant bubbles', () => {
     const messages: PrivateThreadMessage[] = [
       {
@@ -75,6 +110,48 @@ describe('ConversationView', () => {
     renderConversation({ messages })
     const el = document.querySelector('strong')
     expect(el?.textContent).toBe('bold')
+  })
+
+  it('copies raw assistant markdown when Copy is clicked', async () => {
+    const messages: PrivateThreadMessage[] = [
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: '## Title\n\nBody **bold**.',
+        created_at: new Date().toISOString(),
+      },
+    ]
+    renderConversation({ messages })
+    screen.getByLabelText('Copy markdown').click()
+    await vi.waitFor(() => {
+      expect(mocks.writeText).toHaveBeenCalledWith('## Title\n\nBody **bold**.')
+    })
+    expect(mocks.toastSuccess).toHaveBeenCalledWith('Markdown copied')
+  })
+
+  it('copies streaming assistant markdown', async () => {
+    renderConversation({ messages: [], streaming: 'partial **md**' })
+    screen.getByLabelText('Copy markdown').click()
+    await vi.waitFor(() => {
+      expect(mocks.writeText).toHaveBeenCalledWith('partial **md**')
+    })
+  })
+
+  it('shows error toast when copy fails', async () => {
+    mocks.writeText.mockRejectedValueOnce(new Error('denied'))
+    const messages: PrivateThreadMessage[] = [
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'x',
+        created_at: new Date().toISOString(),
+      },
+    ]
+    renderConversation({ messages })
+    screen.getByLabelText('Copy markdown').click()
+    await vi.waitFor(() => {
+      expect(mocks.toastError).toHaveBeenCalledWith('Could not copy')
+    })
   })
 
   it('focus density shows Atelier Copilot and self-end user bubble', () => {

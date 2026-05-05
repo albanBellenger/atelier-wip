@@ -49,7 +49,9 @@ export default defineConfig({
   server: {
     proxy: {
       '/auth': { target: apiProxy, changeOrigin: true },
-      '/admin': { target: apiProxy, changeOrigin: true },
+      // Same pattern as /studios: browser navigations to /admin/console/* (and other /admin/* SPA
+      // routes) must receive index.html; fetches still proxy to the API (Accept: application/json).
+      '/admin': { target: apiProxy, changeOrigin: true, bypass: bypassBrowserDocumentToSpa },
       '/me': { target: apiProxy, changeOrigin: true },
       '/health': { target: apiProxy, changeOrigin: true },
       '/studios': {

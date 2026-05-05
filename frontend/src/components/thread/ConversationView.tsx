@@ -2,10 +2,35 @@ import type { ReactElement } from 'react'
 import type { RefObject } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { toast } from 'sonner'
 
 import type { PatchProposalMeta } from '../../lib/sectionPatchApply'
 import type { PrivateThreadMessage } from '../../services/api'
 import { AssistantProposalCard } from './AssistantProposalCard'
+
+async function copyMarkdownToClipboard(text: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text)
+    toast.success('Markdown copied')
+  } catch {
+    toast.error('Could not copy')
+  }
+}
+
+function CopyMarkdownButton(props: { markdown: string }): ReactElement | null {
+  const raw = props.markdown.trim()
+  if (!raw) return null
+  return (
+    <button
+      type="button"
+      onClick={() => void copyMarkdownToClipboard(raw)}
+      className="shrink-0 rounded-md border border-transparent px-2 py-0.5 text-[11px] font-medium text-zinc-500 hover:border-zinc-700 hover:bg-zinc-900/80 hover:text-zinc-300"
+      aria-label="Copy markdown"
+    >
+      Copy
+    </button>
+  )
+}
 
 export type ConversationDensity = 'compact' | 'focus'
 
@@ -131,7 +156,12 @@ export function ConversationView(props: {
         </div>
       ) : null}
       {messages.map((m: PrivateThreadMessage, i: number) => (
-        <div key={m.id} className="flex min-w-0 flex-col">
+        <div
+          key={m.id}
+          className={`flex w-full min-w-0 flex-col ${
+            m.role === 'user' ? 'items-end' : 'items-start'
+          }`}
+        >
           {m.role === 'user' ? (
             <div className="flex flex-col items-end">
               <p
@@ -154,21 +184,30 @@ export function ConversationView(props: {
               </div>
             </div>
           ) : (
-            <div className="flex flex-col items-start">
-              <p
-                className={
-                  isFocus
-                    ? 'mb-1.5 text-xs font-medium text-zinc-500'
-                    : 'mb-1 text-xs font-medium text-zinc-400'
-                }
-              >
-                {assistantLabel}
-              </p>
+            <div className="flex min-w-0 flex-col self-start">
               <div
                 className={
                   isFocus
-                    ? 'self-start max-w-[100%] rounded-2xl rounded-bl-md bg-zinc-800/60 px-5 py-3.5 text-zinc-100 ring-1 ring-zinc-800/80'
-                    : 'self-start max-w-[92%] rounded-2xl rounded-bl-md bg-zinc-800/70 px-4 py-2.5 text-zinc-100 shadow-sm'
+                    ? 'mb-1.5 flex w-full max-w-full items-center justify-between gap-2'
+                    : 'mb-1 flex w-full max-w-[92%] items-center justify-between gap-2'
+                }
+              >
+                <p
+                  className={
+                    isFocus
+                      ? 'text-xs font-medium text-zinc-500'
+                      : 'text-xs font-medium text-zinc-400'
+                  }
+                >
+                  {assistantLabel}
+                </p>
+                <CopyMarkdownButton markdown={m.content} />
+              </div>
+              <div
+                className={
+                  isFocus
+                    ? 'w-full max-w-full rounded-2xl rounded-bl-md bg-zinc-800/60 px-5 py-3.5 text-zinc-100 ring-1 ring-zinc-800/80'
+                    : 'w-full max-w-[92%] rounded-2xl rounded-bl-md bg-zinc-800/70 px-4 py-2.5 text-zinc-100 shadow-sm'
                 }
               >
                 {renderAssistantBody(m.content)}
@@ -195,20 +234,29 @@ export function ConversationView(props: {
       ))}
       {streaming && (
         <div className="flex min-w-0 flex-col items-start">
-          <p
-            className={
-              isFocus
-                ? 'mb-1.5 text-xs font-medium text-zinc-500'
-                : 'mb-1 text-xs font-medium text-zinc-400'
-            }
-          >
-            {assistantLabel}
-          </p>
           <div
             className={
               isFocus
-                ? 'self-start max-w-[100%] rounded-2xl rounded-bl-md bg-zinc-800/60 px-5 py-3.5 text-zinc-100 ring-1 ring-zinc-800/80'
-                : 'self-start max-w-[92%] rounded-2xl rounded-bl-md bg-zinc-800/70 px-4 py-2.5 text-zinc-100 shadow-sm'
+                ? 'mb-1.5 flex w-full max-w-full items-center justify-between gap-2'
+                : 'mb-1 flex w-full max-w-[92%] items-center justify-between gap-2'
+            }
+          >
+            <p
+              className={
+                isFocus
+                  ? 'text-xs font-medium text-zinc-500'
+                  : 'text-xs font-medium text-zinc-400'
+              }
+            >
+              {assistantLabel}
+            </p>
+            <CopyMarkdownButton markdown={streaming} />
+          </div>
+          <div
+            className={
+              isFocus
+                ? 'w-full max-w-full rounded-2xl rounded-bl-md bg-zinc-800/60 px-5 py-3.5 text-zinc-100 ring-1 ring-zinc-800/80'
+                : 'w-full max-w-[92%] rounded-2xl rounded-bl-md bg-zinc-800/70 px-4 py-2.5 text-zinc-100 shadow-sm'
             }
           >
             {renderAssistantBody(streaming)}

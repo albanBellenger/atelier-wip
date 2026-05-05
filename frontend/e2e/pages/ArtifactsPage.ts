@@ -1,7 +1,9 @@
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { expect, type Page } from '@playwright/test'
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const FIXTURE = path.join(__dirname, '../fixtures/rag-sample.md')
 
 /**
@@ -10,7 +12,11 @@ const FIXTURE = path.join(__dirname, '../fixtures/rag-sample.md')
  * ``/studios/<sid>/software/<swid>/projects/<pid>/artifacts``.
  */
 export class ProjectArtifactsPage {
-  constructor(private readonly page: Page) {}
+  private readonly page: Page
+
+  constructor(page: Page) {
+    this.page = page
+  }
 
   async gotoFromEnv(baseURL: string | undefined): Promise<void> {
     const target = process.env.PLAYWRIGHT_ARTIFACTS_URL

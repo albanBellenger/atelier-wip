@@ -89,6 +89,9 @@ async def test_admin_overview_and_activity_ok(
     assert ov.status_code == 200
     body = ov.json()
     assert "studios" in body
+    if body["studios"]:
+        assert "created_at" in body["studios"][0]
+        assert "description" in body["studios"][0]
     assert "mtd_spend_total_usd" in body
     assert "recent_activity" in body
     assert len(body["recent_activity"]) >= 1

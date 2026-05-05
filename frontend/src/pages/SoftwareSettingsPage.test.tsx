@@ -38,7 +38,7 @@ function mockSoftwareRow(id: string, name: string): api.Software {
   }
 }
 
-function renderSettings(path = '/studios/s1/software/sw1/settings') {
+function renderSettings(path = '/studios/s1/software/sw1/settings'): void {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <MemoryRouter initialEntries={[path]}>

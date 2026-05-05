@@ -96,15 +96,75 @@ describe('UsersSection', () => {
     const { addMemberSpy } = renderUsers()
     await screen.findByText('Member User')
     await user.click(screen.getByRole('button', { name: /add to studio/i }))
-    const emailField = await screen.findByPlaceholderText('colleague@company.com')
-    await user.type(emailField, 'new@example.com')
-    const roleSelect = screen.getByRole('combobox', { name: /role in this studio/i })
+    const manualField = screen.getByLabelText(/^Or enter email$/i)
+    await user.type(manualField, 'new@example.com')
+    const roleSelect = screen.getByRole('combobox', {
+      name: /Studio role: Owner, Builder, or Viewer/i,
+    })
     await user.selectOptions(roleSelect, 'studio_viewer')
     await user.click(screen.getByRole('button', { name: /grant access/i }))
     await waitFor(() => {
       expect(addMemberSpy).toHaveBeenCalledWith('s1', {
         email: 'new@example.com',
         role: 'studio_viewer',
+      })
+    })
+  })
+
+  it('opens Create user and calls postAdminCreateUser', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(api, 'me').mockResolvedValue({
+      user: {
+        id: 'u1',
+        email: 'admin@example.com',
+        display_name: 'Admin User',
+        is_tool_admin: true,
+      },
+      studios: [],
+      cross_studio_grants: [],
+    })
+    vi.spyOn(api, 'getAdminUsers').mockResolvedValue(sampleUsers)
+    vi.spyOn(api, 'listStudios').mockResolvedValue([
+      { id: 's1', name: 'Studio A', description: null, logo_path: null, created_at: '2026-01-01' },
+    ])
+    const createSpy = vi.spyOn(api, 'postAdminCreateUser').mockResolvedValue({
+      id: 'u-new',
+      email: 'brandnew@example.com',
+      display_name: 'Brand New',
+      is_tool_admin: false,
+    })
+    vi.spyOn(api, 'addMember').mockResolvedValue({
+      user_id: 'u3',
+      email: 'new@example.com',
+      display_name: 'New',
+      role: 'studio_member',
+      joined_at: '2026-01-20T00:00:00Z',
+    })
+    vi.spyOn(api, 'putAdminUserAdminStatus').mockResolvedValue({
+      id: 'u2',
+      email: 'member@example.com',
+      display_name: 'Member User',
+      is_tool_admin: true,
+    })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <UsersSection />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    await screen.findByText('Member User')
+    await user.click(screen.getByRole('button', { name: /^Create user$/i }))
+    await user.type(screen.getByLabelText(/^Email$/i), 'brandnew@example.com')
+    await user.type(screen.getByLabelText(/^Display name$/i), 'Brand New')
+    await user.type(screen.getByLabelText('Initial password'), 'longpass123')
+    await user.click(screen.getByRole('button', { name: /^Create account$/i }))
+    await waitFor(() => {
+      expect(createSpy).toHaveBeenCalledWith({
+        email: 'brandnew@example.com',
+        password: 'longpass123',
+        display_name: 'Brand New',
       })
     })
   })

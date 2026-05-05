@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
 from app.models import StudioMember, TokenUsage, User
-from app.schemas.admin_console import MemberBudgetPatch, MemberBudgetRowOut
+from app.schemas.admin_console import MemberBudgetUpdate, MemberBudgetRowResponse
 
 
 class StudioMemberBudgetAdminService:
@@ -26,7 +26,7 @@ class StudioMemberBudgetAdminService:
             tzinfo=timezone.utc,
         )
 
-    async def list_member_budgets(self, studio_id: UUID) -> list[MemberBudgetRowOut]:
+    async def list_member_budgets(self, studio_id: UUID) -> list[MemberBudgetRowResponse]:
         pairs = list(
             (
                 await self.db.execute(
@@ -61,11 +61,11 @@ class StudioMemberBudgetAdminService:
                 if uid is not None:
                     spent_map[uid] = Decimal(str(total))
 
-        out: list[MemberBudgetRowOut] = []
+        out: list[MemberBudgetRowResponse] = []
         for mem, usr in pairs:
             spend = spent_map.get(mem.user_id, Decimal("0"))
             out.append(
-                MemberBudgetRowOut(
+                MemberBudgetRowResponse(
                     user_id=mem.user_id,
                     email=usr.email,
                     display_name=usr.display_name,
@@ -80,8 +80,8 @@ class StudioMemberBudgetAdminService:
         self,
         studio_id: UUID,
         user_id: UUID,
-        body: MemberBudgetPatch,
-    ) -> MemberBudgetRowOut:
+        body: MemberBudgetUpdate,
+    ) -> MemberBudgetRowResponse:
         row = await self.db.get(StudioMember, (studio_id, user_id))
         if row is None:
             raise ApiError(

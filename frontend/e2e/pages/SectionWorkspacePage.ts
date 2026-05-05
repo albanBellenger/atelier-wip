@@ -2,7 +2,11 @@ import type { Page } from '@playwright/test'
 
 /** Section editor + copilot workspace (outline rail, health, thread). */
 export class SectionWorkspacePage {
-  constructor(readonly page: Page) {}
+  readonly page: Page
+
+  constructor(page: Page) {
+    this.page = page
+  }
 
   async goto(path: string): Promise<void> {
     await this.page.goto(path)

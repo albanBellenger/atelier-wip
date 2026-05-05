@@ -8,14 +8,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Studio, StudioMember, User
-from app.schemas.admin_console import AdminUserDirectoryRowOut
+from app.schemas.admin_console import AdminUserDirectoryRowResponse
 
 
 class AdminUserDirectoryService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    async def list_users(self, *, limit: int = 200, offset: int = 0) -> list[AdminUserDirectoryRowOut]:
+    async def list_users(self, *, limit: int = 200, offset: int = 0) -> list[AdminUserDirectoryRowResponse]:
         q = (
             select(User)
             .order_by(User.email)
@@ -23,7 +23,7 @@ class AdminUserDirectoryService:
             .offset(offset)
         )
         users = list((await self.db.execute(q)).scalars().all())
-        out: list[AdminUserDirectoryRowOut] = []
+        out: list[AdminUserDirectoryRowResponse] = []
         for u in users:
             memberships = (
                 (
@@ -44,7 +44,7 @@ class AdminUserDirectoryService:
                 for m in memberships
             ]
             out.append(
-                AdminUserDirectoryRowOut(
+                AdminUserDirectoryRowResponse(
                     user_id=u.id,
                     email=u.email,
                     display_name=u.display_name,

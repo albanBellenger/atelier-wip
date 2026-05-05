@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -74,7 +74,8 @@ describe('CopilotComposer', () => {
     expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled()
   })
 
-  it('⌘+Enter submits when valid', () => {
+  it('Ctrl+Enter submits when valid', async () => {
+    const user = userEvent.setup()
     const onSend = vi.fn()
     render(
       <CopilotComposer
@@ -96,7 +97,8 @@ describe('CopilotComposer', () => {
       />,
     )
     const ta = screen.getByTestId('copilot-composer-textarea')
-    fireEvent.keyDown(ta, { key: 'Enter', metaKey: true })
+    await user.click(ta)
+    await user.keyboard('{Control>}{Enter}{/Control}')
     expect(onSend).toHaveBeenCalledTimes(1)
   })
 

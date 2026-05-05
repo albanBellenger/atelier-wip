@@ -128,7 +128,7 @@ export function Preview(props: {
   onRejectSuggestion: (id: string) => void
 }): ReactElement {
   return (
-    <article className="mx-auto max-w-[760px] px-10 py-10">
+    <article className="w-full px-6 py-10">
       {props.blocks.map((b) => {
         if (b.type === 'h2') {
           return (
@@ -222,7 +222,7 @@ export function ContextView(props: {
 }): ReactElement {
   const pct = Math.min(100, Math.round((props.totalTokens / props.budget) * 100))
   return (
-    <div className="mx-auto max-w-[920px] px-8 py-8">
+    <div className="w-full px-6 py-8">
       <h2 className="font-display text-2xl font-normal text-zinc-100">
         What the copilot sees
       </h2>

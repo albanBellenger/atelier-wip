@@ -15,12 +15,13 @@ import {
   TRow,
   Avatar,
 } from '../../components/admin/adminPrimitives'
-import type { AdminUserDirectoryRow } from '../../services/api'
+import type { AdminUserDirectoryRow, RegisterRequestBody } from '../../services/api'
 import {
   addMember,
   getAdminUsers,
   listStudios,
   me,
+  postAdminCreateUser,
   putAdminUserAdminStatus,
 } from '../../services/api'
 
@@ -45,8 +46,8 @@ function initialsFromName(name: string): string {
 }
 
 function formatStudioRole(role: string): string {
-  if (role === 'studio_admin') return 'Studio admin'
-  if (role === 'studio_member') return 'Member'
+  if (role === 'studio_admin') return 'Owner'
+  if (role === 'studio_member') return 'Builder'
   if (role === 'studio_viewer') return 'Viewer'
   return role
 }
@@ -62,7 +63,9 @@ function formatJoined(iso: string | undefined): string {
   }
 }
 
-function membershipsSorted(m: AdminUserDirectoryRow['studio_memberships']) {
+function membershipsSorted(
+  m: AdminUserDirectoryRow['studio_memberships'],
+): AdminUserDirectoryRow['studio_memberships'] {
   return [...m].sort((a, b) => a.studio_name.localeCompare(b.studio_name))
 }
 
@@ -70,10 +73,143 @@ const STUDIO_ROLE_OPTIONS: {
   value: 'studio_admin' | 'studio_member' | 'studio_viewer'
   label: string
 }[] = [
-  { value: 'studio_admin', label: 'Studio admin' },
-  { value: 'studio_member', label: 'Member' },
+  { value: 'studio_admin', label: 'Owner' },
+  { value: 'studio_member', label: 'Builder' },
   { value: 'studio_viewer', label: 'Viewer' },
 ]
+
+function CreateUserDialog({
+  open,
+  onClose,
+  onSubmit,
+  isPending,
+  errorText,
+}: {
+  open: boolean
+  onClose: () => void
+  onSubmit: (body: RegisterRequestBody) => void
+  isPending: boolean
+  errorText: string | null
+}): ReactElement | null {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [displayName, setDisplayName] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+    setEmail('')
+    setPassword('')
+    setDisplayName('')
+  }, [open])
+
+  if (!open) {
+    return null
+  }
+
+  const canSubmit =
+    email.trim().length > 0 &&
+    password.length >= 8 &&
+    displayName.trim().length > 0 &&
+    !isPending
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      role="presentation"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-user-title"
+        className="w-full max-w-md rounded-lg border border-zinc-800 bg-[#0f0f10] p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="create-user-title" className="text-[15px] font-medium text-zinc-100">
+          Create user
+        </h2>
+        <p className="mt-1.5 text-[12px] leading-relaxed text-zinc-500">
+          Registers a new account in Atelier. They can sign in with this email and password. They
+          are not added to a studio until you use Add to studio.
+        </p>
+        <div className="mt-4 space-y-3">
+          <label className="block text-[11px] font-medium text-zinc-500" htmlFor="create-user-email">
+            Email
+            <input
+              id="create-user-email"
+              type="email"
+              autoComplete="off"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-950/80 px-2.5 py-2 font-mono text-[13px] text-zinc-200 outline-none focus:border-zinc-600"
+            />
+          </label>
+          <label
+            className="block text-[11px] font-medium text-zinc-500"
+            htmlFor="create-user-display"
+          >
+            Display name
+            <input
+              id="create-user-display"
+              type="text"
+              autoComplete="name"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              className="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-950/80 px-2.5 py-2 text-[13px] text-zinc-200 outline-none focus:border-zinc-600"
+            />
+          </label>
+          <label
+            className="block text-[11px] font-medium text-zinc-500"
+            htmlFor="create-user-password"
+          >
+            Initial password
+            <input
+              id="create-user-password"
+              type="password"
+              autoComplete="new-password"
+              aria-label="Initial password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-950/80 px-2.5 py-2 font-mono text-[13px] text-zinc-200 outline-none focus:border-zinc-600"
+            />
+            <span className="mt-1 block text-[11px] text-zinc-600">
+              At least 8 characters (bcrypt limit applies).
+            </span>
+          </label>
+        </div>
+        {errorText ? (
+          <p className="mt-3 text-[12px] text-rose-300" role="alert">
+            {errorText}
+          </p>
+        ) : null}
+        <div className="mt-5 flex justify-end gap-2">
+          <Btn type="button" size="sm" onClick={onClose} disabled={isPending}>
+            Cancel
+          </Btn>
+          <Btn
+            type="button"
+            size="sm"
+            tone="primary"
+            style={{ background: ADMIN_CONSOLE_ACCENT }}
+            disabled={!canSubmit}
+            onClick={() => {
+              if (!canSubmit) return
+              onSubmit({
+                email: email.trim(),
+                password,
+                display_name: displayName.trim(),
+              })
+            }}
+          >
+            {isPending ? 'Creating…' : 'Create account'}
+          </Btn>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 function AddToStudioDialog({
   open,
@@ -83,6 +219,8 @@ function AddToStudioDialog({
   errorText,
   studios,
   studiosLoading,
+  directoryUsers,
+  directoryLoading,
 }: {
   open: boolean
   onClose: () => void
@@ -95,16 +233,49 @@ function AddToStudioDialog({
   errorText: string | null
   studios: { id: string; name: string }[]
   studiosLoading: boolean
+  directoryUsers: AdminUserDirectoryRow[]
+  directoryLoading: boolean
 }): ReactElement | null {
   const [studioId, setStudioId] = useState('')
-  const [email, setEmail] = useState('')
+  const [pickEmail, setPickEmail] = useState('')
+  const [typedEmail, setTypedEmail] = useState('')
+  const [userSearch, setUserSearch] = useState('')
   const [role, setRole] = useState<'studio_admin' | 'studio_member' | 'studio_viewer'>(
     'studio_member',
   )
 
+  const usersSuggestable = useMemo(() => {
+    if (!studioId) return directoryUsers
+    return directoryUsers.filter(
+      (u) => !u.studio_memberships.some((m) => m.studio_id === studioId),
+    )
+  }, [directoryUsers, studioId])
+
+  const filteredSuggestable = useMemo(() => {
+    const q = userSearch.trim().toLowerCase()
+    if (!q) return usersSuggestable
+    return usersSuggestable.filter(
+      (u) =>
+        u.email.toLowerCase().includes(q) || u.display_name.toLowerCase().includes(q),
+    )
+  }, [usersSuggestable, userSearch])
+
+  const effectiveEmail = typedEmail.trim() || pickEmail
+
+  const pickedUser = useMemo(
+    () => directoryUsers.find((u) => u.email === pickEmail) ?? null,
+    [directoryUsers, pickEmail],
+  )
+
   useEffect(() => {
     if (!open) return
-    setEmail('')
+    setPickEmail('')
+    setTypedEmail('')
+    setUserSearch('')
+  }, [open, studioId])
+
+  useEffect(() => {
+    if (!open) return
     setRole('studio_member')
   }, [open])
 
@@ -125,10 +296,11 @@ function AddToStudioDialog({
 
   const canSubmit =
     studioId.length > 0 &&
-    email.trim().length > 0 &&
+    effectiveEmail.trim().length > 0 &&
     studios.length > 0 &&
     !isPending &&
-    !studiosLoading
+    !studiosLoading &&
+    !directoryLoading
 
   return (
     <div
@@ -173,24 +345,98 @@ function AddToStudioDialog({
               )}
             </select>
           </label>
-          <label className="block text-[11px] font-medium text-zinc-500">
-            Email
-            <input
-              type="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="colleague@company.com"
-              className="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-950/80 px-2.5 py-2 font-mono text-[13px] text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-zinc-600"
-            />
-          </label>
+          <div>
+            <span id="add-to-studio-user-label" className="block text-[11px] font-medium text-zinc-500">
+              User
+            </span>
+            {pickedUser && !typedEmail.trim() ? (
+              <div
+                className="mt-1.5 inline-flex max-w-full flex-col rounded-md border border-zinc-700 bg-zinc-900/80 px-2.5 py-1.5"
+                aria-live="polite"
+              >
+                <span className="truncate text-[13px] text-zinc-100">{pickedUser.display_name}</span>
+                <span className="truncate font-mono text-[11px] text-zinc-500">{pickedUser.email}</span>
+              </div>
+            ) : null}
+            <div
+              className="mt-1.5 overflow-hidden rounded-md border border-zinc-800 bg-zinc-950/80"
+              role="group"
+              aria-labelledby="add-to-studio-user-label"
+            >
+              <input
+                type="search"
+                value={userSearch}
+                onChange={(e) => setUserSearch(e.target.value)}
+                placeholder="Search name or email…"
+                aria-label="Search users by name or email"
+                className="w-full border-0 border-b border-zinc-800 bg-transparent px-2.5 py-1.5 text-[12px] text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-zinc-600"
+              />
+              <ul
+                className="max-h-36 overflow-y-auto py-1"
+                role="listbox"
+                aria-label="Matching users"
+              >
+                {directoryLoading ? (
+                  <li className="px-2.5 py-2 text-[12px] text-zinc-500">Loading…</li>
+                ) : filteredSuggestable.length === 0 ? (
+                  <li className="px-2.5 py-2 text-[12px] text-zinc-500">
+                    {usersSuggestable.length === 0 && directoryUsers.length > 0
+                      ? 'Everyone is already in this studio — use another studio or type an email below.'
+                      : usersSuggestable.length === 0
+                        ? 'No users in directory.'
+                        : 'No matches — try another search or type an email below.'}
+                  </li>
+                ) : (
+                  filteredSuggestable.map((u) => {
+                    const selected = pickEmail === u.email && !typedEmail.trim()
+                    return (
+                      <li key={u.user_id}>
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={selected}
+                          className={`flex w-full flex-col items-start px-2.5 py-2 text-left transition hover:bg-zinc-900/80 ${selected ? 'bg-zinc-900/80' : ''}`}
+                          onClick={() => {
+                            setPickEmail(u.email)
+                            setTypedEmail('')
+                            setUserSearch('')
+                          }}
+                        >
+                          <span className="text-[13px] text-zinc-100">{u.display_name}</span>
+                          <span className="font-mono text-[11px] text-zinc-500">{u.email}</span>
+                        </button>
+                      </li>
+                    )
+                  })
+                )}
+              </ul>
+            </div>
+            <label className="mt-2 block text-[11px] font-medium text-zinc-500" htmlFor="add-to-studio-email-manual">
+              Or enter email
+              <input
+                id="add-to-studio-email-manual"
+                type="email"
+                autoComplete="off"
+                value={typedEmail}
+                onChange={(e) => {
+                  const v = e.target.value
+                  setTypedEmail(v)
+                  if (v.trim()) {
+                    setPickEmail('')
+                  }
+                }}
+                placeholder="name@company.com"
+                className="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-950/80 px-2.5 py-2 font-mono text-[13px] text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-zinc-600"
+              />
+            </label>
+          </div>
           <label className="block text-[11px] font-medium text-zinc-500" htmlFor="add-to-studio-role">
             Role in this studio
             <select
               id="add-to-studio-role"
               className="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-950/80 px-2.5 py-2 text-[13px] text-zinc-200 outline-none focus:border-zinc-600"
               value={role}
-              aria-label="Role in this studio"
+              aria-label="Studio role: Owner, Builder, or Viewer"
               onChange={(e) =>
                 setRole(e.target.value as 'studio_admin' | 'studio_member' | 'studio_viewer')
               }
@@ -220,7 +466,7 @@ function AddToStudioDialog({
             disabled={!canSubmit}
             onClick={() => {
               if (!canSubmit) return
-              onSubmit({ studioId, email: email.trim(), role })
+              onSubmit({ studioId, email: effectiveEmail.trim(), role })
             }}
           >
             {isPending ? 'Granting…' : 'Grant access'}
@@ -237,6 +483,7 @@ export function UsersSection(): ReactElement {
   const [search, setSearch] = useState('')
   const [addToStudioOpen, setAddToStudioOpen] = useState(false)
   const [addToStudioError, setAddToStudioError] = useState<string | null>(null)
+  const [createUserOpen, setCreateUserOpen] = useState(false)
 
   const meQ = useQuery({
     queryKey: ['auth', 'me'],
@@ -287,6 +534,14 @@ export function UsersSection(): ReactElement {
     },
   })
 
+  const createUserMut = useMutation({
+    mutationFn: (body: RegisterRequestBody) => postAdminCreateUser(body),
+    onSuccess: async () => {
+      setCreateUserOpen(false)
+      await qc.invalidateQueries({ queryKey: ['admin', 'users'] })
+    },
+  })
+
   const counts = useMemo(() => {
     const list = dirQ.data ?? []
     return {
@@ -332,6 +587,18 @@ export function UsersSection(): ReactElement {
         title="Directory"
         right={
           <div className="flex flex-wrap items-center gap-2">
+            <Btn
+              type="button"
+              size="sm"
+              tone="primary"
+              style={{ background: ADMIN_CONSOLE_ACCENT }}
+              onClick={() => {
+                createUserMut.reset()
+                setCreateUserOpen(true)
+              }}
+            >
+              Create user
+            </Btn>
             <Btn
               type="button"
               size="sm"
@@ -478,8 +745,8 @@ export function UsersSection(): ReactElement {
             cols={[
               'Capability',
               'Tool admin',
-              'Studio admin',
-              'Member',
+              'Owner',
+              'Builder',
               'External',
               'Viewer',
             ]}
@@ -519,6 +786,17 @@ export function UsersSection(): ReactElement {
         </p>
       </Card>
 
+      <CreateUserDialog
+        open={createUserOpen}
+        onClose={() => {
+          setCreateUserOpen(false)
+          createUserMut.reset()
+        }}
+        onSubmit={(body) => createUserMut.mutate(body)}
+        isPending={createUserMut.isPending}
+        errorText={createUserMut.isError ? formatApiErr(createUserMut.error) : null}
+      />
+
       <AddToStudioDialog
         open={addToStudioOpen}
         onClose={() => {
@@ -537,6 +815,8 @@ export function UsersSection(): ReactElement {
         }
         studios={studiosQ.data ?? []}
         studiosLoading={studiosQ.isPending}
+        directoryUsers={dirQ.data ?? []}
+        directoryLoading={dirQ.isPending}
       />
     </div>
   )
