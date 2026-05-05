@@ -14,6 +14,10 @@ from app.schemas.auth import (
     AdminLlmProbeBody,
     UserPublic,
 )
+from app.security.field_encryption import (
+    admin_secret_suffix_hint,
+    encode_admin_stored_secret,
+)
 from app.services.embedding_pipeline import (
     enqueue_sections_missing_embeddings_after_config,
 )
@@ -46,10 +50,12 @@ class AdminService:
             llm_model=row.llm_model,
             llm_api_base_url=row.llm_api_base_url,
             llm_api_key_set=_mask(row.llm_api_key),
+            llm_api_key_hint=admin_secret_suffix_hint(row.llm_api_key),
             embedding_provider=row.embedding_provider,
             embedding_model=row.embedding_model,
             embedding_api_base_url=row.embedding_api_base_url,
             embedding_api_key_set=_mask(row.embedding_api_key),
+            embedding_api_key_hint=admin_secret_suffix_hint(row.embedding_api_key),
             embedding_dim=row.embedding_dim,
         )
 
@@ -63,6 +69,12 @@ class AdminService:
         was_embed = await embedding_configured(self.db)
         row = await self.get_or_create()
         data = body.model_dump(exclude_unset=True)
+        if "llm_api_key" in data:
+            data["llm_api_key"] = encode_admin_stored_secret(data["llm_api_key"])
+        if "embedding_api_key" in data:
+            data["embedding_api_key"] = encode_admin_stored_secret(
+                data["embedding_api_key"]
+            )
         for key, value in data.items():
             setattr(row, key, value)
         await self.db.flush()

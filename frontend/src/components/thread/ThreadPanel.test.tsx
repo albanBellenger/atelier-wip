@@ -422,7 +422,7 @@ describe('ThreadPanel', () => {
   })
 
   it('Slash /improve calls structured improve API (not chat stream)', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     HTMLElement.prototype.scrollIntoView = vi.fn()
     streamSpy.mockClear()
     const improveSpy = vi.spyOn(api, 'improveSection').mockResolvedValue({
@@ -453,7 +453,7 @@ describe('ThreadPanel', () => {
     )
 
     await user.type(
-      screen.getByPlaceholderText(/copilot/),
+      screen.getByTestId('copilot-composer-textarea'),
       '/improve tighten doc',
     )
     expect(screen.getByTestId('slash-command-chip')).toBeInTheDocument()
@@ -770,7 +770,7 @@ describe('ThreadPanel', () => {
     expect(screen.getByText('You').parentElement).toHaveClass('items-end')
   })
 
-  it('focus density uses floating composer without slash pill row and shows slash empty pills', async () => {
+  it('focus density uses floating composer with slash chips and improve summary chip', async () => {
     HTMLElement.prototype.scrollIntoView = vi.fn()
     vi.spyOn(api, 'getPrivateThread').mockResolvedValue({
       thread_id: 'th-1',
@@ -818,10 +818,14 @@ describe('ThreadPanel', () => {
     expect(card?.className).toMatch(/rounded-2xl/)
     expect(card?.className).not.toMatch(/sticky/)
     expect(
-      within(focusComposer).queryByRole('button', { name: '/improve' }),
-    ).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '/ask' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '/edit' })).toBeInTheDocument()
+      within(focusComposer).getByRole('button', { name: '/improve' }),
+    ).toBeInTheDocument()
+    expect(
+      within(focusComposer).getByRole('button', { name: '/ask' }),
+    ).toBeInTheDocument()
+    expect(
+      within(focusComposer).getByRole('button', { name: '/edit' }),
+    ).toBeInTheDocument()
   })
 
   it('focus density scrollIntoView fires on load and when messages grow', async () => {

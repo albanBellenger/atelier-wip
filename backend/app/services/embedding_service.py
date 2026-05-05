@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
 from app.models import AdminConfig, EmbeddingModelRegistry
+from app.security.field_encryption import decode_admin_stored_secret
 from app.openai_compat_urls import embeddings_url
 
 log = structlog.get_logger("atelier.embedding")
@@ -45,7 +46,7 @@ class EmbeddingService:
             model = (reg_default.model_id or "").strip()
         else:
             model = (cfg.embedding_model or "").strip()
-        key = (cfg.embedding_api_key or "").strip()
+        key = (decode_admin_stored_secret(cfg.embedding_api_key) or "").strip()
         provider = (cfg.embedding_provider or "").strip().lower()
         if not model or not key:
             raise ApiError(

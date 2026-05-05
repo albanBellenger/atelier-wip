@@ -140,7 +140,7 @@ export function StudiosSection(): ReactElement {
                     <div>
                       <div className="text-[13px] text-zinc-100">{p.name}</div>
                       <div className="text-[11px] text-zinc-500">
-                        {p.region} · {p.models.length} model{p.models.length === 1 ? '' : 's'}
+                        {p.models.length} model{p.models.length === 1 ? '' : 's'}
                       </div>
                     </div>
                   </div>

@@ -99,4 +99,73 @@ describe('BuilderTokenStrip', () => {
       screen.getByRole('heading', { name: /studio llm usage/i }),
     ).toBeInTheDocument()
   })
+
+  it('shows USD cap from builder_budget instead of fixed token scale', () => {
+    vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
+      items: [],
+      next_cursor: null,
+    })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <BuilderTokenStrip
+            report={{
+              rows: [],
+              totals: {
+                input_tokens: 1_000,
+                output_tokens: 2_000,
+                estimated_cost_usd: '0.50',
+              },
+              builder_budget: {
+                studio_id: 's1',
+                cap_monthly_usd: '100.00',
+                spent_monthly_usd: '12.50',
+              },
+            }}
+            isPending={false}
+            canSeeTokenUsage
+            billedToStudioName={null}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    expect(screen.getByText(/% of cap/)).toBeInTheDocument()
+    expect(screen.getByText(/tokens in usage log/)).toBeInTheDocument()
+    expect(screen.queryByText(/2,000,000 tokens/)).not.toBeInTheDocument()
+  })
+
+  it('shows no personal cap when builder_budget has no cap', () => {
+    vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
+      items: [],
+      next_cursor: null,
+    })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <BuilderTokenStrip
+            report={{
+              rows: [],
+              totals: {
+                input_tokens: 100,
+                output_tokens: 50,
+                estimated_cost_usd: '0',
+              },
+              builder_budget: {
+                studio_id: 's1',
+                cap_monthly_usd: null,
+                spent_monthly_usd: '3.25',
+              },
+            }}
+            isPending={false}
+            canSeeTokenUsage
+            billedToStudioName={null}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    expect(screen.getByText(/No personal cap/)).toBeInTheDocument()
+    expect(screen.getByText(/this month \(estimated\)/)).toBeInTheDocument()
+  })
 })

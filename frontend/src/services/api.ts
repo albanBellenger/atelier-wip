@@ -222,6 +222,7 @@ function appendTokenUsageParams(
   appendTokenUsageParamKey(sp, 'call_type', params.call_type)
   appendTokenUsageParamKey(sp, 'date_from', params.date_from)
   appendTokenUsageParamKey(sp, 'date_to', params.date_to)
+  appendTokenUsageParamKey(sp, 'budget_studio_id', params.budget_studio_id)
   if (params.limit !== undefined) sp.append('limit', String(params.limit))
   if (params.offset !== undefined) sp.append('offset', String(params.offset))
 }
@@ -271,6 +272,8 @@ export interface TokenUsageQueryParams {
   date_to?: string
   limit?: number
   offset?: number
+  /** Me token usage only: include MTD spend vs per-member cap for this studio. */
+  budget_studio_id?: string
 }
 
 export interface TokenUsageRow {
@@ -294,9 +297,16 @@ export interface TokenUsageTotals {
   estimated_cost_usd: string
 }
 
+export interface MeTokenUsageBuilderBudget {
+  studio_id: string
+  cap_monthly_usd: string | null
+  spent_monthly_usd: string
+}
+
 export interface TokenUsageReport {
   rows: TokenUsageRow[]
   totals: TokenUsageTotals
+  builder_budget?: MeTokenUsageBuilderBudget | null
 }
 
 export async function getAdminTokenUsage(
@@ -439,10 +449,13 @@ export interface AdminConfigPublic {
   llm_model: string | null
   llm_api_base_url: string | null
   llm_api_key_set: boolean
+  llm_api_key_hint?: string | null
   embedding_provider: string | null
   embedding_model: string | null
   embedding_api_base_url: string | null
   embedding_api_key_set: boolean
+  embedding_api_key_hint?: string | null
+  embedding_dim?: number | null
 }
 
 /** Only include fields you intend to change; omitted keys are left unchanged on the server. */
@@ -574,22 +587,19 @@ export interface LlmProviderRegistryRow {
   provider_key: string
   display_name: string
   models: string[]
-  region: string | null
   api_base_url: string | null
+  logo_url: string | null
   status: string
   is_default: boolean
-  key_preview: string | null
   sort_order: number
 }
 
 export type LlmProviderUpsertBody = {
   display_name: string
   models: string[]
-  region?: string | null
   api_base_url?: string | null
   status?: string
   is_default?: boolean
-  key_preview?: string | null
   sort_order?: number
 }
 
@@ -835,6 +845,12 @@ export interface Studio {
   budget_cap_monthly_usd?: string | null
 }
 
+export interface StudioChatLlmModels {
+  effective_model: string | null
+  workspace_default_model: string | null
+  allowed_models: string[]
+}
+
 export async function listStudios(): Promise<Studio[]> {
   return request<Studio[]>('GET', '/studios')
 }
@@ -845,6 +861,15 @@ export async function createStudio(body: StudioCreateBody): Promise<Studio> {
 
 export async function getStudio(studioId: string): Promise<Studio> {
   return request<Studio>('GET', `/studios/${studioId}`)
+}
+
+export async function getStudioChatLlmModels(
+  studioId: string,
+): Promise<StudioChatLlmModels> {
+  return request<StudioChatLlmModels>(
+    'GET',
+    `/studios/${studioId}/llm-chat-models`,
+  )
 }
 
 export async function updateStudio(

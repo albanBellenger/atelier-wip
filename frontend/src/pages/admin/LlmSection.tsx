@@ -11,7 +11,6 @@ import {
   PageTitle,
   Pill,
   ProviderGlyph,
-  RouteRule,
   StatLabel,
   Table,
   THead,
@@ -22,6 +21,7 @@ import {
   type AdminLlmProbeBody,
   type LlmProviderRegistryRow,
   type LlmProviderUpsertBody,
+  type LlmRoutingRuleRow,
   type StudioLlmPolicyRow,
   getAdminLlmDeployment,
   getAdminLlmRouting,
@@ -29,6 +29,7 @@ import {
   listStudios,
   postAdminTestLlm,
   putAdminLlmProvider,
+  putAdminLlmRouting,
   putAdminStudioLlmPolicy,
 } from '../../services/api'
 
@@ -85,6 +86,166 @@ function formatProviderMutationErr(err: unknown): string {
   return err instanceof Error ? err.message : 'Request failed'
 }
 
+const ROUTING_USE_CASE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'chat', label: 'Chat' },
+  { value: 'code_gen', label: 'Code / work order generation' },
+  { value: 'classification', label: 'Classification / drift' },
+  { value: 'embeddings', label: 'Embeddings' },
+]
+
+function sortRoutingRules(rules: LlmRoutingRuleRow[]): LlmRoutingRuleRow[] {
+  const order = ['chat', 'code_gen', 'classification', 'embeddings']
+  return [...rules].sort((a, b) => {
+    const ia = order.indexOf(a.use_case)
+    const ib = order.indexOf(b.use_case)
+    if (ia !== -1 && ib !== -1) return ia - ib
+    if (ia !== -1) return -1
+    if (ib !== -1) return 1
+    return a.use_case.localeCompare(b.use_case)
+  })
+}
+
+function routingUseCaseLabel(useCase: string): string {
+  return ROUTING_USE_CASE_OPTIONS.find((o) => o.value === useCase)?.label ?? useCase
+}
+
+function AddRoutingModal({
+  open,
+  onClose,
+  blockedUseCasesCsv,
+  onAdd,
+}: {
+  open: boolean
+  onClose: () => void
+  blockedUseCasesCsv: string
+  onAdd: (row: LlmRoutingRuleRow) => void
+}): ReactElement | null {
+  const existingKeys = blockedUseCasesCsv
+    ? blockedUseCasesCsv.split(',').filter((s) => s.length > 0)
+    : []
+  const options = ROUTING_USE_CASE_OPTIONS.filter((o) => !existingKeys.includes(o.value))
+  const [useCase, setUseCase] = useState('')
+  const [primary, setPrimary] = useState('')
+  const [fallback, setFallback] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+    const keys = blockedUseCasesCsv
+      ? blockedUseCasesCsv.split(',').filter((s) => s.length > 0)
+      : []
+    const opts = ROUTING_USE_CASE_OPTIONS.filter((o) => !keys.includes(o.value))
+    setUseCase(opts[0]?.value ?? '')
+    setPrimary('')
+    setFallback('')
+  }, [open, blockedUseCasesCsv])
+
+  if (!open) {
+    return null
+  }
+
+  const submit = (): void => {
+    const pk = primary.trim()
+    if (!useCase || !pk) return
+    onAdd({
+      use_case: useCase,
+      primary_model: pk,
+      fallback_model: fallback.trim() || null,
+    })
+    onClose()
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal
+        aria-labelledby="llm-add-routing-title"
+        className="w-full max-w-lg rounded-xl border border-zinc-800 bg-zinc-950 p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="llm-add-routing-title" className="text-[15px] font-medium text-zinc-100">
+          Add routing rule
+        </h2>
+        <p className="mt-1 text-[12px] text-zinc-500">
+          Maps a call type to a primary model and optional fallback. Models must appear on a
+          connected registry provider to take effect for studios with policy configured.
+        </p>
+        <div className="mt-4 space-y-3">
+          {options.length === 0 ? (
+            <p className="text-[13px] text-amber-300/90">
+              All built-in use cases already have a row. Remove a row below, save, then add again.
+            </p>
+          ) : (
+            <>
+              <div>
+                <StatLabel>
+                  <label htmlFor="llm-add-routing-use-case">Use case</label>
+                </StatLabel>
+                <select
+                  id="llm-add-routing-use-case"
+                  value={useCase}
+                  onChange={(e) => setUseCase(e.target.value)}
+                  className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-[13px] text-zinc-100 outline-none focus:border-zinc-600"
+                >
+                  {options.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <StatLabel>
+                  <label htmlFor="llm-add-routing-primary">Primary model ID</label>
+                </StatLabel>
+                <input
+                  id="llm-add-routing-primary"
+                  value={primary}
+                  onChange={(e) => setPrimary(e.target.value)}
+                  autoComplete="off"
+                  placeholder="e.g. gpt-4o-mini"
+                  className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[12px] text-zinc-100 outline-none focus:border-zinc-600"
+                />
+              </div>
+              <div>
+                <StatLabel>
+                  <label htmlFor="llm-add-routing-fallback">Fallback model ID (optional)</label>
+                </StatLabel>
+                <input
+                  id="llm-add-routing-fallback"
+                  value={fallback}
+                  onChange={(e) => setFallback(e.target.value)}
+                  autoComplete="off"
+                  placeholder="e.g. gpt-4o"
+                  className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[12px] text-zinc-100 outline-none focus:border-zinc-600"
+                />
+              </div>
+            </>
+          )}
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <Btn type="button" onClick={onClose}>
+            Cancel
+          </Btn>
+          <Btn
+            type="button"
+            tone="primary"
+            style={{ background: ADMIN_CONSOLE_ACCENT }}
+            disabled={options.length === 0 || !useCase || !primary.trim()}
+            onClick={submit}
+          >
+            Add rule
+          </Btn>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function AddProviderModal({
   open,
   onClose,
@@ -101,7 +262,6 @@ function AddProviderModal({
   const [providerKey, setProviderKey] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [modelsText, setModelsText] = useState('')
-  const [region, setRegion] = useState('')
   const [apiBaseUrl, setApiBaseUrl] = useState('')
   const [status, setStatus] = useState<'connected' | 'disabled' | 'needs-key'>('needs-key')
   const [isDefault, setIsDefault] = useState(false)
@@ -111,7 +271,6 @@ function AddProviderModal({
     setProviderKey('')
     setDisplayName('')
     setModelsText('')
-    setRegion('')
     setApiBaseUrl('')
     setStatus('needs-key')
     setIsDefault(false)
@@ -131,7 +290,6 @@ function AddProviderModal({
     const body: LlmProviderUpsertBody = {
       display_name: name,
       models,
-      region: region.trim() || null,
       api_base_url: apiBaseUrl.trim() || null,
       status,
       is_default: isDefault,
@@ -204,18 +362,6 @@ function AddProviderModal({
               rows={2}
               placeholder="Comma-separated, e.g. claude-sonnet-4.5, claude-haiku-4.5"
               className="mt-1.5 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
-            />
-          </div>
-          <div>
-            <StatLabel>
-              <label htmlFor="llm-add-provider-region">Region (optional)</label>
-            </StatLabel>
-            <input
-              id="llm-add-provider-region"
-              value={region}
-              onChange={(e) => setRegion(e.target.value)}
-              placeholder="e.g. EU"
-              className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-[13px] text-zinc-100 outline-none focus:border-zinc-600"
             />
           </div>
           <div>
@@ -306,11 +452,192 @@ function buildPolicyRows(
   })
 }
 
+function EditProviderModal({
+  provider,
+  onClose,
+  isPending,
+  error,
+  onSave,
+}: {
+  provider: LlmProviderRegistryRow | null
+  onClose: () => void
+  isPending: boolean
+  error?: unknown
+  onSave: (args: { providerKey: string; body: LlmProviderUpsertBody }) => void
+}): ReactElement | null {
+  const [displayName, setDisplayName] = useState('')
+  const [modelsText, setModelsText] = useState('')
+  const [apiBaseUrl, setApiBaseUrl] = useState('')
+  const [status, setStatus] = useState<'connected' | 'disabled' | 'needs-key'>('needs-key')
+  const [isDefault, setIsDefault] = useState(false)
+
+  useEffect(() => {
+    if (!provider) return
+    setDisplayName(provider.display_name)
+    setModelsText(provider.models.join(', '))
+    setApiBaseUrl(provider.api_base_url ?? '')
+    setStatus(
+      provider.status === 'connected' || provider.status === 'disabled' || provider.status === 'needs-key'
+        ? provider.status
+        : 'needs-key',
+    )
+    setIsDefault(provider.is_default)
+  }, [provider])
+
+  if (!provider) {
+    return null
+  }
+
+  const submit = (): void => {
+    const models = parseModelIds(modelsText)
+    const name = displayName.trim()
+    if (!name || models.length === 0) {
+      return
+    }
+    const body: LlmProviderUpsertBody = {
+      display_name: name,
+      models,
+      api_base_url: apiBaseUrl.trim() || null,
+      status,
+      is_default: isDefault,
+      sort_order: provider.sort_order,
+    }
+    onSave({ providerKey: provider.provider_key, body })
+  }
+
+  const errText =
+    error !== undefined && error !== null ? formatProviderMutationErr(error) : null
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal
+        aria-labelledby="llm-edit-provider-title"
+        className="w-full max-w-lg rounded-xl border border-zinc-800 bg-zinc-950 p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="llm-edit-provider-title" className="text-[15px] font-medium text-zinc-100">
+          Edit LLM provider
+        </h2>
+        <p className="mt-1 text-[12px] text-zinc-500">
+          Update registry metadata for{' '}
+          <span className="font-mono text-zinc-400">{provider.provider_key}</span>. Live inference
+          keys stay in{' '}
+          <Link className="text-violet-400 hover:underline" to="/admin/settings">
+            Tool admin settings
+          </Link>
+          .
+        </p>
+        <div className="mt-4 space-y-3">
+          <div>
+            <StatLabel>Provider key</StatLabel>
+            <input
+              readOnly
+              value={provider.provider_key}
+              className="mt-1.5 w-full cursor-not-allowed rounded-md border border-zinc-800 bg-zinc-900/50 px-3 py-2 font-mono text-[12px] text-zinc-400 outline-none"
+            />
+          </div>
+          <div>
+            <StatLabel>
+              <label htmlFor="llm-edit-provider-name">Display name</label>
+            </StatLabel>
+            <input
+              id="llm-edit-provider-name"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-[13px] text-zinc-100 outline-none focus:border-zinc-600"
+            />
+          </div>
+          <div>
+            <StatLabel>
+              <label htmlFor="llm-edit-provider-models">Model IDs</label>
+            </StatLabel>
+            <textarea
+              id="llm-edit-provider-models"
+              value={modelsText}
+              onChange={(e) => setModelsText(e.target.value)}
+              rows={2}
+              spellCheck={false}
+              className="mt-1.5 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
+            />
+          </div>
+          <div>
+            <StatLabel>
+              <label htmlFor="llm-edit-provider-api-base">API base URL (optional)</label>
+            </StatLabel>
+            <input
+              id="llm-edit-provider-api-base"
+              value={apiBaseUrl}
+              onChange={(e) => setApiBaseUrl(e.target.value)}
+              autoComplete="off"
+              className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
+            />
+          </div>
+          <div>
+            <StatLabel>
+              <label htmlFor="llm-edit-provider-status">Status</label>
+            </StatLabel>
+            <select
+              id="llm-edit-provider-status"
+              value={status}
+              onChange={(e) =>
+                setStatus(e.target.value as 'connected' | 'disabled' | 'needs-key')
+              }
+              className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-[13px] text-zinc-100 outline-none focus:border-zinc-600"
+            >
+              <option value="needs-key">Needs key</option>
+              <option value="connected">Connected</option>
+              <option value="disabled">Disabled</option>
+            </select>
+          </div>
+          <label className="flex cursor-pointer items-center gap-2 text-[12px] text-zinc-300">
+            <input
+              type="checkbox"
+              checked={isDefault}
+              onChange={(e) => setIsDefault(e.target.checked)}
+              className="rounded border-zinc-600 bg-zinc-950"
+            />
+            Mark as default provider for routing hints
+          </label>
+        </div>
+        {errText ? (
+          <p className="mt-3 text-[12px] text-rose-300" role="alert">
+            {errText}
+          </p>
+        ) : null}
+        <div className="mt-5 flex justify-end gap-2">
+          <Btn type="button" onClick={onClose} disabled={isPending}>
+            Cancel
+          </Btn>
+          <Btn
+            type="button"
+            tone="primary"
+            style={{ background: ADMIN_CONSOLE_ACCENT }}
+            disabled={
+              isPending ||
+              !displayName.trim() ||
+              parseModelIds(modelsText).length === 0
+            }
+            onClick={submit}
+          >
+            {isPending ? 'Saving…' : 'Save changes'}
+          </Btn>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function LlmSection(): ReactElement {
   const qc = useQueryClient()
   const [studioId, setStudioId] = useState('')
   const [addOpen, setAddOpen] = useState(false)
-  const [modelDrafts, setModelDrafts] = useState<Record<string, string>>({})
+  const [editingProvider, setEditingProvider] = useState<LlmProviderRegistryRow | null>(null)
 
   const studiosQ = useQuery({
     queryKey: ['studios'],
@@ -326,6 +653,47 @@ export function LlmSection(): ReactElement {
     queryKey: ['admin', 'llm', 'routing'],
     queryFn: () => getAdminLlmRouting(),
   })
+
+  const [routingDraft, setRoutingDraft] = useState<LlmRoutingRuleRow[]>([])
+  const [routingModalOpen, setRoutingModalOpen] = useState(false)
+
+  useEffect(() => {
+    if (routingQ.isSuccess && routingQ.data) {
+      setRoutingDraft(routingQ.data.map((r) => ({ ...r })))
+    }
+  }, [routingQ.isSuccess, routingQ.data])
+
+  const blockedRoutingUseCasesCsv = useMemo(
+    () => [...new Set(routingDraft.map((r) => r.use_case))].sort().join(','),
+    [routingDraft],
+  )
+
+  const saveRouting = useMutation({
+    mutationFn: (rules: LlmRoutingRuleRow[]) =>
+      putAdminLlmRouting({
+        rules: rules.map((r) => ({
+          use_case: r.use_case.trim().slice(0, 32),
+          primary_model: r.primary_model.trim(),
+          fallback_model: r.fallback_model?.trim() ? r.fallback_model.trim() : null,
+        })),
+      }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['admin', 'llm', 'routing'] })
+    },
+  })
+
+  const updateRoutingRow = useCallback(
+    (useCase: string, patch: Partial<Pick<LlmRoutingRuleRow, 'primary_model' | 'fallback_model'>>) => {
+      setRoutingDraft((prev) =>
+        prev.map((r) => (r.use_case === useCase ? { ...r, ...patch } : r)),
+      )
+    },
+    [],
+  )
+
+  const removeRoutingRow = useCallback((useCase: string) => {
+    setRoutingDraft((prev) => prev.filter((r) => r.use_case !== useCase))
+  }, [])
 
   const testLlmMut = useMutation({
     mutationFn: (body: AdminLlmProbeBody = {}) => postAdminTestLlm(body),
@@ -366,18 +734,11 @@ export function LlmSection(): ReactElement {
   const providers = deploymentQ.data?.providers ?? EMPTY_LLM_PROVIDERS
   const credentials = deploymentQ.data?.credentials
 
-  useEffect(() => {
-    const m: Record<string, string> = {}
-    for (const pr of providers) {
-      m[pr.provider_key] = pr.models.join(', ')
-    }
-    setModelDrafts(m)
-  }, [providers])
-
   const updateRegistry = useMutation({
     mutationFn: ({ key, body }: { key: string; body: LlmProviderUpsertBody }) =>
       putAdminLlmProvider(key, body),
     onSuccess: async () => {
+      setEditingProvider(null)
       await qc.invalidateQueries({ queryKey: ['admin', 'llm', 'deployment'] })
     },
   })
@@ -486,7 +847,14 @@ export function LlmSection(): ReactElement {
                   <dt className="text-[10.5px] uppercase tracking-wide text-zinc-500">API key</dt>
                   <dd className="mt-0.5 text-[13px] text-zinc-200">
                     {credentials.llm_api_key_set ? (
-                      <span className="text-emerald-400/90">Stored</span>
+                      <span>
+                        <span className="text-emerald-400/90">Stored</span>
+                        {credentials.llm_api_key_hint ? (
+                          <span className="ml-1 font-mono text-zinc-300">
+                            {credentials.llm_api_key_hint}
+                          </span>
+                        ) : null}
+                      </span>
                     ) : (
                       <span className="text-amber-400/90">Not set — configure in Tool settings</span>
                     )}
@@ -512,7 +880,7 @@ export function LlmSection(): ReactElement {
             </div>
             <Hairline className="mx-5" />
             <div className="px-5 py-4">
-              <StatLabel>Routing registry</StatLabel>
+              <StatLabel>Model registry</StatLabel>
               <p className="mt-2 text-[12px] text-zinc-500">
                 Registered providers and model IDs for routing and studio allow-lists. Keys remain in
                 Tool settings.
@@ -529,59 +897,39 @@ export function LlmSection(): ReactElement {
                       cols={[
                         'Provider',
                         'Models',
-                        'Region',
                         'API base',
-                        'API key',
                         'Last used',
                         'Status',
                         'Actions',
                       ]}
-                      grid="grid-cols-[1.05fr_1.5fr_0.45fr_1fr_0.75fr_0.45fr_0.65fr_0.9fr]"
+                      grid="grid-cols-[1.05fr_1.5fr_1fr_0.45fr_0.65fr_0.9fr]"
                     />
                     {providers.map((p) => {
                       const savingThis =
                         updateRegistry.isPending && updateRegistry.variables?.key === p.provider_key
-                      const draft = modelDrafts[p.provider_key] ?? p.models.join(', ')
                       return (
                         <TRow
                           key={p.id}
-                          grid="grid-cols-[1.05fr_1.5fr_0.45fr_1fr_0.75fr_0.45fr_0.65fr_0.9fr]"
+                          grid="grid-cols-[1.05fr_1.5fr_1fr_0.45fr_0.65fr_0.9fr]"
                         >
                           <div className="flex items-center gap-2">
-                            <ProviderGlyph name={p.display_name} />
+                            <ProviderGlyph name={p.display_name} logoUrl={p.logo_url} />
                             <span className="truncate text-[13px] text-zinc-100">{p.display_name}</span>
                             {p.is_default ? <Pill tone="violet">default</Pill> : null}
                           </div>
                           <div className="min-w-0">
-                            <label className="sr-only" htmlFor={`model-draft-${p.provider_key}`}>
-                              Model IDs for {p.display_name}
-                            </label>
-                            <textarea
-                              id={`model-draft-${p.provider_key}`}
-                              className="w-full min-h-[52px] resize-y rounded border border-zinc-800 bg-zinc-950/60 px-2 py-1 font-mono text-[10.5px] leading-snug text-zinc-300 placeholder:text-zinc-600"
-                              value={draft}
-                              onChange={(e) =>
-                                setModelDrafts((prev) => ({
-                                  ...prev,
-                                  [p.provider_key]: e.target.value,
-                                }))
-                              }
-                              spellCheck={false}
-                              rows={2}
-                            />
-                            <p className="mt-1 text-[10px] text-zinc-600">
-                              Comma or newline separated.
+                            <p
+                              className="font-mono text-[10.5px] leading-snug text-zinc-300 line-clamp-3 break-words"
+                              title={p.models.join(', ')}
+                            >
+                              {p.models.length ? p.models.join(', ') : '—'}
                             </p>
                           </div>
-                          <span className="text-[12px] text-zinc-300">{p.region ?? '—'}</span>
                           <span
                             className="truncate font-mono text-[10px] text-zinc-400"
                             title={p.api_base_url ?? undefined}
                           >
                             {p.api_base_url ?? '—'}
-                          </span>
-                          <span className="font-mono text-[11px] text-zinc-400">
-                            {p.key_preview ?? '—'}
                           </span>
                           <span className="text-[11px] text-zinc-500">—</span>
                           <span>
@@ -601,36 +949,16 @@ export function LlmSection(): ReactElement {
                               type="button"
                               size="sm"
                               disabled={savingThis || testLlmMut.isPending}
-                              onClick={() => {
-                                const models = parseModelIds(
-                                  modelDrafts[p.provider_key] ?? '',
-                                )
-                                updateRegistry.mutate({
-                                  key: p.provider_key,
-                                  body: {
-                                    display_name: p.display_name,
-                                    models,
-                                    region: p.region,
-                                    api_base_url: p.api_base_url,
-                                    status: p.status,
-                                    is_default: p.is_default,
-                                    key_preview: p.key_preview,
-                                    sort_order: p.sort_order,
-                                  },
-                                })
-                              }}
+                              onClick={() => setEditingProvider(p)}
                             >
-                              {savingThis ? 'Saving…' : 'Save'}
+                              Edit
                             </Btn>
                             <Btn
                               type="button"
                               size="sm"
                               disabled={testLlmMut.isPending || savingThis}
                               onClick={() => {
-                                const parsed = parseModelIds(
-                                  modelDrafts[p.provider_key] ?? '',
-                                )
-                                const model = parsed[0] ?? p.models[0]
+                                const model = p.models[0]
                                 const trimmedBase = p.api_base_url?.trim()
                                 const body: AdminLlmProbeBody = {}
                                 if (model) body.model = model
@@ -724,13 +1052,10 @@ export function LlmSection(): ReactElement {
                   key={p.provider_key}
                   className={`flex items-center gap-4 px-5 py-3.5 ${i > 0 ? 'border-t border-zinc-800/60' : ''}`}
                 >
-                  <ProviderGlyph name={p.display_name} />
+                  <ProviderGlyph name={p.display_name} logoUrl={p.logo_url} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="text-[13px] text-zinc-100">{p.display_name}</span>
-                      <span className="text-[11px] text-zinc-500">
-                        · {p.region ?? '—'}
-                      </span>
                       {blocked ? <Pill tone="amber">{p.status}</Pill> : null}
                     </div>
                     <div className="mt-0.5 truncate font-mono text-[11px] text-zinc-500">
@@ -763,27 +1088,121 @@ export function LlmSection(): ReactElement {
         )}
       </Card>
 
-      <Card title="Routing & fallback policy">
-        <div className="space-y-3 px-5 py-4 text-[13px] text-zinc-300">
+      <Card
+        title="Routing & fallback policy"
+        right={
+          <Btn
+            type="button"
+            tone="primary"
+            aria-label="Add routing rule"
+            style={{ background: ADMIN_CONSOLE_ACCENT }}
+            onClick={() => setRoutingModalOpen(true)}
+          >
+            + Add routing
+          </Btn>
+        }
+      >
+        <div className="space-y-4 px-5 py-4">
+          <p className="text-[12px] leading-relaxed text-zinc-500">
+            Primary and fallback model IDs are resolved against the routing registry and studio
+            policy. Empty fallback means only the primary is considered for that use case.
+          </p>
           {routingQ.isLoading ? (
-            <p className="text-zinc-500">Loading routing…</p>
-          ) : routingQ.data?.length ? (
-            routingQ.data.map((r) => (
-              <RouteRule
-                key={r.use_case}
-                label={r.use_case.replace(/_/g, ' ')}
-                model={r.primary_model}
-                fallback={r.fallback_model ?? '—'}
-              />
-            ))
+            <p className="text-[13px] text-zinc-500">Loading routing…</p>
           ) : (
-            <p className="text-zinc-500">
-              No routing rules configured. Add rows via{' '}
-              <span className="font-mono text-zinc-400">PUT /admin/llm/routing</span>.
-            </p>
+            <>
+              {sortRoutingRules(routingDraft).map((r) => (
+                <div
+                  key={r.use_case}
+                  className="grid grid-cols-1 gap-3 rounded-md border border-zinc-800 bg-zinc-950/40 p-4 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end"
+                >
+                  <div>
+                    <StatLabel>Use case</StatLabel>
+                    <div className="mt-1.5 text-[13px] text-zinc-200">{routingUseCaseLabel(r.use_case)}</div>
+                    <div className="mt-0.5 font-mono text-[10.5px] text-zinc-500">{r.use_case}</div>
+                  </div>
+                  <div>
+                    <StatLabel>
+                      <label htmlFor={`llm-routing-primary-${r.use_case}`}>Primary model</label>
+                    </StatLabel>
+                    <input
+                      id={`llm-routing-primary-${r.use_case}`}
+                      value={r.primary_model}
+                      onChange={(e) =>
+                        updateRoutingRow(r.use_case, { primary_model: e.target.value })
+                      }
+                      spellCheck={false}
+                      className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
+                    />
+                  </div>
+                  <div>
+                    <StatLabel>
+                      <label htmlFor={`llm-routing-fallback-${r.use_case}`}>Fallback model</label>
+                    </StatLabel>
+                    <input
+                      id={`llm-routing-fallback-${r.use_case}`}
+                      value={r.fallback_model ?? ''}
+                      onChange={(e) =>
+                        updateRoutingRow(r.use_case, {
+                          fallback_model: e.target.value === '' ? null : e.target.value,
+                        })
+                      }
+                      spellCheck={false}
+                      placeholder="Optional"
+                      className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
+                    />
+                  </div>
+                  <div className="flex sm:justify-end">
+                    <Btn
+                      type="button"
+                      size="sm"
+                      disabled={saveRouting.isPending}
+                      onClick={() => removeRoutingRow(r.use_case)}
+                    >
+                      Remove
+                    </Btn>
+                  </div>
+                </div>
+              ))}
+              {routingDraft.length === 0 ? (
+                <p className="text-[13px] text-zinc-500">
+                  No routing rules yet. Use <span className="font-medium text-zinc-400">+ Add routing</span>{' '}
+                  to map a use case to a primary model (and optional fallback), then save.
+                </p>
+              ) : null}
+              {saveRouting.isError ? (
+                <p className="text-[12px] text-rose-300" role="alert">
+                  {formatProviderMutationErr(saveRouting.error)}
+                </p>
+              ) : null}
+              <div className="flex flex-wrap justify-end gap-2 border-t border-zinc-800/60 pt-4">
+                <Btn
+                  type="button"
+                  tone="primary"
+                  style={{ background: ADMIN_CONSOLE_ACCENT }}
+                  disabled={
+                    saveRouting.isPending ||
+                    routingDraft.some((row) => !row.primary_model.trim())
+                  }
+                  onClick={() => saveRouting.mutate(routingDraft)}
+                >
+                  {saveRouting.isPending ? 'Saving…' : 'Save routing'}
+                </Btn>
+              </div>
+            </>
           )}
         </div>
       </Card>
+      <AddRoutingModal
+        open={routingModalOpen}
+        onClose={() => setRoutingModalOpen(false)}
+        blockedUseCasesCsv={blockedRoutingUseCasesCsv}
+        onAdd={(row) => {
+          setRoutingDraft((prev) =>
+            sortRoutingRules([...prev.filter((x) => x.use_case !== row.use_case), row]),
+          )
+        }}
+      />
       <AddProviderModal
         open={addOpen}
         onClose={() => {
@@ -793,6 +1212,26 @@ export function LlmSection(): ReactElement {
         isPending={addProvider.isPending}
         error={addProvider.isError ? addProvider.error : undefined}
         onRegister={(args) => addProvider.mutate(args)}
+      />
+      <EditProviderModal
+        provider={editingProvider}
+        onClose={() => {
+          setEditingProvider(null)
+          updateRegistry.reset()
+        }}
+        isPending={
+          updateRegistry.isPending &&
+          updateRegistry.variables?.key === editingProvider?.provider_key
+        }
+        error={
+          updateRegistry.isError &&
+          updateRegistry.variables?.key === editingProvider?.provider_key
+            ? updateRegistry.error
+            : undefined
+        }
+        onSave={({ providerKey, body }) =>
+          updateRegistry.mutate({ key: providerKey, body })
+        }
       />
     </div>
   )

@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import { useState, type ButtonHTMLAttributes, type ReactNode } from 'react'
 
 export const ADMIN_CONSOLE_ACCENT = '#8b5cf6'
 
@@ -265,15 +265,40 @@ export function Segmented<K extends string>({
   )
 }
 
-export function ProviderGlyph({ name }: { name: string }): React.ReactElement {
+export function ProviderGlyph({
+  name,
+  logoUrl,
+}: {
+  name: string
+  logoUrl?: string | null
+}): React.ReactElement {
+  const [imgFailed, setImgFailed] = useState(false)
   const initials = name
     .split(' ')
     .map((w) => w[0])
+    .filter(Boolean)
     .slice(0, 2)
     .join('')
+  const trimmed = logoUrl?.trim()
+  if (trimmed && !imgFailed) {
+    return (
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded border border-zinc-800 bg-zinc-950">
+        <img
+          src={trimmed}
+          alt=""
+          width={28}
+          height={28}
+          className="h-full w-full object-contain p-0.5"
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setImgFailed(true)}
+        />
+      </span>
+    )
+  }
   return (
     <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-zinc-800 bg-zinc-950 font-mono text-[10px] text-zinc-300">
-      {initials}
+      {initials || '?'}
     </span>
   )
 }
@@ -324,13 +349,15 @@ export function KpiTile({
 }: {
   label: string
   value: ReactNode
-  sub: string
+  sub?: string
 }): React.ReactElement {
   return (
     <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
       <StatLabel>{label}</StatLabel>
       <div className="mt-2 font-mono text-[24px] tabular-nums text-zinc-100 lg:text-[26px]">{value}</div>
-      <div className="mt-1 text-[11px] text-zinc-500">{sub}</div>
+      {sub != null && sub !== '' ? (
+        <div className="mt-1 text-[11px] text-zinc-500">{sub}</div>
+      ) : null}
     </div>
   )
 }

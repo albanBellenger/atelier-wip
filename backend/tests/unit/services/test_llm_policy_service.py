@@ -52,7 +52,6 @@ async def test_resolve_matches_routing_and_studio_policy(db_session: AsyncSessio
             provider_key="openai",
             display_name="OpenAI",
             models_json=json.dumps(["gpt-4o-mini", "gpt-4o"]),
-            region="US",
             status="connected",
             is_default=True,
             sort_order=0,
@@ -77,6 +76,93 @@ async def test_resolve_matches_routing_and_studio_policy(db_session: AsyncSessio
     pol = LlmPolicyService(db_session)
     m = await pol.resolve_effective_model(studio_id=sid, call_type="chat")
     assert m == "gpt-4o-mini"
+
+
+@pytest.mark.asyncio
+async def test_resolve_skips_disconnected_registry_provider(
+    db_session: AsyncSession,
+) -> None:
+    sid = uuid.uuid4()
+    db_session.add(
+        Studio(id=sid, name="S", budget_overage_action="pause_generations")
+    )
+    cfg = await db_session.get(AdminConfig, 1)
+    if cfg is None:
+        cfg = AdminConfig(id=1, llm_model="gpt-4o-mini", llm_api_key="sk-test")
+        db_session.add(cfg)
+    else:
+        cfg.llm_model = "gpt-4o-mini"
+        cfg.llm_api_key = "sk-test"
+    db_session.add(
+        LlmProviderRegistry(
+            id=uuid.uuid4(),
+            provider_key="openai",
+            display_name="OpenAI",
+            models_json=json.dumps(["gpt-4o-mini", "gpt-4o"]),
+            status="disconnected",
+            is_default=True,
+            sort_order=0,
+        )
+    )
+    db_session.add(
+        LlmRoutingRule(
+            use_case="chat",
+            primary_model="gpt-4o-mini",
+            fallback_model=None,
+        )
+    )
+    await db_session.flush()
+    pol = LlmPolicyService(db_session)
+    assert await pol.resolve_effective_model(studio_id=sid, call_type="chat") is None
+
+
+@pytest.mark.asyncio
+async def test_studio_chat_llm_models_lists_connected_policy_models_only(
+    db_session: AsyncSession,
+) -> None:
+    sid = uuid.uuid4()
+    db_session.add(
+        Studio(id=sid, name="S", budget_overage_action="pause_generations")
+    )
+    cfg = await db_session.get(AdminConfig, 1)
+    if cfg is None:
+        cfg = AdminConfig(id=1, llm_model="gpt-4o-mini", llm_api_key="sk-test")
+        db_session.add(cfg)
+    else:
+        cfg.llm_model = "gpt-4o-mini"
+        cfg.llm_api_key = "sk-test"
+    db_session.add(
+        LlmProviderRegistry(
+            id=uuid.uuid4(),
+            provider_key="openai",
+            display_name="OpenAI",
+            models_json=json.dumps(["gpt-4o-mini", "gpt-4o"]),
+            status="connected",
+            is_default=True,
+            sort_order=0,
+        )
+    )
+    db_session.add(
+        LlmRoutingRule(
+            use_case="chat",
+            primary_model="gpt-4o-mini",
+            fallback_model="gpt-4o",
+        )
+    )
+    db_session.add(
+        StudioLlmProviderPolicy(
+            studio_id=sid,
+            provider_key="openai",
+            enabled=True,
+            selected_model="gpt-4o-mini",
+        )
+    )
+    await db_session.flush()
+    pol = LlmPolicyService(db_session)
+    out = await pol.studio_chat_llm_models(sid)
+    assert out.effective_model == "gpt-4o-mini"
+    assert out.allowed_models == ["gpt-4o-mini"]
+    assert out.workspace_default_model == "gpt-4o-mini"
 
 
 @pytest.mark.asyncio
@@ -142,7 +228,7 @@ async def test_assert_builder_budget_blocks_when_over_cap(db_session: AsyncSessi
     with pytest.raises(ApiError) as exc:
         await pol.assert_builder_budget(studio.id, user.id)
     assert exc.value.status_code == 402
-    assert exc.value.code == "BUILDER_BUDGET_EXCEEDED"
+    assert exc.value.error_code == "BUILDER_BUDGET_EXCEEDED"
 
 
 @pytest.mark.asyncio
@@ -208,4 +294,4 @@ async def test_assert_studio_budget_pause_blocks_over_cap(db_session: AsyncSessi
     with pytest.raises(ApiError) as exc:
         await pol.assert_studio_budget(studio.id)
     assert exc.value.status_code == 402
-    assert exc.value.code == "STUDIO_BUDGET_EXCEEDED"
+    assert exc.value.error_code == "STUDIO_BUDGET_EXCEEDED"

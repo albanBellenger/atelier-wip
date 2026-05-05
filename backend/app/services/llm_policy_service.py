@@ -21,6 +21,7 @@ from app.models import (
     TokenUsage,
 )
 from app.schemas.studio_budget_overage import StudioBudgetOverageAction
+from app.schemas.studio_llm_public import StudioChatLlmModelsOut
 
 
 def use_case_for_call_type(call_type: str) -> str:
@@ -33,6 +34,20 @@ def use_case_for_call_type(call_type: str) -> str:
     if "embed" in ct:
         return "embeddings"
     return "chat"
+
+
+def _registry_connected(pr: LlmProviderRegistry) -> bool:
+    return (pr.status or "").strip().lower() == "connected"
+
+
+def _models_from_registry_row(pr: LlmProviderRegistry) -> list[str]:
+    try:
+        raw = json.loads(pr.models_json or "[]")
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(raw, list):
+        return []
+    return [str(m) for m in raw if isinstance(m, str) and m.strip()]
 
 
 class LlmPolicyService:
@@ -84,11 +99,9 @@ class LlmPolicyService:
 
         def provider_for_model(model_name: str) -> str | None:
             for pr in providers:
-                try:
-                    models = json.loads(pr.models_json or "[]")
-                except json.JSONDecodeError:
-                    models = []
-                if model_name in models:
+                if not _registry_connected(pr):
+                    continue
+                if model_name in _models_from_registry_row(pr):
                     return pr.provider_key
             return None
 
@@ -107,6 +120,79 @@ class LlmPolicyService:
                 pass
             return cand
         return None
+
+    async def studio_chat_llm_models(self, studio_id: UUID) -> StudioChatLlmModelsOut:
+        """Models allowed for chat in this studio (connected registry + policy / routing)."""
+        effective = await self.resolve_effective_model(
+            studio_id=studio_id,
+            call_type="chat",
+        )
+        cfg = await self.db.get(AdminConfig, 1)
+        workspace_default = (
+            (cfg.llm_model or "").strip() or None if cfg is not None else None
+        )
+
+        providers_all = list(
+            (await self.db.execute(select(LlmProviderRegistry))).scalars().all()
+        )
+        policy_rows = list(
+            (
+                await self.db.execute(
+                    select(StudioLlmProviderPolicy).where(
+                        StudioLlmProviderPolicy.studio_id == studio_id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        has_any_policy = len(policy_rows) > 0
+
+        allowed: list[str] = []
+        seen: set[str] = set()
+
+        def add_allowed(m: str | None) -> None:
+            if not m:
+                return
+            t = m.strip()
+            if not t or t in seen:
+                return
+            seen.add(t)
+            allowed.append(t)
+
+        if has_any_policy:
+            prov_by_key = {p.provider_key: p for p in providers_all}
+            for pol in policy_rows:
+                if not pol.enabled:
+                    continue
+                sm = (pol.selected_model or "").strip()
+                if not sm:
+                    continue
+                pr = prov_by_key.get(pol.provider_key)
+                if pr is None or not _registry_connected(pr):
+                    continue
+                if sm in _models_from_registry_row(pr):
+                    add_allowed(sm)
+        else:
+            routing = await self.db.get(LlmRoutingRule, "chat")
+            if routing is not None:
+                candidates: list[str] = []
+                if routing.primary_model.strip():
+                    candidates.append(routing.primary_model.strip())
+                if routing.fallback_model and routing.fallback_model.strip():
+                    candidates.append(routing.fallback_model.strip())
+                connected = [p for p in providers_all if _registry_connected(p)]
+                for cand in candidates:
+                    for pr in connected:
+                        if cand in _models_from_registry_row(pr):
+                            add_allowed(cand)
+                            break
+
+        return StudioChatLlmModelsOut(
+            effective_model=effective,
+            workspace_default_model=workspace_default,
+            allowed_models=allowed,
+        )
 
     async def assert_studio_budget(self, studio_id: UUID) -> None:
         st = await self.db.get(Studio, studio_id)

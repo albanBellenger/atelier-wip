@@ -40,20 +40,24 @@ export function OverviewSection(): ReactElement {
 
   const mtdTotal = live ? Number.parseFloat(live.mtd_spend_total_usd || '0') : totalSpendMock
   const studioCount = live ? live.studios.length : STUDIOS.length
+  const softwareTotal = live
+    ? live.studios.reduce((acc, r) => acc + r.software_count, 0)
+    : STUDIOS.reduce((acc, s) => acc + s.software, 0)
   const budgetSum = live
     ? live.studios.reduce((acc, r) => acc + Number.parseFloat(r.budget_cap_monthly_usd || '0'), 0)
     : totalBudgetMock
 
+  const studioWord = studioCount === 1 ? 'studio' : 'studios'
+
   const tiles = [
     {
-      label: 'Studios',
-      value: studioCount,
-      sub: live ? `${studioCount} total` : `${STUDIOS.length} configured`,
+      label: 'Software',
+      value: softwareTotal,
+      sub: `of ${studioCount} ${studioWord}`,
     },
     {
       label: 'Active builders',
       value: live ? live.active_builders_count : activeUsersMock,
-      sub: `${BUILDERS.filter((b) => b.status === 'invited').length} pending invites`,
     },
     {
       label: 'Spend MTD',

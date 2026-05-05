@@ -5,7 +5,9 @@ import { useRef, useState } from 'react'
 import {
   type AuthErrorBody,
   createMarkdownArtifact,
+  createSoftwareMarkdownArtifact,
   uploadArtifact,
+  uploadSoftwareArtifact,
 } from '../../services/api'
 
 function formatApiDetail(err: unknown): string {
@@ -21,6 +23,8 @@ export type ArtifactQuickUploadVariant = 'header' | 'full'
 export function ArtifactQuickUpload(props: {
   softwareId: string
   projectId: string
+  /** Where new files are stored: project library vs software-wide library. */
+  uploadTarget?: 'project' | 'software'
   canUpload: boolean
   variant: ArtifactQuickUploadVariant
   /** When set, invalidates the studio-wide artifact list after upload. */
@@ -29,6 +33,7 @@ export function ArtifactQuickUpload(props: {
   const {
     softwareId,
     projectId,
+    uploadTarget = 'project',
     canUpload,
     variant,
     studioIdForListInvalidation,
@@ -53,7 +58,10 @@ export function ArtifactQuickUpload(props: {
   }
 
   const uploadMut = useMutation({
-    mutationFn: (file: File) => uploadArtifact(projectId, file),
+    mutationFn: (file: File) =>
+      uploadTarget === 'software'
+        ? uploadSoftwareArtifact(softwareId, file)
+        : uploadArtifact(projectId, file),
     onSuccess: () => {
       invalidateArtifactQueries()
     },
@@ -61,10 +69,15 @@ export function ArtifactQuickUpload(props: {
 
   const mdMut = useMutation({
     mutationFn: () =>
-      createMarkdownArtifact(projectId, {
-        name: mdName.trim() || 'Untitled.md',
-        content: mdBody,
-      }),
+      uploadTarget === 'software'
+        ? createSoftwareMarkdownArtifact(softwareId, {
+            name: mdName.trim() || 'Untitled.md',
+            content: mdBody,
+          })
+        : createMarkdownArtifact(projectId, {
+            name: mdName.trim() || 'Untitled.md',
+            content: mdBody,
+          }),
     onSuccess: () => {
       setMdName('')
       setMdBody('')

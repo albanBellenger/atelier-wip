@@ -76,6 +76,7 @@ export function SoftwareArtifactsSection(props: {
               <ArtifactQuickUpload
                 softwareId={softwareId}
                 projectId={defaultProjectId}
+                uploadTarget="software"
                 canUpload
                 variant="full"
                 studioIdForListInvalidation={studioId}

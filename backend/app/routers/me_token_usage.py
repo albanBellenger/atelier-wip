@@ -1,18 +1,20 @@
 """Routes under ``/me`` (outside ``/auth`` prefix)."""
 
-from datetime import date
+from datetime import date, datetime, time, timezone
+from decimal import Decimal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import Response
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import get_current_user, resolve_studio_access_for_software
 from app.exceptions import ApiError
-from app.models import Project, Studio, StudioMember, User, WorkOrder
+from app.models import Project, Studio, StudioMember, TokenUsage, User, WorkOrder
 from app.schemas.token_usage_report import (
+    MeTokenUsageBuilderBudgetOut,
     TokenUsageReportOut,
     TokenUsageRowOut,
     TokenUsageTotalsOut,
@@ -171,6 +173,13 @@ async def me_token_usage(
     call_type: list[str] | None = Query(None),
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
+    budget_studio_id: UUID | None = Query(
+        None,
+        description=(
+            "When set, include ``builder_budget``: this month's estimated spend "
+            "for you in that studio vs your per-member monthly USD cap."
+        ),
+    ),
     limit: int = Query(100, ge=1, le=5000),
     offset: int = Query(0, ge=0),
 ):
@@ -219,6 +228,31 @@ async def me_token_usage(
             },
         )
     tin, tout, cost = totals
+    builder_budget_out: MeTokenUsageBuilderBudgetOut | None = None
+    if budget_studio_id is not None:
+        await _validate_studio_filters(session, user, [budget_studio_id])
+        mem = await session.get(StudioMember, (budget_studio_id, user.id))
+        cap_val: Decimal | None = (
+            mem.budget_cap_monthly_usd if mem is not None else None
+        )
+        month_start = datetime.combine(
+            date.today().replace(day=1),
+            time.min,
+            tzinfo=timezone.utc,
+        )
+        spent_raw = await session.scalar(
+            select(func.coalesce(func.sum(TokenUsage.estimated_cost_usd), 0)).where(
+                TokenUsage.studio_id == budget_studio_id,
+                TokenUsage.user_id == user.id,
+                TokenUsage.created_at >= month_start,
+            )
+        )
+        spent_val = Decimal(str(spent_raw or 0))
+        builder_budget_out = MeTokenUsageBuilderBudgetOut(
+            studio_id=budget_studio_id,
+            cap_monthly_usd=cap_val,
+            spent_monthly_usd=spent_val,
+        )
     return TokenUsageReportOut(
         rows=[TokenUsageRowOut.model_validate(r) for r in rows],
         totals=TokenUsageTotalsOut(
@@ -226,4 +260,5 @@ async def me_token_usage(
             output_tokens=tout,
             estimated_cost_usd=cost,
         ),
+        builder_budget=builder_budget_out,
     )

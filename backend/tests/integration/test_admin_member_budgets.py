@@ -84,10 +84,21 @@ async def test_member_budgets_tool_admin_list_patch(
     assert cr.status_code == 200
     studio_id = cr.json()["id"]
 
-    await client.post(
+    mem_reg = await client.post(
+        "/auth/register",
+        json={
+            "email": mem_email,
+            "password": "securepass123",
+            "display_name": "Member",
+        },
+    )
+    assert mem_reg.status_code == 200
+
+    add_mem = await client.post(
         f"/studios/{studio_id}/members",
         json={"email": mem_email, "role": "studio_member"},
     )
+    assert add_mem.status_code == 200
 
     unknown_studio = uuid.uuid4()
     nf = await client.get(f"/admin/studios/{unknown_studio}/member-budgets")

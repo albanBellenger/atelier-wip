@@ -5,7 +5,10 @@ import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 
 import { SOFTWARE_COMPOSER_DRAFT_STATE_KEY } from '../../lib/softwareComposerNav'
-import { postBuilderComposerHint } from '../../services/api'
+import {
+  getStudioChatLlmModels,
+  postBuilderComposerHint,
+} from '../../services/api'
 import type { MeResponse } from '../../services/api'
 
 export type BuilderHomeComposerProps = {
@@ -48,6 +51,14 @@ export function BuilderHomeComposer({
       }),
     enabled: Boolean(softwareId && canSeeComposerHint),
     staleTime: 15 * 60_000,
+    retry: 1,
+  })
+
+  const modelsQ = useQuery({
+    queryKey: ['studios', studioId, 'llm-chat-models'],
+    queryFn: () => getStudioChatLlmModels(studioId),
+    enabled: Boolean(studioId),
+    staleTime: 60_000,
     retry: 1,
   })
 
@@ -118,6 +129,43 @@ export function BuilderHomeComposer({
     return `${firstName}, you're building ${softwareName}.`
   }, [firstName, headline, hintQ.isPending, projectName, softwareName])
 
+  const { modelLabel, modelTitle } = useMemo(() => {
+    if (modelsQ.isPending) {
+      return {
+        modelLabel: 'Model · …',
+        modelTitle: 'Loading models from workspace…',
+      }
+    }
+    if (modelsQ.isError || !modelsQ.data) {
+      return {
+        modelLabel: 'Model · —',
+        modelTitle: 'Could not load workspace models.',
+      }
+    }
+    const d = modelsQ.data
+    const eff = d.effective_model?.trim()
+    const fallback = d.workspace_default_model?.trim()
+    const allowed = d.allowed_models.filter((m) => m.trim().length > 0)
+    const primary = eff || fallback
+    if (primary) {
+      const rest =
+        allowed.length > 0
+          ? ` Allowed (connected providers): ${allowed.join(', ')}.`
+          : ''
+      return {
+        modelLabel: `Model · ${primary}`,
+        modelTitle: `Effective chat model for this studio.${rest}`,
+      }
+    }
+    return {
+      modelLabel: 'Model · not configured',
+      modelTitle:
+        allowed.length > 0
+          ? `No routing override; connected models: ${allowed.join(', ')}.`
+          : 'No connected LLM provider model is configured for chat in this studio.',
+    }
+  }, [modelsQ.data, modelsQ.isError, modelsQ.isPending])
+
   return (
     <div className="pb-8">
       <div className="mb-3 text-[13px] text-zinc-500">{subline}</div>
@@ -169,19 +217,8 @@ export function BuilderHomeComposer({
             ) : null}
           </div>
           <div className="flex min-w-0 items-center gap-3 text-[11px] text-zinc-500">
-            <span className="truncate" title="Uses workspace default model">
-              Model · default
-            </span>
-            <span
-              className="inline-flex h-6 w-6 shrink-0 items-end justify-center gap-px opacity-40"
-              aria-hidden
-              title="Voice input is not available yet"
-            >
-              <span className="h-2 w-0.5 rounded-sm bg-zinc-400" />
-              <span className="h-4 w-0.5 rounded-sm bg-zinc-400" />
-              <span className="h-3 w-0.5 rounded-sm bg-zinc-400" />
-              <span className="h-5 w-0.5 rounded-sm bg-zinc-400" />
-              <span className="h-2 w-0.5 rounded-sm bg-zinc-400" />
+            <span className="truncate" title={modelTitle}>
+              {modelLabel}
             </span>
           </div>
         </div>

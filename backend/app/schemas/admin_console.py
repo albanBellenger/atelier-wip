@@ -49,22 +49,19 @@ class LlmProviderRegistryOut(BaseModel):
     provider_key: str
     display_name: str
     models: list[str]
-    region: str | None
     api_base_url: str | None
+    logo_url: str | None = None
     status: str
     is_default: bool
-    key_preview: str | None
     sort_order: int
 
 
 class LlmProviderRegistryUpsert(BaseModel):
     display_name: str = Field(min_length=1, max_length=255)
     models: list[str] = Field(min_length=1)
-    region: str | None = None
     api_base_url: str | None = Field(default=None, max_length=512)
     status: str = "connected"
     is_default: bool = False
-    key_preview: str | None = None
     sort_order: int = 0
 
 

@@ -100,4 +100,89 @@ describe('ArtifactQuickUpload', () => {
       })
     })
   })
+
+  it('submits markdown via createSoftwareMarkdownArtifact when uploadTarget is software', async () => {
+    const user = userEvent.setup()
+    const projectMdSpy = vi.spyOn(api, 'createMarkdownArtifact')
+    const mdSpy = vi
+      .spyOn(api, 'createSoftwareMarkdownArtifact')
+      .mockResolvedValue({
+        id: 'a1',
+        project_id: null,
+        name: 'notes.md',
+        file_type: 'md',
+        size_bytes: 10,
+        uploaded_by: null,
+        created_at: '',
+        scope_level: 'software',
+      })
+
+    renderWithClient(
+      <ArtifactQuickUpload
+        softwareId="sw1"
+        projectId="p1"
+        uploadTarget="software"
+        canUpload
+        variant="full"
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /^new markdown$/i }))
+    await user.type(screen.getByLabelText(/markdown name/i), 'notes.md')
+    await user.type(screen.getByLabelText(/markdown body/i), '# Hello')
+    await user.click(screen.getByRole('button', { name: /^save markdown$/i }))
+
+    await vi.waitFor(() => {
+      expect(mdSpy).toHaveBeenCalledWith('sw1', {
+        name: 'notes.md',
+        content: '# Hello',
+      })
+    })
+    expect(projectMdSpy).not.toHaveBeenCalled()
+  })
+
+  it('uploads file via uploadSoftwareArtifact when uploadTarget is software', async () => {
+    const user = userEvent.setup()
+    const upSpy = vi.spyOn(api, 'uploadSoftwareArtifact').mockResolvedValue({
+      id: 'a2',
+      project_id: null,
+      name: 'doc.pdf',
+      file_type: 'pdf',
+      size_bytes: 4,
+      uploaded_by: null,
+      created_at: '',
+      scope_level: 'software',
+    })
+    const projectUpSpy = vi.spyOn(api, 'uploadArtifact')
+
+    const { container } = render(
+      <QueryClientProvider
+        client={
+          new QueryClient({
+            defaultOptions: {
+              queries: { retry: false },
+              mutations: { retry: false },
+            },
+          })
+        }
+      >
+        <ArtifactQuickUpload
+          softwareId="sw1"
+          projectId="p1"
+          uploadTarget="software"
+          canUpload
+          variant="full"
+        />
+      </QueryClientProvider>,
+    )
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File(['%PDF'], 'doc.pdf', { type: 'application/pdf' })
+    await user.upload(input, file)
+
+    await vi.waitFor(() => {
+      expect(upSpy).toHaveBeenCalledWith('sw1', file)
+    })
+    expect(projectUpSpy).not.toHaveBeenCalled()
+  })
 })

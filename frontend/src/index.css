@@ -4,6 +4,7 @@
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Instrument Serif", "Inter", ui-serif, Georgia, serif;
+  --font-display: "Instrument Serif", "Inter", ui-serif, Georgia, serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
@@ -15,6 +16,24 @@ body {
 
 #root {
   min-height: 100svh;
+}
+
+.outline-editor-shell {
+  scrollbar-width: thin;
+  scrollbar-color: #27272a transparent;
+}
+
+.outline-editor-shell::-webkit-scrollbar {
+  width: 10px;
+}
+
+.outline-editor-shell::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 8px;
+}
+
+.outline-editor-shell::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
 }
 
 /* Section workspace: body sans, code/pre mono (outline editor shell). */

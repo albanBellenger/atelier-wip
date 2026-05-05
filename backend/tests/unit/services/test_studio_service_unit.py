@@ -39,6 +39,7 @@ async def test_list_studios_tool_admin_queries_all() -> None:
         description=None,
         logo_path=None,
         created_at=now,
+        budget_cap_monthly_usd=None,
     )
     result = MagicMock()
     result.all.return_value = [row]

@@ -148,10 +148,12 @@ export function apiCoverageHandlers(): RequestHandler[] {
     llm_model: null,
     llm_api_base_url: null,
     llm_api_key_set: false,
+    llm_api_key_hint: null,
     embedding_provider: null,
     embedding_model: null,
     embedding_api_base_url: null,
     embedding_api_key_set: false,
+    embedding_api_key_hint: null,
   }
 
   const connectivity: Api.AdminConnectivityResult = {

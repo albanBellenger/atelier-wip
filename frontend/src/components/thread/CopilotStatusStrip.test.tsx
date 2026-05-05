@@ -27,7 +27,7 @@ describe('CopilotStatusStrip', () => {
     await user.click(screen.getByRole('button', { name: /2 drift/ }))
     expect(onTab).toHaveBeenCalledWith('critique')
     await user.click(screen.getByRole('button', { name: /1 gap/ }))
-    expect(onTab).toHaveBeenCalledWith('chat')
+    expect(onTab).toHaveBeenLastCalledWith('critique')
     await user.click(screen.getByRole('button', { name: /2k\/8k tok/ }))
     expect(onTab).toHaveBeenCalledWith('context')
   })

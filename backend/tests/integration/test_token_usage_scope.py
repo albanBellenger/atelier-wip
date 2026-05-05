@@ -6,10 +6,10 @@ from decimal import Decimal
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
-from sqlalchemy import text
+from sqlalchemy import text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import TokenUsage
+from app.models import StudioMember, TokenUsage
 from tests.integration.test_work_orders import _studio_project_with_sections
 
 
@@ -310,3 +310,83 @@ async def test_me_token_usage_project_and_work_order_filters_and_404s(
     assert csv_proj.status_code == 200
     assert "text/csv" in (csv_proj.headers.get("content-type") or "").lower()
     assert csv_proj.text.count("\n") >= 3
+
+
+@pytest.mark.asyncio
+async def test_me_token_usage_budget_studio_id_cap_and_spend(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token_owner = await _register(client, sfx, "budown")
+    client.cookies.set("atelier_token", token_owner)
+    studio_a = (
+        await client.post("/studios", json={"name": f"Bud{sfx}", "description": ""})
+    ).json()["id"]
+
+    token_m = await _register(client, sfx, "budmember")
+    client.cookies.set("atelier_token", token_owner)
+    add_m = await client.post(
+        f"/studios/{studio_a}/members",
+        json={"email": f"budmember-{sfx}@example.com", "role": "studio_member"},
+    )
+    assert add_m.status_code == 200
+
+    client.cookies.set("atelier_token", token_m)
+    uid_m = (await client.get("/auth/me")).json()["user"]["id"]
+
+    await db_session.execute(
+        update(StudioMember)
+        .where(
+            StudioMember.studio_id == uuid.UUID(studio_a),
+            StudioMember.user_id == uuid.UUID(uid_m),
+        )
+        .values(budget_cap_monthly_usd=Decimal("100.00"))
+    )
+    await db_session.flush()
+
+    db_session.add(
+        TokenUsage(
+            studio_id=uuid.UUID(studio_a),
+            software_id=None,
+            project_id=None,
+            user_id=uuid.UUID(uid_m),
+            call_type="chat",
+            model="gpt-test",
+            input_tokens=10,
+            output_tokens=20,
+            estimated_cost_usd=Decimal("12.500000"),
+        ),
+    )
+    await db_session.flush()
+
+    client.cookies.set("atelier_token", token_m)
+    plain = await client.get("/me/token-usage", params={"limit": 10})
+    assert plain.status_code == 200
+    assert plain.json().get("builder_budget") is None
+
+    with_budget = await client.get(
+        "/me/token-usage",
+        params={"limit": 10, "budget_studio_id": studio_a},
+    )
+    assert with_budget.status_code == 200
+    bb = with_budget.json()["builder_budget"]
+    assert bb is not None
+    assert bb["studio_id"] == studio_a
+    assert Decimal(str(bb["spent_monthly_usd"])) == Decimal("12.5")
+    assert Decimal(str(bb["cap_monthly_usd"])) == Decimal("100")
+
+    token_out = await _register(client, sfx, "budoutsider")
+    client.cookies.set("atelier_token", token_out)
+    denied_bb = await client.get(
+        "/me/token-usage",
+        params={"limit": 10, "budget_studio_id": studio_a},
+    )
+    assert denied_bb.status_code == 403
+
+    client.cookies.set("atelier_token", token_m)
+    nf_bb = await client.get(
+        "/me/token-usage",
+        params={"limit": 10, "budget_studio_id": str(uuid.uuid4())},
+    )
+    assert nf_bb.status_code == 404

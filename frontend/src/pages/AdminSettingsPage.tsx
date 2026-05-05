@@ -146,6 +146,8 @@ export function AdminSettingsPage(): ReactElement {
 
   const llmKeySet = configQ.data?.llm_api_key_set ?? false
   const embedKeySet = configQ.data?.embedding_api_key_set ?? false
+  const llmKeyHint = configQ.data?.llm_api_key_hint
+  const embedKeyHint = configQ.data?.embedding_api_key_hint
 
   return (
     <div className="min-h-screen bg-zinc-950 px-4 py-10 text-zinc-100">
@@ -168,8 +170,11 @@ export function AdminSettingsPage(): ReactElement {
         <p className="mt-2 text-sm text-zinc-400">
           OpenAI-compatible LLM and embedding configuration. Use provider{' '}
           <span className="font-mono text-zinc-300">openai</span> (or leave empty) and optional API
-          base URLs for non-default hosts. API keys are never shown after save; leave blank to keep
-          the stored key, or use &quot;Remove stored key&quot; to clear.
+          base URLs for non-default hosts. API keys are encrypted at rest (Fernet) when{' '}
+          <span className="font-mono text-zinc-300">ENCRYPTION_KEY</span> is set. The full key is
+          never sent to the browser; when a key is stored you see a short suffix hint (like the
+          visible model id). Leave &quot;New API key&quot; blank to keep the stored key, or use
+          &quot;Remove stored key&quot; to clear.
         </p>
 
         {configQ.isPending && (
@@ -227,7 +232,13 @@ export function AdminSettingsPage(): ReactElement {
               <p className="text-xs text-zinc-500">
                 API key:{' '}
                 {llmKeySet ? (
-                  <span className="text-zinc-400">A key is stored.</span>
+                  <span className="text-zinc-400">
+                    A key is stored
+                    {llmKeyHint ? (
+                      <span className="font-mono text-zinc-300"> ({llmKeyHint})</span>
+                    ) : null}
+                    .
+                  </span>
                 ) : (
                   <span className="text-zinc-500">Not set.</span>
                 )}
@@ -323,7 +334,13 @@ export function AdminSettingsPage(): ReactElement {
               <p className="text-xs text-zinc-500">
                 API key:{' '}
                 {embedKeySet ? (
-                  <span className="text-zinc-400">A key is stored.</span>
+                  <span className="text-zinc-400">
+                    A key is stored
+                    {embedKeyHint ? (
+                      <span className="font-mono text-zinc-300"> ({embedKeyHint})</span>
+                    ) : null}
+                    .
+                  </span>
                 ) : (
                   <span className="text-zinc-500">Not set.</span>
                 )}

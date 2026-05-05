@@ -16,6 +16,7 @@ import { DocsUserGuidePage } from './pages/DocsUserGuidePage'
 import { HomePage } from './pages/HomePage'
 import { MeProfilePage } from './pages/MeProfilePage'
 import { NotificationSettingsPage } from './pages/NotificationSettingsPage'
+import { OutlineEditorPage } from './pages/OutlineEditorPage'
 import { ArtifactLibraryPage } from './pages/ArtifactLibraryPage'
 import { ArtifactsPage } from './pages/ArtifactsPage'
 import { WorkOrdersPage } from './pages/WorkOrdersPage'
@@ -40,6 +41,7 @@ function App(): ReactElement {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/changelog" element={<ChangelogPage />} />
+        <Route path="/ui/outline-editor" element={<OutlineEditorPage />} />
         <Route path="/docs/builder" element={<DocsUserGuidePage />} />
         <Route path="/auth" element={<AuthPage />} />
         <Route path="/me/profile" element={<MeProfilePage />} />

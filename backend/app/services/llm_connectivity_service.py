@@ -18,6 +18,7 @@ from app.schemas.admin_console import (
     StudioLlmPolicyPatch,
     StudioLlmPolicyRowOut,
 )
+from app.services.llm_provider_logo_service import resolve_llm_provider_logo_url
 
 
 class LlmConnectivityService:
@@ -34,11 +35,10 @@ class LlmConnectivityService:
             provider_key=row.provider_key,
             display_name=row.display_name,
             models=models if isinstance(models, list) else [],
-            region=row.region,
             api_base_url=row.api_base_url,
+            logo_url=row.logo_url,
             status=row.status,
             is_default=row.is_default,
-            key_preview=row.key_preview,
             sort_order=row.sort_order,
         )
 
@@ -69,13 +69,16 @@ class LlmConnectivityService:
         if row:
             row.display_name = body.display_name
             row.models_json = payload
-            row.region = body.region
             api_raw = body.api_base_url.strip() if body.api_base_url else ""
             row.api_base_url = api_raw or None
             row.status = body.status
             row.is_default = body.is_default
-            row.key_preview = body.key_preview
             row.sort_order = body.sort_order
+            await self.db.flush()
+            row.logo_url = resolve_llm_provider_logo_url(
+                provider_key=pk,
+                api_base_url=row.api_base_url,
+            )
             await self.db.flush()
             return self._row_to_out(row)
         api_raw = body.api_base_url.strip() if body.api_base_url else ""
@@ -84,14 +87,17 @@ class LlmConnectivityService:
             provider_key=pk,
             display_name=body.display_name,
             models_json=payload,
-            region=body.region,
             api_base_url=api_raw or None,
             status=body.status,
             is_default=body.is_default,
-            key_preview=body.key_preview,
             sort_order=body.sort_order,
         )
         self.db.add(ent)
+        await self.db.flush()
+        ent.logo_url = resolve_llm_provider_logo_url(
+            provider_key=pk,
+            api_base_url=ent.api_base_url,
+        )
         await self.db.flush()
         return self._row_to_out(ent)
 

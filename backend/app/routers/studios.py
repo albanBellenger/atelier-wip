@@ -41,6 +41,7 @@ from app.schemas.studio import (
     StudioResponse,
     StudioUpdate,
 )
+from app.schemas.studio_llm_public import StudioChatLlmModelsOut
 from app.services.artifact_service import ArtifactService
 from app.services.cross_studio_service import CrossStudioService
 from app.services import embedding_pipeline as embed_pipeline
@@ -49,6 +50,7 @@ from app.services.project_service import ProjectService
 from app.services.software_activity_service import SoftwareActivityService
 from app.services.studio_service import StudioService
 from app.services.token_usage_query_service import TokenUsageQueryService
+from app.services.llm_policy_service import LlmPolicyService
 from app.storage.minio_storage import get_storage_client
 
 router = APIRouter(prefix="/studios", tags=["studios"])
@@ -74,6 +76,18 @@ async def create_studio(
     user: User = Depends(get_current_user),
 ) -> StudioResponse:
     return await StudioService(session).create_studio(user, body)
+
+
+@router.get(
+    "/{studio_id}/llm-chat-models",
+    response_model=StudioChatLlmModelsOut,
+)
+async def studio_llm_chat_models(
+    studio_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    access: StudioAccess = Depends(get_studio_access),
+) -> StudioChatLlmModelsOut:
+    return await LlmPolicyService(session).studio_chat_llm_models(access.studio_id)
 
 
 @router.get(

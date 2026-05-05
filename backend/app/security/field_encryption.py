@@ -52,3 +52,35 @@ def decrypt_secret(ciphertext: str | None) -> str | None:
         return f.decrypt(ciphertext.encode("ascii")).decode("utf-8")
     except InvalidToken:
         return None
+
+
+def decode_admin_stored_secret(stored: str | None) -> str | None:
+    """Return plaintext for tool-admin API keys (Fernet at rest or legacy plaintext)."""
+    if stored is None or str(stored).strip() == "":
+        return None
+    s = str(stored).strip()
+    if fernet_configured():
+        dec = decrypt_secret(s)
+        if dec is not None:
+            return dec
+    return s
+
+
+def encode_admin_stored_secret(plain: str | None) -> str | None:
+    """Persist tool-admin API keys with Fernet when configured; else store plaintext (dev only)."""
+    if plain is None or str(plain).strip() == "":
+        return None
+    p = str(plain).strip()
+    if not fernet_configured():
+        return p
+    enc = encrypt_secret(p)
+    return enc if enc is not None else p
+
+
+def admin_secret_suffix_hint(stored: str | None) -> str | None:
+    """Safe UI hint (last 4 chars); never the full secret."""
+    plain = decode_admin_stored_secret(stored)
+    if not plain:
+        return None
+    tail = plain[-4:] if len(plain) >= 4 else plain
+    return f"…{tail}"

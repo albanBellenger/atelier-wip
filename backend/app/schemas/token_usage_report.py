@@ -32,6 +32,15 @@ class TokenUsageTotalsOut(BaseModel):
     )
 
 
+class MeTokenUsageBuilderBudgetOut(BaseModel):
+    """MTD estimated spend vs optional per-member cap (same basis as LLM enforcement)."""
+
+    studio_id: UUID
+    cap_monthly_usd: Decimal | None = None
+    spent_monthly_usd: Decimal = Field(default_factory=lambda: Decimal("0"))
+
+
 class TokenUsageReportOut(BaseModel):
     rows: list[TokenUsageRowOut]
     totals: TokenUsageTotalsOut
+    builder_budget: MeTokenUsageBuilderBudgetOut | None = None

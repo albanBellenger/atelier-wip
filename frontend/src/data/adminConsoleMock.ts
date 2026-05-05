@@ -62,10 +62,8 @@ export type DeploymentProviderRow = {
   id: string
   name: string
   models: string[]
-  region: string
   status: ProviderStatus
   default: boolean
-  keyPreview: string
   lastUsed: string
 }
 
@@ -75,60 +73,48 @@ export const DEPLOYMENT_PROVIDERS: DeploymentProviderRow[] = [
     id: 'anthropic',
     name: 'Anthropic',
     models: ['claude-sonnet-4.5', 'claude-opus-4.1', 'claude-haiku-4.5'],
-    region: 'EU/US',
     status: 'connected',
     default: true,
-    keyPreview: 'sk-ant-…7f2a',
     lastUsed: '2m ago',
   },
   {
     id: 'openai',
     name: 'OpenAI',
     models: ['gpt-4.1', 'gpt-4o', 'o3-mini'],
-    region: 'US',
     status: 'connected',
     default: false,
-    keyPreview: 'sk-proj-…91be',
     lastUsed: '14m ago',
   },
   {
     id: 'mistral',
     name: 'Mistral',
     models: ['mistral-large-2', 'codestral-2'],
-    region: 'EU',
     status: 'connected',
     default: false,
-    keyPreview: 'ms-…04dd',
     lastUsed: '1h ago',
   },
   {
     id: 'google',
     name: 'Google Vertex',
     models: ['gemini-2.5-pro', 'gemini-2.5-flash'],
-    region: 'US',
     status: 'disabled',
     default: false,
-    keyPreview: '—',
     lastUsed: '—',
   },
   {
     id: 'azure',
     name: 'Azure OpenAI',
     models: ['gpt-4.1 (azure)'],
-    region: 'EU',
     status: 'needs-key',
     default: false,
-    keyPreview: '—',
     lastUsed: '—',
   },
   {
     id: 'selfhost',
     name: 'Self-hosted vLLM',
     models: ['llama-3.3-70b', 'qwen-2.5-coder-32b'],
-    region: 'On-prem',
     status: 'connected',
     default: false,
-    keyPreview: 'internal',
     lastUsed: 'yesterday',
   },
 ]

@@ -141,7 +141,6 @@ async def test_admin_put_llm_provider_optional_api_base_url(
         json={
             "display_name": "Custom EU",
             "models": ["gpt-4o-mini"],
-            "region": "EU",
             "api_base_url": "https://eu.example.com/v1",
             "status": "connected",
         },
@@ -150,6 +149,8 @@ async def test_admin_put_llm_provider_optional_api_base_url(
     body = put.json()
     assert body["provider_key"] == "custom_eu"
     assert body["api_base_url"] == "https://eu.example.com/v1"
+    assert body.get("logo_url") is not None
+    assert "eu.example.com" in body["logo_url"]
 
     listed = await client.get("/admin/llm/providers")
     assert listed.status_code == 200
@@ -157,6 +158,121 @@ async def test_admin_put_llm_provider_optional_api_base_url(
     match = next((x for x in rows if x["provider_key"] == "custom_eu"), None)
     assert match is not None
     assert match["api_base_url"] == "https://eu.example.com/v1"
+    assert match.get("logo_url") is not None
+
+
+@pytest.mark.asyncio
+async def test_admin_put_llm_routing_tool_admin_ok(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    admin_email = f"rt-admin-{sfx}@example.com"
+    r = await client.post(
+        "/auth/register",
+        json={
+            "email": admin_email,
+            "password": "securepass123",
+            "display_name": "TA",
+        },
+    )
+    assert r.status_code == 200
+    from sqlalchemy import update
+
+    from app.models import User
+
+    await db_session.execute(
+        update(User).where(User.email == admin_email.lower()).values(is_tool_admin=True)
+    )
+    await db_session.flush()
+
+    r_login = await client.post(
+        "/auth/login",
+        json={"email": admin_email, "password": "securepass123"},
+    )
+    assert r_login.status_code == 200
+    tok = r_login.cookies.get("atelier_token")
+    assert tok
+    client.cookies.set("atelier_token", tok)
+
+    put = await client.put(
+        "/admin/llm/routing",
+        json={
+            "rules": [
+                {
+                    "use_case": "chat",
+                    "primary_model": "gpt-4o-mini",
+                    "fallback_model": "gpt-4o",
+                },
+                {
+                    "use_case": "code_gen",
+                    "primary_model": "gpt-4o",
+                    "fallback_model": None,
+                },
+            ]
+        },
+    )
+    assert put.status_code == 200
+    body = put.json()
+    assert isinstance(body, list)
+    assert len(body) == 2
+    by_uc = {x["use_case"]: x for x in body}
+    assert by_uc["chat"]["primary_model"] == "gpt-4o-mini"
+    assert by_uc["chat"]["fallback_model"] == "gpt-4o"
+    assert by_uc["code_gen"]["primary_model"] == "gpt-4o"
+    assert by_uc["code_gen"]["fallback_model"] is None
+
+    listed = await client.get("/admin/llm/routing")
+    assert listed.status_code == 200
+    rows = listed.json()
+    assert len(rows) == 2
+
+
+@pytest.mark.asyncio
+async def test_admin_put_llm_routing_forbidden_for_member(client: AsyncClient) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    admin_email = f"rt2-admin-{sfx}@example.com"
+    member_email = f"rt2-mem-{sfx}@example.com"
+    await client.post(
+        "/auth/register",
+        json={
+            "email": admin_email,
+            "password": "securepass123",
+            "display_name": "TA",
+        },
+    )
+    await client.post(
+        "/auth/register",
+        json={
+            "email": member_email,
+            "password": "securepass123",
+            "display_name": "Mem",
+        },
+    )
+    r_login = await client.post(
+        "/auth/login",
+        json={"email": member_email, "password": "securepass123"},
+    )
+    assert r_login.status_code == 200
+    tok = r_login.cookies.get("atelier_token")
+    assert tok
+    client.cookies.set("atelier_token", tok)
+    denied = await client.put(
+        "/admin/llm/routing",
+        json={
+            "rules": [
+                {"use_case": "chat", "primary_model": "gpt-4o-mini", "fallback_model": None},
+            ]
+        },
+    )
+    assert denied.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_admin_llm_routing_get_unauthenticated_401(client: AsyncClient) -> None:
+    client.cookies.clear()
+    r = await client.get("/admin/llm/routing")
+    assert r.status_code == 401
 
 
 @pytest.mark.asyncio

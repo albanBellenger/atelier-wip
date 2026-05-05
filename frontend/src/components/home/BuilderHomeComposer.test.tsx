@@ -29,6 +29,18 @@ function editorProfile(): MeResponse {
   }
 }
 
+function mswLlmChatModelsOk() {
+  return http.get(
+    'http://api.test/studios/:studioId/llm-chat-models',
+    async () =>
+      HttpResponse.json({
+        effective_model: 'gpt-4o-mini',
+        workspace_default_model: 'gpt-4o-mini',
+        allowed_models: ['gpt-4o-mini'],
+      }),
+  )
+}
+
 describe('BuilderHomeComposer', () => {
   beforeAll(() => {
     vi.stubEnv('VITE_API_BASE_URL', 'http://api.test')
@@ -41,6 +53,7 @@ describe('BuilderHomeComposer', () => {
   it('navigates to software chat with draft on Enter when editor', async () => {
     const user = userEvent.setup()
     mswServer.use(
+      mswLlmChatModelsOk(),
       http.post('http://api.test/me/builder-composer-hint', async () =>
         HttpResponse.json({
           headline: 'Ready when you are.',
@@ -88,6 +101,7 @@ describe('BuilderHomeComposer', () => {
 
   it('viewer does not see Enter-to-chat hint and cannot type', async () => {
     mswServer.use(
+      mswLlmChatModelsOk(),
       http.post('http://api.test/me/builder-composer-hint', async () =>
         HttpResponse.json({
           headline: 'Hello.',
@@ -127,6 +141,7 @@ describe('BuilderHomeComposer', () => {
     const user = userEvent.setup()
     const toastSpy = vi.spyOn(sonner.toast, 'message').mockImplementation(() => 'id')
     mswServer.use(
+      mswLlmChatModelsOk(),
       http.post('http://api.test/me/builder-composer-hint', async () =>
         HttpResponse.json({
           headline: 'H',
@@ -167,5 +182,37 @@ describe('BuilderHomeComposer', () => {
     await waitFor(() => expect(toastSpy).toHaveBeenCalled())
     expect(screen.queryByTestId('x')).not.toBeInTheDocument()
     toastSpy.mockRestore()
+  })
+
+  it('shows chat model label from studio LLM models API', async () => {
+    mswServer.use(
+      mswLlmChatModelsOk(),
+      http.post('http://api.test/me/builder-composer-hint', async () =>
+        HttpResponse.json({
+          headline: 'Hi',
+          input_placeholder: 'Ask…',
+        }),
+      ),
+    )
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <BuilderHomeComposer
+            profile={editorProfile()}
+            studioId="s1"
+            softwareId="sw1"
+            projectId={null}
+            projectName={null}
+            softwareName="SW"
+            canUseSoftwareChat
+            canSeeComposerHint
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    await waitFor(() =>
+      expect(screen.getByText(/^Model · gpt-4o-mini$/)).toBeInTheDocument(),
+    )
   })
 })

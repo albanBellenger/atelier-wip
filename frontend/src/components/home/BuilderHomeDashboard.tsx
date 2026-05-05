@@ -191,8 +191,13 @@ export function BuilderHomeDashboard({
   }, [otherProjectIds, otherWorkOrderQueries, projects])
   const canToken = userCanSeeMeTokenUsage(profile)
   const { data: tokenReport, isPending: tokenPending } = useQuery({
-    queryKey: ['me', 'token-usage', 'home'],
-    queryFn: () => getMeTokenUsage({ limit: 5000, offset: 0 }),
+    queryKey: ['me', 'token-usage', 'home', studioId ?? 'none'],
+    queryFn: () =>
+      getMeTokenUsage({
+        limit: 5000,
+        offset: 0,
+        ...(studioId ? { budget_studio_id: studioId } : {}),
+      }),
     enabled: canToken,
     retry: false,
   })

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.exceptions import ApiError
 from app.models import AdminConfig
 from app.openai_compat_urls import chat_completions_url
+from app.security.field_encryption import decode_admin_stored_secret
 from app.schemas.auth import AdminConnectivityResult
 from app.schemas.token_context import TokenContext
 from app.services.embedding_service import EmbeddingService
@@ -148,7 +149,7 @@ class LLMService:
         )
         model_raw = override if override else (row.llm_model or "")
         model = model_raw.strip()
-        key = (row.llm_api_key or "").strip()
+        key = (decode_admin_stored_secret(row.llm_api_key) or "").strip()
         prov = (row.llm_provider or "").strip().lower()
         if not model or not key:
             log.warning(
@@ -193,7 +194,7 @@ class LLMService:
                 message="Tool Admin must configure LLM provider, model, and API key.",
             )
         model = (row.llm_model or "").strip()
-        key = (row.llm_api_key or "").strip()
+        key = (decode_admin_stored_secret(row.llm_api_key) or "").strip()
         prov = (row.llm_provider or "").strip().lower()
         if not model or not key:
             log.warning(
@@ -492,7 +493,7 @@ class LLMService:
             self.db.add(row)
             await self.db.flush()
         model = (model_override or "").strip() or (row.llm_model or "").strip()
-        key = (row.llm_api_key or "").strip()
+        key = (decode_admin_stored_secret(row.llm_api_key) or "").strip()
         prov = (row.llm_provider or "").strip().lower()
         if not model or not key:
             return AdminConnectivityResult(

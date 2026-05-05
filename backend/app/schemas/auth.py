@@ -100,10 +100,12 @@ class AdminConfigResponse(BaseModel):
     llm_model: str | None
     llm_api_base_url: str | None
     llm_api_key_set: bool
+    llm_api_key_hint: str | None = None
     embedding_provider: str | None
     embedding_model: str | None
     embedding_api_base_url: str | None
     embedding_api_key_set: bool
+    embedding_api_key_hint: str | None = None
     embedding_dim: int | None = None
 
 

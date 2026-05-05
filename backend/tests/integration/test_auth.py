@@ -8,6 +8,8 @@ from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models import AdminConfig
+
 
 @pytest_asyncio.fixture(autouse=True)
 async def _empty_user_table_for_bootstrap(db_session: AsyncSession) -> None:
@@ -80,6 +82,46 @@ async def test_auth_register_admin_member_rbac_and_login_errors(
     )
     assert bad.status_code == 401
     assert bad.json()["code"] == "INVALID_CREDENTIALS"
+
+
+@pytest.mark.asyncio
+async def test_admin_put_llm_api_key_encrypted_at_rest_get_returns_suffix_hint(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """Fernet at rest for admin LLM key; GET returns a safe suffix hint, not the secret."""
+    sfx = uuid.uuid4().hex[:8]
+    email = f"adm-{sfx}@example.com"
+    reg = await client.post(
+        "/auth/register",
+        json={
+            "email": email,
+            "password": "securepass123",
+            "display_name": "Tool Admin",
+        },
+    )
+    assert reg.status_code == 200, reg.text
+    client.cookies.set("atelier_token", reg.cookies.get("atelier_token"))
+    secret = "sk-rotated-TESTKEYabcd"
+    put = await client.put(
+        "/admin/config",
+        json={
+            "llm_provider": "openai",
+            "llm_model": "gpt-4o-mini",
+            "llm_api_key": secret,
+        },
+    )
+    assert put.status_code == 200, put.text
+    out = put.json()
+    assert out["llm_api_key_set"] is True
+    assert out["llm_api_key_hint"] == "…abcd"
+    row = await db_session.get(AdminConfig, 1)
+    assert row is not None
+    assert row.llm_api_key is not None
+    assert not str(row.llm_api_key).startswith("sk-")
+    get = await client.get("/admin/config")
+    assert get.status_code == 200
+    assert get.json()["llm_api_key_hint"] == "…abcd"
 
 
 @pytest.mark.asyncio
