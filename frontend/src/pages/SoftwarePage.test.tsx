@@ -158,11 +158,10 @@ describe('SoftwarePage', () => {
     expect(
       screen.getByRole('heading', { name: /^software definition$/i }),
     ).toBeInTheDocument()
-    const defEdit = screen.getByRole('link', { name: /^edit$/i })
-    expect(defEdit).toHaveAttribute(
-      'href',
-      '/studios/s1/software/sw1/settings',
-    )
+    expect(screen.queryByRole('link', { name: /^edit$/i })).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /^software chat$/i }),
+    ).toBeInTheDocument()
     const defPre = screen
       .getByRole('heading', { name: /^software definition$/i })
       .closest('section')

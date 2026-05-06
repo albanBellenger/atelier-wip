@@ -18,6 +18,7 @@ from app.schemas.software_chat import (
 )
 from app.services.auth_service import AuthService
 from app.schemas.token_context import TokenContext
+from app.services.chat_history_window import HISTORY_TRIM_NOTICE
 from app.services.llm_service import LLMService
 from app.services.software_chat_room_registry import (
     broadcast_json,
@@ -136,6 +137,8 @@ async def software_chat_websocket(
             if isinstance(raw_m, str) and raw_m.strip():
                 preferred_model = raw_m.strip()
 
+            trim_notice_msg = None
+            trimmed_for_stream: list[dict[str, str]] = []
             try:
                 async with async_session_factory() as session:
                     probe_ctx = TokenContext(
@@ -155,6 +158,21 @@ async def software_chat_websocket(
                         role="user",
                         content=content,
                     )
+                    hist = await svc.openai_messages_for_software(software_id)
+                    llm_trim = LLMService(session)
+                    trimmed_for_stream, trimmed = await llm_trim.trim_chat_messages_for_stream(
+                        hist,
+                        context=probe_ctx,
+                        call_type="chat",
+                        preferred_model=preferred_model,
+                    )
+                    if trimmed:
+                        trim_notice_msg = await svc.append_message(
+                            software_id=software_id,
+                            user_id=None,
+                            role="assistant",
+                            content=HISTORY_TRIM_NOTICE,
+                        )
                     await session.commit()
             except ApiError as e:
                 det = e.detail
@@ -177,6 +195,18 @@ async def software_chat_websocket(
                 },
             )
 
+            if trim_notice_msg is not None:
+                await broadcast_json(
+                    software_id,
+                    {
+                        "type": "assistant_message",
+                        "id": str(trim_notice_msg.id),
+                        "user_id": None,
+                        "content": HISTORY_TRIM_NOTICE,
+                        "created_at": trim_notice_msg.created_at.isoformat(),
+                    },
+                )
+
             buf: list[str] = []
             async with async_session_factory() as session:
                 svc = SoftwareChatService(session)
@@ -185,6 +215,7 @@ async def software_chat_websocket(
                     user_id=user_id,
                     user_content=content,
                     preferred_model=preferred_model,
+                    chat_messages=trimmed_for_stream,
                 ):
                     buf.append(piece)
                     await broadcast_json(

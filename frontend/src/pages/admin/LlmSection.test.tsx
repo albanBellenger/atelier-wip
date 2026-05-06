@@ -8,6 +8,17 @@ import * as api from '../../services/api'
 import { LlmSection } from './LlmSection'
 
 describe('LlmSection', () => {
+  beforeEach(() => {
+    vi.spyOn(api, 'getAdminLlmModelSuggestions').mockResolvedValue({
+      models: [],
+      warning: null,
+    })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('opens add-provider dialog and submits putAdminLlmProvider', async () => {
     const user = userEvent.setup()
 
@@ -43,6 +54,7 @@ describe('LlmSection', () => {
       sort_order: 0,
       llm_api_key_set: false,
       llm_api_key_hint: null,
+      litellm_provider_slug: null,
     })
 
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -108,6 +120,7 @@ describe('LlmSection', () => {
           sort_order: 0,
           llm_api_key_set: false,
           llm_api_key_hint: null,
+          litellm_provider_slug: null,
         },
       ],
     }
@@ -141,6 +154,10 @@ describe('LlmSection', () => {
               status: body.status !== undefined ? body.status : p.status,
               is_default: body.is_default !== undefined ? body.is_default : p.is_default,
               sort_order: body.sort_order !== undefined ? body.sort_order : p.sort_order,
+              litellm_provider_slug:
+                body.litellm_provider_slug !== undefined
+                  ? body.litellm_provider_slug
+                  : p.litellm_provider_slug,
             }
           : p,
       )
@@ -157,6 +174,10 @@ describe('LlmSection', () => {
         sort_order: body.sort_order ?? 0,
         llm_api_key_set: row?.llm_api_key_set ?? false,
         llm_api_key_hint: row?.llm_api_key_hint ?? null,
+        litellm_provider_slug:
+          body.litellm_provider_slug !== undefined
+            ? body.litellm_provider_slug
+            : row?.litellm_provider_slug ?? null,
       }
     })
     const probeSpy = vi.spyOn(api, 'postAdminTestLlm').mockResolvedValue({
@@ -193,6 +214,7 @@ describe('LlmSection', () => {
           models: ['alpha', 'beta'],
           api_base_url: 'https://api.moonshot.example/v1',
           status: 'connected',
+          litellm_provider_slug: null,
         }),
       )
     })

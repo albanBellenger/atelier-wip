@@ -85,6 +85,7 @@ export function EmbeddingsSection(): ReactElement {
     cost_per_million_usd: null,
     region: null,
     default_role: null,
+    litellm_provider_slug: null,
   })
 
   const overviewQ = useQuery({
@@ -129,6 +130,7 @@ export function EmbeddingsSection(): ReactElement {
         cost_per_million_usd: null,
         region: null,
         default_role: null,
+        litellm_provider_slug: null,
       })
       await qc.invalidateQueries({ queryKey: ['admin', 'embeddings', 'models'] })
     },
@@ -292,7 +294,12 @@ export function EmbeddingsSection(): ReactElement {
               key={m.id}
               grid="grid-cols-[1.4fr_0.8fr_0.45fr_1fr_0.65fr_1fr_minmax(7rem,auto)]"
             >
-              <span className="truncate font-mono text-[12px] text-zinc-100">{m.model_id}</span>
+              <div className="min-w-0">
+                <span className="block truncate font-mono text-[12px] text-zinc-100">{m.model_id}</span>
+                <span className="mt-0.5 block font-mono text-[10px] text-zinc-500">
+                  LiteLLM: {(m.litellm_provider_slug ?? m.provider_name).toLowerCase()}
+                </span>
+              </div>
               <span className="text-[12px] text-zinc-300">{m.provider_name}</span>
               <span className="font-mono text-[12px] tabular-nums text-zinc-300">{m.dim}</span>
               <span className="font-mono text-[12px] tabular-nums text-zinc-300">
@@ -481,6 +488,35 @@ export function EmbeddingsSection(): ReactElement {
                   }
                 />
               </label>
+              <label className="block text-[12px] text-zinc-400">
+                LiteLLM provider slug (optional)
+                <input
+                  className="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-900/60 px-2 py-1.5 font-mono text-[12px] text-zinc-200"
+                  value={modelForm.litellm_provider_slug ?? ''}
+                  placeholder="e.g. openai — overrides prefix for short model ids"
+                  onChange={(e) =>
+                    setModelForm((f) => ({
+                      ...f,
+                      litellm_provider_slug: e.target.value.trim() || null,
+                    }))
+                  }
+                  autoComplete="off"
+                />
+              </label>
+              <p className="text-[11px] text-zinc-600">
+                When the model id has no slash, LiteLLM uses this slug (if set) or the provider name
+                as prefix. See{' '}
+                <a
+                  href="https://docs.litellm.ai/docs/providers"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-violet-400 hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  LiteLLM providers
+                </a>
+                .
+              </p>
               <label className="block text-[12px] text-zinc-400">
                 Dimensions
                 <input

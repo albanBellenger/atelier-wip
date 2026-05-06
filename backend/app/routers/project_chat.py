@@ -14,6 +14,7 @@ from app.deps import ProjectAccess, fetch_project_access, get_project_access
 from app.exceptions import ApiError
 from app.schemas.project_chat import ChatHistoryResponse, ChatMessageOut
 from app.services.auth_service import AuthService
+from app.services.chat_history_window import HISTORY_TRIM_NOTICE
 from app.services.chat_room_registry import broadcast_json, register, unregister
 from app.schemas.token_context import TokenContext
 from app.services.llm_service import LLMService
@@ -127,24 +128,51 @@ async def project_chat_websocket(
                 )
                 continue
 
-            async with async_session_factory() as session:
-                probe_ctx = TokenContext(
-                    studio_id=studio_id_scope,
-                    software_id=software_id_scope,
-                    project_id=project_id,
-                    user_id=user_id,
+            trim_notice_msg = None
+            trimmed_for_stream: list[dict[str, str]] = []
+            try:
+                async with async_session_factory() as session:
+                    probe_ctx = TokenContext(
+                        studio_id=studio_id_scope,
+                        software_id=software_id_scope,
+                        project_id=project_id,
+                        user_id=user_id,
+                    )
+                    await LLMService(session).ensure_openai_llm_ready(
+                        context=probe_ctx, call_type="chat"
+                    )
+                    svc = ProjectChatService(session)
+                    user_msg = await svc.append_message(
+                        project_id=project_id,
+                        user_id=user_id,
+                        role="user",
+                        content=content,
+                    )
+                    hist = await svc.openai_messages_for_project(project_id)
+                    llm_trim = LLMService(session)
+                    trimmed_for_stream, trimmed = await llm_trim.trim_chat_messages_for_stream(
+                        hist,
+                        context=probe_ctx,
+                        call_type="chat",
+                        preferred_model=None,
+                    )
+                    if trimmed:
+                        trim_notice_msg = await svc.append_message(
+                            project_id=project_id,
+                            user_id=None,
+                            role="assistant",
+                            content=HISTORY_TRIM_NOTICE,
+                        )
+                    await session.commit()
+            except ApiError as e:
+                det = e.detail
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "message": det if isinstance(det, str) else str(det),
+                    }
                 )
-                await LLMService(session).ensure_openai_llm_ready(
-                    context=probe_ctx, call_type="chat"
-                )
-                svc = ProjectChatService(session)
-                user_msg = await svc.append_message(
-                    project_id=project_id,
-                    user_id=user_id,
-                    role="user",
-                    content=content,
-                )
-                await session.commit()
+                continue
 
             await broadcast_json(
                 project_id,
@@ -157,6 +185,18 @@ async def project_chat_websocket(
                 },
             )
 
+            if trim_notice_msg is not None:
+                await broadcast_json(
+                    project_id,
+                    {
+                        "type": "assistant_message",
+                        "id": str(trim_notice_msg.id),
+                        "user_id": None,
+                        "content": HISTORY_TRIM_NOTICE,
+                        "created_at": trim_notice_msg.created_at.isoformat(),
+                    },
+                )
+
             buf: list[str] = []
             async with async_session_factory() as session:
                 svc = ProjectChatService(session)
@@ -164,6 +204,7 @@ async def project_chat_websocket(
                     project_id=project_id,
                     user_id=user_id,
                     user_content=content,
+                    chat_messages=trimmed_for_stream,
                 ):
                     buf.append(piece)
                     await broadcast_json(

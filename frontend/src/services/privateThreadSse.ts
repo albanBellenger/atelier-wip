@@ -1,10 +1,13 @@
 /** SSE parsing for private thread POST (JSON lines: token | meta, then [DONE]). */
 
 export interface PrivateThreadStreamMeta {
-  findings: { finding_type: string; description: string }[]
-  conflicts: { description: string }[]
+  findings?: { finding_type: string; description: string }[]
+  conflicts?: { description: string }[]
   context_truncated?: boolean
   patch_proposal?: Record<string, unknown> | null
+  history_trimmed?: boolean
+  trim_notice?: string
+  trim_notice_message_id?: string
 }
 
 export async function consumePrivateThreadSseBody(
@@ -41,20 +44,40 @@ export async function consumePrivateThreadSseBody(
             conflicts?: { description: string }[]
             context_truncated?: boolean
             patch_proposal?: Record<string, unknown> | null
+            history_trimmed?: boolean
+            trim_notice?: string
+            trim_notice_message_id?: string
           }
           if (j.type === 'token' && j.text) {
             handlers.onToken(j.text)
           }
           if (j.type === 'meta') {
-            handlers.onMeta({
-              findings: Array.isArray(j.findings) ? j.findings : [],
-              conflicts: Array.isArray(j.conflicts) ? j.conflicts : [],
-              context_truncated: Boolean(j.context_truncated),
-              patch_proposal:
-                j.patch_proposal === undefined
-                  ? undefined
-                  : (j.patch_proposal as Record<string, unknown> | null),
-            })
+            const meta: PrivateThreadStreamMeta = {}
+            if (Object.prototype.hasOwnProperty.call(j, 'findings')) {
+              meta.findings = Array.isArray(j.findings) ? j.findings : []
+            }
+            if (Object.prototype.hasOwnProperty.call(j, 'conflicts')) {
+              meta.conflicts = Array.isArray(j.conflicts) ? j.conflicts : []
+            }
+            if (typeof j.context_truncated === 'boolean') {
+              meta.context_truncated = j.context_truncated
+            }
+            if (Object.prototype.hasOwnProperty.call(j, 'patch_proposal')) {
+              meta.patch_proposal = j.patch_proposal as Record<
+                string,
+                unknown
+              > | null
+            }
+            if (j.history_trimmed === true) {
+              meta.history_trimmed = true
+            }
+            if (typeof j.trim_notice === 'string') {
+              meta.trim_notice = j.trim_notice
+            }
+            if (typeof j.trim_notice_message_id === 'string') {
+              meta.trim_notice_message_id = j.trim_notice_message_id
+            }
+            handlers.onMeta(meta)
           }
         } catch {
           /* ignore malformed chunk */

@@ -15,6 +15,10 @@ from app.models import Artifact, ArtifactChunk, Section, SectionChunk
 from app.services.notification_dispatch_service import NotificationDispatchService
 from app.services.document_extract import extract_md_text, extract_pdf_text
 from app.services.embedding_service import EmbeddingService, embedding_configured
+from app.services.embedding_token_context import (
+    token_context_for_artifact,
+    token_context_for_section,
+)
 from app.services.artifact_chunking import chunk_artifact_text
 from app.services.text_chunking import chunk_text
 from app.storage.minio_storage import get_storage_client
@@ -110,7 +114,8 @@ async def run_artifact_embedding(session: AsyncSession, artifact_id: uuid.UUID) 
             )
         return
     emb = EmbeddingService(session)
-    vectors = await emb.embed_batch(chunks)
+    emb_ctx = await token_context_for_artifact(session, artifact_id)
+    vectors = await emb.embed_batch(chunks, context=emb_ctx)
     for i, (chunk, vec) in enumerate(zip(chunks, vectors, strict=True)):
         session.add(
             ArtifactChunk(
@@ -151,7 +156,8 @@ async def run_section_embedding(session: AsyncSession, section_id: uuid.UUID) ->
         await session.flush()
         return
     emb = EmbeddingService(session)
-    vectors = await emb.embed_batch(chunks)
+    emb_ctx = await token_context_for_section(session, section_id)
+    vectors = await emb.embed_batch(chunks, context=emb_ctx)
     for i, (chunk, vec) in enumerate(zip(chunks, vectors, strict=True)):
         session.add(
             SectionChunk(

@@ -24,7 +24,15 @@ async def test_embed_batch_stores_then_validates_dimension(
 
     svc = EmbeddingService(db_session)
 
-    async def fake_ok(self, model: str, api_key: str, inputs: list[str], url: str):
+    async def fake_ok(
+        self: EmbeddingService,
+        model: str,
+        api_key: str,
+        api_base: str,
+        inputs: list[str],
+        *,
+        context: object | None,
+    ) -> list[list[float]]:
         cfg = await self._get_config()
         dim = 3
         if cfg.embedding_dim is None:
@@ -38,7 +46,15 @@ async def test_embed_batch_stores_then_validates_dimension(
             )
         return [[0.1, 0.2, 0.3] for _ in inputs]
 
-    async def fake_bad(self, model: str, api_key: str, inputs: list[str], url: str):
+    async def fake_bad(
+        self: EmbeddingService,
+        model: str,
+        api_key: str,
+        api_base: str,
+        inputs: list[str],
+        *,
+        context: object | None,
+    ) -> list[list[float]]:
         cfg = await self._get_config()
         emb = [0.0] * 5
         if cfg.embedding_dim is not None and len(emb) != cfg.embedding_dim:
@@ -49,7 +65,7 @@ async def test_embed_batch_stores_then_validates_dimension(
             )
         return [emb for _ in inputs]
 
-    monkeypatch.setattr(EmbeddingService, "_openai_embed", fake_ok)
+    monkeypatch.setattr(EmbeddingService, "_litellm_embed_batch", fake_ok)
 
     out = await svc.embed_batch(["a", "b"])
     assert len(out) == 2
@@ -60,7 +76,7 @@ async def test_embed_batch_stores_then_validates_dimension(
     out2 = await svc.embed_batch(["c"])
     assert len(out2[0]) == 3
 
-    monkeypatch.setattr(EmbeddingService, "_openai_embed", fake_bad)
+    monkeypatch.setattr(EmbeddingService, "_litellm_embed_batch", fake_bad)
     with pytest.raises(ApiError) as e:
         await svc.embed_batch(["x"])
     assert e.value.error_code == "EMBEDDING_DIMENSION_MISMATCH"

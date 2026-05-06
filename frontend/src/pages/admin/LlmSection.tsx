@@ -17,6 +17,7 @@ import {
   Toggle,
   TRow,
 } from '../../components/admin/adminPrimitives'
+import { LlmModelSuggestInput } from '../../components/admin/LlmModelSuggestInput'
 import {
   type AdminLlmProbeBody,
   type LlmProviderRegistryRow,
@@ -34,6 +35,8 @@ import {
 } from '../../services/api'
 
 const EMPTY_LLM_PROVIDERS: LlmProviderRegistryRow[] = []
+
+const LITELLM_PROVIDERS_DOCS = 'https://docs.litellm.ai/docs/providers' as const
 
 function StudioSelect({
   value,
@@ -71,6 +74,14 @@ function parseModelIds(text: string): string[] {
     .split(/[,\n]+/)
     .map((s) => s.trim())
     .filter(Boolean)
+}
+
+function appendUniqueModelId(currentText: string, id: string): string {
+  const t = id.trim()
+  if (!t) return currentText
+  const existing = parseModelIds(currentText)
+  if (existing.includes(t)) return currentText
+  return [...existing, t].join(', ')
 }
 
 function formatProviderMutationErr(err: unknown): string {
@@ -113,11 +124,14 @@ function AddRoutingModal({
   open,
   onClose,
   blockedUseCasesCsv,
+  catalogSlug,
   onAdd,
 }: {
   open: boolean
   onClose: () => void
   blockedUseCasesCsv: string
+  /** LiteLLM catalog provider filter for suggestions (registry slug or provider key). */
+  catalogSlug: string
   onAdd: (row: LlmRoutingRuleRow) => void
 }): ReactElement | null {
   const existingKeys = blockedUseCasesCsv
@@ -142,6 +156,8 @@ function AddRoutingModal({
   if (!open) {
     return null
   }
+
+  const catalogMode = useCase === 'embeddings' ? 'embedding' : 'chat'
 
   const submit = (): void => {
     const pk = primary.trim()
@@ -172,7 +188,19 @@ function AddRoutingModal({
         </h2>
         <p className="mt-1 text-[12px] text-zinc-500">
           Maps a call type to a primary model and optional fallback. Models must appear on a
-          connected registry provider to take effect for studios with policy configured.
+          connected registry provider to take effect for studios with policy configured. For LiteLLM,
+          use short ids in lists when the provider row has a{' '}
+          <span className="font-mono text-zinc-400">LiteLLM provider slug</span>, or enter{' '}
+          <span className="font-mono text-zinc-400">provider/model</span> here.{' '}
+          <a
+            href={LITELLM_PROVIDERS_DOCS}
+            target="_blank"
+            rel="noreferrer"
+            className="text-violet-400 hover:underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            Provider slugs (docs)
+          </a>
         </p>
         <div className="mt-4 space-y-3">
           {options.length === 0 ? (
@@ -202,12 +230,16 @@ function AddRoutingModal({
                 <StatLabel>
                   <label htmlFor="llm-add-routing-primary">Primary model ID</label>
                 </StatLabel>
-                <input
+                <LlmModelSuggestInput
                   id="llm-add-routing-primary"
+                  listId="llm-add-routing-primary-dl"
                   value={primary}
-                  onChange={(e) => setPrimary(e.target.value)}
-                  autoComplete="off"
-                  placeholder="e.g. gpt-4o-mini"
+                  onChange={setPrimary}
+                  litellmProvider={catalogSlug.trim() || undefined}
+                  mode={catalogMode}
+                  placeholder="Catalog suggestions (opens with modal)"
+                  minChars={0}
+                  prefetch={open}
                   className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[12px] text-zinc-100 outline-none focus:border-zinc-600"
                 />
               </div>
@@ -215,12 +247,16 @@ function AddRoutingModal({
                 <StatLabel>
                   <label htmlFor="llm-add-routing-fallback">Fallback model ID (optional)</label>
                 </StatLabel>
-                <input
+                <LlmModelSuggestInput
                   id="llm-add-routing-fallback"
+                  listId="llm-add-routing-fallback-dl"
                   value={fallback}
-                  onChange={(e) => setFallback(e.target.value)}
-                  autoComplete="off"
-                  placeholder="e.g. gpt-4o"
+                  onChange={setFallback}
+                  litellmProvider={catalogSlug.trim() || undefined}
+                  mode={catalogMode}
+                  placeholder="Optional fallback"
+                  minChars={0}
+                  prefetch={open}
                   className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[12px] text-zinc-100 outline-none focus:border-zinc-600"
                 />
               </div>
@@ -266,6 +302,8 @@ function AddProviderModal({
   const [llmApiKey, setLlmApiKey] = useState('')
   const [status, setStatus] = useState<'connected' | 'disabled' | 'needs-key'>('needs-key')
   const [isDefault, setIsDefault] = useState(false)
+  const [litellmSlug, setLitellmSlug] = useState('')
+  const [suggestAppend, setSuggestAppend] = useState('')
 
   useEffect(() => {
     if (!open) return
@@ -276,6 +314,8 @@ function AddProviderModal({
     setLlmApiKey('')
     setStatus('needs-key')
     setIsDefault(false)
+    setLitellmSlug('')
+    setSuggestAppend('')
   }, [open])
 
   if (!open) {
@@ -296,6 +336,7 @@ function AddProviderModal({
       status,
       is_default: isDefault,
       sort_order: 0,
+      litellm_provider_slug: litellmSlug.trim() || null,
     }
     if (llmApiKey.trim()) {
       body.llm_api_key = llmApiKey.trim()
@@ -370,6 +411,74 @@ function AddProviderModal({
               placeholder="Comma-separated, e.g. claude-sonnet-4.5, claude-haiku-4.5"
               className="mt-1.5 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
             />
+            <p className="mt-1 text-[11px] text-zinc-600">
+              Short ids are fine if LiteLLM can infer the provider; otherwise use{' '}
+              <span className="font-mono text-zinc-500">provider/model</span> or set the slug below.{' '}
+              <a
+                href={LITELLM_PROVIDERS_DOCS}
+                target="_blank"
+                rel="noreferrer"
+                className="text-violet-400 hover:underline"
+                onClick={(e) => e.stopPropagation()}
+              >
+                LiteLLM providers
+              </a>
+            </p>
+            <div className="mt-2 flex flex-wrap items-end gap-2">
+              <div className="min-w-0 flex-1">
+                <StatLabel>
+                  <label htmlFor="llm-add-suggest-append">Add from LiteLLM catalog</label>
+                </StatLabel>
+                <LlmModelSuggestInput
+                  id="llm-add-suggest-append"
+                  listId="llm-add-suggest-append-dl"
+                  value={suggestAppend}
+                  onChange={setSuggestAppend}
+                  providerKey={normalizeProviderKey(providerKey) || undefined}
+                  litellmProvider={litellmSlug.trim() || undefined}
+                  prefetch={open}
+                  minChars={0}
+                  placeholder="Search models, then append"
+                  className="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
+                />
+              </div>
+              <Btn
+                type="button"
+                className="mb-0.5 shrink-0"
+                onClick={() => {
+                  setModelsText((t) => appendUniqueModelId(t, suggestAppend))
+                  setSuggestAppend('')
+                }}
+              >
+                Append
+              </Btn>
+            </div>
+          </div>
+          <div>
+            <StatLabel>
+              <label htmlFor="llm-add-provider-litellm-slug">LiteLLM provider slug (optional)</label>
+            </StatLabel>
+            <input
+              id="llm-add-provider-litellm-slug"
+              value={litellmSlug}
+              onChange={(e) => setLitellmSlug(e.target.value)}
+              autoComplete="off"
+              placeholder="e.g. moonshot (when model list uses short ids)"
+              className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
+            />
+            <p className="mt-1 text-[11px] text-zinc-600">
+              If empty, the provider key is used as the LiteLLM prefix. Must match a{' '}
+              <a
+                href={LITELLM_PROVIDERS_DOCS}
+                target="_blank"
+                rel="noreferrer"
+                className="text-violet-400 hover:underline"
+                onClick={(e) => e.stopPropagation()}
+              >
+                documented
+              </a>{' '}
+              slug when the key is only a local label.
+            </p>
           </div>
           <div>
             <StatLabel>
@@ -493,6 +602,8 @@ function EditProviderModal({
   const [clearLlmKey, setClearLlmKey] = useState(false)
   const [status, setStatus] = useState<'connected' | 'disabled' | 'needs-key'>('needs-key')
   const [isDefault, setIsDefault] = useState(false)
+  const [litellmSlug, setLitellmSlug] = useState('')
+  const [suggestAppend, setSuggestAppend] = useState('')
 
   useEffect(() => {
     if (!provider) return
@@ -501,6 +612,8 @@ function EditProviderModal({
     setApiBaseUrl(provider.api_base_url ?? '')
     setLlmApiKey('')
     setClearLlmKey(false)
+    setLitellmSlug(provider.litellm_provider_slug ?? '')
+    setSuggestAppend('')
     setStatus(
       provider.status === 'connected' || provider.status === 'disabled' || provider.status === 'needs-key'
         ? provider.status
@@ -526,6 +639,7 @@ function EditProviderModal({
       status,
       is_default: isDefault,
       sort_order: provider.sort_order,
+      litellm_provider_slug: litellmSlug.trim() || null,
     }
     if (clearLlmKey) {
       body.llm_api_key = ''
@@ -594,6 +708,61 @@ function EditProviderModal({
               rows={2}
               spellCheck={false}
               className="mt-1.5 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
+            />
+            <p className="mt-1 text-[11px] text-zinc-600">
+              Use <span className="font-mono text-zinc-500">provider/model</span> in the list when
+              needed, or set a LiteLLM slug below.{' '}
+              <a
+                href={LITELLM_PROVIDERS_DOCS}
+                target="_blank"
+                rel="noreferrer"
+                className="text-violet-400 hover:underline"
+                onClick={(e) => e.stopPropagation()}
+              >
+                LiteLLM providers
+              </a>
+            </p>
+            <div className="mt-2 flex flex-wrap items-end gap-2">
+              <div className="min-w-0 flex-1">
+                <StatLabel>
+                  <label htmlFor="llm-edit-suggest-append">Add from LiteLLM catalog</label>
+                </StatLabel>
+                <LlmModelSuggestInput
+                  id="llm-edit-suggest-append"
+                  listId="llm-edit-suggest-append-dl"
+                  value={suggestAppend}
+                  onChange={setSuggestAppend}
+                  providerKey={provider.provider_key}
+                  litellmProvider={litellmSlug.trim() || undefined}
+                  prefetch
+                  minChars={0}
+                  placeholder="Search models, then append"
+                  className="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
+                />
+              </div>
+              <Btn
+                type="button"
+                className="mb-0.5 shrink-0"
+                onClick={() => {
+                  setModelsText((t) => appendUniqueModelId(t, suggestAppend))
+                  setSuggestAppend('')
+                }}
+              >
+                Append
+              </Btn>
+            </div>
+          </div>
+          <div>
+            <StatLabel>
+              <label htmlFor="llm-edit-provider-litellm-slug">LiteLLM provider slug (optional)</label>
+            </StatLabel>
+            <input
+              id="llm-edit-provider-litellm-slug"
+              value={litellmSlug}
+              onChange={(e) => setLitellmSlug(e.target.value)}
+              autoComplete="off"
+              placeholder="e.g. moonshot"
+              className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
             />
           </div>
           <div>
@@ -730,6 +899,7 @@ export function LlmSection(): ReactElement {
 
   const [routingDraft, setRoutingDraft] = useState<LlmRoutingRuleRow[]>([])
   const [routingModalOpen, setRoutingModalOpen] = useState(false)
+  const [routingSuggestSlug, setRoutingSuggestSlug] = useState('')
 
   useEffect(() => {
     if (routingQ.isSuccess && routingQ.data) {
@@ -741,6 +911,16 @@ export function LlmSection(): ReactElement {
     () => [...new Set(routingDraft.map((r) => r.use_case))].sort().join(','),
     [routingDraft],
   )
+
+  const routingCatalogSlugOptions = useMemo(() => {
+    const list = deploymentQ.data?.providers ?? EMPTY_LLM_PROVIDERS
+    const s = new Set<string>()
+    for (const p of list) {
+      const slug = (p.litellm_provider_slug ?? p.provider_key).trim().toLowerCase()
+      if (slug) s.add(slug)
+    }
+    return [...s].sort()
+  }, [deploymentQ.data?.providers])
 
   const saveRouting = useMutation({
     mutationFn: (rules: LlmRoutingRuleRow[]) =>
@@ -957,7 +1137,17 @@ export function LlmSection(): ReactElement {
               <StatLabel>Model registry</StatLabel>
               <p className="mt-2 text-[12px] text-zinc-500">
                 Registered providers and model IDs for routing and studio allow-lists. Optional
-                per-provider API keys are stored encrypted when configured server-side.
+                per-provider API keys are stored encrypted when configured server-side. For LiteLLM,
+                inference uses <span className="font-mono text-zinc-400">slug/model</span> when the
+                model id has no slash: the slug is the optional field below or else the provider key.{' '}
+                <a
+                  href={LITELLM_PROVIDERS_DOCS}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-violet-400 hover:underline"
+                >
+                  Provider slugs
+                </a>
               </p>
               {providers.length === 0 ? (
                 <p className="mt-4 px-0 py-2 text-[13px] text-zinc-500">
@@ -986,10 +1176,22 @@ export function LlmSection(): ReactElement {
                           key={p.id}
                           grid="grid-cols-[1.05fr_1.5fr_1fr_0.55fr_0.65fr_0.9fr]"
                         >
-                          <div className="flex items-center gap-2">
+                          <div className="flex min-w-0 items-start gap-2">
                             <ProviderGlyph name={p.display_name} logoUrl={p.logo_url} />
-                            <span className="truncate text-[13px] text-zinc-100">{p.display_name}</span>
-                            {p.is_default ? <Pill tone="violet">default</Pill> : null}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="truncate text-[13px] text-zinc-100">
+                                  {p.display_name}
+                                </span>
+                                {p.is_default ? <Pill tone="violet">default</Pill> : null}
+                              </div>
+                              <div className="mt-0.5 font-mono text-[10px] text-zinc-500">
+                                LiteLLM prefix:{' '}
+                                <span className="text-zinc-400">
+                                  {(p.litellm_provider_slug ?? p.provider_key).trim() || '—'}
+                                </span>
+                              </div>
+                            </div>
                           </div>
                           <div className="min-w-0">
                             <p
@@ -1190,13 +1392,40 @@ export function LlmSection(): ReactElement {
         <div className="space-y-4 px-5 py-4">
           <p className="text-[12px] leading-relaxed text-zinc-500">
             Primary and fallback model IDs are resolved against the routing registry and studio
-            policy. Empty fallback means only the primary is considered for that use case.
+            policy. Empty fallback means only the primary is considered for that use case. Use{' '}
+            <span className="font-mono text-zinc-400">provider/model</span> when LiteLLM cannot infer
+            the host; otherwise configure a slug on the provider row for short ids.{' '}
+            <a
+              href={LITELLM_PROVIDERS_DOCS}
+              target="_blank"
+              rel="noreferrer"
+              className="text-violet-400 hover:underline"
+            >
+              LiteLLM providers
+            </a>
           </p>
+          <label className="flex flex-wrap items-center gap-2 text-[12px] text-zinc-400">
+            <span className="shrink-0">Catalog suggestions filter</span>
+            <select
+              value={routingSuggestSlug}
+              onChange={(e) => setRoutingSuggestSlug(e.target.value)}
+              className="rounded-md border border-zinc-800 bg-zinc-950/60 px-2.5 py-1.5 font-mono text-[11px] text-zinc-200"
+            >
+              <option value="">Default (Tool settings provider)</option>
+              {routingCatalogSlugOptions.map((slug) => (
+                <option key={slug} value={slug}>
+                  {slug}
+                </option>
+              ))}
+            </select>
+          </label>
           {routingQ.isLoading ? (
             <p className="text-[13px] text-zinc-500">Loading routing…</p>
           ) : (
             <>
-              {sortRoutingRules(routingDraft).map((r) => (
+              {sortRoutingRules(routingDraft).map((r) => {
+                const rowCatalogMode = r.use_case === 'embeddings' ? 'embedding' : 'chat'
+                return (
                 <div
                   key={r.use_case}
                   className="grid grid-cols-1 gap-3 rounded-md border border-zinc-800 bg-zinc-950/40 p-4 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end"
@@ -1210,13 +1439,17 @@ export function LlmSection(): ReactElement {
                     <StatLabel>
                       <label htmlFor={`llm-routing-primary-${r.use_case}`}>Primary model</label>
                     </StatLabel>
-                    <input
+                    <LlmModelSuggestInput
                       id={`llm-routing-primary-${r.use_case}`}
+                      listId={`llm-routing-primary-dl-${r.use_case}`}
                       value={r.primary_model}
-                      onChange={(e) =>
-                        updateRoutingRow(r.use_case, { primary_model: e.target.value })
+                      onChange={(v) =>
+                        updateRoutingRow(r.use_case, { primary_model: v })
                       }
-                      spellCheck={false}
+                      litellmProvider={routingSuggestSlug.trim() || undefined}
+                      mode={rowCatalogMode}
+                      minChars={2}
+                      placeholder="Type 2+ chars for suggestions"
                       className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
                     />
                   </div>
@@ -1224,15 +1457,18 @@ export function LlmSection(): ReactElement {
                     <StatLabel>
                       <label htmlFor={`llm-routing-fallback-${r.use_case}`}>Fallback model</label>
                     </StatLabel>
-                    <input
+                    <LlmModelSuggestInput
                       id={`llm-routing-fallback-${r.use_case}`}
+                      listId={`llm-routing-fallback-dl-${r.use_case}`}
                       value={r.fallback_model ?? ''}
-                      onChange={(e) =>
+                      onChange={(v) =>
                         updateRoutingRow(r.use_case, {
-                          fallback_model: e.target.value === '' ? null : e.target.value,
+                          fallback_model: v.trim() ? v.trim() : null,
                         })
                       }
-                      spellCheck={false}
+                      litellmProvider={routingSuggestSlug.trim() || undefined}
+                      mode={rowCatalogMode}
+                      minChars={2}
                       placeholder="Optional"
                       className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
                     />
@@ -1248,7 +1484,8 @@ export function LlmSection(): ReactElement {
                     </Btn>
                   </div>
                 </div>
-              ))}
+                )
+              })}
               {routingDraft.length === 0 ? (
                 <p className="text-[13px] text-zinc-500">
                   No routing rules yet. Use <span className="font-medium text-zinc-400">+ Add routing</span>{' '}
@@ -1282,6 +1519,7 @@ export function LlmSection(): ReactElement {
         open={routingModalOpen}
         onClose={() => setRoutingModalOpen(false)}
         blockedUseCasesCsv={blockedRoutingUseCasesCsv}
+        catalogSlug={routingSuggestSlug}
         onAdd={(row) => {
           setRoutingDraft((prev) =>
             sortRoutingRules([...prev.filter((x) => x.use_case !== row.use_case), row]),

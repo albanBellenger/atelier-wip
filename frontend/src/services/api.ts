@@ -659,6 +659,7 @@ export interface LlmProviderRegistryRow {
   sort_order: number
   llm_api_key_set: boolean
   llm_api_key_hint: string | null
+  litellm_provider_slug: string | null
 }
 
 export type LlmProviderUpsertBody = {
@@ -669,6 +670,7 @@ export type LlmProviderUpsertBody = {
   is_default?: boolean
   sort_order?: number
   llm_api_key?: string | null
+  litellm_provider_slug?: string | null
 }
 
 /** Combined Tool admin config + LLM provider registry for the LLM connectivity page. */
@@ -716,6 +718,38 @@ export async function putAdminLlmRouting(body: {
   return request<LlmRoutingRuleRow[]>('PUT', '/admin/llm/routing', body)
 }
 
+export interface LlmModelSuggestionItem {
+  id: string
+  label: string | null
+  provider: string | null
+  source: string
+}
+
+export interface LlmModelSuggestionsResponse {
+  models: LlmModelSuggestionItem[]
+  warning: string | null
+}
+
+export async function getAdminLlmModelSuggestions(params: {
+  provider_key?: string | null
+  litellm_provider?: string | null
+  q?: string | null
+  mode?: 'chat' | 'embedding'
+  source?: 'auto' | 'catalog' | 'upstream'
+} = {}): Promise<LlmModelSuggestionsResponse> {
+  const qs = new URLSearchParams()
+  if (params.provider_key) qs.set('provider_key', params.provider_key)
+  if (params.litellm_provider) qs.set('litellm_provider', params.litellm_provider)
+  if (params.q) qs.set('q', params.q)
+  if (params.mode) qs.set('mode', params.mode)
+  if (params.source) qs.set('source', params.source)
+  const suffix = qs.toString()
+  return request<LlmModelSuggestionsResponse>(
+    'GET',
+    `/admin/llm/model-suggestions${suffix ? `?${suffix}` : ''}`,
+  )
+}
+
 export interface StudioLlmPolicyRow {
   provider_key: string
   enabled: boolean
@@ -752,6 +786,7 @@ export interface EmbeddingModelRegistryRow {
   cost_per_million_usd: string | null
   region: string | null
   default_role: string | null
+  litellm_provider_slug: string | null
 }
 
 export type EmbeddingModelUpsertBody = {
@@ -761,6 +796,7 @@ export type EmbeddingModelUpsertBody = {
   cost_per_million_usd?: string | null
   region?: string | null
   default_role?: string | null
+  litellm_provider_slug?: string | null
 }
 
 export async function getAdminEmbeddingModels(): Promise<EmbeddingModelRegistryRow[]> {

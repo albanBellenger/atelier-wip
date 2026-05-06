@@ -40,6 +40,7 @@ const mdProseClass =
 export function ConversationView(props: {
   messages: PrivateThreadMessage[]
   streaming: string
+  liveTrimNotice?: string | null
   threadPending: boolean
   patchProposal: PatchProposalMeta | null
   patchPreviewLines: string[]
@@ -58,6 +59,7 @@ export function ConversationView(props: {
   const {
     messages,
     streaming,
+    liveTrimNotice = null,
     threadPending,
     patchProposal,
     patchPreviewLines,
@@ -232,6 +234,20 @@ export function ConversationView(props: {
             )}
         </div>
       ))}
+      {liveTrimNotice ? (
+        <div className="flex min-w-0 flex-col items-start">
+          <p className="mb-1 text-xs font-medium text-zinc-500">{assistantLabel}</p>
+          <div
+            className={
+              isFocus
+                ? 'w-full max-w-full rounded-2xl rounded-bl-md border border-amber-900/40 bg-amber-950/25 px-5 py-3 text-amber-100/95 ring-1 ring-amber-900/30'
+                : 'w-full max-w-[92%] rounded-2xl rounded-bl-md border border-amber-900/40 bg-amber-950/25 px-4 py-2 text-xs text-amber-100/95'
+            }
+          >
+            <p className="whitespace-pre-wrap">{liveTrimNotice}</p>
+          </div>
+        </div>
+      ) : null}
       {streaming && (
         <div className="flex min-w-0 flex-col items-start">
           <div

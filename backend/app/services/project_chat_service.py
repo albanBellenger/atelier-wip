@@ -95,6 +95,7 @@ class ProjectChatService:
         project_id: uuid.UUID,
         user_id: uuid.UUID,
         user_content: str,
+        chat_messages: list[dict[str, str]] | None = None,
     ) -> AsyncIterator[tuple[str, TokenContext]]:
         """Yield LLM token strings; caller persists assistant message after iteration."""
         project = await self.db.get(Project, project_id)
@@ -119,7 +120,11 @@ class ProjectChatService:
             user_id=user_id,
         )
 
-        openai_msgs = await self.openai_messages_for_project(project_id)
+        openai_msgs = (
+            chat_messages
+            if chat_messages is not None
+            else await self.openai_messages_for_project(project_id)
+        )
         rag = await RAGService(self.db).build_context(
             query=user_content,
             project_id=project_id,

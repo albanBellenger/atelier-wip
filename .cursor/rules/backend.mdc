@@ -29,7 +29,7 @@ class MyService:
 
 - Use `LLMService.chat_stream()` for conversational (thread/chat) calls
 - Use `LLMService.chat_structured(output_schema=...)` for structured generation
-- Never call provider SDKs (openai, anthropic) directly
+- Never call provider SDKs (openai, anthropic) directly, use LiteLLM as the gateway
 - Never parse LLM output with regex or string splitting
 
 ## File downloads

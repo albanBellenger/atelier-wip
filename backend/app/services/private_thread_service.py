@@ -8,7 +8,6 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
-import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +15,7 @@ from app.exceptions import ApiError
 from app.models import PrivateThread, Project, Section, Software, ThreadMessage
 from app.schemas.private_thread import PrivateThreadStreamBody
 from app.schemas.token_context import TokenContext
+from app.services.chat_history_window import HISTORY_TRIM_NOTICE
 from app.services.llm_service import LLMService
 from app.services.private_thread_selection import (
     excerpt_block_for_rag,
@@ -199,7 +199,7 @@ async def _stream_main_reply(
             call_type="private_thread",
         ):
             yield piece
-    except (ApiError, httpx.HTTPError):
+    except ApiError:
         stream_state["stream_failed"] = True
         return
 
@@ -493,6 +493,32 @@ class PrivateThreadService:
         hist = await self.list_messages(thread.id)
         openai_msgs = [{"role": m.role, "content": m.content} for m in hist]
 
+        llm = LLMService(self.db)
+        openai_msgs, history_trimmed = await llm.trim_chat_messages_for_stream(
+            openai_msgs,
+            context=ctx,
+            call_type="chat",
+            preferred_model=None,
+        )
+        if history_trimmed:
+            trim_row = ThreadMessage(
+                id=uuid.uuid4(),
+                thread_id=thread.id,
+                role="assistant",
+                content=HISTORY_TRIM_NOTICE,
+            )
+            self.db.add(trim_row)
+            await self.db.flush()
+            trim_evt = json.dumps(
+                {
+                    "type": "meta",
+                    "history_trimmed": True,
+                    "trim_notice": HISTORY_TRIM_NOTICE,
+                    "trim_notice_message_id": str(trim_row.id),
+                }
+            )
+            yield f"data: {trim_evt}\n\n".encode()
+
         rag = await RAGService(self.db).build_context(
             query=content,
             project_id=project_id,
@@ -535,7 +561,6 @@ class PrivateThreadService:
             )
         system_prompt = persona + rag_text + excerpt_extra
 
-        llm = LLMService(self.db)
         stream_state: dict[str, Any] = {}
         buf: list[str] = []
         async for piece in _stream_main_reply(
@@ -631,6 +656,7 @@ class PrivateThreadService:
                     "findings": [f.as_dict() for f in findings_list],
                     "conflicts": conflicts_out,
                     "context_truncated": context_truncated,
+                    "history_trimmed": history_trimmed,
                     "patch_proposal": patch_proposal,
                 }
             )
@@ -642,6 +668,7 @@ class PrivateThreadService:
                     "findings": [],
                     "conflicts": [],
                     "context_truncated": context_truncated,
+                    "history_trimmed": history_trimmed,
                     "patch_proposal": None,
                 }
             )

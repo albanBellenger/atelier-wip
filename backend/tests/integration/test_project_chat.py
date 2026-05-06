@@ -91,6 +91,17 @@ async def test_project_chat_websocket_persists_messages() -> None:
             assert pr.status_code == 200
             local_pid = pr.json()["id"]
 
+            async def _trim_skip_llm_config(
+                self: object,
+                messages: list,
+                *,
+                context: object,
+                call_type: str,
+                preferred_model: str | None = None,
+                max_history_tokens: int = 12_000,
+            ) -> tuple[list, bool]:
+                return (list(messages), False)
+
             with (
                 patch(
                     "app.services.llm_service.LLMService.chat_stream",
@@ -99,6 +110,10 @@ async def test_project_chat_websocket_persists_messages() -> None:
                 patch(
                     "app.services.llm_service.LLMService.ensure_openai_llm_ready",
                     new_callable=AsyncMock,
+                ),
+                patch(
+                    "app.services.llm_service.LLMService.trim_chat_messages_for_stream",
+                    _trim_skip_llm_config,
                 ),
             ):
                 with tc.websocket_connect(
@@ -109,6 +124,8 @@ async def test_project_chat_websocket_persists_messages() -> None:
                     for _ in range(50):
                         raw = ws.receive_text()
                         msg = json.loads(raw)
+                        if msg.get("type") == "error":
+                            pytest.fail(f"websocket error: {msg}")
                         if msg.get("type") == "assistant_done":
                             seen_done = True
                             assert "Hello world" in (msg.get("content") or "")

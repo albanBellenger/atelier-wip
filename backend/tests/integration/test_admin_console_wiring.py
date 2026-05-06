@@ -146,11 +146,13 @@ async def test_admin_put_llm_provider_optional_api_base_url(
             "models": ["gpt-4o-mini"],
             "api_base_url": "https://eu.example.com/v1",
             "status": "connected",
+            "litellm_provider_slug": "openai",
         },
     )
     assert put.status_code == 200
     body = put.json()
     assert body["provider_key"] == "custom_eu"
+    assert body["litellm_provider_slug"] == "openai"
     assert body["api_base_url"] == "https://eu.example.com/v1"
     assert body.get("logo_url") is not None
     assert "eu.example.com" in body["logo_url"]
@@ -491,3 +493,192 @@ async def test_admin_patch_studio_budget_overage_action(
     ov2 = await client.get("/admin/console/overview")
     row2 = next(r for r in ov2.json()["studios"] if r["studio_id"] == studio_id)
     assert row2["budget_overage_action"] == "allow_with_warning"
+
+
+@pytest.mark.asyncio
+async def test_admin_llm_model_suggestions_unauthenticated_401(client: AsyncClient) -> None:
+    client.cookies.clear()
+    r = await client.get("/admin/llm/model-suggestions")
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_admin_llm_model_suggestions_member_forbidden(client: AsyncClient) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    email = f"sugm-{sfx}@example.com"
+    await client.post(
+        "/auth/register",
+        json={
+            "email": email,
+            "password": "securepass123",
+            "display_name": "Mem",
+        },
+    )
+    r_login = await client.post(
+        "/auth/login",
+        json={"email": email, "password": "securepass123"},
+    )
+    assert r_login.status_code == 200
+    client.cookies.set("atelier_token", r_login.cookies.get("atelier_token"))
+    denied = await client.get("/admin/llm/model-suggestions", params={"source": "catalog"})
+    assert denied.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_admin_llm_model_suggestions_catalog_mocked(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    admin_email = f"sugs-{sfx}@example.com"
+    await client.post(
+        "/auth/register",
+        json={
+            "email": admin_email,
+            "password": "securepass123",
+            "display_name": "TA",
+        },
+    )
+    from sqlalchemy import update
+
+    from app.models import User
+
+    await db_session.execute(
+        update(User).where(User.email == admin_email.lower()).values(is_tool_admin=True)
+    )
+    await db_session.flush()
+
+    class FakeResp:
+        status_code = 200
+
+        def json(self) -> dict:
+            return {
+                "object": "list",
+                "data": [
+                    {"id": "moonshot/x1", "provider": "moonshot", "mode": "chat"},
+                ],
+            }
+
+    class FakeClient:
+        def __init__(self, *a: object, **k: object) -> None:
+            pass
+
+        async def __aenter__(self) -> "FakeClient":
+            return self
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+        async def get(self, *a: object, **k: object) -> FakeResp:
+            return FakeResp()
+
+    monkeypatch.setattr(
+        "app.services.llm_model_suggestions_service.httpx.AsyncClient",
+        lambda *a, **k: FakeClient(),
+    )
+
+    r_login = await client.post(
+        "/auth/login",
+        json={"email": admin_email, "password": "securepass123"},
+    )
+    assert r_login.status_code == 200
+    client.cookies.set("atelier_token", r_login.cookies.get("atelier_token"))
+
+    r = await client.get(
+        "/admin/llm/model-suggestions",
+        params={"source": "catalog", "litellm_provider": "moonshot"},
+    )
+    assert r.status_code == 200, r.text
+    payload = r.json()
+    assert payload["models"]
+    assert payload["models"][0]["id"] == "moonshot/x1"
+    assert payload["models"][0]["source"] == "catalog"
+
+
+@pytest.mark.asyncio
+async def test_admin_llm_model_suggestions_auto_catalog_when_upstream_404(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    admin_email = f"suga-{sfx}@example.com"
+    await client.post(
+        "/auth/register",
+        json={
+            "email": admin_email,
+            "password": "securepass123",
+            "display_name": "TA",
+        },
+    )
+    from sqlalchemy import update
+
+    from app.models import AdminConfig, User
+
+    await db_session.execute(
+        update(User).where(User.email == admin_email.lower()).values(is_tool_admin=True)
+    )
+    cfg = await db_session.get(AdminConfig, 1)
+    if cfg is None:
+        db_session.add(
+            AdminConfig(
+                id=1,
+                llm_provider="openai",
+                llm_model="gpt-4o-mini",
+                llm_api_key="sk-test",
+            )
+        )
+    else:
+        cfg.llm_provider = "openai"
+        cfg.llm_model = "gpt-4o-mini"
+        cfg.llm_api_key = cfg.llm_api_key or "sk-test"
+    await db_session.flush()
+
+    class FakeResp:
+        def __init__(self, code: int, body: dict) -> None:
+            self.status_code = code
+            self._body = body
+
+        def json(self) -> dict:
+            return self._body
+
+    class FakeClient:
+        def __init__(self, *a: object, **k: object) -> None:
+            pass
+
+        async def __aenter__(self) -> "FakeClient":
+            return self
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+        async def get(self, url: str, **kwargs: object) -> FakeResp:
+            if "api.litellm.ai" in url:
+                return FakeResp(
+                    200,
+                    {
+                        "object": "list",
+                        "data": [
+                            {"id": "openai/z9", "provider": "openai", "mode": "chat"},
+                        ],
+                    },
+                )
+            return FakeResp(404, {})
+
+    monkeypatch.setattr(
+        "app.services.llm_model_suggestions_service.httpx.AsyncClient",
+        lambda *a, **k: FakeClient(),
+    )
+
+    r_login = await client.post(
+        "/auth/login",
+        json={"email": admin_email, "password": "securepass123"},
+    )
+    assert r_login.status_code == 200
+    client.cookies.set("atelier_token", r_login.cookies.get("atelier_token"))
+
+    r = await client.get("/admin/llm/model-suggestions", params={"source": "auto"})
+    assert r.status_code == 200, r.text
+    payload = r.json()
+    assert any(m["id"] == "openai/z9" for m in payload["models"])

@@ -7,6 +7,13 @@ import { openProjectChatWebSocket } from '../../services/ws'
 
 type WsPayload =
   | { type: 'user_message'; id: string; user_id: string; content: string }
+  | {
+      type: 'assistant_message'
+      id: string
+      user_id: string | null
+      content: string
+      created_at: string
+    }
   | { type: 'assistant_token'; text: string }
   | { type: 'assistant_done'; message_id: string; content: string }
   | { type: 'error'; message: string }
@@ -68,6 +75,10 @@ export function ChatRoom({ projectId }: ChatRoomProps): ReactElement {
       try {
         msg = JSON.parse(ev.data as string) as WsPayload
       } catch {
+        return
+      }
+      if (msg.type === 'assistant_message') {
+        void qc.invalidateQueries({ queryKey: ['projectChat', projectId] })
         return
       }
       if (msg.type === 'assistant_token') {

@@ -1,21 +1,30 @@
-"""Central LLM calls (OpenAI-compatible); integrates TokenTracker."""
+"""Central LLM calls via LiteLLM (OpenAI-compatible); integrates TokenTracker."""
 
 from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
+from decimal import Decimal
 from typing import Any
 
-import httpx
+import litellm
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
 from app.models import AdminConfig
-from app.openai_compat_urls import chat_completions_url
+from app.openai_compat_urls import openai_v1_base
 from app.schemas.auth import AdminConnectivityResult
 from app.schemas.token_context import TokenContext
+from app.services.chat_history_window import (
+    DEFAULT_CHAT_HISTORY_MAX_TOKENS,
+    trim_openai_chat_messages,
+)
 from app.services.embedding_service import EmbeddingService
+from app.services.litellm_exception_mapping import (
+    map_litellm_exception,
+    map_litellm_exception_to_probe_detail,
+)
 from app.services.llm_registry_credentials import (
     assert_openai_compatible_provider_field,
     resolve_openai_compatible_llm_credentials,
@@ -57,31 +66,45 @@ def _validate_json_schema(json_schema: dict[str, Any]) -> None:
         )
 
 
-def _upstream_error_log_fields(
-    *, status_code: int, headers: httpx.Headers, body_text: str
-) -> dict[str, Any]:
-    """Log-safe subset of an upstream LLM error (never raw body text)."""
-    out: dict[str, Any] = {
-        "status": status_code,
-        "request_id": headers.get("x-request-id"),
+def _chunk_delta_text(chunk: Any) -> str:
+    choices = getattr(chunk, "choices", None)
+    if choices is None and isinstance(chunk, dict):
+        choices = chunk.get("choices")
+    if not choices:
+        return ""
+    c0 = choices[0]
+    delta = getattr(c0, "delta", None) if not isinstance(c0, dict) else c0.get("delta")
+    if delta is None:
+        return ""
+    if isinstance(delta, dict):
+        return str(delta.get("content") or "")
+    return str(getattr(delta, "content", None) or "")
+
+
+def _chunk_usage_tokens(chunk: Any) -> dict[str, int] | None:
+    u = getattr(chunk, "usage", None)
+    if u is None and isinstance(chunk, dict):
+        u = chunk.get("usage")
+    if not isinstance(u, dict) or u.get("prompt_tokens") is None:
+        return None
+    return {
+        "prompt_tokens": int(u.get("prompt_tokens") or 0),
+        "completion_tokens": int(u.get("completion_tokens") or 0),
     }
+
+
+def _optional_completion_cost_usd(response: Any) -> Decimal | None:
     try:
-        data = json.loads(body_text)
-    except json.JSONDecodeError:
-        return out
-    if not isinstance(data, dict):
-        return out
-    err = data.get("error")
-    if isinstance(err, dict):
-        if "code" in err:
-            out["upstream_error_code"] = err.get("code")
-        if "type" in err:
-            out["upstream_error_type"] = err.get("type")
-    return out
+        cost = litellm.completion_cost(completion_response=response)
+    except Exception:
+        return None
+    if cost is None:
+        return None
+    try:
+        return Decimal(str(cost)).quantize(Decimal("0.000001"))
+    except Exception:
+        return None
 
-
-# Default OpenAI chat/completions URL (no custom Tool Admin base).
-OPENAI_CHAT_COMPLETIONS_URL = chat_completions_url(None)
 
 # Shared JSON-schema envelope for work-order batch generation (Slice 7).
 WORK_ORDER_BATCH_JSON_SCHEMA: dict[str, Any] = {
@@ -165,7 +188,7 @@ class LLMService:
             route_pk = await resolve_provider_key_for_model(self.db, eff)
         assert_openai_compatible_provider_field(row)
         try:
-            model, key, chat_url = await resolve_openai_compatible_llm_credentials(
+            model, key, api_base = await resolve_openai_compatible_llm_credentials(
                 self.db,
                 admin=row,
                 effective_model=eff,
@@ -178,7 +201,7 @@ class LLMService:
                 detail=str(e.detail),
             )
             raise
-        return model, key, chat_url
+        return model, key, api_base
 
     async def _require_openai_config(self) -> tuple[str, str, str]:
         """Legacy path without studio routing (admin probes only)."""
@@ -197,7 +220,7 @@ class LLMService:
         route_pk = await resolve_provider_key_for_model(self.db, model_raw)
         assert_openai_compatible_provider_field(row)
         try:
-            model, key, chat_url = await resolve_openai_compatible_llm_credentials(
+            model, key, api_base = await resolve_openai_compatible_llm_credentials(
                 self.db,
                 admin=row,
                 effective_model=model_raw,
@@ -210,7 +233,26 @@ class LLMService:
                 detail=str(e.detail),
             )
             raise
-        return model, key, chat_url
+        return model, key, api_base
+
+    async def trim_chat_messages_for_stream(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        context: TokenContext,
+        call_type: str,
+        preferred_model: str | None = None,
+        max_history_tokens: int = DEFAULT_CHAT_HISTORY_MAX_TOKENS,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """Trim ``messages`` (no system) to fit token budget; returns ``(msgs, trimmed)``."""
+        model, _, _ = await self._require_openai_config_for_context(
+            context=context,
+            call_type=call_type,
+            preferred_model=preferred_model,
+        )
+        return trim_openai_chat_messages(
+            messages, model=model, max_tokens=max_history_tokens
+        )
 
     async def ensure_openai_llm_ready(
         self,
@@ -246,15 +288,11 @@ class LLMService:
     ) -> dict[str, Any]:
         """Returns parsed assistant JSON object (never raw string)."""
         _validate_json_schema(json_schema)
-        model, api_key, chat_url = await self._require_openai_config_for_context(
+        model, api_key, api_base = await self._require_openai_config_for_context(
             context=context,
             call_type=call_type,
             preferred_model=None,
         )
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
         log.info(
             "llm_chat_structured_start",
             call_type=call_type,
@@ -264,63 +302,32 @@ class LLMService:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
-        body: dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": json_schema,
-            },
-        }
         try:
-            async with httpx.AsyncClient(timeout=180.0) as client:
-                r = await client.post(chat_url, headers=headers, json=body)
-                if r.status_code >= 400:
-                    log.warning(
-                        "llm_http_error",
-                        **_upstream_error_log_fields(
-                            status_code=r.status_code,
-                            headers=r.headers,
-                            body_text=r.text,
-                        ),
-                    )
-                    raise ApiError(
-                        status_code=502,
-                        code="LLM_UPSTREAM_ERROR",
-                        message="LLM provider returned an error.",
-                    )
-                data = r.json()
-        except httpx.TimeoutException as e:
-            log.warning(
-                "llm_timeout",
-                call_type=call_type,
-                project_id=str(context.project_id),
-                exc_type=type(e).__name__,
+            response = await litellm.acompletion(
+                model=model,
+                messages=messages,
+                api_key=api_key,
+                api_base=api_base,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": json_schema,
+                },
+                timeout=180.0,
             )
-            raise ApiError(
-                status_code=504,
-                code="LLM_TIMEOUT",
-                message=(
-                    "The language model did not respond in time. Try again with fewer "
-                    "sections or when the provider is less busy."
-                ),
-            ) from e
-        except httpx.RequestError as e:
-            log.warning(
-                "llm_transport_error",
-                call_type=call_type,
-                project_id=str(context.project_id),
-                exc_type=type(e).__name__,
-            )
-            raise ApiError(
-                status_code=502,
-                code="LLM_TRANSPORT_ERROR",
-                message="Could not reach the language model service.",
-            ) from e
+        except Exception as e:
+            raise map_litellm_exception(e, family="chat") from e
 
-        usage_raw = data.get("usage") or {}
-        input_tokens = int(usage_raw.get("prompt_tokens") or 0)
-        output_tokens = int(usage_raw.get("completion_tokens") or 0)
+        usage_raw = getattr(response, "usage", None)
+        ud: dict[str, Any]
+        if usage_raw is not None and hasattr(usage_raw, "model_dump"):
+            ud = usage_raw.model_dump()
+        elif isinstance(usage_raw, dict):
+            ud = usage_raw
+        else:
+            ud = {}
+        input_tokens = int(ud.get("prompt_tokens") or 0)
+        output_tokens = int(ud.get("completion_tokens") or 0)
+        cost_override = _optional_completion_cost_usd(response)
         if input_tokens or output_tokens:
             await record_usage(
                 self.db,
@@ -329,16 +336,26 @@ class LLMService:
                 model=model,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
+                estimated_cost_override=cost_override,
             )
 
-        choices = data.get("choices") or []
+        choices = getattr(response, "choices", None) or []
         if not choices:
             raise ApiError(
                 status_code=502,
                 code="LLM_EMPTY_RESPONSE",
                 message="LLM returned no choices.",
             )
-        content = choices[0].get("message", {}).get("content") or "{}"
+        msg = getattr(choices[0], "message", None)
+        if msg is not None and hasattr(msg, "model_dump"):
+            mdict = msg.model_dump()
+            content = mdict.get("content") or "{}"
+        elif isinstance(msg, dict):
+            content = msg.get("content") or "{}"
+        else:
+            content = getattr(msg, "content", None) or "{}"
+        if not isinstance(content, str):
+            content = str(content or "{}")
         try:
             return json.loads(content)
         except json.JSONDecodeError as e:
@@ -358,104 +375,50 @@ class LLMService:
         preferred_model: str | None = None,
     ) -> AsyncIterator[str]:
         """Yield assistant token deltas (streaming). Records tokens when usage is returned."""
-        model, api_key, chat_url = await self._require_openai_config_for_context(
+        model, api_key, api_base = await self._require_openai_config_for_context(
             context=context,
             call_type=call_type,
             preferred_model=preferred_model,
         )
         full_messages = [{"role": "system", "content": system_prompt}, *messages]
-        body: dict[str, Any] = {
-            "model": model,
-            "messages": full_messages,
-            "stream": True,
-            "stream_options": {"include_usage": True},
-        }
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
         assistant_parts: list[str] = []
         usage_final: dict[str, int] | None = None
 
         try:
-            async with httpx.AsyncClient(timeout=180.0) as client:
-                async with client.stream(
-                    "POST",
-                    chat_url,
-                    headers=headers,
-                    json=body,
-                ) as resp:
-                    if resp.status_code >= 400:
-                        text = await resp.aread()
-                        body_text = text.decode()
-                        log.warning(
-                            "llm_stream_http_error",
-                            **_upstream_error_log_fields(
-                                status_code=resp.status_code,
-                                headers=resp.headers,
-                                body_text=body_text,
-                            ),
-                        )
-                        raise ApiError(
-                            status_code=502,
-                            code="LLM_UPSTREAM_ERROR",
-                            message="LLM provider returned an error.",
-                        )
-                    async for line in resp.aiter_lines():
-                        line = line.strip()
-                        if not line.startswith("data:"):
-                            continue
-                        payload = line[5:].strip()
-                        if payload == "[DONE]":
-                            break
-                        try:
-                            chunk = json.loads(payload)
-                        except json.JSONDecodeError:
-                            continue
-                        u = chunk.get("usage")
-                        if isinstance(u, dict) and u.get("prompt_tokens") is not None:
-                            usage_final = {
-                                "prompt_tokens": int(u.get("prompt_tokens") or 0),
-                                "completion_tokens": int(u.get("completion_tokens") or 0),
-                            }
-                        choices_ch = chunk.get("choices") or []
-                        if not choices_ch:
-                            continue
-                        delta = choices_ch[0].get("delta") or {}
-                        piece = delta.get("content") or ""
-                        if piece:
-                            assistant_parts.append(piece)
-                            yield piece
-        except httpx.TimeoutException as e:
-            log.warning(
-                "llm_stream_timeout",
-                call_type=call_type,
-                project_id=str(context.project_id),
-                exc_type=type(e).__name__,
+            stream = await litellm.acompletion(
+                model=model,
+                messages=full_messages,
+                stream=True,
+                stream_options={"include_usage": True},
+                api_key=api_key,
+                api_base=api_base,
+                timeout=180.0,
             )
-            raise ApiError(
-                status_code=504,
-                code="LLM_TIMEOUT",
-                message=(
-                    "The language model did not respond in time. Try again with fewer "
-                    "sections or when the provider is less busy."
-                ),
-            ) from e
-        except httpx.RequestError as e:
-            log.warning(
-                "llm_stream_transport_error",
-                call_type=call_type,
-                project_id=str(context.project_id),
-                exc_type=type(e).__name__,
-            )
-            raise ApiError(
-                status_code=502,
-                code="LLM_TRANSPORT_ERROR",
-                message="Could not reach the language model service.",
-            ) from e
+            async for chunk in stream:
+                u = _chunk_usage_tokens(chunk)
+                if u is not None:
+                    usage_final = u
+                piece = _chunk_delta_text(chunk)
+                if piece:
+                    assistant_parts.append(piece)
+                    yield piece
+        except Exception as e:
+            raise map_litellm_exception(e, family="chat") from e
 
         full_text = "".join(assistant_parts)
         if usage_final:
+            cost_override: Decimal | None = None
+            try:
+                raw_cost = litellm.completion_cost(
+                    completion_response=None,
+                    model=model,
+                    messages=full_messages,
+                    completion=full_text,
+                )
+                if raw_cost is not None:
+                    cost_override = Decimal(str(raw_cost)).quantize(Decimal("0.000001"))
+            except Exception:
+                cost_override = None
             await record_usage(
                 self.db,
                 context,
@@ -463,6 +426,7 @@ class LLMService:
                 model=model,
                 input_tokens=usage_final["prompt_tokens"],
                 output_tokens=usage_final["completion_tokens"],
+                estimated_cost_override=cost_override,
             )
         elif full_text:
             est_out = max(1, len(full_text) // 4)
@@ -483,15 +447,7 @@ class LLMService:
         api_base_url_override: str | None = None,
         provider_key: str | None = None,
     ) -> AdminConnectivityResult:
-        """Tool Admin UI: minimal non-streaming chat completion against stored LLM config.
-
-        Resolves API key and base URL from the provider registry when a per-provider key
-        is set, else Tool admin global settings. Optional overrides select model, host, or
-        registry row (``provider_key``) for the probe.
-
-        Does not call :func:`record_usage` — connectivity probes are excluded from
-        token accounting dashboards.
-        """
+        """Tool Admin UI: minimal non-streaming chat completion against stored LLM config."""
         row = await self.db.get(AdminConfig, 1)
         if row is None:
             row = AdminConfig(id=1)
@@ -511,7 +467,7 @@ class LLMService:
                 detail=d if isinstance(d, str) else str(d),
             )
         try:
-            _model_eff, key, chat_url = await resolve_openai_compatible_llm_credentials(
+            _model_eff, key, api_base = await resolve_openai_compatible_llm_credentials(
                 self.db,
                 admin=row,
                 effective_model=model,
@@ -525,51 +481,28 @@ class LLMService:
                 detail=d if isinstance(d, str) else str(d),
             )
         if api_base_url_override is not None and str(api_base_url_override).strip():
-            chat_url = chat_completions_url(api_base_url_override)
-        body = {
-            "model": model,
-            "messages": [
-                {"role": "user", "content": 'Reply with exactly the word "OK".'}
-            ],
-            "max_tokens": 32,
-        }
-        headers = {
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json",
-        }
+            api_base = openai_v1_base(api_base_url_override)
         try:
-            async with httpx.AsyncClient(timeout=45.0) as client:
-                r = await client.post(
-                    chat_url,
-                    headers=headers,
-                    json=body,
-                )
-        except httpx.HTTPError as e:
-            return AdminConnectivityResult(
-                ok=False,
-                message="LLM request failed (network or timeout).",
-                detail=str(e)[:800],
+            response = await litellm.acompletion(
+                model=model,
+                messages=[
+                    {"role": "user", "content": 'Reply with exactly the word "OK".'}
+                ],
+                max_tokens=32,
+                api_key=key,
+                api_base=api_base,
+                timeout=45.0,
             )
-        if r.status_code >= 400:
-            return AdminConnectivityResult(
-                ok=False,
-                message="LLM provider returned an error.",
-                detail=r.text[:800],
-            )
-        try:
-            data = r.json()
-        except Exception:
-            return AdminConnectivityResult(
-                ok=False,
-                message="Unexpected LLM response body.",
-                detail=r.text[:400],
-            )
-        choices = data.get("choices") or []
+        except Exception as e:
+            msg, det = map_litellm_exception_to_probe_detail(e)
+            return AdminConnectivityResult(ok=False, message=msg, detail=det)
+
+        choices = getattr(response, "choices", None) or []
         preview = ""
         if choices:
-            preview = (
-                (choices[0].get("message") or {}).get("content") or ""
-            ).strip()
+            msg = getattr(choices[0], "message", None)
+            raw = getattr(msg, "content", None) if msg is not None else None
+            preview = str(raw or "").strip()
         return AdminConnectivityResult(
             ok=True,
             message="LLM connection succeeded.",

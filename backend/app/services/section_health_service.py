@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 
 from sqlalchemy import func, select
@@ -27,9 +26,13 @@ class SectionHealthService:
         project_id: uuid.UUID,
         sections: list[Section],
         token_budget: int = 6000,
-        max_concurrent_rag: int = 5,
     ) -> dict[uuid.UUID, SectionOutlineHealthLite]:
-        """Drift/gap SQL batch + bounded-concurrency RAG token totals (no citation LLM)."""
+        """Drift/gap SQL batch + RAG token totals per section (no citation LLM).
+
+        RAG previews run **sequentially**: they share the request-scoped
+        :class:`~sqlalchemy.ext.asyncio.AsyncSession`, which must not be used
+        concurrently (embedding/token recording may flush the session).
+        """
         if not sections:
             return {}
         ids = [s.id for s in sections]
@@ -71,22 +74,22 @@ class SectionHealthService:
             if sid is not None:
                 gap_map[sid] = int(cnt or 0)
 
-        sem = asyncio.Semaphore(max_concurrent_rag)
         rag = RAGService(self.db)
 
         async def tokens_for(sid: uuid.UUID) -> tuple[uuid.UUID, int, int]:
-            async with sem:
-                preview = await rag.build_context_with_blocks(
-                    "",
-                    project_id,
-                    sid,
-                    token_budget=token_budget,
-                    include_git_history=False,
-                    include_debug_raw_rag=False,
-                )
-                return sid, preview.total_tokens, preview.budget_tokens
+            preview = await rag.build_context_with_blocks(
+                "",
+                project_id,
+                sid,
+                token_budget=token_budget,
+                include_git_history=False,
+                include_debug_raw_rag=False,
+            )
+            return sid, preview.total_tokens, preview.budget_tokens
 
-        tok_results = await asyncio.gather(*[tokens_for(sid) for sid in ids])
+        tok_results: list[tuple[uuid.UUID, int, int]] = []
+        for sid in ids:
+            tok_results.append(await tokens_for(sid))
         tok_by: dict[uuid.UUID, tuple[int, int]] = {
             sid: (used, budget) for sid, used, budget in tok_results
         }

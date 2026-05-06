@@ -7,6 +7,8 @@ absent from reports until wired similarly.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,8 +28,11 @@ async def record_usage(
     input_tokens: int,
     output_tokens: int,
     provider: str = "openai",
+    estimated_cost_override: Decimal | None = None,
 ) -> None:
-    if provider == "openai":
+    if estimated_cost_override is not None:
+        est: Decimal | None = estimated_cost_override
+    elif provider == "openai":
         est = estimate_cost_usd_openai(model, input_tokens, output_tokens)
     else:
         est = estimate_cost_usd_openai(model, input_tokens, output_tokens)

@@ -18,12 +18,12 @@ from tests.factories import create_user
 
 @pytest.fixture(autouse=True)
 def _fake_embedding_rbac(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services.embedding_service import EmbeddingService, OPENAI_EMBEDDINGS_URL
+    from app.services.embedding_service import EmbeddingService, OPENAI_EMBEDDING_API_BASE
 
     async def ready(_self: object) -> tuple[str, str, str, str]:
-        return ("text-embedding-3-small", "sk-fake", "openai", OPENAI_EMBEDDINGS_URL)
+        return ("text-embedding-3-small", "sk-fake", "openai", OPENAI_EMBEDDING_API_BASE)
 
-    async def batch(_self: object, texts: list[str]) -> list[list[float]]:
+    async def batch(_self: object, texts: list[str], *, context: object | None = None) -> list[list[float]]:
         return [[0.0] * 1536 for _ in texts]
 
     monkeypatch.setattr(EmbeddingService, "require_embedding_ready", ready)

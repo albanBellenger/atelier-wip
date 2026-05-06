@@ -58,6 +58,7 @@ class LlmProviderRegistryResponse(BaseModel):
     sort_order: int
     llm_api_key_set: bool = False
     llm_api_key_hint: str | None = None
+    litellm_provider_slug: str | None = None
 
 
 class LlmProviderRegistryUpdate(BaseModel):
@@ -68,6 +69,7 @@ class LlmProviderRegistryUpdate(BaseModel):
     is_default: bool = False
     sort_order: int = 0
     llm_api_key: str | None = None
+    litellm_provider_slug: str | None = Field(default=None, max_length=64)
 
 
 class LlmDeploymentResponse(BaseModel):
@@ -95,6 +97,20 @@ class LlmRoutingRuleResponse(BaseModel):
 
 class LlmRoutingRuleUpdate(BaseModel):
     rules: list[LlmRoutingRuleResponse]
+
+
+class LlmModelSuggestionItem(BaseModel):
+    """Single model id suggestion for Tool Admin pickers (no secrets)."""
+
+    id: str
+    label: str | None = None
+    provider: str | None = None
+    source: str  # "upstream" | "catalog"
+
+
+class LlmModelSuggestionsResponse(BaseModel):
+    models: list[LlmModelSuggestionItem]
+    warning: str | None = None
 
 
 class StudioGitLabResponse(BaseModel):
@@ -168,6 +184,7 @@ class EmbeddingModelRegistryResponse(BaseModel):
     cost_per_million_usd: Decimal | None
     region: str | None
     default_role: str | None
+    litellm_provider_slug: str | None = None
 
 
 class EmbeddingModelRegistryUpdate(BaseModel):
@@ -177,6 +194,7 @@ class EmbeddingModelRegistryUpdate(BaseModel):
     cost_per_million_usd: Decimal | None = None
     region: str | None = None
     default_role: str | None = None
+    litellm_provider_slug: str | None = Field(default=None, max_length=64)
 
 
 class EmbeddingReindexPolicyResponse(BaseModel):

@@ -147,6 +147,7 @@ export function CopilotPanel(props: {
   const [debouncedDraftForPreview, setDebouncedDraftForPreview] = useState('')
   const [proposedMarkdown, setProposedMarkdown] = useState('')
   const [streaming, setStreaming] = useState('')
+  const [liveTrimNotice, setLiveTrimNotice] = useState<string | null>(null)
   const [findings, setFindings] = useState<
     { finding_type: string; description: string }[]
   >([])
@@ -404,6 +405,7 @@ export function CopilotPanel(props: {
       setIncludeGitHistory(false)
       setIncludeSelectionInContext(true)
       setStreaming('')
+      setLiveTrimNotice(null)
       setFindings([])
       setContextTruncated(false)
       const snapshot = collab?.ytext?.toString()
@@ -447,24 +449,35 @@ export function CopilotPanel(props: {
           setStreaming((s) => s + t)
         },
         onMeta: (meta) => {
-          setFindings(meta.findings ?? [])
-          setContextTruncated(meta.context_truncated === true)
-          const raw = meta.patch_proposal
-          const norm = normalizePatchProposal(raw ?? null)
-          setPatchProposal(norm)
-          if (norm && collab != null && snapshot !== undefined) {
-            const after = previewFromProposal(snapshot, norm)
-            setPatchPreviewLines(
-              summarizeTextChange(snapshot, after, 12),
-            )
-          } else {
-            setPatchPreviewLines([])
+          if (meta.trim_notice != null && meta.trim_notice !== '') {
+            setLiveTrimNotice(meta.trim_notice)
+          }
+          if (meta.findings !== undefined) {
+            setFindings(meta.findings)
+          }
+          if (meta.context_truncated !== undefined) {
+            setContextTruncated(meta.context_truncated === true)
+          }
+          const raw =
+            meta.patch_proposal !== undefined ? meta.patch_proposal : undefined
+          if (raw !== undefined) {
+            const norm = normalizePatchProposal(raw ?? null)
+            setPatchProposal(norm)
+            if (norm && collab != null && snapshot !== undefined) {
+              const after = previewFromProposal(snapshot, norm)
+              setPatchPreviewLines(
+                summarizeTextChange(snapshot, after, 12),
+              )
+            } else {
+              setPatchPreviewLines([])
+            }
           }
         },
       })
     },
     onSuccess: () => {
       setStreaming('')
+      setLiveTrimNotice(null)
       void qc.invalidateQueries({
         queryKey: ['privateThread', projectId, sectionId],
       })
@@ -902,6 +915,7 @@ export function CopilotPanel(props: {
               <ConversationView
                 messages={msgs}
                 streaming={streaming}
+                liveTrimNotice={liveTrimNotice}
                 threadPending={threadQ.isPending}
                 patchProposal={patchProposal}
                 patchPreviewLines={patchPreviewLines}

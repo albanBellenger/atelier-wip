@@ -26,6 +26,7 @@ class LlmProviderRegistry(Base):
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     api_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    litellm_provider_slug: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class StudioLlmProviderPolicy(Base):

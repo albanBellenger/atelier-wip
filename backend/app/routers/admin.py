@@ -1,6 +1,7 @@
 """Tool admin routes."""
 
 from datetime import date
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, Query, Request, status
@@ -29,6 +30,7 @@ from app.schemas.admin_console import (
     EmbeddingReindexPolicyResponse,
     EmbeddingReindexPolicyUpdate,
     LlmDeploymentResponse,
+    LlmModelSuggestionsResponse,
     LlmProviderRegistryResponse,
     LlmProviderRegistryUpdate,
     LlmRoutingRuleResponse,
@@ -56,6 +58,7 @@ from app.services.admin_user_directory_service import AdminUserDirectoryService
 from app.services.cross_studio_service import CrossStudioService
 from app.services.embedding_admin_service import EmbeddingAdminService
 from app.services.llm_connectivity_service import LlmConnectivityService
+from app.services.llm_model_suggestions_service import LlmModelSuggestionsService
 from app.services.studio_member_budget_admin_service import StudioMemberBudgetAdminService
 from app.services.studio_service import StudioService
 from app.services.studio_tool_admin_service import StudioToolAdminService
@@ -308,6 +311,25 @@ async def delete_llm_provider(
 ) -> Response:
     await LlmConnectivityService(session).delete_provider(provider_key)
     return Response(status_code=204)
+
+
+@router.get("/llm/model-suggestions", response_model=LlmModelSuggestionsResponse)
+async def get_llm_model_suggestions(
+    session: AsyncSession = Depends(get_db),
+    _: User = Depends(require_tool_admin),
+    provider_key: str | None = Query(default=None),
+    litellm_provider: str | None = Query(default=None),
+    q: str | None = Query(default=None),
+    mode: Literal["chat", "embedding"] = Query(default="chat"),
+    source: Literal["auto", "catalog", "upstream"] = Query(default="auto"),
+) -> LlmModelSuggestionsResponse:
+    return await LlmModelSuggestionsService(session).suggest(
+        provider_key=provider_key,
+        litellm_provider=litellm_provider,
+        q=q,
+        mode=mode,
+        source=source,
+    )
 
 
 @router.get("/llm/routing", response_model=list[LlmRoutingRuleResponse])

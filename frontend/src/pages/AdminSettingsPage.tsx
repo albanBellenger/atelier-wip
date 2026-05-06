@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { LlmModelSuggestInput } from '../components/admin/LlmModelSuggestInput'
 import {
   type AdminConfigPublic,
   type AdminConfigUpdateBody,
@@ -210,13 +211,31 @@ export function AdminSettingsPage(): ReactElement {
               </label>
               <label className="block text-sm">
                 <span className="text-zinc-400">Model</span>
-                <input
-                  className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100"
+                <LlmModelSuggestInput
+                  id="admin-settings-llm-model"
+                  listId="admin-settings-llm-model-dl"
                   value={llmModel}
-                  onChange={(e) => setLlmModel(e.target.value)}
-                  autoComplete="off"
+                  onChange={setLlmModel}
+                  litellmProvider={llmProvider.trim().toLowerCase() || undefined}
+                  minChars={2}
+                  placeholder="Type 2+ characters for LiteLLM catalog suggestions"
+                  className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100"
                 />
               </label>
+              <p className="text-xs text-zinc-500">
+                Without the provider registry, Atelier passes this value to LiteLLM as-is. Bare ids
+                work when unambiguous; third-party models often need{' '}
+                <span className="font-mono text-zinc-300">provider/model</span>. See{' '}
+                <a
+                  href="https://docs.litellm.ai/docs/providers"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-violet-400 hover:underline"
+                >
+                  LiteLLM providers
+                </a>
+                .
+              </p>
               <label className="block text-sm">
                 <span className="text-zinc-400">API base URL</span>
                 <input
@@ -312,11 +331,16 @@ export function AdminSettingsPage(): ReactElement {
               </label>
               <label className="block text-sm">
                 <span className="text-zinc-400">Model</span>
-                <input
-                  className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100"
+                <LlmModelSuggestInput
+                  id="admin-settings-embed-model"
+                  listId="admin-settings-embed-model-dl"
                   value={embedModel}
-                  onChange={(e) => setEmbedModel(e.target.value)}
-                  autoComplete="off"
+                  onChange={setEmbedModel}
+                  litellmProvider={embedProvider.trim().toLowerCase() || undefined}
+                  mode="embedding"
+                  minChars={2}
+                  placeholder="Type 2+ characters for embedding catalog suggestions"
+                  className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100"
                 />
               </label>
               <label className="block text-sm">

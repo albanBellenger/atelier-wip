@@ -136,6 +136,7 @@ class SoftwareChatService:
         user_id: uuid.UUID,
         user_content: str,
         preferred_model: str | None = None,
+        chat_messages: list[dict[str, str]] | None = None,
     ) -> AsyncIterator[tuple[str, TokenContext]]:
         """Yield LLM token strings; caller persists assistant message after iteration."""
         software = await self.db.get(Software, software_id)
@@ -153,7 +154,11 @@ class SoftwareChatService:
             user_id=user_id,
         )
 
-        openai_msgs = await self.openai_messages_for_software(software_id)
+        openai_msgs = (
+            chat_messages
+            if chat_messages is not None
+            else await self.openai_messages_for_software(software_id)
+        )
         system_prompt = await self.build_software_system_prompt(software_id)
 
         llm = LLMService(self.db)

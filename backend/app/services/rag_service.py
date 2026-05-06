@@ -19,6 +19,7 @@ from app.schemas.section_context_preferences import SectionContextPrefsOut
 from app.schemas.token_context import TokenContext
 from app.security.field_encryption import decrypt_secret, fernet_configured
 from app.services.embedding_service import EmbeddingService
+from app.services.embedding_token_context import token_context_for_project
 from app.services import git_service as gitlab_history
 from app.services.llm_service import LLMService
 
@@ -305,7 +306,8 @@ class RAGService:
         if query_for_embedding:
             try:
                 emb = EmbeddingService(self.db)
-                qvec = (await emb.embed_batch([query_for_embedding]))[0]
+                emb_ctx = await token_context_for_project(self.db, project_id)
+                qvec = (await emb.embed_batch([query_for_embedding], context=emb_ctx))[0]
             except ApiError as e:
                 log.warning("rag_embed_skip", reason=str(e))
 

@@ -96,15 +96,15 @@ async def test_resolve_credentials_prefers_registry_row_when_present(
         llm_api_base_url="https://api.openai.com/v1",
     )
 
-    model, key, url = await resolve_openai_compatible_llm_credentials(
+    model, key, api_base = await resolve_openai_compatible_llm_credentials(
         db,
         admin=admin,
         effective_model="m1",
         route_provider_key="acme",
     )
-    assert model == "m1"
+    assert model == "acme/m1"
     assert key == "from-registry"
-    assert "acme.example" in url
+    assert "acme.example" in api_base
 
 
 @pytest.mark.asyncio
@@ -141,11 +141,11 @@ async def test_resolve_credentials_fallback_global_when_registry_row_has_no_key(
         llm_api_base_url=None,
     )
 
-    model, key, _url = await resolve_openai_compatible_llm_credentials(
+    model, key, _api_base = await resolve_openai_compatible_llm_credentials(
         db,
         admin=admin,
         effective_model="m1",
         route_provider_key="acme",
     )
-    assert model == "m1"
+    assert model == "acme/m1"
     assert key == "from-global"

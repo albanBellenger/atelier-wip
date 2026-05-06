@@ -1,21 +1,29 @@
-"""Embedding calls via Tool Admin OpenAI-compatible embeddings API."""
+"""Embedding calls via LiteLLM (OpenAI-compatible embeddings API)."""
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any
 
-import httpx
+import litellm
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
 from app.models import AdminConfig, EmbeddingModelRegistry
+from app.openai_compat_urls import embeddings_url, openai_v1_base
+from app.schemas.token_context import TokenContext
 from app.security.field_encryption import decode_admin_stored_secret
-from app.openai_compat_urls import embeddings_url
+from app.services.litellm_exception_mapping import map_litellm_exception
+from app.services.litellm_model_id import normalize_litellm_embedding_model
+from app.services.token_tracker import record_usage
 
 log = structlog.get_logger("atelier.embedding")
 
+# Default v1 base for tests mocking ``require_embedding_ready`` (4th element must be ``api_base``).
+OPENAI_EMBEDDING_API_BASE = openai_v1_base(None)
+# Legacy export (full ``…/embeddings`` URL) — prefer ``OPENAI_EMBEDDING_API_BASE`` for new code.
 OPENAI_EMBEDDINGS_URL = embeddings_url(None)
 EMBED_BATCH = 64
 
@@ -33,7 +41,10 @@ class EmbeddingService:
         return row
 
     async def require_embedding_ready(self) -> tuple[str, str, str, str]:
-        """Returns (model, api_key, provider, embeddings_url) or raises ApiError 503."""
+        """Returns ``(model, api_key, provider, api_base)`` or raises ApiError 503.
+
+        ``api_base`` is the OpenAI v1 root for LiteLLM (e.g. ``https://api.openai.com/v1``).
+        """
         cfg = await self._get_config()
         reg_default = (
             await self.db.execute(
@@ -43,9 +54,19 @@ class EmbeddingService:
             )
         ).scalar_one_or_none()
         if reg_default is not None:
-            model = (reg_default.model_id or "").strip()
+            raw = (reg_default.model_id or "").strip()
+            model = normalize_litellm_embedding_model(
+                raw,
+                litellm_provider_slug=reg_default.litellm_provider_slug,
+                provider_name_fallback=reg_default.provider_name,
+            )
         else:
-            model = (cfg.embedding_model or "").strip()
+            raw = (cfg.embedding_model or "").strip()
+            model = normalize_litellm_embedding_model(
+                raw,
+                litellm_provider_slug=None,
+                provider_name_fallback=(cfg.embedding_provider or "").strip(),
+            )
         key = (decode_admin_stored_secret(cfg.embedding_api_key) or "").strip()
         provider = (cfg.embedding_provider or "").strip().lower()
         if not model or not key:
@@ -63,64 +84,63 @@ class EmbeddingService:
                     "use embedding API base URL for a custom endpoint."
                 ),
             )
-        emb_url = embeddings_url(cfg.embedding_api_base_url)
-        return model, key, provider or "openai", emb_url
+        api_base = openai_v1_base(cfg.embedding_api_base_url)
+        return model, key, provider or "openai", api_base
 
-    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+    async def embed_batch(
+        self,
+        texts: list[str],
+        *,
+        context: TokenContext | None = None,
+    ) -> list[list[float]]:
         if not texts:
             return []
-        model, api_key, _provider, emb_url = await self.require_embedding_ready()
+        model, api_key, _provider, api_base = await self.require_embedding_ready()
         out: list[list[float]] = []
         for start in range(0, len(texts), EMBED_BATCH):
             batch = texts[start : start + EMBED_BATCH]
-            vectors = await self._openai_embed(model, api_key, batch, emb_url)
+            vectors = await self._litellm_embed_batch(
+                model, api_key, api_base, batch, context=context
+            )
             out.extend(vectors)
         return out
 
-    async def _openai_embed(
-        self, model: str, api_key: str, inputs: list[str], embeddings_endpoint: str
+    async def _litellm_embed_batch(
+        self,
+        model: str,
+        api_key: str,
+        api_base: str,
+        inputs: list[str],
+        *,
+        context: TokenContext | None,
     ) -> list[list[float]]:
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
-        body: dict[str, Any] = {"model": model, "input": inputs}
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                r = await client.post(embeddings_endpoint, headers=headers, json=body)
-                if r.status_code >= 400:
-                    log.warning(
-                        "embedding_http_error",
-                        status=r.status_code,
-                        body=r.text[:500],
-                    )
-                    raise ApiError(
-                        status_code=502,
-                        code="EMBEDDING_UPSTREAM_ERROR",
-                        message="Embedding provider returned an error.",
-                    )
-                data = r.json()
-        except httpx.TimeoutException as e:
-            log.warning("embedding_timeout", exc_type=type(e).__name__)
-            raise ApiError(
-                status_code=504,
-                code="EMBEDDING_TIMEOUT",
-                message="Embedding provider did not respond in time.",
-            ) from e
-        except httpx.RequestError as e:
-            log.warning("embedding_transport_error", exc_type=type(e).__name__)
-            raise ApiError(
-                status_code=502,
-                code="EMBEDDING_TRANSPORT_ERROR",
-                message="Could not reach the embedding service.",
-            ) from e
-        items = data.get("data") or []
-        # Sort by index for safety
-        items.sort(key=lambda x: int(x.get("index", 0)))
+            response = await litellm.aembedding(
+                model=model,
+                input=inputs,
+                api_key=api_key,
+                api_base=api_base,
+                timeout=120.0,
+            )
+        except Exception as e:
+            raise map_litellm_exception(e, family="embedding") from e
+
+        data_list = getattr(response, "data", None) or []
+        rows: list[Any] = list(data_list) if hasattr(data_list, "__iter__") else []
+
+        def _sort_key(item: Any) -> int:
+            if isinstance(item, dict):
+                return int(item.get("index") or 0)
+            return int(getattr(item, "index", 0) or 0)
+
+        rows.sort(key=_sort_key)
+
         vectors: list[list[float]] = []
         cfg = await self._get_config()
-        for item in items:
-            emb = item.get("embedding")
+        for item in rows:
+            emb = getattr(item, "embedding", None)
+            if emb is None and isinstance(item, dict):
+                emb = item.get("embedding")
             if not isinstance(emb, list):
                 raise ApiError(
                     status_code=502,
@@ -147,6 +167,37 @@ class EmbeddingService:
                 code="EMBEDDING_COUNT_MISMATCH",
                 message="Embedding provider returned wrong number of vectors.",
             )
+
+        if context is not None:
+            u = getattr(response, "usage", None)
+            ud: dict[str, Any]
+            if u is not None and hasattr(u, "model_dump"):
+                ud = u.model_dump()
+            elif isinstance(u, dict):
+                ud = u
+            else:
+                ud = {}
+            inp_tok = int(ud.get("total_tokens") or ud.get("prompt_tokens") or 0)
+            cost_override: Decimal | None = None
+            try:
+                raw_c = litellm.completion_cost(
+                    completion_response=response,
+                    call_type="aembedding",
+                )
+                if raw_c is not None:
+                    cost_override = Decimal(str(raw_c)).quantize(Decimal("0.000001"))
+            except Exception:
+                cost_override = None
+            if inp_tok > 0:
+                await record_usage(
+                    self.db,
+                    context,
+                    call_type="embedding",
+                    model=model,
+                    input_tokens=inp_tok,
+                    output_tokens=0,
+                    estimated_cost_override=cost_override,
+                )
         return vectors
 
 

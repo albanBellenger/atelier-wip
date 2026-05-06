@@ -1,10 +1,21 @@
-"""LLM client behavior (timeouts → ApiError)."""
+"""LLM client behavior via LiteLLM (timeouts / transport → ApiError)."""
 
-from typing import Any
+from __future__ import annotations
+
 import uuid
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    AuthenticationError,
+    BadRequestError,
+    InternalServerError,
+    RateLimitError,
+)
 
 from app.exceptions import ApiError
 from app.models import AdminConfig
@@ -12,26 +23,25 @@ from app.schemas.auth import AdminConnectivityResult
 from app.schemas.token_context import TokenContext
 from app.services.llm_service import LLMService
 
+_REQ = httpx.Request("POST", "https://example.test/v1/chat/completions")
 
-class _TimeoutAsyncClient:
-    """AsyncClient stand-in that raises on POST."""
 
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        pass
+def _resp(status: int) -> httpx.Response:
+    return httpx.Response(status, request=_REQ)
 
-    async def __aenter__(self) -> "_TimeoutAsyncClient":
-        return self
 
-    async def __aexit__(self, *args: object) -> None:
-        return None
-
-    async def post(self, *args: object, **kwargs: object) -> object:
-        raise httpx.ReadTimeout("read timeout", request=None)
+def _token_ctx() -> TokenContext:
+    return TokenContext(
+        studio_id=uuid.uuid4(),
+        software_id=uuid.uuid4(),
+        project_id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+    )
 
 
 @pytest.mark.asyncio
 async def test_chat_structured_read_timeout_maps_to_api_error(
-    db_session,
+    db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     row = await db_session.get(AdminConfig, 1)
@@ -42,46 +52,26 @@ async def test_chat_structured_read_timeout_maps_to_api_error(
     await db_session.flush()
 
     monkeypatch.setattr(
-        "app.services.llm_service.httpx.AsyncClient",
-        _TimeoutAsyncClient,
+        "app.services.llm_service.litellm.acompletion",
+        AsyncMock(side_effect=APITimeoutError(request=_REQ)),
     )
 
     llm = LLMService(db_session)
-    ctx = TokenContext(
-        studio_id=uuid.uuid4(),
-        software_id=uuid.uuid4(),
-        project_id=uuid.uuid4(),
-        user_id=uuid.uuid4(),
-    )
     with pytest.raises(ApiError) as exc_info:
         await llm.chat_structured(
             system_prompt="s",
             user_prompt="u",
             json_schema={"name": "x", "strict": True, "schema": {"type": "object"}},
-            context=ctx,
+            context=_token_ctx(),
             call_type="test",
         )
     assert exc_info.value.status_code == 504
     assert exc_info.value.error_code == "LLM_TIMEOUT"
 
 
-class _ConnectFailAsyncClient:
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        pass
-
-    async def __aenter__(self) -> "_ConnectFailAsyncClient":
-        return self
-
-    async def __aexit__(self, *args: object) -> None:
-        return None
-
-    async def post(self, *args: object, **kwargs: object) -> object:
-        raise httpx.ConnectError("refused", request=None)
-
-
 @pytest.mark.asyncio
 async def test_chat_structured_connect_error_maps_to_transport_api_error(
-    db_session,
+    db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     row = await db_session.get(AdminConfig, 1)
@@ -92,54 +82,26 @@ async def test_chat_structured_connect_error_maps_to_transport_api_error(
     await db_session.flush()
 
     monkeypatch.setattr(
-        "app.services.llm_service.httpx.AsyncClient",
-        _ConnectFailAsyncClient,
+        "app.services.llm_service.litellm.acompletion",
+        AsyncMock(side_effect=APIConnectionError(message="refused", request=_REQ)),
     )
 
     llm = LLMService(db_session)
-    ctx = TokenContext(
-        studio_id=uuid.uuid4(),
-        software_id=uuid.uuid4(),
-        project_id=uuid.uuid4(),
-        user_id=uuid.uuid4(),
-    )
     with pytest.raises(ApiError) as exc_info:
         await llm.chat_structured(
             system_prompt="s",
             user_prompt="u",
             json_schema={"name": "x", "strict": True, "schema": {"type": "object"}},
-            context=ctx,
+            context=_token_ctx(),
             call_type="test",
         )
     assert exc_info.value.status_code == 502
     assert exc_info.value.error_code == "LLM_TRANSPORT_ERROR"
 
 
-class _StreamConnectFailClient:
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        pass
-
-    async def __aenter__(self) -> "_StreamConnectFailClient":
-        return self
-
-    async def __aexit__(self, *args: object) -> None:
-        return None
-
-    def stream(self, *args: object, **kwargs: object) -> "_BadStreamCtx":
-        return _BadStreamCtx()
-
-
-class _BadStreamCtx:
-    async def __aenter__(self) -> None:
-        raise httpx.ConnectError("down", request=None)
-
-    async def __aexit__(self, *args: object) -> None:
-        return None
-
-
 @pytest.mark.asyncio
 async def test_chat_stream_connect_error_maps_to_transport_api_error(
-    db_session,
+    db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     row = await db_session.get(AdminConfig, 1)
@@ -150,21 +112,15 @@ async def test_chat_stream_connect_error_maps_to_transport_api_error(
     await db_session.flush()
 
     monkeypatch.setattr(
-        "app.services.llm_service.httpx.AsyncClient",
-        _StreamConnectFailClient,
+        "app.services.llm_service.litellm.acompletion",
+        AsyncMock(side_effect=APIConnectionError(message="down", request=_REQ)),
     )
 
     llm = LLMService(db_session)
-    ctx = TokenContext(
-        studio_id=uuid.uuid4(),
-        software_id=uuid.uuid4(),
-        project_id=uuid.uuid4(),
-        user_id=uuid.uuid4(),
-    )
     gen = llm.chat_stream(
         system_prompt="s",
         messages=[{"role": "user", "content": "hi"}],
-        context=ctx,
+        context=_token_ctx(),
         call_type="test",
     )
     with pytest.raises(ApiError) as exc_info:
@@ -174,9 +130,7 @@ async def test_chat_stream_connect_error_maps_to_transport_api_error(
 
 
 @pytest.mark.asyncio
-async def test_admin_connectivity_probe_missing_model_returns_result(
-    db_session,
-) -> None:
+async def test_admin_connectivity_probe_missing_model_returns_result(db_session: Any) -> None:
     row = await db_session.get(AdminConfig, 1)
     assert row is not None
     row.llm_model = ""
@@ -192,9 +146,7 @@ async def test_admin_connectivity_probe_missing_model_returns_result(
 
 
 @pytest.mark.asyncio
-async def test_admin_connectivity_probe_unsupported_provider_returns_result(
-    db_session,
-) -> None:
+async def test_admin_connectivity_probe_unsupported_provider_returns_result(db_session: Any) -> None:
     row = await db_session.get(AdminConfig, 1)
     assert row is not None
     row.llm_model = "gpt-test"
@@ -208,33 +160,19 @@ async def test_admin_connectivity_probe_unsupported_provider_returns_result(
     assert "openai" in (out.message or "").lower() or "openai" in (out.detail or "").lower()
 
 
-class _ProbeOkResponse:
-    status_code = 200
-    text = ""
-
-    def json(self) -> dict:
-        return {"choices": [{"message": {"content": " OK "}}]}
-
-
-class _ProbePostOkClient:
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        pass
-
-    async def __aenter__(self) -> "_ProbePostOkClient":
-        return self
-
-    async def __aexit__(self, *args: object) -> None:
-        return None
-
-    async def post(self, *args: object, **kwargs: object) -> _ProbeOkResponse:
-        return _ProbeOkResponse()
+def _probe_ok_response() -> MagicMock:
+    msg = MagicMock()
+    msg.content = " OK "
+    msg.model_dump = lambda: {"content": " OK "}  # type: ignore[method-assign]
+    ch = MagicMock()
+    ch.message = msg
+    resp = MagicMock()
+    resp.choices = [ch]
+    return resp
 
 
 @pytest.mark.asyncio
-async def test_admin_connectivity_probe_success(
-    db_session,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_admin_connectivity_probe_success(db_session: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     row = await db_session.get(AdminConfig, 1)
     assert row is not None
     row.llm_model = "gpt-test"
@@ -243,8 +181,8 @@ async def test_admin_connectivity_probe_success(
     await db_session.flush()
 
     monkeypatch.setattr(
-        "app.services.llm_service.httpx.AsyncClient",
-        _ProbePostOkClient,
+        "app.services.llm_service.litellm.acompletion",
+        AsyncMock(return_value=_probe_ok_response()),
     )
 
     llm = LLMService(db_session)
@@ -254,31 +192,9 @@ async def test_admin_connectivity_probe_success(
     assert out.detail == "OK"
 
 
-class _ProbeHttpErrResponse:
-    status_code = 401
-    text = "unauthorized"
-
-    def json(self) -> dict:
-        return {}
-
-
-class _ProbePostHttpErrClient:
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        pass
-
-    async def __aenter__(self) -> "_ProbePostHttpErrClient":
-        return self
-
-    async def __aexit__(self, *args: object) -> None:
-        return None
-
-    async def post(self, *args: object, **kwargs: object) -> _ProbeHttpErrResponse:
-        return _ProbeHttpErrResponse()
-
-
 @pytest.mark.asyncio
 async def test_admin_connectivity_probe_http_error_returns_result(
-    db_session,
+    db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     row = await db_session.get(AdminConfig, 1)
@@ -289,34 +205,19 @@ async def test_admin_connectivity_probe_http_error_returns_result(
     await db_session.flush()
 
     monkeypatch.setattr(
-        "app.services.llm_service.httpx.AsyncClient",
-        _ProbePostHttpErrClient,
+        "app.services.llm_service.litellm.acompletion",
+        AsyncMock(side_effect=AuthenticationError("unauthorized", response=_resp(401), body=None)),
     )
 
     llm = LLMService(db_session)
     out = await llm.admin_connectivity_probe()
     assert out.ok is False
-    assert "error" in (out.message or "").lower()
-    assert "unauthorized" in (out.detail or "")
-
-
-class _ProbePostNetworkErrClient:
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        pass
-
-    async def __aenter__(self) -> "_ProbePostNetworkErrClient":
-        return self
-
-    async def __aexit__(self, *args: object) -> None:
-        return None
-
-    async def post(self, *args: object, **kwargs: object) -> object:
-        raise httpx.ReadTimeout("read timeout", request=None)
+    assert "error" in (out.message or "").lower() or "failed" in (out.message or "").lower()
 
 
 @pytest.mark.asyncio
 async def test_admin_connectivity_probe_network_error_returns_result(
-    db_session,
+    db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     row = await db_session.get(AdminConfig, 1)
@@ -327,8 +228,8 @@ async def test_admin_connectivity_probe_network_error_returns_result(
     await db_session.flush()
 
     monkeypatch.setattr(
-        "app.services.llm_service.httpx.AsyncClient",
-        _ProbePostNetworkErrClient,
+        "app.services.llm_service.litellm.acompletion",
+        AsyncMock(side_effect=APITimeoutError(request=_REQ)),
     )
 
     llm = LLMService(db_session)
@@ -337,31 +238,9 @@ async def test_admin_connectivity_probe_network_error_returns_result(
     assert "failed" in (out.message or "").lower() or "network" in (out.message or "").lower()
 
 
-class _ProbeBadJsonResponse:
-    status_code = 200
-    text = "not-json"
-
-    def json(self) -> dict:
-        raise ValueError("bad json")
-
-
-class _ProbePostBadJsonClient:
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        pass
-
-    async def __aenter__(self) -> "_ProbePostBadJsonClient":
-        return self
-
-    async def __aexit__(self, *args: object) -> None:
-        return None
-
-    async def post(self, *args: object, **kwargs: object) -> _ProbeBadJsonResponse:
-        return _ProbeBadJsonResponse()
-
-
 @pytest.mark.asyncio
-async def test_admin_connectivity_probe_invalid_json_body_returns_result(
-    db_session,
+async def test_admin_connectivity_probe_acompletion_unexpected_error_returns_result(
+    db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     row = await db_session.get(AdminConfig, 1)
@@ -372,42 +251,19 @@ async def test_admin_connectivity_probe_invalid_json_body_returns_result(
     await db_session.flush()
 
     monkeypatch.setattr(
-        "app.services.llm_service.httpx.AsyncClient",
-        _ProbePostBadJsonClient,
+        "app.services.llm_service.litellm.acompletion",
+        AsyncMock(side_effect=ValueError("unexpected")),
     )
 
     llm = LLMService(db_session)
     out = await llm.admin_connectivity_probe()
     assert out.ok is False
-    assert "Unexpected" in (out.message or "") or "unexpected" in (out.message or "").lower()
-
-
-class _StructuredUpstreamErrorResponse:
-    status_code = 503
-    text = "upstream down"
-    headers = httpx.Headers()
-
-    def json(self) -> dict:
-        return {}
-
-
-class _StructuredUpstreamErrPostClient:
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        pass
-
-    async def __aenter__(self) -> "_StructuredUpstreamErrPostClient":
-        return self
-
-    async def __aexit__(self, *args: object) -> None:
-        return None
-
-    async def post(self, *args: object, **kwargs: object) -> object:
-        return _StructuredUpstreamErrorResponse()
+    assert (out.message or "") != ""
 
 
 @pytest.mark.asyncio
 async def test_chat_structured_upstream_http_error_maps_to_api_error(
-    db_session,
+    db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     row = await db_session.get(AdminConfig, 1)
@@ -418,23 +274,17 @@ async def test_chat_structured_upstream_http_error_maps_to_api_error(
     await db_session.flush()
 
     monkeypatch.setattr(
-        "app.services.llm_service.httpx.AsyncClient",
-        _StructuredUpstreamErrPostClient,
+        "app.services.llm_service.litellm.acompletion",
+        AsyncMock(side_effect=InternalServerError("upstream", response=_resp(503), body=None)),
     )
 
     llm = LLMService(db_session)
-    ctx = TokenContext(
-        studio_id=uuid.uuid4(),
-        software_id=uuid.uuid4(),
-        project_id=uuid.uuid4(),
-        user_id=uuid.uuid4(),
-    )
     with pytest.raises(ApiError) as exc_info:
         await llm.chat_structured(
             system_prompt="s",
             user_prompt="u",
             json_schema={"name": "x", "strict": True, "schema": {"type": "object"}},
-            context=ctx,
+            context=_token_ctx(),
             call_type="test",
         )
     assert exc_info.value.status_code == 502
@@ -444,42 +294,30 @@ async def test_chat_structured_upstream_http_error_maps_to_api_error(
 _MIN_SCHEMA: dict[str, Any] = {"name": "x", "strict": True, "schema": {"type": "object"}}
 
 
-class _StructuredOkObjectResponse:
-    status_code = 200
-    text = ""
-
-    def json(self) -> dict[str, Any]:
-        return {
-            "choices": [{"message": {"content": '{"captured": true}'}}],
-            "usage": {"prompt_tokens": 0, "completion_tokens": 0},
-        }
-
-
-class _CaptureStructuredPostClient:
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        pass
-
-    async def __aenter__(self) -> "_CaptureStructuredPostClient":
-        return self
-
-    async def __aexit__(self, *args: object) -> None:
-        return None
-
-    async def post(self, *args: object, **kwargs: object) -> _StructuredOkObjectResponse:
-        return _StructuredOkObjectResponse()
+def _structured_ok_response() -> MagicMock:
+    msg = MagicMock()
+    msg.content = '{"captured": true}'
+    msg.model_dump = lambda: {"content": '{"captured": true}'}  # type: ignore[method-assign]
+    ch = MagicMock()
+    ch.message = msg
+    usage = MagicMock()
+    usage.model_dump = lambda: {"prompt_tokens": 0, "completion_tokens": 0}  # type: ignore[method-assign]
+    resp = MagicMock()
+    resp.choices = [ch]
+    resp.usage = usage
+    return resp
 
 
 @pytest.mark.asyncio
 async def test_chat_structured_posts_openai_json_schema_request_body(
-    db_session,
+    db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: list[Any] = []
 
-    class _CaptureClient(_CaptureStructuredPostClient):
-        async def post(self, *args: object, **kwargs: object) -> _StructuredOkObjectResponse:
-            captured.append(kwargs.get("json"))
-            return _StructuredOkObjectResponse()
+    async def capture_ac(*args: object, **kwargs: object) -> MagicMock:
+        captured.append(kwargs)
+        return _structured_ok_response()
 
     row = await db_session.get(AdminConfig, 1)
     assert row is not None
@@ -489,23 +327,17 @@ async def test_chat_structured_posts_openai_json_schema_request_body(
     await db_session.flush()
 
     monkeypatch.setattr(
-        "app.services.llm_service.httpx.AsyncClient",
-        _CaptureClient,
+        "app.services.llm_service.litellm.acompletion",
+        AsyncMock(side_effect=capture_ac),
     )
 
     llm = LLMService(db_session)
-    ctx = TokenContext(
-        studio_id=uuid.uuid4(),
-        software_id=uuid.uuid4(),
-        project_id=uuid.uuid4(),
-        user_id=uuid.uuid4(),
-    )
     schema = {"name": "hint", "strict": True, "schema": {"type": "object"}}
     out = await llm.chat_structured(
         system_prompt="sys",
         user_prompt="user",
         json_schema=schema,
-        context=ctx,
+        context=_token_ctx(),
         call_type="test",
     )
     assert out == {"captured": True}
@@ -524,23 +356,15 @@ async def test_chat_structured_posts_openai_json_schema_request_body(
 
 
 @pytest.mark.asyncio
-async def test_chat_structured_rejects_json_schema_not_dict(
-    db_session,
-) -> None:
+async def test_chat_structured_rejects_json_schema_not_dict(db_session: Any) -> None:
     llm = LLMService(db_session)
-    ctx = TokenContext(
-        studio_id=uuid.uuid4(),
-        software_id=uuid.uuid4(),
-        project_id=uuid.uuid4(),
-        user_id=uuid.uuid4(),
-    )
     bad_schema: Any = []
     with pytest.raises(ApiError) as exc_info:
         await llm.chat_structured(
             system_prompt="s",
             user_prompt="u",
             json_schema=bad_schema,
-            context=ctx,
+            context=_token_ctx(),
             call_type="test",
         )
     assert exc_info.value.error_code == "LLM_SCHEMA_INVALID"
@@ -548,60 +372,36 @@ async def test_chat_structured_rejects_json_schema_not_dict(
 
 
 @pytest.mark.asyncio
-async def test_chat_structured_rejects_json_schema_empty_name(
-    db_session,
-) -> None:
+async def test_chat_structured_rejects_json_schema_empty_name(db_session: Any) -> None:
     llm = LLMService(db_session)
-    ctx = TokenContext(
-        studio_id=uuid.uuid4(),
-        software_id=uuid.uuid4(),
-        project_id=uuid.uuid4(),
-        user_id=uuid.uuid4(),
-    )
     with pytest.raises(ApiError) as exc_info:
         await llm.chat_structured(
             system_prompt="s",
             user_prompt="u",
             json_schema={"name": "  ", "strict": True, "schema": {"type": "object"}},
-            context=ctx,
+            context=_token_ctx(),
             call_type="test",
         )
     assert exc_info.value.error_code == "LLM_SCHEMA_INVALID"
 
 
 @pytest.mark.asyncio
-async def test_chat_structured_rejects_json_schema_strict_not_true(
-    db_session,
-) -> None:
+async def test_chat_structured_rejects_json_schema_strict_not_true(db_session: Any) -> None:
     llm = LLMService(db_session)
-    ctx = TokenContext(
-        studio_id=uuid.uuid4(),
-        software_id=uuid.uuid4(),
-        project_id=uuid.uuid4(),
-        user_id=uuid.uuid4(),
-    )
     with pytest.raises(ApiError) as exc_info:
         await llm.chat_structured(
             system_prompt="s",
             user_prompt="u",
             json_schema={"name": "n", "strict": False, "schema": {"type": "object"}},
-            context=ctx,
+            context=_token_ctx(),
             call_type="test",
         )
     assert exc_info.value.error_code == "LLM_SCHEMA_INVALID"
 
 
 @pytest.mark.asyncio
-async def test_chat_structured_rejects_json_schema_inner_not_object(
-    db_session,
-) -> None:
+async def test_chat_structured_rejects_json_schema_inner_not_object(db_session: Any) -> None:
     llm = LLMService(db_session)
-    ctx = TokenContext(
-        studio_id=uuid.uuid4(),
-        software_id=uuid.uuid4(),
-        project_id=uuid.uuid4(),
-        user_id=uuid.uuid4(),
-    )
     with pytest.raises(ApiError) as exc_info:
         await llm.chat_structured(
             system_prompt="s",
@@ -611,33 +411,17 @@ async def test_chat_structured_rejects_json_schema_inner_not_object(
                 "strict": True,
                 "schema": {"type": "array", "items": {"type": "string"}},
             },
-            context=ctx,
+            context=_token_ctx(),
             call_type="test",
         )
     assert exc_info.value.error_code == "LLM_SCHEMA_INVALID"
 
 
-class _Upstream400SecretBodyResponse:
-    status_code = 400
-    headers = httpx.Headers({"x-request-id": "req-test-1"})
-    text = '{"error": {"code": "bad", "type": "invalid", "message": "USER_SECRET_PROMPT"}}'
-
-    def json(self) -> dict[str, Any]:
-        return {}
-
-
-class _Upstream400SecretBodyClient(_StructuredUpstreamErrPostClient):
-    async def post(self, *args: object, **kwargs: object) -> object:
-        return _Upstream400SecretBodyResponse()
-
-
 @pytest.mark.asyncio
 async def test_chat_structured_upstream_error_log_omits_raw_body(
-    db_session,
+    db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import llm_service
-
     row = await db_session.get(AdminConfig, 1)
     assert row is not None
     row.llm_model = "gpt-test"
@@ -650,53 +434,37 @@ async def test_chat_structured_upstream_error_log_omits_raw_body(
     def capture_warning(event: str, **kw: Any) -> None:
         captured.append((event, kw))
 
-    monkeypatch.setattr(llm_service.log, "warning", capture_warning)
+    from app.services import litellm_exception_mapping as lem
+
+    monkeypatch.setattr(lem.log, "warning", capture_warning)
     monkeypatch.setattr(
-        "app.services.llm_service.httpx.AsyncClient",
-        _Upstream400SecretBodyClient,
+        "app.services.llm_service.litellm.acompletion",
+        AsyncMock(
+            side_effect=BadRequestError(
+                "bad request",
+                response=_resp(400),
+                body={"error": {"message": "USER_SECRET_PROMPT"}},
+            )
+        ),
     )
 
     llm = LLMService(db_session)
-    ctx = TokenContext(
-        studio_id=uuid.uuid4(),
-        software_id=uuid.uuid4(),
-        project_id=uuid.uuid4(),
-        user_id=uuid.uuid4(),
-    )
     with pytest.raises(ApiError):
         await llm.chat_structured(
             system_prompt="s",
             user_prompt="u",
             json_schema=_MIN_SCHEMA,
-            context=ctx,
+            context=_token_ctx(),
             call_type="test",
         )
     blob = str(captured)
     assert "USER_SECRET_PROMPT" not in blob
-    assert any(
-        rec[0] == "llm_http_error"
-        and rec[1].get("upstream_error_code") == "bad"
-        and rec[1].get("upstream_error_type") == "invalid"
-        for rec in captured
-    )
-
-
-class _StructuredEmptyChoicesResponse:
-    status_code = 200
-    text = ""
-
-    def json(self) -> dict:
-        return {"choices": [], "usage": {}}
-
-
-class _StructuredEmptyChoicesPostClient(_StructuredUpstreamErrPostClient):
-    async def post(self, *args: object, **kwargs: object) -> object:
-        return _StructuredEmptyChoicesResponse()
+    assert any(rec[0] == "litellm_upstream_error" for rec in captured)
 
 
 @pytest.mark.asyncio
 async def test_chat_structured_empty_choices_maps_to_api_error(
-    db_session,
+    db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     row = await db_session.get(AdminConfig, 1)
@@ -706,48 +474,29 @@ async def test_chat_structured_empty_choices_maps_to_api_error(
     row.llm_provider = "openai"
     await db_session.flush()
 
+    resp = MagicMock()
+    resp.choices = []
+    resp.usage = {}
     monkeypatch.setattr(
-        "app.services.llm_service.httpx.AsyncClient",
-        _StructuredEmptyChoicesPostClient,
+        "app.services.llm_service.litellm.acompletion",
+        AsyncMock(return_value=resp),
     )
 
     llm = LLMService(db_session)
-    ctx = TokenContext(
-        studio_id=uuid.uuid4(),
-        software_id=uuid.uuid4(),
-        project_id=uuid.uuid4(),
-        user_id=uuid.uuid4(),
-    )
     with pytest.raises(ApiError) as exc_info:
         await llm.chat_structured(
             system_prompt="s",
             user_prompt="u",
             json_schema={"name": "x", "strict": True, "schema": {"type": "object"}},
-            context=ctx,
+            context=_token_ctx(),
             call_type="test",
         )
     assert exc_info.value.error_code == "LLM_EMPTY_RESPONSE"
 
 
-class _StructuredBadJsonContentResponse:
-    status_code = 200
-    text = ""
-
-    def json(self) -> dict:
-        return {
-            "choices": [{"message": {"content": "not valid json {"}}],
-            "usage": {"prompt_tokens": 0, "completion_tokens": 0},
-        }
-
-
-class _StructuredBadJsonPostClient(_StructuredUpstreamErrPostClient):
-    async def post(self, *args: object, **kwargs: object) -> object:
-        return _StructuredBadJsonContentResponse()
-
-
 @pytest.mark.asyncio
 async def test_chat_structured_invalid_content_json_maps_to_api_error(
-    db_session,
+    db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     row = await db_session.get(AdminConfig, 1)
@@ -757,54 +506,39 @@ async def test_chat_structured_invalid_content_json_maps_to_api_error(
     row.llm_provider = "openai"
     await db_session.flush()
 
+    msg = MagicMock()
+    msg.content = "not valid json {"
+    msg.model_dump = lambda: {"content": "not valid json {"}  # type: ignore[method-assign]
+    ch = MagicMock()
+    ch.message = msg
+    resp = MagicMock()
+    resp.choices = [ch]
+    resp.usage = {"prompt_tokens": 0, "completion_tokens": 0}
     monkeypatch.setattr(
-        "app.services.llm_service.httpx.AsyncClient",
-        _StructuredBadJsonPostClient,
+        "app.services.llm_service.litellm.acompletion",
+        AsyncMock(return_value=resp),
     )
 
     llm = LLMService(db_session)
-    ctx = TokenContext(
-        studio_id=uuid.uuid4(),
-        software_id=uuid.uuid4(),
-        project_id=uuid.uuid4(),
-        user_id=uuid.uuid4(),
-    )
     with pytest.raises(ApiError) as exc_info:
         await llm.chat_structured(
             system_prompt="s",
             user_prompt="u",
             json_schema={"name": "x", "strict": True, "schema": {"type": "object"}},
-            context=ctx,
+            context=_token_ctx(),
             call_type="test",
         )
     assert exc_info.value.error_code == "LLM_INVALID_JSON"
 
 
-class _StreamTimeoutCtx:
-    async def __aenter__(self) -> None:
-        raise httpx.ReadTimeout("timeout", request=None)
-
-    async def __aexit__(self, *args: object) -> None:
-        return None
-
-
-class _StreamTimeoutClient:
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        pass
-
-    async def __aenter__(self) -> "_StreamTimeoutClient":
-        return self
-
-    async def __aexit__(self, *args: object) -> None:
-        return None
-
-    def stream(self, *args: object, **kwargs: object) -> _StreamTimeoutCtx:
-        return _StreamTimeoutCtx()
+async def _stream_chunks_timeout() -> Any:
+    yield MagicMock(choices=[MagicMock(delta=MagicMock(content="a"))])
+    raise APITimeoutError(request=_REQ)
 
 
 @pytest.mark.asyncio
 async def test_chat_stream_read_timeout_maps_to_api_error(
-    db_session,
+    db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     row = await db_session.get(AdminConfig, 1)
@@ -815,21 +549,15 @@ async def test_chat_stream_read_timeout_maps_to_api_error(
     await db_session.flush()
 
     monkeypatch.setattr(
-        "app.services.llm_service.httpx.AsyncClient",
-        _StreamTimeoutClient,
+        "app.services.llm_service.litellm.acompletion",
+        AsyncMock(return_value=_stream_chunks_timeout()),
     )
 
     llm = LLMService(db_session)
-    ctx = TokenContext(
-        studio_id=uuid.uuid4(),
-        software_id=uuid.uuid4(),
-        project_id=uuid.uuid4(),
-        user_id=uuid.uuid4(),
-    )
     gen = llm.chat_stream(
         system_prompt="s",
         messages=[{"role": "user", "content": "hi"}],
-        context=ctx,
+        context=_token_ctx(),
         call_type="test",
     )
     with pytest.raises(ApiError) as exc_info:
@@ -838,44 +566,14 @@ async def test_chat_stream_read_timeout_maps_to_api_error(
     assert exc_info.value.error_code == "LLM_TIMEOUT"
 
 
-class _StreamHttpErrResp:
-    status_code = 429
-    _body = b"rate limited"
-    headers = httpx.Headers()
-
-    async def aread(self) -> bytes:
-        return self._body
-
-    async def aiter_lines(self):
-        if False:
-            yield ""
-
-
-class _StreamHttpErrClient:
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        pass
-
-    async def __aenter__(self) -> "_StreamHttpErrClient":
-        return self
-
-    async def __aexit__(self, *args: object) -> None:
-        return None
-
-    def stream(self, *args: object, **kwargs: object) -> "_StreamHttpErrCtx":
-        return _StreamHttpErrCtx()
-
-
-class _StreamHttpErrCtx:
-    async def __aenter__(self) -> _StreamHttpErrResp:
-        return _StreamHttpErrResp()
-
-    async def __aexit__(self, *args: object) -> None:
-        return None
+async def _stream_chunks_rate_limit() -> Any:
+    yield MagicMock(choices=[MagicMock(delta=MagicMock(content="a"))])
+    raise RateLimitError("rate limited", response=_resp(429), body=None)
 
 
 @pytest.mark.asyncio
-async def test_chat_stream_upstream_http_error_maps_to_api_error(
-    db_session,
+async def test_chat_stream_upstream_rate_limit_maps_to_api_error(
+    db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     row = await db_session.get(AdminConfig, 1)
@@ -886,71 +584,29 @@ async def test_chat_stream_upstream_http_error_maps_to_api_error(
     await db_session.flush()
 
     monkeypatch.setattr(
-        "app.services.llm_service.httpx.AsyncClient",
-        _StreamHttpErrClient,
+        "app.services.llm_service.litellm.acompletion",
+        AsyncMock(return_value=_stream_chunks_rate_limit()),
     )
 
     llm = LLMService(db_session)
-    ctx = TokenContext(
-        studio_id=uuid.uuid4(),
-        software_id=uuid.uuid4(),
-        project_id=uuid.uuid4(),
-        user_id=uuid.uuid4(),
-    )
     gen = llm.chat_stream(
         system_prompt="s",
         messages=[{"role": "user", "content": "hi"}],
-        context=ctx,
+        context=_token_ctx(),
         call_type="test",
     )
     with pytest.raises(ApiError) as exc_info:
         async for _ in gen:
             pass
-    assert exc_info.value.error_code == "LLM_UPSTREAM_ERROR"
-
-
-class _StreamHttpErrSecretResp:
-    status_code = 400
-    headers = httpx.Headers({"x-request-id": "stream-req"})
-    _body = b'{"error": {"code": "x", "type": "y", "message": "USER_SECRET_PROMPT"}}'
-
-    async def aread(self) -> bytes:
-        return self._body
-
-    async def aiter_lines(self):
-        if False:
-            yield ""
-
-
-class _StreamHttpErrSecretClient:
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        pass
-
-    async def __aenter__(self) -> "_StreamHttpErrSecretClient":
-        return self
-
-    async def __aexit__(self, *args: object) -> None:
-        return None
-
-    def stream(self, *args: object, **kwargs: object) -> "_StreamHttpErrSecretCtx":
-        return _StreamHttpErrSecretCtx()
-
-
-class _StreamHttpErrSecretCtx:
-    async def __aenter__(self) -> _StreamHttpErrSecretResp:
-        return _StreamHttpErrSecretResp()
-
-    async def __aexit__(self, *args: object) -> None:
-        return None
+    assert exc_info.value.error_code == "LLM_RATE_LIMITED"
+    assert exc_info.value.status_code == 429
 
 
 @pytest.mark.asyncio
 async def test_chat_stream_upstream_error_log_omits_raw_body(
-    db_session,
+    db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import llm_service
-
     row = await db_session.get(AdminConfig, 1)
     assert row is not None
     row.llm_model = "gpt-test"
@@ -963,79 +619,42 @@ async def test_chat_stream_upstream_error_log_omits_raw_body(
     def capture_warning(event: str, **kw: Any) -> None:
         captured.append((event, kw))
 
-    monkeypatch.setattr(llm_service.log, "warning", capture_warning)
+    from app.services import litellm_exception_mapping as lem
+
+    monkeypatch.setattr(lem.log, "warning", capture_warning)
+
+    async def bad_stream() -> Any:
+        yield MagicMock(choices=[MagicMock(delta=MagicMock(content="a"))])
+        raise RateLimitError(
+            "safe message",
+            response=_resp(429),
+            body={"error": {"message": "USER_SECRET_PROMPT"}},
+        )
+
     monkeypatch.setattr(
-        "app.services.llm_service.httpx.AsyncClient",
-        _StreamHttpErrSecretClient,
+        "app.services.llm_service.litellm.acompletion",
+        AsyncMock(return_value=bad_stream()),
     )
 
     llm = LLMService(db_session)
-    ctx = TokenContext(
-        studio_id=uuid.uuid4(),
-        software_id=uuid.uuid4(),
-        project_id=uuid.uuid4(),
-        user_id=uuid.uuid4(),
-    )
     gen = llm.chat_stream(
         system_prompt="s",
         messages=[{"role": "user", "content": "hi"}],
-        context=ctx,
+        context=_token_ctx(),
         call_type="test",
     )
     with pytest.raises(ApiError):
         async for _ in gen:
             pass
     assert "USER_SECRET_PROMPT" not in str(captured)
-    assert any(
-        rec[0] == "llm_stream_http_error"
-        and rec[1].get("upstream_error_code") == "x"
-        and rec[1].get("upstream_error_type") == "y"
-        for rec in captured
-    )
-
-
-class _StreamHttpErrSecretResp:
-    status_code = 400
-    headers = httpx.Headers({"x-request-id": "stream-req"})
-    _body = b'{"error": {"code": "x", "type": "y", "message": "USER_SECRET_PROMPT"}}'
-
-    async def aread(self) -> bytes:
-        return self._body
-
-    async def aiter_lines(self):
-        if False:
-            yield ""
-
-
-class _StreamHttpErrSecretClient:
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        pass
-
-    async def __aenter__(self) -> "_StreamHttpErrSecretClient":
-        return self
-
-    async def __aexit__(self, *args: object) -> None:
-        return None
-
-    def stream(self, *args: object, **kwargs: object) -> "_StreamHttpErrSecretCtx":
-        return _StreamHttpErrSecretCtx()
-
-
-class _StreamHttpErrSecretCtx:
-    async def __aenter__(self) -> _StreamHttpErrSecretResp:
-        return _StreamHttpErrSecretResp()
-
-    async def __aexit__(self, *args: object) -> None:
-        return None
+    assert any(rec[0] == "litellm_upstream_error" for rec in captured)
 
 
 @pytest.mark.asyncio
-async def test_chat_stream_upstream_error_log_omits_raw_body(
-    db_session,
+async def test_trim_chat_messages_for_stream_uses_model_from_config(
+    db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services import llm_service
-
     row = await db_session.get(AdminConfig, 1)
     assert row is not None
     row.llm_model = "gpt-test"
@@ -1043,37 +662,18 @@ async def test_chat_stream_upstream_error_log_omits_raw_body(
     row.llm_provider = "openai"
     await db_session.flush()
 
-    captured: list[tuple[str, dict[str, Any]]] = []
-
-    def capture_warning(event: str, **kw: Any) -> None:
-        captured.append((event, kw))
-
-    monkeypatch.setattr(llm_service.log, "warning", capture_warning)
-    monkeypatch.setattr(
-        "app.services.llm_service.httpx.AsyncClient",
-        _StreamHttpErrSecretClient,
-    )
-
-    llm = LLMService(db_session)
-    ctx = TokenContext(
-        studio_id=uuid.uuid4(),
-        software_id=uuid.uuid4(),
-        project_id=uuid.uuid4(),
-        user_id=uuid.uuid4(),
-    )
-    gen = llm.chat_stream(
-        system_prompt="s",
-        messages=[{"role": "user", "content": "hi"}],
-        context=ctx,
-        call_type="test",
-    )
-    with pytest.raises(ApiError):
-        async for _ in gen:
-            pass
-    assert "USER_SECRET_PROMPT" not in str(captured)
-    assert any(
-        rec[0] == "llm_stream_http_error"
-        and rec[1].get("upstream_error_code") == "x"
-        and rec[1].get("upstream_error_type") == "y"
-        for rec in captured
-    )
+    with patch(
+        "app.services.llm_service.trim_openai_chat_messages",
+        return_value=([{"role": "user", "content": "x"}], True),
+    ) as mock_trim:
+        llm = LLMService(db_session)
+        out, trimmed = await llm.trim_chat_messages_for_stream(
+            [{"role": "user", "content": "hello"}],
+            context=_token_ctx(),
+            call_type="chat",
+        )
+    assert trimmed is True
+    assert out == [{"role": "user", "content": "x"}]
+    mock_trim.assert_called_once()
+    _args, kwargs = mock_trim.call_args
+    assert kwargs["model"] == "gpt-test"

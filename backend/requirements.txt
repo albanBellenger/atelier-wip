@@ -21,3 +21,4 @@ pycrdt-websocket>=0.16.0
 minio>=7.2.0
 pypdf>=5.0.0
 llama-index-core==0.14.21
+litellm>=1.55.0,<2

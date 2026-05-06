@@ -47,6 +47,28 @@ _BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture(autouse=True)
+def _storage_ensure_bucket_noop(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """App lifespan calls ``ensure_bucket()``; avoid requiring a live MinIO on dev/CI workers."""
+    p = str(request.node.path).replace("\\", "/")
+    if "tests/unit/storage/test_minio_storage.py" in p:
+        yield
+        return
+
+    from app.storage import minio_storage
+
+    minio_storage.get_storage_client.cache_clear()
+
+    async def noop_ensure(_self: object) -> None:
+        return None
+
+    monkeypatch.setattr(minio_storage.StorageClient, "ensure_bucket", noop_ensure)
+    yield
+    minio_storage.get_storage_client.cache_clear()
+
+
+@pytest.fixture(autouse=True)
 def _reset_rate_limiter() -> None:
     """Avoid 429 from shared /auth/register and /auth/login limits across tests."""
     from app.main import limiter

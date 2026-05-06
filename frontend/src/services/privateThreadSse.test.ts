@@ -76,8 +76,6 @@ describe('consumePrivateThreadSseBody', () => {
     expect(meta).toEqual({
       findings: [],
       conflicts: [],
-      context_truncated: false,
-      patch_proposal: undefined,
     })
   })
 

@@ -45,8 +45,17 @@ class EmbeddingAdminService:
             existing.cost_per_million_usd = body.cost_per_million_usd
             existing.region = body.region
             existing.default_role = body.default_role
+            if "litellm_provider_slug" in body.model_fields_set:
+                raw_slug = body.litellm_provider_slug
+                existing.litellm_provider_slug = (
+                    None if raw_slug is None else (str(raw_slug).strip() or None)
+                )
             await self.db.flush()
             return EmbeddingModelRegistryResponse.model_validate(existing)
+        slug_val: str | None = None
+        if "litellm_provider_slug" in body.model_fields_set:
+            raw_slug = body.litellm_provider_slug
+            slug_val = None if raw_slug is None else (str(raw_slug).strip() or None)
         row = EmbeddingModelRegistry(
             id=uuid.uuid4(),
             model_id=mid.strip(),
@@ -55,6 +64,7 @@ class EmbeddingAdminService:
             cost_per_million_usd=body.cost_per_million_usd,
             region=body.region,
             default_role=body.default_role,
+            litellm_provider_slug=slug_val,
         )
         self.db.add(row)
         await self.db.flush()

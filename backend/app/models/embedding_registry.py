@@ -24,6 +24,7 @@ class EmbeddingModelRegistry(Base):
     )
     region: Mapped[str | None] = mapped_column(String(64), nullable=True)
     default_role: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    litellm_provider_slug: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class EmbeddingReindexPolicy(Base):

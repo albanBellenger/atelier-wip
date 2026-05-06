@@ -47,6 +47,7 @@ class LlmConnectivityService:
             sort_order=row.sort_order,
             llm_api_key_set=_mask_secret(row.api_key),
             llm_api_key_hint=admin_secret_suffix_hint(row.api_key),
+            litellm_provider_slug=row.litellm_provider_slug,
         )
 
     async def list_providers(self) -> list[LlmProviderRegistryResponse]:
@@ -88,6 +89,13 @@ class LlmConnectivityService:
                     row.api_key = None
                 else:
                     row.api_key = encode_admin_stored_secret(str(body.llm_api_key).strip())
+            if "litellm_provider_slug" in body.model_fields_set:
+                raw_slug = body.litellm_provider_slug
+                row.litellm_provider_slug = (
+                    None
+                    if raw_slug is None
+                    else (str(raw_slug).strip() or None)
+                )
             await self.db.flush()
             row.logo_url = resolve_llm_provider_logo_url(
                 provider_key=pk,
@@ -102,6 +110,10 @@ class LlmConnectivityService:
                 api_key_val = None
             else:
                 api_key_val = encode_admin_stored_secret(str(body.llm_api_key).strip())
+        slug_val: str | None = None
+        if "litellm_provider_slug" in body.model_fields_set:
+            raw_slug = body.litellm_provider_slug
+            slug_val = None if raw_slug is None else (str(raw_slug).strip() or None)
         ent = LlmProviderRegistry(
             id=uuid4(),
             provider_key=pk,
@@ -112,6 +124,7 @@ class LlmConnectivityService:
             status=body.status,
             is_default=body.is_default,
             sort_order=body.sort_order,
+            litellm_provider_slug=slug_val,
         )
         self.db.add(ent)
         await self.db.flush()
