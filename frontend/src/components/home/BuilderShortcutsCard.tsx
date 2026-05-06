@@ -7,10 +7,10 @@ export type BuilderShortcutsCardProps = {
   studioId: string
   softwareId: string
   projectId: string
-  /** Issues / run analysis — studio editors only (same as Issues nav link). */
+  /** Issues / run analysis — Studio Owners and Builders only (same as Issues nav link). */
   showAnalysis: boolean
   canPublish: boolean
-  /** Generate WO modal — studio editors only. */
+  /** Generate WO modal — Studio Owners and Builders only. */
   showGenerateWo: boolean
   showOpenGraph: boolean
 }

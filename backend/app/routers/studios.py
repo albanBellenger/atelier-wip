@@ -117,13 +117,13 @@ async def list_studio_activity(
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Owning studio membership required.",
+            message="You must belong to the owning studio.",
         )
     if not access.is_studio_editor:
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Studio membership required.",
+            message="Membership in this studio is required.",
         )
     items = await SoftwareActivityService(session).list_activity_items_out_for_studio(
         access.studio_id,

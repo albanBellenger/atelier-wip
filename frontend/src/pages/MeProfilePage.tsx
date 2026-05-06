@@ -5,20 +5,7 @@ import { Link, useNavigate } from 'react-router-dom'
 
 import { me, patchMeProfile } from '../services/api'
 import { useEditorV2Prefs } from '../components/outline-editor-v2/hooks/useEditorV2Prefs'
-
-function studioRoleLabel(role: string): string {
-  switch (role) {
-    case 'studio_admin':
-      return 'Admin'
-    case 'studio_member':
-      return 'Builder'
-    case 'viewer':
-    case 'studio_viewer':
-      return 'Viewer'
-    default:
-      return role
-  }
-}
+import { studioRoleLabel } from '../lib/roleLabels'
 
 export function MeProfilePage(): ReactElement {
   const navigate = useNavigate()
@@ -165,12 +152,12 @@ export function MeProfilePage(): ReactElement {
           </label>
         </section>
 
-        <section className="mt-12" aria-labelledby="studio-memberships-heading">
+        <section className="mt-12" aria-labelledby="your-studios-heading">
           <h2
-            id="studio-memberships-heading"
+            id="your-studios-heading"
             className="font-serif text-xl font-medium tracking-tight text-zinc-100"
           >
-            Studio memberships
+            Your studios
           </h2>
           {profile.studios.length === 0 ? (
             <p className="mt-4 text-sm text-zinc-500">

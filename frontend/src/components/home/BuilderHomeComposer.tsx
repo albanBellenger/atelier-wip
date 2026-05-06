@@ -112,7 +112,7 @@ export function BuilderHomeComposer({
     hintQ.data?.input_placeholder?.trim() ||
     (canUseSoftwareChat
       ? `Ask anything about ${softwareName}…`
-      : 'Software chat is available to studio editors.')
+      : 'Software chat is available to Studio Owners and Builders.')
 
   const basePath = `/studios/${studioId}/software/${softwareId}`
 
@@ -147,7 +147,7 @@ export function BuilderHomeComposer({
 
   const onSubmitIntent = useCallback((): void => {
     if (!canUseSoftwareChat) {
-      toast.message('Studio editor access is required for software chat.')
+      toast.message('Studio Owner or Builder access is required for software chat.')
       return
     }
     const text = draft.trim()
@@ -218,7 +218,7 @@ export function BuilderHomeComposer({
           title={
             canUseSoftwareChat
               ? undefined
-              : 'Studio editors can start a software-wide thread from here.'
+              : 'Studio Owners and Builders can start a software-wide thread from here.'
           }
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {

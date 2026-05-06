@@ -56,7 +56,7 @@ function renderSoftware(path = '/studios/s1/software/sw1') {
 }
 
 describe('SoftwarePage', () => {
-  it('shows Commit to GitLab and workspace panels for a studio member', async () => {
+  it('shows Commit to GitLab and workspace panels for a Builder', async () => {
     vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
       items: [],
       next_cursor: null,
@@ -170,7 +170,7 @@ describe('SoftwarePage', () => {
     expect(defPre?.textContent).toContain('# Context')
   })
 
-  it('shows Software settings link for studio admin', async () => {
+  it('shows Software settings link for a Studio Owner', async () => {
     vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
       items: [],
       next_cursor: null,

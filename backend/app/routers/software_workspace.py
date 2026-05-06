@@ -32,13 +32,13 @@ async def list_software_attention(
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Attention feed is not available for cross-studio viewers.",
+            message="Attention feed is not available with read-only cross-studio access.",
         )
     if not sa.studio_access.is_studio_member:
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Studio membership required.",
+            message="Membership in this studio is required.",
         )
     return await AttentionService(session).list_software_attention(
         software_id=software_id,
@@ -58,13 +58,13 @@ async def list_software_activity(
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Owning studio membership required.",
+            message="You must belong to the owning studio.",
         )
     if not sa.studio_access.is_studio_editor:
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Studio membership required.",
+            message="Membership in this studio is required.",
         )
     items = await SoftwareActivityService(session).list_activity_items_out(
         software_id, limit=limit
@@ -101,7 +101,7 @@ async def upload_software_artifact(
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Studio editor access required.",
+            message="Studio Owner or Builder access required.",
         )
     raw = await file.read()
     if not raw:
@@ -144,7 +144,7 @@ async def create_software_markdown_artifact(
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Studio editor access required.",
+            message="Studio Owner or Builder access required.",
         )
     svc = ArtifactService(session)
     art = await svc.create_markdown_for_software(

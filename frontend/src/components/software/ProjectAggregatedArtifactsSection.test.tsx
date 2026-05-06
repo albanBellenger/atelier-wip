@@ -112,7 +112,7 @@ describe('ProjectAggregatedArtifactsSection', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('shows upload for studio editors', () => {
+  it('shows upload for Owners and Builders', () => {
     renderSection(
       <ProjectAggregatedArtifactsSection
         studioId="s1"

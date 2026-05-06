@@ -51,7 +51,7 @@ async def get_software_chat_history(
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Studio editor access required for software chat.",
+            message="Studio Owner or Builder access required for software chat.",
         )
     rows, next_before = await SoftwareChatService(session).list_history(
         software_id=software_id,

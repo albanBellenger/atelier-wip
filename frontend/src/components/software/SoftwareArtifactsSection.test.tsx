@@ -29,7 +29,7 @@ describe('SoftwareArtifactsSection', () => {
     onDownload: vi.fn(),
   }
 
-  it('shows Open library and full upload for studio editors', () => {
+  it('shows Open library and full upload for Owners and Builders', () => {
     render(
       wrap(
         <SoftwareArtifactsSection

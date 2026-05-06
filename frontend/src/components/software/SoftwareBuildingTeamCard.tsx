@@ -2,6 +2,7 @@ import type { ReactElement } from 'react'
 import { Link } from 'react-router-dom'
 
 import type { StudioMember } from '../../services/api'
+import { studioRoleLabel } from '../../lib/roleLabels'
 
 export type SoftwareBuildingTeamCardProps = {
   enabled: boolean
@@ -35,23 +36,23 @@ function roleBadgeForMember(m: StudioMember): { label: string; badgeClass: strin
   switch (m.role) {
     case 'studio_admin':
       return {
-        label: 'Owner',
+        label: studioRoleLabel('studio_admin'),
         badgeClass:
           'border border-violet-500/45 bg-violet-950/70 text-violet-200',
       }
     case 'studio_member':
       return {
-        label: 'Builder',
+        label: studioRoleLabel('studio_member'),
         badgeClass: 'border border-zinc-600 bg-zinc-800/80 text-zinc-300',
       }
     case 'studio_viewer':
       return {
-        label: 'Viewer',
+        label: studioRoleLabel('studio_viewer'),
         badgeClass: 'border border-sky-500/40 bg-sky-950/55 text-sky-200',
       }
     default:
       return {
-        label: m.role,
+        label: studioRoleLabel(m.role),
         badgeClass: 'border border-zinc-600 bg-zinc-800/80 text-zinc-400',
       }
   }
@@ -131,7 +132,7 @@ export function SoftwareBuildingTeamCard({
         ) : isError ? (
           <p className="text-[13px] text-zinc-500">Could not load team.</p>
         ) : rows.length === 0 ? (
-          <p className="text-[13px] text-zinc-500">No studio members yet.</p>
+          <p className="text-[13px] text-zinc-500">No one listed yet.</p>
         ) : (
           <ul className="space-y-3">
             {rows.map((m) => {

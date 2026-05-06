@@ -111,7 +111,7 @@ export function McpServerSettingsPage(): ReactElement {
   if (!access.isStudioAdmin) {
     return (
       <div className="min-h-screen bg-zinc-950 px-4 py-12 text-zinc-100">
-        <p>Studio admin only.</p>
+        <p>Studio Owner only.</p>
         <Link to={`/studios/${sid}`} className="mt-4 inline-block text-violet-400">
           Back
         </Link>

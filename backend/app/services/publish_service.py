@@ -132,7 +132,7 @@ class PublishService:
             raise ApiError(
                 status_code=403,
                 code="FORBIDDEN",
-                message="Studio editor access required.",
+                message="Studio Owner or Builder access required.",
             )
         software = access.software
         project = access.project

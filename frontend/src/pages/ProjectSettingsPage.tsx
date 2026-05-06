@@ -335,7 +335,7 @@ export function ProjectSettingsPage(): ReactElement {
                     {publishFolderSlug || '—'}
                   </p>
                   <p className="text-xs text-zinc-500">
-                    Only studio admins can edit project details.
+                    Only Studio Owners can edit project details.
                   </p>
                 </>
               )}

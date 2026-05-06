@@ -46,7 +46,7 @@ describe('LlmUsagePage', () => {
     expect(await screen.findByText(/Atelier · Builder workspace/i)).toBeInTheDocument()
   })
 
-  it('studio member does not get user filter multi-select', async () => {
+  it('Builder does not get user filter multi-select', async () => {
     vi.spyOn(api, 'me').mockResolvedValue({
       user: {
         id: 'u1',

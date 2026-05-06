@@ -125,7 +125,7 @@ class SoftwareService:
             raise ApiError(
                 status_code=403,
                 code="FORBIDDEN",
-                message="Studio admin access required to change definition or Git settings.",
+                message="Studio Owner access required to change definition or Git settings.",
             )
         if "name" in data and data["name"] is not None:
             s.name = str(data["name"]).strip()

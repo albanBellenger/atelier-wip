@@ -59,7 +59,7 @@ function renderPage(
 }
 
 describe('ProjectSettingsPage', () => {
-  it('shows project name and description for a studio admin and saves', async () => {
+  it('shows project name and description for a Studio Owner and saves', async () => {
     const user = userEvent.setup()
     vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
       items: [],
@@ -220,7 +220,7 @@ describe('ProjectSettingsPage', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('studio member can toggle project-scope artifact exclusion', async () => {
+  it('Builder can toggle project-scope artifact exclusion', async () => {
     const user = userEvent.setup()
     vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
       items: [],

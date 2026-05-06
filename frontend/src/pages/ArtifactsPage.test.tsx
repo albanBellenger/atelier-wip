@@ -99,7 +99,7 @@ function renderArtifacts(path = '/studios/s1/software/sw1/projects/p1/artifacts'
 }
 
 describe('ArtifactsPage', () => {
-  it('studio member does not see Delete on artifact list', async () => {
+  it('Builder does not see Delete on artifact list', async () => {
     vi.spyOn(api, 'me').mockResolvedValue(editorMe)
     vi.spyOn(api, 'listArtifacts').mockResolvedValue([embeddedRow])
 
@@ -109,7 +109,7 @@ describe('ArtifactsPage', () => {
     expect(screen.queryByRole('button', { name: /^delete$/i })).not.toBeInTheDocument()
   })
 
-  it('studio admin sees Delete on artifact list', async () => {
+  it('Studio Owner sees Delete on artifact list', async () => {
     const adminMe: api.MeResponse = {
       user: editorMe.user,
       studios: [{ studio_id: 's1', studio_name: 'S', role: 'studio_admin' }],
@@ -137,7 +137,7 @@ describe('ArtifactsPage', () => {
     expect(screen.getByText('Indexed')).toBeInTheDocument()
   })
 
-  it('opens drawer with chunk previews for a studio member editor', async () => {
+  it('opens drawer with chunk previews for a Builder', async () => {
     const user = userEvent.setup()
     vi.spyOn(api, 'me').mockResolvedValue(editorMe)
     vi.spyOn(api, 'listArtifacts').mockResolvedValue([embeddedRow])

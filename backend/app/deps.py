@@ -124,14 +124,18 @@ class StudioAccess:
 
     @property
     def can_edit_software_definition(self) -> bool:
-        """Software definition text — not cross-studio."""
+        """Whether the user may edit Software.definition (and related admin-only fields).
+
+        Software Definition is restricted to Studio Owner per FR §6.2. Builder role does NOT grant edit.
+        Cross-studio grantees never receive this (definition changes are owner-studio only).
+        """
         if self.user.is_tool_admin:
             return True
         if self.cross_studio_grant is not None:
             return False
         if self.membership is None:
             return False
-        return self.membership.role in ("studio_admin", "studio_member")
+        return self.membership.role == "studio_admin"
 
     @property
     def can_create_project(self) -> bool:
@@ -242,7 +246,7 @@ async def get_studio_software_list_access(
     session: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> StudioSoftwareListAccess:
-    """Allow studio members, tool admins, or cross-studio grantees (filtered software only)."""
+    """Allow Studio Builders and Owners, Tool Admins, or cross-studio grantees (filtered software only)."""
     studio = await session.get(Studio, studio_id)
     if studio is None:
         raise ApiError(
@@ -327,7 +331,7 @@ async def get_studio_software_list_access(
 
 @dataclass(frozen=True)
 class SoftwareAccess:
-    """Software row + studio membership for its studio."""
+    """Software row + home-studio access for its studio."""
 
     studio_access: StudioAccess
     software: Software
@@ -335,7 +339,7 @@ class SoftwareAccess:
 
 @dataclass(frozen=True)
 class ProjectAccess:
-    """Project + parent software + studio membership."""
+    """Project + parent software + home-studio access."""
 
     studio_access: StudioAccess
     software: Software
@@ -387,7 +391,7 @@ async def require_software_admin(
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Studio admin access required",
+            message="Studio Owner access required",
         )
     return sa
 
@@ -399,7 +403,7 @@ async def require_software_member(
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Studio membership required",
+            message="Membership in this studio is required",
         )
     return sa
 
@@ -412,13 +416,13 @@ async def require_software_home_editor(
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Owning studio membership required",
+            message="You must belong to the owning studio",
         )
     if not sa.studio_access.is_studio_editor:
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Studio membership required",
+            message="Membership in this studio is required",
         )
     return sa
 
@@ -434,7 +438,7 @@ async def require_software_editor_in_studio(
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Studio editor access required",
+            message="Studio Owner or Builder access required",
         )
     return sa
 
@@ -450,7 +454,7 @@ async def require_software_admin_in_studio(
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Studio admin access required",
+            message="Studio Owner access required",
         )
     return sa
 
@@ -615,7 +619,7 @@ async def ensure_user_can_delete_artifact(
     user: User,
     artifact: Artifact,
 ) -> None:
-    """Studio admin (owning studio) or tool admin may delete or configure any artifact scope."""
+    """Studio Owner on the owning studio (or Tool Admin) may delete or configure any artifact scope."""
     if user.is_tool_admin:
         return
     scope = artifact.scope_level or "project"
@@ -631,7 +635,7 @@ async def ensure_user_can_delete_artifact(
             raise ApiError(
                 status_code=403,
                 code="FORBIDDEN",
-                message="Studio admin access required",
+                message="Studio Owner access required",
             )
         return
     if scope == "studio":
@@ -646,7 +650,7 @@ async def ensure_user_can_delete_artifact(
             raise ApiError(
                 status_code=403,
                 code="FORBIDDEN",
-                message="Studio admin access required",
+                message="Studio Owner access required",
             )
         return
     if scope == "software":
@@ -668,7 +672,7 @@ async def ensure_user_can_delete_artifact(
             raise ApiError(
                 status_code=403,
                 code="FORBIDDEN",
-                message="Studio admin access required",
+                message="Studio Owner access required",
             )
         return
     raise ApiError(
@@ -683,7 +687,7 @@ async def ensure_user_can_reindex_artifact(
     user: User,
     artifact: Artifact,
 ) -> None:
-    """Studio editor on owning studio (or tool admin); viewers cannot re-index."""
+    """Studio Owner or Builder on the owning studio (or Tool Admin); Studio Viewers cannot re-index."""
     if user.is_tool_admin:
         return
     scope = artifact.scope_level or "project"
@@ -699,7 +703,7 @@ async def ensure_user_can_reindex_artifact(
             raise ApiError(
                 status_code=403,
                 code="FORBIDDEN",
-                message="Studio editor access required",
+                message="Studio Owner or Builder access required",
             )
         return
     if scope == "studio":
@@ -714,7 +718,7 @@ async def ensure_user_can_reindex_artifact(
             raise ApiError(
                 status_code=403,
                 code="FORBIDDEN",
-                message="Studio editor access required",
+                message="Studio Owner or Builder access required",
             )
         return
     if scope == "software":
@@ -736,7 +740,7 @@ async def ensure_user_can_reindex_artifact(
             raise ApiError(
                 status_code=403,
                 code="FORBIDDEN",
-                message="Studio editor access required",
+                message="Studio Owner or Builder access required",
             )
         return
     raise ApiError(
@@ -805,7 +809,7 @@ async def require_outline_manager(
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Studio admin access required",
+            message="Studio Owner access required",
         )
     return pa
 
@@ -817,7 +821,7 @@ async def require_project_member(
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Studio membership required",
+            message="Membership in this studio is required",
         )
     return pa
 
@@ -829,7 +833,7 @@ async def require_project_issues_readable(
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Issues are not visible for cross-studio viewers",
+            message="Issues are not visible with read-only cross-studio access",
         )
     return pa
 
@@ -841,7 +845,7 @@ async def require_can_publish(
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Publish requires owning studio membership",
+            message="Publish requires access from the owning studio",
         )
     return pa
 
@@ -853,7 +857,7 @@ async def require_project_studio_admin(
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Studio admin access required",
+            message="Studio Owner access required",
         )
     return pa
 
@@ -865,7 +869,7 @@ async def require_project_studio_admin_nested(
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Studio admin access required",
+            message="Studio Owner access required",
         )
     return pa
 
@@ -873,18 +877,18 @@ async def require_project_studio_admin_nested(
 async def require_project_home_editor_nested(
     pa: ProjectAccess = Depends(get_project_access_nested),
 ) -> ProjectAccess:
-    """Owning studio editor/member (excludes cross-studio grants)."""
+    """Owning-studio Builder or Owner (excludes cross-studio grants)."""
     if not pa.studio_access.can_create_project:
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Owning studio membership required",
+            message="You must belong to the owning studio",
         )
     if not pa.studio_access.is_studio_editor:
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Studio membership required",
+            message="Membership in this studio is required",
         )
     return pa
 
@@ -896,7 +900,7 @@ async def require_studio_admin(
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Studio admin access required",
+            message="Studio Owner access required",
         )
     return access
 
@@ -908,6 +912,6 @@ async def require_studio_editor(
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Studio editor access required",
+            message="Studio Owner or Builder access required",
         )
     return access

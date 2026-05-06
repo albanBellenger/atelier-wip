@@ -24,6 +24,7 @@ import {
   postAdminCreateUser,
   putAdminUserAdminStatus,
 } from '../../services/api'
+import { STUDIO_ROLE_OPTIONS, studioRoleLabel } from '../../lib/roleLabels'
 
 function formatApiErr(err: unknown): string {
   if (err && typeof err === 'object' && 'detail' in err) {
@@ -45,13 +46,6 @@ function initialsFromName(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
 }
 
-function formatStudioRole(role: string): string {
-  if (role === 'studio_admin') return 'Owner'
-  if (role === 'studio_member') return 'Builder'
-  if (role === 'studio_viewer') return 'Viewer'
-  return role
-}
-
 function formatJoined(iso: string | undefined): string {
   if (!iso) return '—'
   try {
@@ -68,15 +62,6 @@ function membershipsSorted(
 ): AdminUserDirectoryRow['studio_memberships'] {
   return [...m].sort((a, b) => a.studio_name.localeCompare(b.studio_name))
 }
-
-const STUDIO_ROLE_OPTIONS: {
-  value: 'studio_admin' | 'studio_member' | 'studio_viewer'
-  label: string
-}[] = [
-  { value: 'studio_admin', label: 'Owner' },
-  { value: 'studio_member', label: 'Builder' },
-  { value: 'studio_viewer', label: 'Viewer' },
-]
 
 function CreateUserDialog({
   open,
@@ -443,7 +428,7 @@ function AddToStudioDialog({
             >
               {STUDIO_ROLE_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
-                  {o.label}
+                  {o.short}
                 </option>
               ))}
             </select>
@@ -570,7 +555,7 @@ export function UsersSection(): ReactElement {
     <div className="space-y-6">
       <PageTitle
         title="Users & roles"
-        subtitle="Everyone registered in Atelier, their studio memberships, and tool-wide administrator access. Use Add to studio to grant an existing account access and choose their studio role."
+        subtitle="Everyone registered in Atelier, which studios they belong to, and tool-wide administrator access. Use Add to studio to grant an existing account access and choose Owner, Builder, or Viewer."
       />
 
       {dirQ.isError ? (
@@ -616,7 +601,7 @@ export function UsersSection(): ReactElement {
               onChange={setFilter}
               options={[
                 ['all', `All ${counts.all}`],
-                ['tool', `Tool admins ${counts.tool}`],
+                ['tool', `Tool Admins ${counts.tool}`],
                 ['members', `Members ${counts.members}`],
               ]}
             />
@@ -640,7 +625,7 @@ export function UsersSection(): ReactElement {
                 'User',
                 'Studios',
                 'Studio roles',
-                'Tool admin',
+                'Tool Admin',
                 'Joined',
                 '',
               ]}
@@ -673,14 +658,14 @@ export function UsersSection(): ReactElement {
                     </span>
                     <div className="min-w-0">
                       {sorted.length === 0 ? (
-                        <span className="text-[11px] text-zinc-500">No studio membership</span>
+                        <span className="text-[11px] text-zinc-500">Not in any studio</span>
                       ) : (
                         <ul className="space-y-0.5 text-[11px] leading-snug text-zinc-400">
                           {sorted.map((m) => (
                             <li key={m.studio_id}>
                               <span className="text-zinc-300">{m.studio_name}</span>
                               <span className="text-zinc-600"> · </span>
-                              <span>{formatStudioRole(m.role)}</span>
+                              <span>{studioRoleLabel(m.role)}</span>
                             </li>
                           ))}
                         </ul>
@@ -690,7 +675,7 @@ export function UsersSection(): ReactElement {
                       {u.is_tool_admin ? (
                         <Pill tone="violet">
                           <Dot tone="violet" />
-                          yes
+                          Tool Admin
                         </Pill>
                       ) : (
                         <span className="text-[12px] text-zinc-600">—</span>
@@ -744,26 +729,27 @@ export function UsersSection(): ReactElement {
           <THead
             cols={[
               'Capability',
-              'Tool admin',
+              'Tool Admin',
               'Owner',
               'Builder',
               'External',
+              'Studio Viewer',
               'Viewer',
             ]}
-            grid="grid-cols-[2fr_repeat(5,minmax(0,1fr))]"
+            grid="grid-cols-[2fr_repeat(6,minmax(0,1fr))]"
           />
           {(
             [
-              ['Create studios', [true, false, false, false, false]],
-              ['Manage budgets', [true, true, false, false, false]],
-              ['Connect Git provider', [true, true, false, false, false]],
-              ['Edit software definition', [true, true, false, false, false]],
-              ['Edit spec sections', [true, true, true, true, false]],
-              ['Generate work orders', [true, true, true, true, false]],
-              ['Read-only access', [true, true, true, true, true]],
+              ['Create studios', [true, false, false, false, false, false]],
+              ['Manage budgets', [true, true, false, false, false, false]],
+              ['Connect Git provider', [true, true, false, false, false, false]],
+              ['Edit software definition', [true, true, false, false, false, false]],
+              ['Edit spec sections', [true, true, true, true, false, false]],
+              ['Generate work orders', [true, true, true, true, false, false]],
+              ['Read-only access', [true, true, true, true, true, true]],
             ] as const
           ).map(([cap, perms]) => (
-            <TRow key={cap} grid="grid-cols-[2fr_repeat(5,minmax(0,1fr))]">
+            <TRow key={cap} grid="grid-cols-[2fr_repeat(6,minmax(0,1fr))]">
               <span className="text-[12.5px] text-zinc-200">{cap}</span>
               {perms.map((p, i) => (
                 <span
@@ -777,8 +763,8 @@ export function UsersSection(): ReactElement {
           ))}
         </Table>
         <p className="border-t border-zinc-800/60 px-5 py-3 text-[11px] text-zinc-500">
-          External and Viewer apply to cross-studio access on a specific software. Manage pending
-          requests under{' '}
+          External and the last Viewer column apply to cross-studio grants on a specific software.
+          Studio Viewer is the home-studio read-only role. Manage pending requests under{' '}
           <Link className="text-violet-400 hover:underline" to="/admin/cross-studio">
             Cross-studio access
           </Link>

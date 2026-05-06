@@ -1,4 +1,4 @@
-"""Studio Admin — MCP API keys (Slice 12)."""
+"""Studio Owner — MCP API keys (Slice 12)."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ class McpKeyAdminService:
             raise ApiError(
                 status_code=403,
                 code="FORBIDDEN",
-                message="Studio admin required",
+                message="Studio Owner access required",
             )
         rows = (
             (
@@ -58,7 +58,7 @@ class McpKeyAdminService:
             raise ApiError(
                 status_code=403,
                 code="FORBIDDEN",
-                message="Studio admin required",
+                message="Studio Owner access required",
             )
         raw = "atelier_" + secrets.token_urlsafe(24)
         hashed = bcrypt.hashpw(raw.encode("utf-8"), bcrypt.gensalt()).decode("ascii")
@@ -80,7 +80,7 @@ class McpKeyAdminService:
             raise ApiError(
                 status_code=403,
                 code="FORBIDDEN",
-                message="Studio admin required",
+                message="Studio Owner access required",
             )
         row = await self.db.get(McpKey, key_id)
         if row is None or row.studio_id != access.studio_id:

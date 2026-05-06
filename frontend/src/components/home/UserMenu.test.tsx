@@ -23,7 +23,7 @@ function baseProfile(over: Partial<MeResponse> = {}): MeResponse {
 }
 
 describe('userCanSeeMeTokenUsage', () => {
-  it('is true when user has studio memberships', () => {
+  it('is true when user has home-studio rows on their profile', () => {
     expect(userCanSeeMeTokenUsage(baseProfile())).toBe(true)
   })
 

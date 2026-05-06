@@ -54,16 +54,17 @@ def test_tool_admin_is_studio_admin_and_editor_and_publish() -> None:
 def test_member_roles() -> None:
     u = _user()
     mid = uuid.uuid4()
-    for role, expect_admin, expect_create in [
-        ("studio_admin", True, True),
-        ("studio_member", False, True),
-        ("studio_viewer", False, False),
+    for role, expect_admin, expect_create, expect_defn in [
+        ("studio_admin", True, True, True),
+        ("studio_member", False, True, False),
+        ("studio_viewer", False, False, False),
     ]:
         m = StudioMember(studio_id=mid, user_id=u.id, role=role)
         sa = StudioAccess(user=u, studio_id=mid, membership=m, cross_studio_grant=None)
         assert sa.is_studio_admin is expect_admin
         assert sa.is_studio_member is True
         assert sa.can_create_project is expect_create
+        assert sa.can_edit_software_definition is expect_defn
 
 
 def test_cross_studio_viewer_flags() -> None:
@@ -93,6 +94,7 @@ def test_cross_studio_external_editor() -> None:
     assert sa.is_cross_studio_external_editor is True
     assert sa.is_studio_editor is True
     assert sa.can_publish is False
+    assert sa.can_edit_software_definition is False
 
 
 def test_no_membership_no_grant_not_member() -> None:

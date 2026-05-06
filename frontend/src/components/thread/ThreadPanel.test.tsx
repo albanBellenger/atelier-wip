@@ -13,6 +13,7 @@ import type {
   WorkOrderDetail,
 } from '../../services/api'
 import type { PrivateThreadStreamMeta } from '../../services/privateThreadSse'
+import { CONTEXT_TRUNCATION_BANNER_COPY } from './ContextTruncationBanner'
 import { ThreadPanel } from './ThreadPanel'
 
 const { streamSpy } = vi.hoisted(() => ({
@@ -903,5 +904,119 @@ describe('ThreadPanel', () => {
       expect(screen.getByText('two')).toBeInTheDocument()
     })
     expect(scrollSpy.mock.calls.length).toBeGreaterThan(callsAfterFirst)
+  })
+
+  it('shows context truncation banner when stream meta has context_truncated true', async () => {
+    const user = userEvent.setup()
+    HTMLElement.prototype.scrollIntoView = vi.fn()
+    streamSpy.mockImplementation(
+      async (
+        _p: string,
+        _s: string,
+        _payload: unknown,
+        handlers: {
+          onToken: (t: string) => void
+          onMeta: (m: PrivateThreadStreamMeta) => void
+        },
+      ) => {
+        handlers.onMeta({
+          findings: [],
+          conflicts: [],
+          context_truncated: true,
+        })
+      },
+    )
+    vi.spyOn(api, 'getPrivateThread').mockResolvedValue({
+      thread_id: 'th-1',
+      messages: [],
+    })
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <ThreadPanel
+            projectId="p1"
+            sectionId="sec1"
+            projectHref="/studios/s1/software/sw1/projects/p1"
+            collab={null}
+            editorSelection={null}
+            onClearEditorSelection={() => {}}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    await user.type(screen.getByPlaceholderText(/copilot/), 'hello')
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        CONTEXT_TRUNCATION_BANNER_COPY,
+      )
+    })
+  })
+
+  it('hides context truncation banner when a new send starts', async () => {
+    const user = userEvent.setup()
+    HTMLElement.prototype.scrollIntoView = vi.fn()
+    let n = 0
+    streamSpy.mockImplementation(
+      async (
+        _p: string,
+        _s: string,
+        _payload: unknown,
+        handlers: {
+          onToken: (t: string) => void
+          onMeta: (m: PrivateThreadStreamMeta) => void
+        },
+      ) => {
+        n += 1
+        if (n === 1) {
+          handlers.onMeta({
+            findings: [],
+            conflicts: [],
+            context_truncated: true,
+          })
+        } else {
+          handlers.onMeta({
+            findings: [],
+            conflicts: [],
+            context_truncated: false,
+          })
+        }
+      },
+    )
+    vi.spyOn(api, 'getPrivateThread').mockResolvedValue({
+      thread_id: 'th-1',
+      messages: [],
+    })
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <ThreadPanel
+            projectId="p1"
+            sectionId="sec1"
+            projectHref="/studios/s1/software/sw1/projects/p1"
+            collab={null}
+            editorSelection={null}
+            onClearEditorSelection={() => {}}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    const composer = screen.getByPlaceholderText(/copilot/)
+    await user.type(composer, 'first')
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+    })
+    await user.type(composer, 'second')
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+    await waitFor(() => {
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
   })
 })

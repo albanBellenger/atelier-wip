@@ -114,10 +114,10 @@ describe('BuilderHomeHeader', () => {
     await user.click(screen.getByRole('button', { name: /northwind/i }))
 
     const northwindRow = screen.getByRole('button', {
-      name: /northwindstudio member/i,
+      name: /northwind.*builder/i,
     })
     expect(northwindRow).toHaveAttribute('aria-current', 'true')
-    expect(within(northwindRow).getByText('studio member')).toBeInTheDocument()
+    expect(within(northwindRow).getByText('Builder')).toBeInTheDocument()
     expect(northwindRow.querySelector('.rounded-full.bg-violet-500')).not.toBeNull()
 
     const contosoRow = screen.getByRole('button', { name: /contosoviewer/i })

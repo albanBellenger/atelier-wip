@@ -303,10 +303,10 @@ export function BuilderHomeDashboard({
           />
           <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/30 p-12 text-center">
             <h2 className="font-serif text-[22px] text-zinc-200">
-              No studio membership yet
+              Not in a studio yet
             </h2>
             <p className="mt-2 text-[13px] text-zinc-500">
-              Ask a Studio Admin to invite you, or{' '}
+              Ask a Studio Owner to invite you, or{' '}
               <Link to="/studios" className="text-violet-400 hover:underline">
                 browse studios
               </Link>

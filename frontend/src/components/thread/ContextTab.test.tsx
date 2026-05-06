@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import * as api from '../../services/api'
+import { CONTEXT_TRUNCATION_BANNER_COPY } from './ContextTruncationBanner'
 import { ContextTab } from './ContextTab'
 
 describe('ContextTab', () => {
@@ -267,5 +268,47 @@ describe('ContextTab', () => {
         excluded_kinds: ['git_history'],
       })
     })
+  })
+
+  it('shows FR truncation banner when overflow_strategy_applied is set', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(api, 'getContextPreview').mockResolvedValue({
+      blocks: [
+        {
+          label: 'Software definition',
+          kind: 'software_def',
+          tokens: 1,
+          relevance: null,
+          truncated: false,
+          body: 'x',
+        },
+      ],
+      total_tokens: 5000,
+      budget_tokens: 6000,
+      overflow_strategy_applied: 'bottom_truncation',
+      debug_raw_rag_text: null,
+    })
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <ContextTab
+            projectId="p1"
+            sectionId="sec1"
+            ragQuery=""
+            includeGitHistory={false}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        CONTEXT_TRUNCATION_BANNER_COPY,
+      )
+    })
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })

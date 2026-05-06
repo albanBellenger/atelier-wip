@@ -1,19 +1,29 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi } from 'vitest'
 
-import { ContextTruncationBanner } from './ContextTruncationBanner'
+import {
+  CONTEXT_TRUNCATION_BANNER_COPY,
+  ContextTruncationBanner,
+} from './ContextTruncationBanner'
 
 describe('ContextTruncationBanner', () => {
-  it('renders warning when visible', () => {
+  it('renders FR copy when visible', () => {
     render(<ContextTruncationBanner visible />)
-    expect(screen.getByTestId('context-truncation-banner')).toBeInTheDocument()
-    expect(
-      screen.getByText(/This section is very large/i),
-    ).toBeInTheDocument()
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent(CONTEXT_TRUNCATION_BANNER_COPY)
   })
 
-  it('renders nothing when not visible', () => {
-    const { container } = render(<ContextTruncationBanner visible={false} />)
-    expect(container.firstChild).toBeNull()
+  it('hides when not visible', () => {
+    render(<ContextTruncationBanner visible={false} />)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('calls onDismiss when Dismiss is clicked', async () => {
+    const user = userEvent.setup()
+    const onDismiss = vi.fn()
+    render(<ContextTruncationBanner visible onDismiss={onDismiss} />)
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }))
+    expect(onDismiss).toHaveBeenCalledTimes(1)
   })
 })

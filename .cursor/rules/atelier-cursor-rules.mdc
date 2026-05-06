@@ -63,7 +63,7 @@ Every protected route must use the appropriate FastAPI dependency:
 - `require_studio_member(studio_id)` — for member-level actions
 - `require_studio_admin(studio_id)` — for admin-level actions
 - `require_tool_admin` — for tool-wide admin actions
-- `get_cross_studio_access(user, software_id)` — for cross-studio viewers/editors
+- `get_cross_studio_access(user, software_id)` — for read-only or edit cross-studio grants on software
 
 Never perform manual role checks inside route handlers — always use the dependency chain.
 

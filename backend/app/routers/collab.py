@@ -43,7 +43,7 @@ async def section_collab(
                 raise ApiError(
                     status_code=403,
                     code="FORBIDDEN",
-                    message="Studio editor access required for collaborative editing.",
+                    message="Studio Owner or Builder access required for collaborative editing.",
                 )
             sec = await session.get(Section, section_id)
             if sec is None or sec.project_id != project_id:

@@ -226,7 +226,7 @@ class StudioService:
             raise ApiError(
                 status_code=400,
                 code="LAST_ADMIN",
-                message="Cannot remove the last studio admin",
+                message="Cannot remove the last Studio Owner",
             )
         await self.db.execute(
             delete(StudioMember).where(
@@ -265,7 +265,7 @@ class StudioService:
                 raise ApiError(
                     status_code=400,
                     code="LAST_ADMIN",
-                    message="Cannot demote the last studio admin",
+                    message="Cannot demote the last Studio Owner",
                 )
         await self.db.execute(
             update(StudioMember)

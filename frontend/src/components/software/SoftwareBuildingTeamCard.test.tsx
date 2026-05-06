@@ -13,7 +13,7 @@ function wrap(ui: ReactElement): ReturnType<typeof render> {
 const joined = '2026-01-01T00:00:00Z'
 
 describe('SoftwareBuildingTeamCard', () => {
-  it('lists studio members in role order with per-row badges and header count', () => {
+  it('lists people in role order with per-row badges and header count', () => {
     const members: StudioMember[] = [
       {
         user_id: 'u-admin',

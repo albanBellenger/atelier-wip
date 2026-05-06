@@ -160,7 +160,7 @@ describe('ArtifactDetailDrawer', () => {
     expect(screen.queryByRole('button', { name: /re-index for search/i })).not.toBeInTheDocument()
   })
 
-  it('studio member sees re-index but not delete or chunking controls', async () => {
+  it('Builder sees re-index but not delete or chunking controls', async () => {
     renderDrawer({
       canSeeChunkPreviews: true,
       projectId: 'p1',
@@ -177,7 +177,7 @@ describe('ArtifactDetailDrawer', () => {
     expect(screen.queryByText('Library scope')).not.toBeInTheDocument()
   })
 
-  it('studio admin sees delete, chunking, and library scope controls', async () => {
+  it('Studio Owner sees delete, chunking, and library scope controls', async () => {
     renderDrawer({
       canSeeChunkPreviews: true,
       projectId: 'p1',

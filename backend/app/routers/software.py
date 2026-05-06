@@ -115,7 +115,7 @@ async def software_token_usage_summary(
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Studio membership required.",
+            message="Membership in this studio is required.",
         )
     today = datetime.now(timezone.utc).date()
     if date_from is None or date_to is None:
@@ -252,7 +252,7 @@ async def patch_project_artifact_exclusion(
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Studio membership required",
+            message="Membership in this studio is required",
         )
     if pa.studio_access.is_cross_studio_viewer:
         raise ApiError(

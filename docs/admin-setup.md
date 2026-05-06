@@ -20,7 +20,7 @@ Tool Admin configures provider, model, API keys, and optional OpenAI-compatible 
 
 ## GitLab tokens
 
-Studio members with access edit **Software → Git** settings. Tokens are encrypted at rest with `ENCRYPTION_KEY` (Fernet). Generate a key:
+Studio Builders and Studio Owners with access edit **Software → Git** settings. Tokens are encrypted at rest with `ENCRYPTION_KEY` (Fernet). Generate a key:
 
 ```bash
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
@@ -28,12 +28,12 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 
 ## MCP API keys
 
-Studio Admins create MCP keys in **Studio → Settings → MCP**. Only a **hash** of the key is stored; the raw key is shown **once** at creation.
+Studio Owners create MCP keys in **Studio → Settings → MCP**. Only a **hash** of the key is stored; the raw key is shown **once** at creation.
 
 ## Cross-studio access
 
-Studio Admins request access to another studio’s software; **Tool Admin** approves or denies in **Admin → Cross-studio**. See functional requirements for the full workflow.
+Studio Owners request access to another studio’s software; **Tool Admin** approves or denies in **Admin → Cross-studio**. See functional requirements for the full workflow.
 
 ## Token usage
 
-Usage is recorded for LLM and MCP calls. Tool Admins and Studio Admins have dashboards described in the technical architecture (Slice 14).
+Usage is recorded for LLM and MCP calls. Tool Admins and Studio Owners have dashboards described in the technical architecture (Slice 14).

@@ -13,7 +13,7 @@ export const STUDIO_BUDGET_OVERAGE_OPTIONS: {
   label: string
 }[] = [
   { value: 'pause_generations', label: 'Pause generations (hard stop)' },
-  { value: 'allow_alert_studio_admin', label: 'Allow + alert studio admins' },
+  { value: 'allow_alert_studio_admin', label: 'Allow + alert Studio Owners' },
   { value: 'allow_alert_tool_admin', label: 'Allow + alert tool admins' },
   { value: 'allow_bill_org', label: 'Allow + bill org (track overage)' },
   { value: 'allow_with_warning', label: 'Allow + in-app warning only' },

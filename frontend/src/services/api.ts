@@ -107,6 +107,7 @@ export interface MeResponse {
     display_name: string
     is_tool_admin: boolean
   }
+  /** Each ``role`` is a wire value such as ``studio_admin`` / ``studio_member`` / ``studio_viewer``; use ``studioRoleLabel`` for UI copy. */
   studios: { studio_id: string; studio_name: string; role: string }[]
   cross_studio_grants?: CrossStudioGrantPublic[]
 }

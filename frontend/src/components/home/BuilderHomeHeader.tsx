@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 
 import { NotificationBell } from './NotificationBell'
 import { UserMenu } from './UserMenu'
+import { studioRoleLabel } from '../../lib/roleLabels'
 import type { MeResponse } from '../../services/api'
 
 export type BuilderHomeHeaderSoftwareSwitcher = {
@@ -187,7 +188,7 @@ export function BuilderHomeHeader({
                         </span>
                         <span className="flex shrink-0 items-center gap-2">
                           <span className="text-[10px] uppercase tracking-wider text-zinc-500">
-                            {s.role.replace('_', ' ')}
+                            {studioRoleLabel(s.role)}
                           </span>
                           {s.studio_id === effectiveStudioId ? (
                             <span

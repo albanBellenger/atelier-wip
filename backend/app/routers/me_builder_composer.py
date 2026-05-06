@@ -27,7 +27,7 @@ async def post_builder_composer_hint(
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Studio membership required.",
+            message="Membership in this studio is required.",
         )
     project: Project | None = None
     if body.project_id is not None:

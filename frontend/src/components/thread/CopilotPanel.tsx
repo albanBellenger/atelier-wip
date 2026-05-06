@@ -114,7 +114,7 @@ export function CopilotPanel(props: {
   onDraftEmptyChange?: (empty: boolean) => void
   /** When set, status strip uses server health metrics instead of client-only heuristics. */
   healthSummary?: SectionHealth | null
-  /** When true, context prefs and Sources pin actions are enabled (studio editor). */
+  /** When true, context prefs and Sources pin actions are enabled (Studio Owner or Builder). */
   canEditContext?: boolean
   /** Live patch preview for the section editor preview pane (Accept / Reject). */
   onPatchOverlayChange?: (state: SectionPatchOverlayState | null) => void
@@ -448,7 +448,7 @@ export function CopilotPanel(props: {
         },
         onMeta: (meta) => {
           setFindings(meta.findings ?? [])
-          setContextTruncated(Boolean(meta.context_truncated))
+          setContextTruncated(meta.context_truncated === true)
           const raw = meta.patch_proposal
           const norm = normalizePatchProposal(raw ?? null)
           setPatchProposal(norm)
@@ -848,7 +848,12 @@ export function CopilotPanel(props: {
   const tabPanel =
     sideTab === 'chat' ? (
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <ContextTruncationBanner visible={contextTruncated} />
+        <ContextTruncationBanner
+          visible={contextTruncated}
+          onDismiss={() => {
+            setContextTruncated(false)
+          }}
+        />
         <div
           ref={chatScrollRef}
           className={

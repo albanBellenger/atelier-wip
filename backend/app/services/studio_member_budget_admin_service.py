@@ -87,7 +87,7 @@ class StudioMemberBudgetAdminService:
             raise ApiError(
                 status_code=404,
                 code="NOT_FOUND",
-                message="Studio membership not found.",
+                message="No studio enrollment found for this user.",
             )
         row.budget_cap_monthly_usd = body.budget_cap_monthly_usd
         await self.db.flush()

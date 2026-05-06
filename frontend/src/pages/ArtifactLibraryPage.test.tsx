@@ -231,7 +231,7 @@ describe('ArtifactLibraryPage', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/view only — uploads require studio editor access/i),
+        screen.getByText(/view only — uploads require studio owner or builder access/i),
       ).toBeInTheDocument()
     })
     await waitFor(() => {

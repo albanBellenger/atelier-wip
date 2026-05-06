@@ -44,7 +44,7 @@ async def get_project_chat_history(
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Studio editor access required for project chat.",
+            message="Studio Owner or Builder access required for project chat.",
         )
     rows, next_before = await ProjectChatService(session).list_history(
         project_id=project_id,

@@ -84,7 +84,7 @@ export function IssuesPage(): ReactElement {
   if (access.isCrossStudioViewer) {
     return (
       <div className="min-h-screen bg-zinc-950 px-4 py-12 text-zinc-100">
-        <p>Issues are not visible for cross-studio viewers.</p>
+        <p>Issues are not visible with read-only cross-studio access.</p>
         <Link
           to={`/studios/${sid}/software/${sfid}/projects/${pid}`}
           className="mt-4 inline-block text-violet-400"

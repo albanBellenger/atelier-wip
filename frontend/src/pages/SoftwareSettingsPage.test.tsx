@@ -55,7 +55,7 @@ function renderSettings(path = '/studios/s1/software/sw1/settings'): void {
 }
 
 describe('SoftwareSettingsPage', () => {
-  it('shows Details and GitLab sections for a studio admin', async () => {
+  it('shows Details and GitLab sections for a Studio Owner', async () => {
     vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
       items: [],
       next_cursor: null,
@@ -155,7 +155,7 @@ describe('SoftwareSettingsPage', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('studio member can toggle software-scope artifact exclusion', async () => {
+  it('Builder can toggle software-scope artifact exclusion', async () => {
     const user = userEvent.setup()
     vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
       items: [],

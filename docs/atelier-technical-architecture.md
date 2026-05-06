@@ -352,7 +352,7 @@ CREATE INDEX ON mcp_keys       (studio_id,  revoked_at);
 |---|---|---|---|
 | `/auth/register` | POST | Public | Create user, return JWT. First user gets `is_tool_admin=true` |
 | `/auth/login` | POST | Public | Verify credentials, return JWT |
-| `/auth/me` | GET | JWT | Return current user + studio memberships |
+| `/auth/me` | GET | JWT | Return current user + per-studio roles |
 
 ### AdminService
 | Endpoint | Method | Auth | Description |
@@ -366,57 +366,57 @@ CREATE INDEX ON mcp_keys       (studio_id,  revoked_at);
 ### StudioService
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
-| `/studios` | POST | JWT | Create studio (creator becomes Studio Admin) |
+| `/studios` | POST | JWT | Create studio (creator becomes Studio Owner) |
 | `/studios` | GET | JWT | List studios the user belongs to |
-| `/studios/{id}` | GET | Studio Member | Studio detail |
-| `/studios/{id}` | PUT | Studio Admin | Update name, description, logo |
-| `/studios/{id}/members` | GET | Studio Member | List members |
-| `/studios/{id}/members` | POST | Studio Admin | Invite by email |
-| `/studios/{id}/members/{uid}` | DELETE | Studio Admin | Remove member |
-| `/studios/{id}/members/{uid}/role` | PUT | Studio Admin | Change member role |
-| `/studios/{id}/cross-studio-request` | POST | Studio Admin | Request access to another studio's software |
-| `/studios/{id}/token-usage` | GET | Studio Admin | Studio token usage |
-| `/studios/{id}/mcp-keys` | GET | Studio Admin | List MCP keys |
-| `/studios/{id}/mcp-keys` | POST | Studio Admin | Generate new MCP key |
-| `/studios/{id}/mcp-keys/{kid}` | DELETE | Studio Admin | Revoke MCP key |
+| `/studios/{id}` | GET | Studio Builder | Studio detail |
+| `/studios/{id}` | PUT | Studio Owner | Update name, description, logo |
+| `/studios/{id}/members` | GET | Studio Builder | List members |
+| `/studios/{id}/members` | POST | Studio Owner | Invite by email |
+| `/studios/{id}/members/{uid}` | DELETE | Studio Owner | Remove member |
+| `/studios/{id}/members/{uid}/role` | PUT | Studio Owner | Change member role |
+| `/studios/{id}/cross-studio-request` | POST | Studio Owner | Request access to another studio's software |
+| `/studios/{id}/token-usage` | GET | Studio Owner | Studio token usage |
+| `/studios/{id}/mcp-keys` | GET | Studio Owner | List MCP keys |
+| `/studios/{id}/mcp-keys` | POST | Studio Owner | Generate new MCP key |
+| `/studios/{id}/mcp-keys/{kid}` | DELETE | Studio Owner | Revoke MCP key |
 
 ### SoftwareService
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
-| `/studios/{id}/software` | POST | Studio Admin | Create software |
-| `/studios/{id}/software` | GET | Studio Member | List software in studio |
-| `/studios/{id}/software/{sid}` | GET | Studio Member | Software detail + projects |
-| `/studios/{id}/software/{sid}` | PUT | Studio Admin | Update name, description, definition, git config |
-| `/studios/{id}/software/{sid}` | DELETE | Studio Admin | Delete software + cascade |
-| `/studios/{id}/software/{sid}/git-test` | POST | Studio Admin | Validate git connection |
+| `/studios/{id}/software` | POST | Studio Owner | Create software |
+| `/studios/{id}/software` | GET | Studio Builder | List software in studio |
+| `/studios/{id}/software/{sid}` | GET | Studio Builder | Software detail + projects |
+| `/studios/{id}/software/{sid}` | PUT | Studio Owner | Update name, description, definition, git config |
+| `/studios/{id}/software/{sid}` | DELETE | Studio Owner | Delete software + cascade |
+| `/studios/{id}/software/{sid}/git-test` | POST | Studio Owner | Validate git connection |
 
 ### ProjectService
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
-| `/software/{sid}/projects` | POST | Studio Member+ | Create project |
-| `/software/{sid}/projects` | GET | Studio Member | List projects |
-| `/software/{sid}/projects/{pid}` | GET | Studio Member | Project detail + sections |
-| `/software/{sid}/projects/{pid}` | PUT | Studio Admin | Update name, description |
-| `/software/{sid}/projects/{pid}` | DELETE | Studio Admin | Delete project + cascade |
+| `/software/{sid}/projects` | POST | Studio Builder+ | Create project |
+| `/software/{sid}/projects` | GET | Studio Builder | List projects |
+| `/software/{sid}/projects/{pid}` | GET | Studio Builder | Project detail + sections |
+| `/software/{sid}/projects/{pid}` | PUT | Studio Owner | Update name, description |
+| `/software/{sid}/projects/{pid}` | DELETE | Studio Owner | Delete project + cascade |
 
 ### SectionService
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
-| `/projects/{pid}/sections` | POST | Studio Admin | Create section |
+| `/projects/{pid}/sections` | POST | Studio Owner | Create section |
 | `/projects/{pid}/sections` | GET | Member/Viewer | List sections ordered |
 | `/projects/{pid}/sections/{sid}` | GET | Member/Viewer | Section detail + content |
-| `/projects/{pid}/sections/{sid}` | PUT | Studio Admin | Update title, slug, order |
-| `/projects/{pid}/sections/{sid}` | DELETE | Studio Admin | Delete section |
+| `/projects/{pid}/sections/{sid}` | PUT | Studio Owner | Update title, slug, order |
+| `/projects/{pid}/sections/{sid}` | DELETE | Studio Owner | Delete section |
 
 ### ArtifactService
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
-| `/projects/{pid}/artifacts` | POST | Studio Member | Upload PDF or MD (project scope) |
+| `/projects/{pid}/artifacts` | POST | Studio Builder | Upload PDF or MD (project scope) |
 | `/projects/{pid}/artifacts` | GET | Member/Viewer | List project-scoped artifacts |
 | `/projects/{pid}/artifacts/{aid}/download` | GET | Member/Viewer | Proxied file download (streamed through FastAPI) |
-| `/projects/{pid}/artifacts/{aid}` | DELETE | Studio Member | Delete artifact + chunks |
-| `/studios/{sid}/artifacts` | POST | Studio Editor | Upload PDF or MD (studio library scope) |
-| `/studios/{sid}/artifacts/md` | POST | Studio Editor | Create Markdown artifact (studio scope) |
+| `/projects/{pid}/artifacts/{aid}` | DELETE | Studio Builder | Delete artifact + chunks |
+| `/studios/{sid}/artifacts` | POST | Owner or Builder | Upload PDF or MD (studio library scope) |
+| `/studios/{sid}/artifacts/md` | POST | Owner or Builder | Create Markdown artifact (studio scope) |
 | `/studios/{sid}/artifact-library` | GET | Member/Viewer (studio list rules) | Unified library list; optional `?softwareId=` filter |
 | `/software/{swid}/artifacts` | POST | Software editor (owning studio) | Upload PDF or MD (software library scope) |
 | `/software/{swid}/artifacts/md` | POST | Same | Create Markdown artifact (software scope) |
@@ -429,38 +429,38 @@ CREATE INDEX ON mcp_keys       (studio_id,  revoked_at);
 ### WorkOrderService
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
-| `/projects/{pid}/work-orders` | POST | Studio Member | Create work order manually |
-| `/projects/{pid}/work-orders/generate` | POST | Studio Member | LLM auto-generate from section(s) |
+| `/projects/{pid}/work-orders` | POST | Studio Builder | Create work order manually |
+| `/projects/{pid}/work-orders/generate` | POST | Studio Builder | LLM auto-generate from section(s) |
 | `/projects/{pid}/work-orders` | GET | Member/Viewer | List work orders (filterable) |
 | `/projects/{pid}/work-orders/{wid}` | GET | Member/Viewer | Work order detail |
-| `/projects/{pid}/work-orders/{wid}` | PUT | Studio Member | Update work order |
-| `/projects/{pid}/work-orders/{wid}` | DELETE | Studio Member | Delete work order |
-| `/projects/{pid}/work-orders/{wid}/dismiss-stale` | POST | Studio Member | Dismiss stale flag |
-| `/projects/{pid}/work-orders/{wid}/notes` | POST | Studio Member | Add note |
+| `/projects/{pid}/work-orders/{wid}` | PUT | Studio Builder | Update work order |
+| `/projects/{pid}/work-orders/{wid}` | DELETE | Studio Builder | Delete work order |
+| `/projects/{pid}/work-orders/{wid}/dismiss-stale` | POST | Studio Builder | Dismiss stale flag |
+| `/projects/{pid}/work-orders/{wid}/notes` | POST | Studio Builder | Add note |
 
 ### ThreadService
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
-| `/projects/{pid}/sections/{sid}/thread` | GET | Studio Member | Get or create thread + history |
-| `/projects/{pid}/sections/{sid}/thread/messages` | POST | Studio Member | Send message (SSE stream) |
+| `/projects/{pid}/sections/{sid}/thread` | GET | Studio Builder | Get or create thread + history |
+| `/projects/{pid}/sections/{sid}/thread/messages` | POST | Studio Builder | Send message (SSE stream) |
 
 ### ChatService
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
-| `/projects/{pid}/chat` | GET | Studio Member | Paginated chat history |
+| `/projects/{pid}/chat` | GET | Studio Builder | Paginated chat history |
 
 ### PublishService
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
-| `/projects/{pid}/publish` | POST | Studio Member | Publish spec + work orders to git |
+| `/projects/{pid}/publish` | POST | Studio Builder | Publish spec + work orders to git |
 | `/software/{sid}/history` | GET | Member/Viewer | Commit history timeline |
 
 ### ConflictService
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
-| `/projects/{pid}/analyze` | POST | Studio Member | Manual conflict analysis trigger |
+| `/projects/{pid}/analyze` | POST | Studio Builder | Manual conflict analysis trigger |
 | `/projects/{pid}/issues` | GET | Member (filtered by role) | List issues |
-| `/projects/{pid}/issues/{iid}` | PUT | Studio Member | Update issue status |
+| `/projects/{pid}/issues/{iid}` | PUT | Studio Builder | Update issue status |
 
 ### GraphService (internal + endpoint)
 | Endpoint | Method | Auth | Description |
@@ -678,7 +678,7 @@ get_current_user(jwt)
   └── get_studio_membership(user, studio_id)   # returns role or 403
         └── require_studio_admin()              # 403 if not admin
         └── require_studio_member()             # 403 if viewer or not member
-        └── get_cross_studio_access(user, software_id)  # for cross-studio viewers
+        └── get_cross_studio_access(user, software_id)  # for read-only or edit cross-studio grants
 ```
 
 Software-level routes additionally resolve the studio from the software and apply the same chain. Project-level routes resolve studio via software → project chain.
@@ -989,7 +989,7 @@ ENCRYPTION_KEY=changeme-32-byte-fernet-key
 
 ### Slice 2 — Studios & Software
 - Studio CRUD + member management endpoints + frontend
-- Studio Admin / Studio Member role enforcement
+- Studio Owner / Studio Builder role enforcement
 - Software CRUD + Software Definition editor
 - Git config + test connection
 - Studio list page, Studio page, Software page
@@ -1053,21 +1053,21 @@ ENCRYPTION_KEY=changeme-32-byte-fernet-key
 - Issues panel frontend
 
 ### Slice 12 — MCP Server
-- MCP key generation + management (Studio Admin)
+- MCP key generation + management (Studio Owner)
 - MCP endpoints: list, pull, update, note
 - Full context assembly on work order pull
 - MCP key management UI in Studio Settings
 - Token usage recording for MCP calls
 
 ### Slice 13 — Cross-Studio Access
-- Cross-studio access request flow (Studio Admin → Tool Admin approval)
+- Cross-studio access request flow (Studio Owner → Tool Admin approval)
 - Tool Admin approval UI
 - Viewer permission enforcement across all routes + frontend
 - Knowledge Graph + Work Orders read-only for Viewers
 
 ### Slice 14 — Token Usage Dashboard
 - Token usage recording wired into all LLM + MCP calls
-- Token usage endpoints (Tool Admin all-studio, Studio Admin studio, Member self)
+- Token usage endpoints (Tool Admin all-studio, Studio Owner studio, Member self)
 - Token usage dashboard with charts + CSV export
 
 ### Slice 15 — Polish & Hardening
@@ -1112,7 +1112,7 @@ ENCRYPTION_KEY=changeme-32-byte-fernet-key
 ### Software
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| POST | `/studios/{id}/software` | Studio Admin | Create software |
+| POST | `/studios/{id}/software` | Studio Owner | Create software |
 | GET | `/studios/{id}/software` | Member/Viewer | List software |
 | GET/PUT/DELETE | `/studios/{id}/software/{sid}` | Member/Admin | Detail / update / delete |
 | POST | `/studios/{id}/software/{sid}/git-test` | Admin | Test git connection |
@@ -1127,7 +1127,7 @@ ENCRYPTION_KEY=changeme-32-byte-fernet-key
 ### Sections
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| POST | `/projects/{pid}/sections` | Studio Admin | Create section |
+| POST | `/projects/{pid}/sections` | Studio Owner | Create section |
 | GET | `/projects/{pid}/sections` | Member/Viewer | List sections |
 | GET/PUT/DELETE | `/projects/{pid}/sections/{sid}` | Member/Admin | Detail / update / delete |
 
@@ -1138,8 +1138,8 @@ ENCRYPTION_KEY=changeme-32-byte-fernet-key
 | GET | `/projects/{pid}/artifacts` | Member/Viewer | List project-scoped files |
 | GET | `/projects/{pid}/artifacts/{aid}/download` | Member/Viewer | Download |
 | DELETE | `/projects/{pid}/artifacts/{aid}` | Member | Delete |
-| POST | `/studios/{sid}/artifacts` | Studio Editor | Upload (studio library) |
-| POST | `/studios/{sid}/artifacts/md` | Studio Editor | Create Markdown (studio library) |
+| POST | `/studios/{sid}/artifacts` | Owner or Builder | Upload (studio library) |
+| POST | `/studios/{sid}/artifacts/md` | Owner or Builder | Create Markdown (studio library) |
 | GET | `/studios/{sid}/artifact-library` | Member/Viewer | Unified library (`?softwareId=` optional) |
 | POST | `/software/{swid}/artifacts` | Software editor | Upload (software library) |
 | POST | `/software/{swid}/artifacts/md` | Software editor | Create Markdown (software library) |
@@ -1180,7 +1180,7 @@ ENCRYPTION_KEY=changeme-32-byte-fernet-key
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | GET | `/admin/token-usage` | Tool Admin | All studios |
-| GET | `/studios/{id}/token-usage` | Studio Admin | Own studio |
+| GET | `/studios/{id}/token-usage` | Studio Owner | Own studio |
 | GET | `/me/token-usage` | Member | Own usage |
 
 ### MCP Server
@@ -1654,7 +1654,7 @@ export class WorkOrdersPage {
 #### Key E2E Scenarios
 ```typescript
 // work-orders.spec.ts
-test('studio member can generate, edit, and move a work order', async ({ page }) => {
+test('Builder can generate, edit, and move a work order', async ({ page }) => {
   const wo = new WorkOrdersPage(page)
   await wo.generateFromSection('Data Model')
   await expect(page.getByTestId('work-order-card').first()).toBeVisible()

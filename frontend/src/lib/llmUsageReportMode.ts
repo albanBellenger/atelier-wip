@@ -2,9 +2,9 @@ import type { MeResponse } from '../services/api'
 
 /**
  * Chooses which token-usage API to call from ``/llm-usage`` filters + profile (RBAC).
- * - Tool admin → global admin endpoint.
- * - Exactly one ``studio_id`` in filters + user is ``studio_admin`` for that studio
- *   (and not only cross-studio grantee for that studio) → studio admin endpoint.
+ * - Tool Admin → global admin endpoint.
+ * - Exactly one ``studio_id`` in filters + user has wire role ``studio_admin`` for that studio
+ *   (and is not only a cross-studio grantee for that studio) → studio-scoped admin endpoint.
  * - Otherwise → ``/me/token-usage`` (rows are always the caller’s for non-admin paths
  *   when using ``me``; studio route allows user filter).
  */

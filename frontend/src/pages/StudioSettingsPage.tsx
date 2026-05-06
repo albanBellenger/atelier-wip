@@ -3,6 +3,7 @@ import type { ReactElement } from 'react'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useStudioAccess } from '../hooks/useStudioAccess'
+import { STUDIO_ROLE_OPTIONS, crossStudioAccessLabel, studioRoleLabel } from '../lib/roleLabels'
 import {
   addMember,
   createSoftware,
@@ -238,7 +239,7 @@ export function StudioSettingsPage(): ReactElement {
                   <span>
                     {m.display_name}{' '}
                     <span className="text-zinc-500">({m.email})</span> —{' '}
-                    <span className="text-zinc-400">{m.role}</span>
+                    <span className="text-zinc-400">{studioRoleLabel(m.role)}</span>
                   </span>
                   {access.isStudioAdmin ? (
                     <span className="flex flex-wrap gap-2">
@@ -253,7 +254,7 @@ export function StudioSettingsPage(): ReactElement {
                             })
                           }
                         >
-                          Make builder
+                          Make Builder
                         </button>
                       ) : (
                         <button
@@ -269,7 +270,7 @@ export function StudioSettingsPage(): ReactElement {
                             })
                           }
                         >
-                          Toggle admin
+                          Toggle Owner
                         </button>
                       )}
                       <button
@@ -306,9 +307,11 @@ export function StudioSettingsPage(): ReactElement {
                   )
                 }
               >
-                <option value="studio_member">Member</option>
-                <option value="studio_admin">Admin</option>
-                <option value="studio_viewer">Viewer</option>
+                {STUDIO_ROLE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.short}
+                  </option>
+                ))}
               </select>
               <button
                 type="button"
@@ -408,8 +411,10 @@ export function StudioSettingsPage(): ReactElement {
                     setRequestedLevel(e.target.value as 'viewer' | 'external_editor')
                   }
                 >
-                  <option value="viewer">Viewer</option>
-                  <option value="external_editor">External editor</option>
+                  <option value="viewer">{crossStudioAccessLabel('viewer')}</option>
+                  <option value="external_editor">
+                    {crossStudioAccessLabel('external_editor')}
+                  </option>
                 </select>
               </label>
               <button

@@ -66,7 +66,7 @@ describe('HomePage', () => {
       </MemoryRouter>,
     )
     expect(
-      await screen.findByText(/no studio membership yet/i),
+      await screen.findByText(/not in a studio yet/i),
     ).toBeInTheDocument()
   })
 

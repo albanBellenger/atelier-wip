@@ -32,7 +32,7 @@ class CrossStudioService:
             raise ApiError(
                 status_code=403,
                 code="FORBIDDEN",
-                message="Studio admin access required",
+                message="Studio Owner access required",
             )
         requesting_studio_id = access.studio_id
         sw = await self.db.get(Software, body.target_software_id)

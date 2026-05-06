@@ -68,7 +68,7 @@ async def llm_admin_config(db_session: AsyncSession) -> None:
 
 @pytest_asyncio.fixture
 async def studio_member(db_session: AsyncSession) -> dict[str, object]:
-    """Studio member user with Cookie header for httpx.AsyncClient."""
+    """User with home-studio Builder role; Cookie header for httpx.AsyncClient."""
     sfx = uuid.uuid4().hex[:10]
     password = "llm-test-password-ok-1"
     admin = await create_user(

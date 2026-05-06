@@ -519,7 +519,7 @@ export function ArtifactLibraryPage(): ReactElement {
           </section>
         ) : (
           <p className="mt-6 text-sm text-zinc-500">
-            View only — uploads require studio editor access.
+            View only — uploads require Studio Owner or Builder access.
           </p>
         )}
 

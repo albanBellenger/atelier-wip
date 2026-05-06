@@ -370,7 +370,7 @@ class SectionService:
             raise ApiError(
                 status_code=403,
                 code="FORBIDDEN",
-                message="Studio admin access required to modify section title, slug, or order",
+                message="Studio Owner access required to modify section title, slug, or order",
             )
         if "title" in data and data["title"] is not None:
             s.title = str(data["title"]).strip()
@@ -432,7 +432,7 @@ class SectionService:
             raise ApiError(
                 status_code=403,
                 code="FORBIDDEN",
-                message="Studio admin access required",
+                message="Studio Owner access required",
             )
         s = await self.db.get(Section, section_id)
         if s is None or s.project_id != project_id:

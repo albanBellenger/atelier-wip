@@ -382,7 +382,7 @@ describe('ProjectPage landing layout', () => {
     ).toBeNull()
   })
 
-  it('shows Project settings link for studio admin', async () => {
+  it('shows Project settings link for a Studio Owner', async () => {
     vi.spyOn(api, 'me').mockResolvedValue({
       user: {
         id: 'u1',
@@ -441,7 +441,7 @@ describe('ProjectPage landing layout', () => {
     )
   })
 
-  it('does not show Project settings link for studio member', async () => {
+  it('does not show Project settings link for a Builder', async () => {
     vi.spyOn(api, 'me').mockResolvedValue({
       user: {
         id: 'u1',

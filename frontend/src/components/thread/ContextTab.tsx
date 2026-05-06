@@ -12,6 +12,7 @@ import {
   patchSectionContextPreferences,
   type SectionContextPreferencesPatch,
 } from '../../services/api'
+import { ContextTruncationBanner } from './ContextTruncationBanner'
 
 /** RAG context blocks for the current section (Slice B); optional prefs toggles for editors. */
 export function ContextTab(props: {
@@ -34,10 +35,15 @@ export function ContextTab(props: {
   const qc = useQueryClient()
   const [previewQ, setPreviewQ] = useState(ragQuery)
   const [showDebugRawRag, setShowDebugRawRag] = useState(false)
+  const [overflowBannerDismissed, setOverflowBannerDismissed] = useState(false)
 
   useEffect(() => {
     setPreviewQ(ragQuery)
   }, [ragQuery])
+
+  useEffect(() => {
+    setOverflowBannerDismissed(false)
+  }, [previewQ, includeGitHistory, showDebugRawRag])
 
   const prefsQ = useQuery({
     queryKey: ['sectionContextPreferences', projectId, sectionId],
@@ -182,15 +188,18 @@ export function ContextTab(props: {
       )}
       {q.data && (
         <>
+          <ContextTruncationBanner
+            visible={
+              q.data.overflow_strategy_applied != null && !overflowBannerDismissed
+            }
+            onDismiss={() => {
+              setOverflowBannerDismissed(true)
+            }}
+          />
           <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
             <span>
               ~{q.data.total_tokens} / {q.data.budget_tokens} tokens
             </span>
-            {q.data.overflow_strategy_applied != null ? (
-              <span className="rounded bg-amber-950/50 px-2 py-0.5 text-amber-200">
-                Truncation: {q.data.overflow_strategy_applied}
-              </span>
-            ) : null}
           </div>
           <ul className="space-y-3">
             {(Array.isArray(q.data.blocks) ? q.data.blocks : []).map(

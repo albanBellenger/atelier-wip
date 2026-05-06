@@ -1,7 +1,16 @@
 import { useMemo } from 'react'
 import type { CrossStudioGrantPublic, MeResponse } from '../services/api'
 
-/** Studio-scoped permissions; optional ``softwareId`` resolves cross-studio grants on owner-studio URLs. */
+/**
+ * Studio-scoped permissions; optional ``softwareId`` resolves cross-studio grants on owner-studio URLs.
+ *
+ * Product language (see ``frontend/src/lib/roleLabels.ts``): home-studio wire roles are
+ * ``studio_admin`` (Studio Owner), ``studio_member`` (Studio Builder), ``studio_viewer`` (Studio Viewer).
+ * ``isStudioAdmin`` / ``isStudioEditor`` follow those wire values, not the display strings.
+ *
+ * ``canEditSoftwareDefinition`` follows FR §6.2: only Tool Admin and home-studio ``studio_admin``
+ * (Studio Owner). Builders must not see this as true even though they may edit specs elsewhere.
+ */
 export function useStudioAccess(
   profile: MeResponse | undefined,
   studioId: string | undefined,
@@ -59,10 +68,7 @@ export function useStudioAccess(
       !crossGrant && (isToolAdmin || role === 'studio_admin')
 
     const canEditSoftwareDefinition =
-      !crossGrant &&
-      (isToolAdmin ||
-        role === 'studio_admin' ||
-        role === 'studio_member')
+      !crossGrant && (isToolAdmin || role === 'studio_admin')
 
     const canCreateProject =
       !crossGrant &&

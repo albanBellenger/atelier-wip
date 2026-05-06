@@ -51,7 +51,7 @@ describe('MeProfilePage', () => {
     })
   })
 
-  it('lists studio memberships with friendly role labels', async () => {
+  it('lists home studios with friendly role labels', async () => {
     vi.spyOn(api, 'me').mockResolvedValue({
       user: {
         id: 'u1',
@@ -75,10 +75,10 @@ describe('MeProfilePage', () => {
         </QueryClientProvider>
       </MemoryRouter>,
     )
-    expect(await screen.findByRole('heading', { name: /studio memberships/i })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: /your studios/i })).toBeInTheDocument()
     const acme = screen.getByRole('link', { name: 'Acme' })
     expect(acme).toHaveAttribute('href', '/studios/s-admin')
-    expect(screen.getByText('Admin')).toBeInTheDocument()
+    expect(screen.getByText('Owner')).toBeInTheDocument()
     const northwind = screen.getByRole('link', { name: 'Northwind' })
     expect(northwind).toHaveAttribute('href', '/studios/s-build')
     expect(screen.getByText('Builder')).toBeInTheDocument()
@@ -87,7 +87,7 @@ describe('MeProfilePage', () => {
     expect(viewerLabels.length).toBeGreaterThanOrEqual(2)
   })
 
-  it('shows empty studio memberships state with link to studios', async () => {
+  it('shows empty home studios state with link to studios', async () => {
     vi.spyOn(api, 'me').mockResolvedValue({
       user: {
         id: 'u1',
