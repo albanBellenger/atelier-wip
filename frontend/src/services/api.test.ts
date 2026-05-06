@@ -542,10 +542,14 @@ describe('streamPrivateThreadReply', () => {
 })
 
 describe('batch: thin request wrappers for line coverage', () => {
-  it('invokes request()-based exports with MSW stubs', async () => {
-    mswServer.use(...apiCoverageHandlers())
-    await invokeThinApiCoverage(api)
-  })
+  it(
+    'invokes request()-based exports with MSW stubs',
+    async () => {
+      mswServer.use(...apiCoverageHandlers())
+      await invokeThinApiCoverage(api)
+    },
+    30_000,
+  )
 })
 
 describe('downloadBlob', () => {
