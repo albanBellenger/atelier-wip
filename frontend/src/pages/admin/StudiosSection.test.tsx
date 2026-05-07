@@ -30,6 +30,14 @@ const sampleList: api.StudioOverviewRow[] = [
     mtd_spend_usd: '1.50',
     budget_cap_monthly_usd: null,
     budget_overage_action: 'pause_generations',
+    budget_status: {
+      is_capped: false,
+      usage_pct: null,
+      remaining_monthly_usd: null,
+      severity: 'ok',
+      over_cap: false,
+      blocks_new_usage: false,
+    },
   },
 ]
 

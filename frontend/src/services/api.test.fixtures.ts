@@ -295,6 +295,20 @@ export function apiCoverageHandlers(): RequestHandler[] {
     joined_at: '',
   }
 
+  const studioCaps: Api.StudioCapabilitiesOut = {
+    is_tool_admin: false,
+    membership_role: 'studio_admin',
+    is_studio_admin: true,
+    is_studio_editor: true,
+    is_studio_member: true,
+    is_cross_studio_viewer: false,
+    can_publish: true,
+    can_edit_software_definition: true,
+    can_create_project: true,
+    can_manage_project_outline: true,
+    cross_studio_grant: null,
+  }
+
   return [
     http.get('http://api.test/auth/llm-runtime', () =>
       HttpResponse.json({ llm_provider: null, llm_model: null }),
@@ -325,6 +339,9 @@ export function apiCoverageHandlers(): RequestHandler[] {
     ),
     http.post('http://api.test/studios/st1/cross-studio-request', () =>
       HttpResponse.json(crossResolve),
+    ),
+    http.get('http://api.test/studios/st1/me/capabilities', () =>
+      HttpResponse.json(studioCaps),
     ),
     http.get('http://api.test/studios', () => HttpResponse.json([studio()])),
     http.post('http://api.test/studios', () => HttpResponse.json(studio())),
@@ -549,6 +566,8 @@ export async function invokeThinApiCoverage(api: typeof import('./api')): Promis
   await api.listStudios()
   await api.createStudio({ name: 'S' })
   await api.getStudio('st1')
+  await api.getStudioCapabilities('st1')
+  await api.getStudioCapabilities('st1', 'sw1')
   await api.updateStudio('st1', { name: 'S2' })
   await api.listMembers('st1')
   await api.addMember('st1', { email: 'x@y.com', role: 'studio_member' })

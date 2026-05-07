@@ -1,93 +1,132 @@
+import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
-import type { CrossStudioGrantPublic, MeResponse } from '../services/api'
+import {
+  deriveStudioAccessFromProfile,
+  mapStudioCapabilitiesOutToFields,
+  studioCapabilitiesOutFromProfile,
+} from '../lib/studioAccessDerived'
+import type { MeResponse } from '../services/api'
+import { getStudioCapabilities } from '../services/api'
+import type { StudioAccessFields } from '../lib/studioAccessDerived'
+
+type StudioAccessResult = StudioAccessFields & {
+  isLoadingCapabilities: boolean
+  capabilitiesError: boolean
+}
+
+const denyAll: StudioAccessFields = {
+  role: null,
+  isMember: false,
+  isStudioAdmin: false,
+  isStudioEditor: false,
+  isToolAdmin: false,
+  isCrossStudioViewer: false,
+  canPublish: false,
+  canManageProjectOutline: false,
+  canEditSoftwareDefinition: false,
+  canCreateProject: false,
+  crossGrant: null,
+}
 
 /**
  * Studio-scoped permissions; optional ``softwareId`` resolves cross-studio grants on owner-studio URLs.
  *
+ * When ``studioId`` is set, flags come from ``GET /studios/{id}/me/capabilities`` (server policy).
+ * Without ``studioId``, a client-side fallback matches historical nav behavior.
+ *
  * Product language (see ``frontend/src/lib/roleLabels.ts``): home-studio wire roles are
  * ``studio_admin`` (Studio Owner), ``studio_member`` (Studio Builder), ``studio_viewer`` (Studio Viewer).
- * ``isStudioAdmin`` / ``isStudioEditor`` follow those wire values, not the display strings.
- *
- * ``canEditSoftwareDefinition`` follows FR §6.2: only Tool Admin and home-studio ``studio_admin``
- * (Studio Owner). Builders must not see this as true even though they may edit specs elsewhere.
  */
 export function useStudioAccess(
   profile: MeResponse | undefined,
   studioId: string | undefined,
   softwareId?: string,
-): {
-  role: string | null
-  isMember: boolean
-  isStudioAdmin: boolean
-  isStudioEditor: boolean
-  isToolAdmin: boolean
-  isCrossStudioViewer: boolean
-  canPublish: boolean
-  canManageProjectOutline: boolean
-  canEditSoftwareDefinition: boolean
-  canCreateProject: boolean
-  crossGrant: CrossStudioGrantPublic | null
-} {
-  return useMemo(() => {
-    const isToolAdmin = profile?.user?.is_tool_admin ?? false
-    const row = profile?.studios.find((s) => s.studio_id === studioId)
-    const role = row?.role ?? null
-
-    const crossGrant = (() => {
-      const grants = profile?.cross_studio_grants ?? []
-      if (!grants.length || !softwareId || !studioId) return null
-      return (
-        grants.find(
+): StudioAccessResult {
+  const roleRow =
+    studioId && profile?.studios
+      ? profile.studios.find((s) => s.studio_id === studioId)?.role ?? null
+      : null
+  const grantHint =
+    studioId && softwareId && profile?.cross_studio_grants
+      ? profile.cross_studio_grants.find(
           (g) =>
-            g.target_software_id === softwareId &&
-            g.owner_studio_id === studioId,
-        ) ?? null
-      )
-    })()
+            g.owner_studio_id === studioId &&
+            g.target_software_id === softwareId,
+        )?.access_level ?? ''
+      : ''
 
-    const isHomeMember = isToolAdmin || Boolean(row)
-    const isMember = isHomeMember || Boolean(crossGrant)
+  const capsQuery = useQuery({
+    queryKey: [
+      'studioCapabilities',
+      studioId ?? '',
+      softwareId ?? '',
+      profile?.user?.id ?? '',
+      profile?.user?.is_tool_admin ?? false,
+      roleRow ?? '',
+      grantHint,
+    ],
+    queryFn: () => {
+      if (import.meta.env.MODE === 'test') {
+        return Promise.resolve(
+          studioCapabilitiesOutFromProfile(
+            profile as MeResponse,
+            studioId!,
+            softwareId,
+          ),
+        )
+      }
+      return getStudioCapabilities(studioId!, softwareId)
+    },
+    enabled: Boolean(studioId && profile?.user),
+    retry: false,
+  })
 
-    const homeStudioAdmin =
-      isToolAdmin || (!crossGrant && role === 'studio_admin')
-    const isStudioAdmin = homeStudioAdmin
+  return useMemo((): StudioAccessResult => {
+    if (!profile?.user) {
+      return {
+        ...denyAll,
+        isLoadingCapabilities: false,
+        capabilitiesError: false,
+      }
+    }
 
-    const homeEditor =
-      isToolAdmin ||
-      role === 'studio_admin' ||
-      role === 'studio_member'
+    if (!studioId) {
+      const d = deriveStudioAccessFromProfile(profile, studioId, softwareId)
+      return {
+        ...d,
+        isLoadingCapabilities: false,
+        capabilitiesError: false,
+      }
+    }
 
-    const isStudioEditor =
-      Boolean(homeEditor) || crossGrant?.access_level === 'external_editor'
+    if (capsQuery.isPending || capsQuery.isFetching) {
+      return {
+        ...denyAll,
+        isLoadingCapabilities: true,
+        capabilitiesError: false,
+      }
+    }
 
-    const isCrossStudioViewer = crossGrant?.access_level === 'viewer'
-
-    const canPublish = isToolAdmin || (!crossGrant && Boolean(isStudioEditor))
-
-    const canManageProjectOutline =
-      !crossGrant && (isToolAdmin || role === 'studio_admin')
-
-    const canEditSoftwareDefinition =
-      !crossGrant && (isToolAdmin || role === 'studio_admin')
-
-    const canCreateProject =
-      !crossGrant &&
-      (isToolAdmin ||
-        role === 'studio_admin' ||
-        role === 'studio_member')
+    if (capsQuery.isError || !capsQuery.data) {
+      return {
+        ...denyAll,
+        isLoadingCapabilities: false,
+        capabilitiesError: true,
+      }
+    }
 
     return {
-      role,
-      isMember,
-      isStudioAdmin,
-      isStudioEditor,
-      isToolAdmin,
-      isCrossStudioViewer,
-      canPublish,
-      canManageProjectOutline,
-      canEditSoftwareDefinition,
-      canCreateProject,
-      crossGrant,
+      ...mapStudioCapabilitiesOutToFields(capsQuery.data),
+      isLoadingCapabilities: false,
+      capabilitiesError: false,
     }
-  }, [profile, studioId, softwareId])
+  }, [
+    profile,
+    studioId,
+    softwareId,
+    capsQuery.data,
+    capsQuery.isPending,
+    capsQuery.isFetching,
+    capsQuery.isError,
+  ])
 }

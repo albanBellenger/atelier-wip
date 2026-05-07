@@ -17,8 +17,10 @@ from app.schemas.admin_console import (
     DeploymentActivityResponse,
     StudioOverviewRowResponse,
 )
+from app.schemas.token_usage_report import BudgetMonthStatusOut
 from app.services.admin_activity_service import AdminActivityService
 from app.services.admin_studio_metrics import load_studio_aggregate_maps
+from app.services.budget_month_status import compute_studio_budget_status
 
 
 class AdminOverviewService:
@@ -39,6 +41,14 @@ class AdminOverviewService:
 
         studio_rows: list[StudioOverviewRowResponse] = []
         for st in studios:
+            mtd = mtd_map.get(st.id, Decimal("0"))
+            budget_status = BudgetMonthStatusOut.model_validate(
+                compute_studio_budget_status(
+                    mtd,
+                    st.budget_cap_monthly_usd,
+                    st.budget_overage_action,
+                )
+            )
             studio_rows.append(
                 StudioOverviewRowResponse(
                     studio_id=st.id,
@@ -47,9 +57,10 @@ class AdminOverviewService:
                     created_at=st.created_at,
                     software_count=sw_map.get(st.id, 0),
                     member_count=mem_map.get(st.id, 0),
-                    mtd_spend_usd=mtd_map.get(st.id, Decimal("0")),
+                    mtd_spend_usd=mtd,
                     budget_cap_monthly_usd=st.budget_cap_monthly_usd,
                     budget_overage_action=st.budget_overage_action,
+                    budget_status=budget_status,
                 )
             )
 

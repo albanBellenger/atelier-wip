@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.exceptions import ApiError
 from app.models import StudioMember, TokenUsage, User
 from app.schemas.admin_console import MemberBudgetUpdate, MemberBudgetRowResponse
+from app.schemas.token_usage_report import BudgetMonthStatusOut
+from app.services.budget_month_status import compute_builder_budget_status
 
 
 class StudioMemberBudgetAdminService:
@@ -64,6 +66,7 @@ class StudioMemberBudgetAdminService:
         out: list[MemberBudgetRowResponse] = []
         for mem, usr in pairs:
             spend = spent_map.get(mem.user_id, Decimal("0"))
+            st_payload = compute_builder_budget_status(spend, mem.budget_cap_monthly_usd)
             out.append(
                 MemberBudgetRowResponse(
                     user_id=mem.user_id,
@@ -72,6 +75,7 @@ class StudioMemberBudgetAdminService:
                     role=mem.role,
                     budget_cap_monthly_usd=mem.budget_cap_monthly_usd,
                     mtd_spend_usd=spend,
+                    budget_status=BudgetMonthStatusOut.model_validate(st_payload),
                 )
             )
         return out

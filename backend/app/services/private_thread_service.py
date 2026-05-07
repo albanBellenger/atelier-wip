@@ -189,6 +189,7 @@ async def _stream_main_reply(
     openai_msgs: list[dict[str, Any]],
     ctx: TokenContext,
     stream_state: dict[str, Any],
+    preferred_model: str | None = None,
 ) -> AsyncIterator[str]:
     stream_state["stream_failed"] = False
     try:
@@ -197,6 +198,7 @@ async def _stream_main_reply(
             messages=openai_msgs,
             context=ctx,
             call_type="private_thread",
+            preferred_model=preferred_model,
         ):
             yield piece
     except ApiError:
@@ -441,6 +443,7 @@ class PrivateThreadService:
         include_selection_in_context: bool = True,
         thread_intent: Literal["ask", "append", "replace_selection", "edit"] = "ask",
         command: Literal["none", "improve", "critique"] = "none",
+        preferred_model: str | None = None,
     ) -> AsyncIterator[bytes]:
         """SSE chunks: JSON lines with type token | meta, then [DONE]."""
         await self.require_section_in_project(project_id, section_id)
@@ -498,7 +501,7 @@ class PrivateThreadService:
             openai_msgs,
             context=ctx,
             call_type="chat",
-            preferred_model=None,
+            preferred_model=preferred_model,
         )
         if history_trimmed:
             trim_row = ThreadMessage(
@@ -569,6 +572,7 @@ class PrivateThreadService:
             openai_msgs=openai_msgs,
             ctx=ctx,
             stream_state=stream_state,
+            preferred_model=preferred_model,
         ):
             buf.append(piece)
             payload = json.dumps({"type": "token", "text": piece})

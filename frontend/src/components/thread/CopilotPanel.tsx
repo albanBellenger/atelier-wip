@@ -14,6 +14,7 @@ import {
 } from 'react'
 import * as Y from 'yjs'
 import type { EditorSelectionState } from '../editor/SplitEditor'
+import { useStudioChatModelPicker } from '../../hooks/useStudioChatModelPicker'
 import { useStream } from '../../hooks/useStream'
 import type { YjsCollab } from '../../hooks/useYjsCollab'
 import { summarizePeerEdit } from '../../lib/copilotPeerEditSummary'
@@ -48,11 +49,11 @@ import {
   resetPrivateThread,
   type SectionHealth,
 } from '../../services/api'
+import { StudioChatModelPicker } from '../chat/StudioChatModelPicker'
 import { ContextTab } from './ContextTab'
 import { ContextTruncationBanner } from './ContextTruncationBanner'
 import { CopilotComposer } from './CopilotComposer'
 import { CopilotHeader } from './CopilotHeader'
-import { CopilotModelStrip } from './CopilotModelStrip'
 import type { CopilotSideTab } from './CopilotStatusStrip'
 import { CopilotStatusStrip } from './CopilotStatusStrip'
 import { CopilotTabs } from './CopilotTabs'
@@ -104,6 +105,7 @@ function remoteEditorNamesFromAwareness(collab: YjsCollab): string[] {
 export type CopilotDensity = 'compact' | 'focus'
 
 export function CopilotPanel(props: {
+  studioId: string
   projectId: string
   sectionId: string
   projectHref: string
@@ -125,6 +127,7 @@ export function CopilotPanel(props: {
   copilotTabRequest?: { id: number; tab: CopilotSideTab } | null
 }): ReactElement {
   const {
+    studioId,
     projectId,
     sectionId,
     projectHref,
@@ -141,6 +144,13 @@ export function CopilotPanel(props: {
     copilotTabRequest,
   } = props
   const { streamPrivateThread } = useStream()
+  const {
+    modelsQ,
+    options,
+    selectedModel,
+    setSelectedModel,
+    modelTitle,
+  } = useStudioChatModelPicker({ studioId })
   const qc = useQueryClient()
   const [sideTab, setSideTab] = useState<CopilotSideTab>('chat')
   const [draft, setDraft] = useState('')
@@ -432,6 +442,7 @@ export function CopilotPanel(props: {
               selected_plaintext: sel.text,
             }
           : {}),
+        ...(selectedModel ? { preferred_model: selectedModel } : {}),
       }
       anchorRef.current =
         collab != null && snapshot !== undefined
@@ -784,24 +795,6 @@ export function CopilotPanel(props: {
       ? healthSummary.citations_resolved + healthSummary.citations_missing
       : uniqueKinds
 
-  const modelDisplayLine = useMemo(() => {
-    if (llmRtQ.isError) {
-      return 'Could not load model info'
-    }
-    const p = (llmRtQ.data?.llm_provider ?? '').trim()
-    const m = (llmRtQ.data?.llm_model ?? '').trim()
-    if (p && m) {
-      return `${p} · ${m}`
-    }
-    if (m) {
-      return m
-    }
-    if (p) {
-      return `${p} (model not set)`
-    }
-    return 'LLM not configured'
-  }, [llmRtQ.data, llmRtQ.isError])
-
   const modelConnection: 'ok' | 'warn' | 'error' = llmRtQ.isError
     ? 'error'
     : (llmRtQ.data?.llm_model ?? '').trim()
@@ -848,12 +841,34 @@ export function CopilotPanel(props: {
       }}
       variant={isFocusLayout ? 'focus' : 'compact'}
       footerLeading={
-        <CopilotModelStrip
-          variant="inline"
-          displayLine={modelDisplayLine}
-          connection={modelConnection}
-          scopeBadge="Tool default"
-        />
+        <div className="flex min-w-0 max-w-full items-center gap-2">
+          <span
+            className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${
+              modelConnection === 'ok'
+                ? 'bg-emerald-500'
+                : modelConnection === 'warn'
+                  ? 'bg-amber-500'
+                  : 'bg-red-500'
+            }`}
+            title={
+              modelConnection === 'ok'
+                ? 'LLM runtime reports a default model'
+                : modelConnection === 'warn'
+                  ? 'LLM default model not set'
+                  : 'Could not load LLM runtime info'
+            }
+            aria-hidden
+          />
+          <StudioChatModelPicker
+            variant="copilot-inline"
+            modelsQ={modelsQ}
+            options={options}
+            selectedModel={selectedModel}
+            onModelChange={setSelectedModel}
+            modelTitle={modelTitle}
+            ariaLabel="Copilot chat model"
+          />
+        </div>
       }
     />
   )

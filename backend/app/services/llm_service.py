@@ -172,7 +172,7 @@ class LLMService:
                 message="Tool Admin must configure LLM provider, model, and API key.",
             )
         eff_choice: str | None = None
-        if call_type == "chat" and preferred_model:
+        if preferred_model and call_type in ("chat", "private_thread"):
             eff_choice = await policy.resolve_preferred_chat_model(
                 studio_id=context.studio_id,
                 preferred_model=preferred_model,

@@ -112,6 +112,8 @@ async def test_member_budgets_tool_admin_list_patch(
     mem_row = next(x for x in rows if x["email"] == mem_email.lower())
     assert mem_row["budget_cap_monthly_usd"] is None
     assert "mtd_spend_usd" in mem_row
+    assert "budget_status" in mem_row
+    assert mem_row["budget_status"]["is_capped"] is False
 
     uid = mem_row["user_id"]
     patch = await client.patch(

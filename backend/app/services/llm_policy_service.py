@@ -22,6 +22,7 @@ from app.models import (
 )
 from app.schemas.studio_budget_overage import StudioBudgetOverageAction
 from app.schemas.studio_llm_public import StudioChatLlmModelsOut
+from app.services.budget_month_status import studio_overage_soft_allow
 
 
 def use_case_for_call_type(call_type: str) -> str:
@@ -276,17 +277,7 @@ class LlmPolicyService:
         spent_dec = Decimal(str(spent or 0))
         if spent_dec <= cap:
             return
-        raw = (st.budget_overage_action or "").strip() or StudioBudgetOverageAction.PAUSE_GENERATIONS.value
-        try:
-            action = StudioBudgetOverageAction(raw)
-        except ValueError:
-            action = StudioBudgetOverageAction.PAUSE_GENERATIONS
-        if action in (
-            StudioBudgetOverageAction.ALLOW_ALERT_STUDIO_ADMIN,
-            StudioBudgetOverageAction.ALLOW_ALERT_TOOL_ADMIN,
-            StudioBudgetOverageAction.ALLOW_BILL_ORG,
-            StudioBudgetOverageAction.ALLOW_WITH_WARNING,
-        ):
+        if studio_overage_soft_allow(st.budget_overage_action):
             return
         raise ApiError(
             status_code=402,

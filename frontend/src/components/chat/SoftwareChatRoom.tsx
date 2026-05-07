@@ -7,11 +7,14 @@ import {
   SOFTWARE_COMPOSER_CHAT_MODEL_KEY,
   SOFTWARE_COMPOSER_DRAFT_STATE_KEY,
   readStoredSoftwareChatModel,
+  softwareChatModelStorageKey,
   type SoftwareComposerLocationState,
 } from '../../lib/softwareComposerNav'
+import { useStudioChatModelPicker } from '../../hooks/useStudioChatModelPicker'
 import type { SoftwareChatMessageRow } from '../../services/api'
 import { getSoftwareChat } from '../../services/api'
 import { openSoftwareChatWebSocket } from '../../services/ws'
+import { StudioChatModelPicker } from './StudioChatModelPicker'
 
 type WsPayload =
   | { type: 'user_message'; id: string; user_id: string; content: string }
@@ -28,8 +31,8 @@ type WsPayload =
 
 export interface SoftwareChatRoomProps {
   softwareId: string
-  /** When set, restores persisted chat model preference from localStorage. */
-  studioId?: string
+  /** Studio scope for chat model allow-list and persistence. */
+  studioId: string
 }
 
 /** Shared software chat: loads history, opens WebSocket for live send/stream. */
@@ -53,13 +56,23 @@ export function SoftwareChatRoom({
   const seededPendingRef = useRef(false)
   const preferredModelRef = useRef<string | null>(null)
 
+  const {
+    modelsQ,
+    options,
+    selectedModel,
+    setSelectedModel,
+    modelTitle,
+  } = useStudioChatModelPicker({ studioId })
+
   useEffect(() => {
     if (seededPendingRef.current) return
     const state = location.state as SoftwareComposerLocationState | null
     const m = state?.[SOFTWARE_COMPOSER_CHAT_MODEL_KEY]
     if (typeof m === 'string' && m.trim()) {
-      preferredModelRef.current = m.trim()
-    } else if (studioId) {
+      const id = m.trim()
+      preferredModelRef.current = id
+      window.localStorage.setItem(softwareChatModelStorageKey(studioId), id)
+    } else {
       const fromLs = readStoredSoftwareChatModel(studioId)
       if (fromLs) preferredModelRef.current = fromLs
     }
@@ -142,12 +155,12 @@ export function SoftwareChatRoom({
   }, [softwareId, qc])
 
   const userMessagePayload = useCallback((content: string): Record<string, string> => {
-    const pm = preferredModelRef.current
+    const pm = (selectedModel?.trim() || preferredModelRef.current) ?? ''
     if (pm) {
       return { type: 'user_message', content, model: pm }
     }
     return { type: 'user_message', content }
-  }, [])
+  }, [selectedModel])
 
   useEffect(() => {
     if (wsStatus !== 'open') return
@@ -227,7 +240,23 @@ export function SoftwareChatRoom({
         ) : null}
         <div ref={bottomRef} />
       </div>
-      <div className="flex gap-2 border-t border-zinc-800 p-3">
+      <div className="flex flex-col gap-2 border-t border-zinc-800 p-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="shrink-0 text-[10px] uppercase tracking-wide text-zinc-500">
+            Model
+          </span>
+          <StudioChatModelPicker
+            variant="chat-room"
+            modelsQ={modelsQ}
+            options={options}
+            selectedModel={selectedModel}
+            onModelChange={setSelectedModel}
+            modelTitle={modelTitle}
+            disabled={wsStatus !== 'open'}
+            ariaLabel="Software chat model"
+          />
+        </div>
+        <div className="flex gap-2">
         <textarea
           className="min-h-[44px] flex-1 resize-none rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600"
           placeholder={
@@ -254,6 +283,7 @@ export function SoftwareChatRoom({
         >
           Send
         </button>
+        </div>
       </div>
     </div>
   )

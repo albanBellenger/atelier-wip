@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChatMessageRow } from '../../services/api'
 import { getProjectChat } from '../../services/api'
 import { openProjectChatWebSocket } from '../../services/ws'
+import { useStudioChatModelPicker } from '../../hooks/useStudioChatModelPicker'
+import { StudioChatModelPicker } from './StudioChatModelPicker'
 
 type WsPayload =
   | { type: 'user_message'; id: string; user_id: string; content: string }
@@ -20,10 +22,11 @@ type WsPayload =
 
 export interface ChatRoomProps {
   projectId: string
+  studioId: string
 }
 
 /** Shared project chat: loads history, opens WebSocket for live send/stream. */
-export function ChatRoom({ projectId }: ChatRoomProps): ReactElement {
+export function ChatRoom({ projectId, studioId }: ChatRoomProps): ReactElement {
   const qc = useQueryClient()
   const bottomRef = useRef<HTMLDivElement>(null)
   const [draft, setDraft] = useState('')
@@ -33,6 +36,14 @@ export function ChatRoom({ projectId }: ChatRoomProps): ReactElement {
   const [streamBuf, setStreamBuf] = useState('')
   const [wsError, setWsError] = useState<string | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
+
+  const {
+    modelsQ,
+    options,
+    selectedModel,
+    setSelectedModel,
+    modelTitle,
+  } = useStudioChatModelPicker({ studioId })
 
   const historyQ = useQuery({
     queryKey: ['projectChat', projectId],
@@ -106,6 +117,17 @@ export function ChatRoom({ projectId }: ChatRoomProps): ReactElement {
     }
   }, [projectId, qc])
 
+  const userMessagePayload = useCallback(
+    (content: string): Record<string, string> => {
+      const pm = selectedModel?.trim() ?? ''
+      if (pm) {
+        return { type: 'user_message', content, model: pm }
+      }
+      return { type: 'user_message', content }
+    },
+    [selectedModel],
+  )
+
   function send(): void {
     const text = draft.trim()
     const ws = wsRef.current
@@ -115,7 +137,7 @@ export function ChatRoom({ projectId }: ChatRoomProps): ReactElement {
       return
     }
     setWsError(null)
-    ws.send(JSON.stringify({ type: 'user_message', content: text }))
+    ws.send(JSON.stringify(userMessagePayload(text)))
     setDraft('')
   }
 
@@ -168,7 +190,23 @@ export function ChatRoom({ projectId }: ChatRoomProps): ReactElement {
         ) : null}
         <div ref={bottomRef} />
       </div>
-      <div className="flex gap-2 border-t border-zinc-800 p-3">
+      <div className="flex flex-col gap-2 border-t border-zinc-800 p-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="shrink-0 text-[10px] uppercase tracking-wide text-zinc-500">
+            Model
+          </span>
+          <StudioChatModelPicker
+            variant="chat-room"
+            modelsQ={modelsQ}
+            options={options}
+            selectedModel={selectedModel}
+            onModelChange={setSelectedModel}
+            modelTitle={modelTitle}
+            disabled={wsStatus !== 'open'}
+            ariaLabel="Project chat model"
+          />
+        </div>
+        <div className="flex gap-2">
         <textarea
           className="min-h-[44px] flex-1 resize-none rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600"
           placeholder={
@@ -195,6 +233,7 @@ export function ChatRoom({ projectId }: ChatRoomProps): ReactElement {
         >
           Send
         </button>
+        </div>
       </div>
     </div>
   )

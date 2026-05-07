@@ -462,6 +462,7 @@ export function OutlineEditorV2(): ReactElement {
         >
           {collab ? (
             <CopilotPanel
+              studioId={sid}
               projectId={pid}
               sectionId={secid}
               projectHref={projectHref}

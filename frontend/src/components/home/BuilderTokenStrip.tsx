@@ -8,7 +8,10 @@ import {
   parseCostUsd,
   todayAndYesterdayFromRows,
 } from '../../lib/tokenUsageHomeLayout'
-import type { TokenUsageReport } from '../../services/api'
+import type {
+  BudgetMonthSeverity,
+  TokenUsageReport,
+} from '../../services/api'
 
 export type BuilderTokenStripProps = {
   report: TokenUsageReport | undefined
@@ -23,16 +26,33 @@ export type BuilderTokenStripProps = {
   heading?: string
 }
 
-function budgetToneClass(pct: number): string {
-  if (pct < 60) return 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
-  if (pct < 80) return 'border-amber-500/40 bg-amber-500/10 text-amber-300'
-  return 'border-rose-500/40 bg-rose-500/10 text-rose-300'
+function severityToneClasses(sev: BudgetMonthSeverity): {
+  pill: string
+  dot: string
+} {
+  if (sev === 'critical') {
+    return {
+      pill: 'border-rose-500/40 bg-rose-500/10 text-rose-300',
+      dot: 'bg-rose-400',
+    }
+  }
+  if (sev === 'warn') {
+    return {
+      pill: 'border-amber-500/40 bg-amber-500/10 text-amber-300',
+      dot: 'bg-amber-400',
+    }
+  }
+  return {
+    pill: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300',
+    dot: 'bg-emerald-400',
+  }
 }
 
-function budgetDotClass(pct: number): string {
-  if (pct < 60) return 'bg-emerald-400'
-  if (pct < 80) return 'bg-amber-400'
-  return 'bg-rose-400'
+/** Align token fallback strip with backend ladder (75% / 90%). */
+function tokenPctToSeverity(pct: number): BudgetMonthSeverity {
+  if (pct >= 90) return 'critical'
+  if (pct >= 75) return 'warn'
+  return 'ok'
 }
 
 function formatUsd(amount: number): string {
@@ -105,16 +125,18 @@ export function BuilderTokenStrip({
   const bb = report.builder_budget
   const useUsdBudget = bb != null
   const spentUsd = useUsdBudget ? parseCostUsd(bb.spent_monthly_usd) : 0
-  const capUsdParsed =
-    useUsdBudget && bb.cap_monthly_usd != null && bb.cap_monthly_usd !== ''
+  const st = bb?.budget_status
+  const hasUsdCap = Boolean(st?.is_capped)
+  const capUsd =
+    useUsdBudget &&
+    bb.cap_monthly_usd != null &&
+    bb.cap_monthly_usd !== ''
       ? parseCostUsd(bb.cap_monthly_usd)
       : null
-  const hasUsdCap =
-    capUsdParsed !== null && capUsdParsed > 0 && Number.isFinite(capUsdParsed)
-  const capUsd = hasUsdCap ? capUsdParsed : null
+  const showUsdCapHeader = Boolean(hasUsdCap && capUsd != null && capUsd > 0)
   const pctUsd =
-    hasUsdCap && capUsd != null && capUsd > 0
-      ? Math.min(100, Math.round((spentUsd / capUsd) * 100))
+    useUsdBudget && hasUsdCap && st?.usage_pct != null
+      ? Math.round(st.usage_pct)
       : null
   const barPct =
     useUsdBudget && hasUsdCap && pctUsd !== null
@@ -122,6 +144,7 @@ export function BuilderTokenStrip({
       : useUsdBudget
         ? 0
         : pctToken
+  const usdSeverity = st?.severity
 
   const breakdown = categoryBreakdownFromRows(report.rows)
   const maxCat = Math.max(1, ...breakdown.map((b) => b.tokens))
@@ -130,6 +153,10 @@ export function BuilderTokenStrip({
   const { today: todayTok, yesterday: yestTok } = todayAndYesterdayFromRows(
     report.rows,
   )
+
+  const tokenTone = severityToneClasses(tokenPctToSeverity(pctToken))
+  const capPillTone =
+    hasUsdCap && usdSeverity != null ? severityToneClasses(usdSeverity) : null
 
   return (
     <section className={shell}>
@@ -148,7 +175,7 @@ export function BuilderTokenStrip({
 
       <div className="mt-5 flex flex-wrap items-baseline gap-2">
         {useUsdBudget ? (
-          hasUsdCap && capUsd != null ? (
+          showUsdCapHeader && capUsd != null ? (
             <>
               <span className="font-mono text-[28px] leading-none tabular-nums text-zinc-100">
                 {formatUsd(spentUsd)}
@@ -185,12 +212,12 @@ export function BuilderTokenStrip({
             <span className="text-[13px] text-zinc-400">
               {total.toLocaleString()} tokens in usage log
             </span>
-            {hasUsdCap && pctUsd !== null ? (
+            {hasUsdCap && pctUsd !== null && capPillTone != null ? (
               <span
-                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${budgetToneClass(pctUsd)}`}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${capPillTone.pill}`}
               >
                 <span
-                  className={`inline-block h-1.5 w-1.5 rounded-full ${budgetDotClass(pctUsd)}`}
+                  className={`inline-block h-1.5 w-1.5 rounded-full ${capPillTone.dot}`}
                   aria-hidden
                 />
                 {pctUsd}% of cap
@@ -207,10 +234,10 @@ export function BuilderTokenStrip({
               ≈ ${cost.toFixed(2)} this month
             </span>
             <span
-              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${budgetToneClass(pctToken)}`}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${tokenTone.pill}`}
             >
               <span
-                className={`inline-block h-1.5 w-1.5 rounded-full ${budgetDotClass(pctToken)}`}
+                className={`inline-block h-1.5 w-1.5 rounded-full ${tokenTone.dot}`}
                 aria-hidden
               />
               {pctToken}% of budget

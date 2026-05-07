@@ -13,6 +13,7 @@ import type {
   WorkOrderDetail,
 } from '../../services/api'
 import type { PrivateThreadStreamMeta } from '../../services/privateThreadSse'
+import { softwareChatModelStorageKey } from '../../lib/softwareComposerNav'
 import { CONTEXT_TRUNCATION_BANNER_COPY } from './ContextTruncationBanner'
 import { ThreadPanel } from './ThreadPanel'
 
@@ -47,10 +48,20 @@ describe('ThreadPanel', () => {
       llm_provider: 'openai',
       llm_model: 'gpt-4o-mini',
     })
+    vi.spyOn(api, 'getStudioChatLlmModels').mockResolvedValue({
+      effective_model: null,
+      workspace_default_model: null,
+      allowed_models: [],
+    })
   })
 
-  it('shows read-only tool LLM model beside the composer', async () => {
+  it('shows studio chat model beside the composer when one model is allowed', async () => {
     HTMLElement.prototype.scrollIntoView = vi.fn()
+    vi.spyOn(api, 'getStudioChatLlmModels').mockResolvedValue({
+      effective_model: 'gpt-4o-mini',
+      workspace_default_model: 'gpt-4o-mini',
+      allowed_models: ['gpt-4o-mini'],
+    })
     vi.spyOn(api, 'getPrivateThread').mockResolvedValue({
       thread_id: 'th-1',
       messages: [],
@@ -62,6 +73,7 @@ describe('ThreadPanel', () => {
       <MemoryRouter>
         <QueryClientProvider client={qc}>
           <ThreadPanel
+            studioId="s1"
             projectId="p1"
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
@@ -75,7 +87,6 @@ describe('ThreadPanel', () => {
     await waitFor(() => {
       expect(screen.getByText(/gpt-4o-mini/)).toBeInTheDocument()
     })
-    expect(screen.getByText('Tool default')).toBeInTheDocument()
   })
 
   it('does not crash when awareness.getStates throws before collab is ready', async () => {
@@ -106,6 +117,7 @@ describe('ThreadPanel', () => {
       <MemoryRouter>
         <QueryClientProvider client={qc}>
           <ThreadPanel
+            studioId="s1"
             projectId="p1"
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
@@ -162,6 +174,7 @@ describe('ThreadPanel', () => {
       <MemoryRouter>
         <QueryClientProvider client={qc}>
           <ThreadPanel
+            studioId="s1"
             projectId="p1"
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
@@ -216,6 +229,7 @@ describe('ThreadPanel', () => {
       <MemoryRouter>
         <QueryClientProvider client={qc}>
           <ThreadPanel
+            studioId="s1"
             projectId="p1"
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
@@ -247,6 +261,71 @@ describe('ThreadPanel', () => {
     expect(payload.selection_to).toBe(3)
     expect(payload.selected_plaintext).toBe('bc')
     expect(payload.current_section_plaintext).toBe('abcdef')
+  })
+
+  it('Send includes preferred_model from studio chat picker selection', async () => {
+    const user = userEvent.setup()
+    HTMLElement.prototype.scrollIntoView = vi.fn()
+    streamSpy.mockClear()
+    vi.spyOn(api, 'getStudioChatLlmModels').mockResolvedValue({
+      effective_model: 'gpt-4o-mini',
+      workspace_default_model: 'gpt-4o-mini',
+      allowed_models: ['gpt-4o-mini', 'gpt-4o'],
+    })
+    vi.spyOn(api, 'getPrivateThread').mockResolvedValue({
+      thread_id: 'th-1',
+      messages: [],
+    })
+
+    const ydoc = new Y.Doc()
+    const ytext = ydoc.getText('t')
+    ytext.insert(0, 'hi')
+    const collab = {
+      ydoc,
+      provider: {} as YjsCollab['provider'],
+      ytext,
+      awareness: {} as YjsCollab['awareness'],
+    }
+
+    window.localStorage.setItem(softwareChatModelStorageKey('s1'), 'gpt-4o')
+
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <ThreadPanel
+            studioId="s1"
+            projectId="p1"
+            sectionId="sec1"
+            projectHref="/studios/s1/software/sw1/projects/p1"
+            collab={collab}
+            editorSelection={null}
+            onClearEditorSelection={() => {}}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Copilot chat model')).toBeInTheDocument()
+    })
+
+    await user.type(screen.getByPlaceholderText(/copilot/), 'hello')
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() => {
+      expect(streamSpy).toHaveBeenCalled()
+    })
+    const [, , payload] = streamSpy.mock.calls[0] as [
+      string,
+      string,
+      Record<string, unknown>,
+      unknown,
+    ]
+    expect(payload.preferred_model).toBe('gpt-4o')
   })
 
   it('Apply is disabled when document drifted after proposal', async () => {
@@ -297,6 +376,7 @@ describe('ThreadPanel', () => {
       <MemoryRouter>
         <QueryClientProvider client={qc}>
           <ThreadPanel
+            studioId="s1"
             projectId="p1"
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
@@ -356,6 +436,7 @@ describe('ThreadPanel', () => {
       <MemoryRouter>
         <QueryClientProvider client={qc}>
           <ThreadPanel
+            studioId="s1"
             projectId="p1"
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
@@ -401,6 +482,7 @@ describe('ThreadPanel', () => {
       <MemoryRouter>
         <QueryClientProvider client={qc}>
           <ThreadPanel
+            studioId="s1"
             projectId="p1"
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
@@ -442,6 +524,7 @@ describe('ThreadPanel', () => {
       <MemoryRouter>
         <QueryClientProvider client={qc}>
           <ThreadPanel
+            studioId="s1"
             projectId="p1"
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
@@ -530,6 +613,7 @@ describe('ThreadPanel', () => {
       <MemoryRouter>
         <QueryClientProvider client={qc}>
           <ThreadPanel
+            studioId="s1"
             projectId="p1"
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
@@ -579,6 +663,7 @@ describe('ThreadPanel', () => {
       <MemoryRouter>
         <QueryClientProvider client={qc}>
           <ThreadPanel
+            studioId="s1"
             projectId="p1"
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
@@ -627,6 +712,7 @@ describe('ThreadPanel', () => {
       <MemoryRouter>
         <QueryClientProvider client={qc}>
           <ThreadPanel
+            studioId="s1"
             projectId="p1"
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
@@ -705,6 +791,7 @@ describe('ThreadPanel', () => {
       <MemoryRouter>
         <QueryClientProvider client={qc}>
           <ThreadPanel
+            studioId="s1"
             projectId="p1"
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
@@ -751,6 +838,7 @@ describe('ThreadPanel', () => {
       <MemoryRouter>
         <QueryClientProvider client={qc}>
           <ThreadPanel
+            studioId="s1"
             projectId="p1"
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
@@ -786,6 +874,7 @@ describe('ThreadPanel', () => {
       <MemoryRouter>
         <QueryClientProvider client={qc}>
           <ThreadPanel
+            studioId="s1"
             projectId="p1"
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
@@ -856,6 +945,7 @@ describe('ThreadPanel', () => {
       <MemoryRouter>
         <QueryClientProvider client={qc}>
           <ThreadPanel
+            studioId="s1"
             projectId="p1"
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
@@ -937,6 +1027,7 @@ describe('ThreadPanel', () => {
       <MemoryRouter>
         <QueryClientProvider client={qc}>
           <ThreadPanel
+            studioId="s1"
             projectId="p1"
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
@@ -997,6 +1088,7 @@ describe('ThreadPanel', () => {
       <MemoryRouter>
         <QueryClientProvider client={qc}>
           <ThreadPanel
+            studioId="s1"
             projectId="p1"
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"

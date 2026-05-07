@@ -96,6 +96,7 @@ class ProjectChatService:
         user_id: uuid.UUID,
         user_content: str,
         chat_messages: list[dict[str, str]] | None = None,
+        preferred_model: str | None = None,
     ) -> AsyncIterator[tuple[str, TokenContext]]:
         """Yield LLM token strings; caller persists assistant message after iteration."""
         project = await self.db.get(Project, project_id)
@@ -144,6 +145,7 @@ class ProjectChatService:
                 messages=openai_msgs,
                 context=ctx,
                 call_type="chat",
+                preferred_model=preferred_model,
             ):
                 yield piece, ctx
         except Exception:

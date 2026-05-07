@@ -121,6 +121,14 @@ describe('BuilderTokenStrip', () => {
                 studio_id: 's1',
                 cap_monthly_usd: '100.00',
                 spent_monthly_usd: '12.50',
+                budget_status: {
+                  is_capped: true,
+                  usage_pct: 12.5,
+                  remaining_monthly_usd: '87.50',
+                  severity: 'ok',
+                  over_cap: false,
+                  blocks_new_usage: false,
+                },
               },
             }}
             isPending={false}
@@ -156,6 +164,14 @@ describe('BuilderTokenStrip', () => {
                 studio_id: 's1',
                 cap_monthly_usd: null,
                 spent_monthly_usd: '3.25',
+                budget_status: {
+                  is_capped: false,
+                  usage_pct: null,
+                  remaining_monthly_usd: null,
+                  severity: 'ok',
+                  over_cap: false,
+                  blocks_new_usage: false,
+                },
               },
             }}
             isPending={false}

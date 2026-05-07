@@ -9,7 +9,12 @@ from httpx import AsyncClient
 from sqlalchemy import select
 
 from app.exceptions import ApiError
-from app.models import User
+from app.models import (
+    LlmProviderRegistry,
+    LlmRoutingRule,
+    StudioLlmProviderPolicy,
+    User,
+)
 from app.services.rag_service import RAGContext, RAGService
 
 
@@ -735,3 +740,132 @@ async def test_stream_meta_patch_proposal_append(
     assert isinstance(pp, dict)
     assert pp.get("intent") == "append"
     assert "markdown_to_append" in pp
+
+
+@pytest.mark.asyncio
+async def test_stream_rejects_disallowed_preferred_model(
+    client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, studio_id_str, pid, section_id, email = await _project_section(client, sfx)
+    await _promote_tool_admin(db_session, email)
+    client.cookies.set("atelier_token", token)
+    await client.put(
+        "/admin/config",
+        json={
+            "llm_provider": "openai",
+            "llm_model": "gpt-4o-mini",
+            "llm_api_key": "sk-test",
+        },
+    )
+    sid = uuid.UUID(studio_id_str)
+    prov_key = f"prov_thr_{sfx}"
+    db_session.add(
+        LlmProviderRegistry(
+            id=uuid.uuid4(),
+            provider_key=prov_key,
+            display_name="Test LLM",
+            models_json=json.dumps(["gpt-4o-mini", "gpt-4o"]),
+            status="connected",
+            is_default=True,
+            sort_order=0,
+        )
+    )
+    db_session.add(
+        LlmRoutingRule(
+            use_case="chat",
+            primary_model="gpt-4o-mini",
+            fallback_model=None,
+        )
+    )
+    db_session.add(
+        StudioLlmProviderPolicy(
+            studio_id=sid,
+            provider_key=prov_key,
+            enabled=True,
+            selected_model="gpt-4o-mini",
+        )
+    )
+    await db_session.flush()
+
+    async def fake_rag(self, *a, **k):
+        return RAGContext(text="ctx", truncated=False)
+
+    monkeypatch.setattr("app.services.rag_service.RAGService.build_context", fake_rag)
+
+    r = await client.post(
+        f"/projects/{pid}/sections/{section_id}/thread/messages",
+        json={"content": "hello", "preferred_model": "gpt-4o"},
+    )
+    assert r.status_code == 400, r.text
+    err = r.json()
+    assert err.get("code") == "CHAT_MODEL_NOT_ALLOWED"
+
+
+@pytest.mark.asyncio
+async def test_stream_accepts_allowed_preferred_model(
+    client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, studio_id_str, pid, section_id, email = await _project_section(client, sfx)
+    await _promote_tool_admin(db_session, email)
+    client.cookies.set("atelier_token", token)
+    await client.put(
+        "/admin/config",
+        json={
+            "llm_provider": "openai",
+            "llm_model": "gpt-4o-mini",
+            "llm_api_key": "sk-test",
+        },
+    )
+    sid = uuid.UUID(studio_id_str)
+    prov_key = f"prov_thr2_{sfx}"
+    db_session.add(
+        LlmProviderRegistry(
+            id=uuid.uuid4(),
+            provider_key=prov_key,
+            display_name="Test LLM",
+            models_json=json.dumps(["gpt-4o-mini", "gpt-4o"]),
+            status="connected",
+            is_default=True,
+            sort_order=0,
+        )
+    )
+    db_session.add(
+        LlmRoutingRule(
+            use_case="chat",
+            primary_model="gpt-4o-mini",
+            fallback_model=None,
+        )
+    )
+    db_session.add(
+        StudioLlmProviderPolicy(
+            studio_id=sid,
+            provider_key=prov_key,
+            enabled=True,
+            selected_model="gpt-4o-mini",
+        )
+    )
+    await db_session.flush()
+
+    async def fake_rag(self, *a, **k):
+        return RAGContext(text="ctx", truncated=False)
+
+    async def fake_stream(self, *a, **k) -> AsyncIterator[str]:
+        assert k.get("preferred_model") == "gpt-4o-mini"
+        yield "ok"
+
+    async def fake_structured(self, *a, **k):
+        return {"findings": []}
+
+    monkeypatch.setattr("app.services.rag_service.RAGService.build_context", fake_rag)
+    monkeypatch.setattr("app.services.llm_service.LLMService.chat_stream", fake_stream)
+    monkeypatch.setattr(
+        "app.services.llm_service.LLMService.chat_structured", fake_structured
+    )
+
+    r = await client.post(
+        f"/projects/{pid}/sections/{section_id}/thread/messages",
+        json={"content": "hello", "preferred_model": "gpt-4o-mini"},
+    )
+    assert r.status_code == 200, r.text

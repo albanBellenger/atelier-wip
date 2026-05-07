@@ -92,7 +92,11 @@ async def stream_private_thread_reply(
         project_id=project_id,
         user_id=pa.studio_access.user.id,
     )
-    await LLMService(session).ensure_openai_llm_ready(context=ctx, call_type="chat")
+    await LLMService(session).ensure_openai_llm_ready(
+        context=ctx,
+        call_type="chat",
+        preferred_model=body.preferred_model,
+    )
     svc = PrivateThreadService(session)
     await svc.assert_thread_stream_request_valid(
         project_id=project_id,
@@ -114,6 +118,7 @@ async def stream_private_thread_reply(
             include_selection_in_context=body.include_selection_in_context,
             thread_intent=body.thread_intent,
             command=body.command,
+            preferred_model=body.preferred_model,
         ):
             yield chunk
 

@@ -11,6 +11,7 @@ import type { CopilotSideTab } from './CopilotStatusStrip'
 
 /** Section copilot: chat, context preview, critique, diff (Slices B–D). */
 export function ThreadPanel(props: {
+  studioId: string
   projectId: string
   sectionId: string
   projectHref: string
@@ -31,6 +32,7 @@ export function ThreadPanel(props: {
     return (
       <div className="flex h-full min-h-0 flex-col">
         <CopilotPanel
+          studioId={props.studioId}
           projectId={props.projectId}
           sectionId={props.sectionId}
           projectHref={props.projectHref}
@@ -51,6 +53,7 @@ export function ThreadPanel(props: {
   }
   return (
     <CopilotPanel
+      studioId={props.studioId}
       projectId={props.projectId}
       sectionId={props.sectionId}
       projectHref={props.projectHref}

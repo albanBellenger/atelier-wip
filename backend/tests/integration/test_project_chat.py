@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from httpx import AsyncClient
 
 from app.database import engine
+from app.exceptions import ApiError
 from app.main import app
 from tests.integration.test_work_orders import _studio_project_with_sections
 
@@ -137,5 +138,100 @@ async def test_project_chat_websocket_persists_messages() -> None:
             messages = hist.json()["messages"]
             roles = [m["role"] for m in messages]
             assert "user" in roles and roles.count("assistant") >= 1
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_project_chat_ws_rejects_disallowed_preferred_model() -> None:
+    """WS passes optional model into LLM readiness; invalid choice yields error frame."""
+    sfx = uuid.uuid4().hex[:8]
+
+    async def fake_stream(self, **kwargs):
+        yield "x"
+
+    await engine.dispose()
+
+    try:
+        with TestClient(app) as tc:
+            tc.post(
+                "/auth/register",
+                json={
+                    "email": f"pc-ws-{sfx}@example.com",
+                    "password": "securepass123",
+                    "display_name": "wsuser",
+                },
+            )
+            tok = tc.cookies.get("atelier_token")
+            assert tok
+            cr = tc.post("/studios", json={"name": f"PcWs{sfx}", "description": "d"})
+            assert cr.status_code == 200
+            studio_id = cr.json()["id"]
+            sw = tc.post(
+                f"/studios/{studio_id}/software",
+                json={"name": "SWS", "description": None},
+            )
+            assert sw.status_code == 200
+            software_id = sw.json()["id"]
+            pr = tc.post(
+                f"/software/{software_id}/projects",
+                json={"name": "Pchat2", "description": None},
+            )
+            assert pr.status_code == 200
+            local_pid = pr.json()["id"]
+
+            async def ensure_reject(self, *, context=None, call_type="chat", preferred_model=None):
+                _ = (self, context, call_type)
+                if preferred_model == "gpt-4o":
+                    raise ApiError(
+                        status_code=400,
+                        code="CHAT_MODEL_NOT_ALLOWED",
+                        message="Requested model is not allowed for chat in this studio.",
+                    )
+
+            async def _trim_skip_llm_config(
+                self: object,
+                messages: list,
+                *,
+                context: object,
+                call_type: str,
+                preferred_model: str | None = None,
+                max_history_tokens: int = 12_000,
+            ) -> tuple[list, bool]:
+                return (list(messages), False)
+
+            with (
+                patch(
+                    "app.services.llm_service.LLMService.chat_stream",
+                    fake_stream,
+                ),
+                patch(
+                    "app.services.llm_service.LLMService.ensure_openai_llm_ready",
+                    ensure_reject,
+                ),
+                patch(
+                    "app.services.llm_service.LLMService.trim_chat_messages_for_stream",
+                    _trim_skip_llm_config,
+                ),
+            ):
+                with tc.websocket_connect(
+                    f"/ws/projects/{local_pid}/chat?token={tok}"
+                ) as ws:
+                    ws.send_json(
+                        {
+                            "type": "user_message",
+                            "content": "Say hi",
+                            "model": "gpt-4o",
+                        }
+                    )
+                    saw_error = False
+                    for _ in range(20):
+                        raw = ws.receive_text()
+                        msg = json.loads(raw)
+                        if msg.get("type") == "error":
+                            saw_error = True
+                            assert "not allowed" in (msg.get("message") or "").lower()
+                            break
+                    assert saw_error
     finally:
         await engine.dispose()

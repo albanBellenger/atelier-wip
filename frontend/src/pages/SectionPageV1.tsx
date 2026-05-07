@@ -578,6 +578,7 @@ export function SectionPageV1(): ReactElement {
                 <div className="mt-4 flex min-h-0 flex-1 flex-col bg-[radial-gradient(ellipse_at_top,rgba(91,33,182,0.08),transparent_60%)] transition-opacity duration-150">
                 <div className="min-h-0 flex-1">
                   <ThreadPanel
+                    studioId={sid}
                     projectId={pid}
                     sectionId={secid}
                     projectHref={projectHref}
@@ -646,6 +647,7 @@ export function SectionPageV1(): ReactElement {
                 </div>
                 <div className="flex h-full min-h-0 min-w-0 flex-col lg:max-w-[420px]">
                   <ThreadPanel
+                    studioId={sid}
                     projectId={pid}
                     sectionId={secid}
                     projectHref={projectHref}

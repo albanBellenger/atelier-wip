@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { HttpResponse, http } from 'msw'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -11,6 +12,20 @@ import {
 } from '../../lib/softwareComposerNav'
 import { mswServer } from '../../test-setup'
 import * as ws from '../../services/ws'
+
+const STUDIO_ID = 'st1'
+
+function useEmptyStudioChatModels(): void {
+  mswServer.use(
+    http.get(`http://api.test/studios/${STUDIO_ID}/llm-chat-models`, () =>
+      HttpResponse.json({
+        effective_model: null,
+        workspace_default_model: null,
+        allowed_models: [],
+      }),
+    ),
+  )
+}
 
 describe('SoftwareChatRoom', () => {
   afterEach(() => {
@@ -26,6 +41,7 @@ describe('SoftwareChatRoom', () => {
   })
 
   it('loads empty history from API', async () => {
+    useEmptyStudioChatModels()
     mswServer.use(
       http.get('http://api.test/software/sw1/chat', ({ request }) => {
         const u = new URL(request.url)
@@ -52,7 +68,10 @@ describe('SoftwareChatRoom', () => {
       <MemoryRouter>
         <QueryClientProvider client={qc}>
           <Routes>
-            <Route path="/" element={<SoftwareChatRoom softwareId="sw1" />} />
+            <Route
+              path="/"
+              element={<SoftwareChatRoom softwareId="sw1" studioId={STUDIO_ID} />}
+            />
           </Routes>
         </QueryClientProvider>
       </MemoryRouter>,
@@ -64,6 +83,7 @@ describe('SoftwareChatRoom', () => {
   })
 
   it('auto-sends draft from location.state once WebSocket is open', async () => {
+    useEmptyStudioChatModels()
     mswServer.use(
       http.get('http://api.test/software/sw1/chat', () =>
         HttpResponse.json({ messages: [], next_before: null }),
@@ -98,7 +118,10 @@ describe('SoftwareChatRoom', () => {
       >
         <QueryClientProvider client={qc}>
           <Routes>
-            <Route path="/" element={<SoftwareChatRoom softwareId="sw1" />} />
+            <Route
+              path="/"
+              element={<SoftwareChatRoom softwareId="sw1" studioId={STUDIO_ID} />}
+            />
           </Routes>
         </QueryClientProvider>
       </MemoryRouter>,
@@ -111,6 +134,13 @@ describe('SoftwareChatRoom', () => {
 
   it('auto-send includes model when location.state provides chat model key', async () => {
     mswServer.use(
+      http.get(`http://api.test/studios/${STUDIO_ID}/llm-chat-models`, () =>
+        HttpResponse.json({
+          effective_model: 'gpt-4o',
+          workspace_default_model: 'gpt-4o',
+          allowed_models: ['gpt-4o', 'gpt-4o-mini'],
+        }),
+      ),
       http.get('http://api.test/software/sw1/chat', () =>
         HttpResponse.json({ messages: [], next_before: null }),
       ),
@@ -147,7 +177,10 @@ describe('SoftwareChatRoom', () => {
       >
         <QueryClientProvider client={qc}>
           <Routes>
-            <Route path="/" element={<SoftwareChatRoom softwareId="sw1" />} />
+            <Route
+              path="/"
+              element={<SoftwareChatRoom softwareId="sw1" studioId={STUDIO_ID} />}
+            />
           </Routes>
         </QueryClientProvider>
       </MemoryRouter>,
@@ -157,6 +190,61 @@ describe('SoftwareChatRoom', () => {
       JSON.stringify({
         type: 'user_message',
         content: 'from home',
+        model: 'gpt-4o',
+      }),
+    )
+  })
+
+  it('includes selected model on manual send when multiple models are allowed', async () => {
+    mswServer.use(
+      http.get(`http://api.test/studios/${STUDIO_ID}/llm-chat-models`, () =>
+        HttpResponse.json({
+          effective_model: 'gpt-4o-mini',
+          workspace_default_model: 'gpt-4o-mini',
+          allowed_models: ['gpt-4o-mini', 'gpt-4o'],
+        }),
+      ),
+      http.get('http://api.test/software/sw1/chat', () =>
+        HttpResponse.json({ messages: [], next_before: null }),
+      ),
+    )
+    const send = vi.fn()
+    const fakeWs = {
+      readyState: 1,
+      send,
+      close: vi.fn(),
+      onopen: null as (() => void) | null,
+      onmessage: null as ((ev: { data: string }) => void) | null,
+      onclose: null as (() => void) | null,
+    }
+    vi.spyOn(ws, 'openSoftwareChatWebSocket').mockImplementation(() => {
+      queueMicrotask(() => fakeWs.onopen?.())
+      return fakeWs as unknown as WebSocket
+    })
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <Routes>
+            <Route
+              path="/"
+              element={<SoftwareChatRoom softwareId="sw1" studioId={STUDIO_ID} />}
+            />
+          </Routes>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    const modelSelect = await screen.findByLabelText('Software chat model')
+    await user.selectOptions(modelSelect, 'gpt-4o')
+    await user.type(screen.getByPlaceholderText(/software team/), 'hello room')
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+    await waitFor(() => expect(send).toHaveBeenCalled())
+    expect(send).toHaveBeenCalledWith(
+      JSON.stringify({
+        type: 'user_message',
+        content: 'hello room',
         model: 'gpt-4o',
       }),
     )

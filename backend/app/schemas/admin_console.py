@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.auth import AdminConfigResponse
 from app.schemas.studio_budget_overage import StudioBudgetOverageAction
+from app.schemas.token_usage_report import BudgetMonthStatusOut
 
 
 class DeploymentActivityResponse(BaseModel):
@@ -34,6 +35,7 @@ class StudioOverviewRowResponse(BaseModel):
     mtd_spend_usd: Decimal
     budget_cap_monthly_usd: Decimal | None
     budget_overage_action: str
+    budget_status: BudgetMonthStatusOut
 
 
 class AdminConsoleOverviewResponse(BaseModel):
@@ -157,6 +159,7 @@ class MemberBudgetRowResponse(BaseModel):
     role: str
     budget_cap_monthly_usd: Decimal | None
     mtd_spend_usd: Decimal
+    budget_status: BudgetMonthStatusOut
 
 
 class MemberBudgetUpdate(BaseModel):

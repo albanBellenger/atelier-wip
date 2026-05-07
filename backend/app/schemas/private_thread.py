@@ -70,6 +70,11 @@ class PrivateThreadStreamBody(BaseModel):
         default="none",
         description="Framing for the assistant; only supported when thread_intent is ask.",
     )
+    preferred_model: str | None = Field(
+        default=None,
+        max_length=256,
+        description="Optional chat model id; must be allowed for the studio (connected providers + policy).",
+    )
 
     @model_validator(mode="after")
     def selection_both_or_neither(self) -> PrivateThreadStreamBody:

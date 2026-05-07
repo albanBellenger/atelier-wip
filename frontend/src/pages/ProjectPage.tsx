@@ -857,7 +857,7 @@ export function ProjectPage(): ReactElement {
               </div>
             ) : (
               <div className="mt-8">
-                <ChatRoom projectId={pid} />
+                <ChatRoom projectId={pid} studioId={sid} />
               </div>
             )}
           </>

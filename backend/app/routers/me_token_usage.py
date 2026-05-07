@@ -14,11 +14,13 @@ from app.deps import get_current_user, resolve_studio_access_for_software
 from app.exceptions import ApiError
 from app.models import Project, Studio, StudioMember, TokenUsage, User, WorkOrder
 from app.schemas.token_usage_report import (
+    BudgetMonthStatusOut,
     MeTokenUsageBuilderBudgetOut,
     TokenUsageReportOut,
     TokenUsageRowOut,
     TokenUsageTotalsOut,
 )
+from app.services.budget_month_status import compute_builder_budget_status
 from app.services.token_usage_query_service import TokenUsageQueryService
 
 router = APIRouter(tags=["me"])
@@ -252,6 +254,9 @@ async def me_token_usage(
             studio_id=budget_studio_id,
             cap_monthly_usd=cap_val,
             spent_monthly_usd=spent_val,
+            budget_status=BudgetMonthStatusOut.model_validate(
+                compute_builder_budget_status(spent_val, cap_val)
+            ),
         )
     return TokenUsageReportOut(
         rows=[TokenUsageRowOut.model_validate(r) for r in rows],

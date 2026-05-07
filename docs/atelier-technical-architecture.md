@@ -660,7 +660,7 @@ frontend/src/
 │   ├── useWebSocket.ts
 │   ├── useStream.ts
 │   ├── useAuth.ts
-│   └── useStudioAccess.ts          # Resolves effective permissions for current user
+│   └── useStudioAccess.ts          # Loads GET /studios/{id}/me/capabilities for scoped UI permissions
 └── services/
     ├── api.ts
     └── ws.ts
@@ -693,7 +693,7 @@ get_mcp_key(api_key_header)
 ```
 
 ### Frontend
-`useStudioAccess` hook computes the effective permission set for the current user in the current studio/software/project context. All UI elements (buttons, forms, nav items) are conditionally rendered based on this computed set — not just hidden but completely absent from the DOM for unauthorised actions.
+`useStudioAccess` loads the effective permission set via `GET /studios/{studio_id}/me/capabilities` (optional `software_id` query) when a studio is in scope, so UI matches server enforcement. Without a studio id, it derives a conservative set from `/auth/me` for broad navigation. All UI elements (buttons, forms, nav items) are conditionally rendered based on this set — not just hidden but completely absent from the DOM for unauthorised actions.
 
 ---
 

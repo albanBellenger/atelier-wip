@@ -1,8 +1,8 @@
 # RBAC — personas and module access
 
-This document is the **source of truth** for human-role access to Atelier modules. It is derived from FastAPI dependencies in [`backend/app/deps.py`](../backend/app/deps.py), router `Depends(...)` chains, and selected service-layer checks. The frontend mirrors the same rules via [`frontend/src/hooks/useStudioAccess.ts`](../frontend/src/hooks/useStudioAccess.ts).
+This document is the **source of truth** for human-role access to Atelier modules. It is derived from FastAPI dependencies in [`backend/app/deps.py`](../backend/app/deps.py), router `Depends(...)` chains, and selected service-layer checks. The SPA loads effective capability flags from [`GET /studios/{studio_id}/me/capabilities`](../backend/app/routers/studios.py) via [`frontend/src/hooks/useStudioAccess.ts`](../frontend/src/hooks/useStudioAccess.ts) (React Query); without a studio id in scope, the hook falls back to client-side derivation from [`GET /auth/me`](../backend/app/routers/auth.py) for navigation shells only.
 
-**Related tests:** [`backend/tests/integration/test_rbac.py`](../backend/tests/integration/test_rbac.py) (home-studio matrix smoke), plus [`backend/tests/integration/test_cross_studio_access.py`](../backend/tests/integration/test_cross_studio_access.py) for cross-studio grants.
+**Related tests:** [`backend/tests/integration/test_studio_capabilities.py`](../backend/tests/integration/test_studio_capabilities.py) (capabilities endpoint) and [`backend/tests/integration/test_cross_studio_access.py`](../backend/tests/integration/test_cross_studio_access.py) (cross-studio grants); see also [`rbac_matrix_smoke_wip.py`](../backend/tests/integration/rbac_matrix_smoke_wip.py) for broader matrix coverage.
 
 ---
 

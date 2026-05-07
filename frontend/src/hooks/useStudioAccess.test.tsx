@@ -1,8 +1,16 @@
-import { renderHook } from '@testing-library/react'
+import type { ReactNode } from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { renderHook, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import type { MeResponse } from '../services/api'
 import { useStudioAccess } from './useStudioAccess'
+
+function wrapper(qc: QueryClient) {
+  return function W({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+  }
+}
 
 function profile(partial: Partial<MeResponse> & Pick<MeResponse, 'user' | 'studios'>): MeResponse {
   return {
@@ -15,7 +23,7 @@ describe('useStudioAccess', () => {
   const studioId = 'st1'
   const softwareId = 'sw1'
 
-  it('canEditSoftwareDefinition: studio_admin is true', () => {
+  it('canEditSoftwareDefinition: studio_admin is true', async () => {
     const p = profile({
       user: {
         id: 'u1',
@@ -25,13 +33,18 @@ describe('useStudioAccess', () => {
       },
       studios: [{ studio_id: studioId, studio_name: 'S', role: 'studio_admin' }],
     })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const { result } = renderHook(() =>
       useStudioAccess(p, studioId, softwareId),
+      { wrapper: wrapper(qc) },
     )
+    await waitFor(() => {
+      expect(result.current.isLoadingCapabilities).toBe(false)
+    })
     expect(result.current.canEditSoftwareDefinition).toBe(true)
   })
 
-  it('canEditSoftwareDefinition: studio_member is false', () => {
+  it('canEditSoftwareDefinition: studio_member is false', async () => {
     const p = profile({
       user: {
         id: 'u1',
@@ -41,13 +54,18 @@ describe('useStudioAccess', () => {
       },
       studios: [{ studio_id: studioId, studio_name: 'S', role: 'studio_member' }],
     })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const { result } = renderHook(() =>
       useStudioAccess(p, studioId, softwareId),
+      { wrapper: wrapper(qc) },
     )
+    await waitFor(() => {
+      expect(result.current.isLoadingCapabilities).toBe(false)
+    })
     expect(result.current.canEditSoftwareDefinition).toBe(false)
   })
 
-  it('canEditSoftwareDefinition: studio_viewer is false', () => {
+  it('canEditSoftwareDefinition: studio_viewer is false', async () => {
     const p = profile({
       user: {
         id: 'u1',
@@ -57,13 +75,18 @@ describe('useStudioAccess', () => {
       },
       studios: [{ studio_id: studioId, studio_name: 'S', role: 'studio_viewer' }],
     })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const { result } = renderHook(() =>
       useStudioAccess(p, studioId, softwareId),
+      { wrapper: wrapper(qc) },
     )
+    await waitFor(() => {
+      expect(result.current.isLoadingCapabilities).toBe(false)
+    })
     expect(result.current.canEditSoftwareDefinition).toBe(false)
   })
 
-  it('canEditSoftwareDefinition: tool admin is true', () => {
+  it('canEditSoftwareDefinition: tool admin is true', async () => {
     const p = profile({
       user: {
         id: 'u1',
@@ -73,13 +96,18 @@ describe('useStudioAccess', () => {
       },
       studios: [],
     })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const { result } = renderHook(() =>
       useStudioAccess(p, studioId, softwareId),
+      { wrapper: wrapper(qc) },
     )
+    await waitFor(() => {
+      expect(result.current.isLoadingCapabilities).toBe(false)
+    })
     expect(result.current.canEditSoftwareDefinition).toBe(true)
   })
 
-  it('canEditSoftwareDefinition: cross-studio external_editor grant is false', () => {
+  it('canEditSoftwareDefinition: cross-studio external_editor grant is false', async () => {
     const p = profile({
       user: {
         id: 'u1',
@@ -99,9 +127,14 @@ describe('useStudioAccess', () => {
         },
       ],
     })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const { result } = renderHook(() =>
       useStudioAccess(p, studioId, softwareId),
+      { wrapper: wrapper(qc) },
     )
+    await waitFor(() => {
+      expect(result.current.isLoadingCapabilities).toBe(false)
+    })
     expect(result.current.canEditSoftwareDefinition).toBe(false)
   })
 })

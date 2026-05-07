@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -32,12 +33,24 @@ class TokenUsageTotalsOut(BaseModel):
     )
 
 
+class BudgetMonthStatusOut(BaseModel):
+    """Normalized MTD budget interpretation (single ladder for UI + API consumers)."""
+
+    is_capped: bool
+    usage_pct: float | None = None
+    remaining_monthly_usd: Decimal | None = None
+    severity: Literal["ok", "warn", "critical"]
+    over_cap: bool = False
+    blocks_new_usage: bool = False
+
+
 class MeTokenUsageBuilderBudgetOut(BaseModel):
     """MTD estimated spend vs optional per-member cap (same basis as LLM enforcement)."""
 
     studio_id: UUID
     cap_monthly_usd: Decimal | None = None
     spent_monthly_usd: Decimal = Field(default_factory=lambda: Decimal("0"))
+    budget_status: BudgetMonthStatusOut
 
 
 class TokenUsageReportOut(BaseModel):

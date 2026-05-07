@@ -16,6 +16,8 @@ from app.deps import (
     get_studio_software_list_access,
     require_studio_admin,
     require_studio_editor,
+    resolve_studio_access,
+    resolve_studio_access_for_software,
 )
 from app.exceptions import ApiError
 from app.models import Project, Software, User, WorkOrder
@@ -41,11 +43,13 @@ from app.schemas.studio import (
     StudioResponse,
     StudioUpdate,
 )
+from app.schemas.studio_capabilities import StudioCapabilitiesOut
 from app.schemas.studio_llm_public import StudioChatLlmModelsOut
 from app.services.artifact_service import ArtifactService
 from app.services.cross_studio_service import CrossStudioService
 from app.services import embedding_pipeline as embed_pipeline
 from app.services.mcp_key_admin_service import McpKeyAdminService
+from app.services.rbac_capabilities_service import RbacCapabilitiesService
 from app.services.project_service import ProjectService
 from app.services.software_activity_service import SoftwareActivityService
 from app.services.studio_service import StudioService
@@ -76,6 +80,31 @@ async def create_studio(
     user: User = Depends(get_current_user),
 ) -> StudioResponse:
     return await StudioService(session).create_studio(user, body)
+
+
+@router.get(
+    "/{studio_id}/me/capabilities",
+    response_model=StudioCapabilitiesOut,
+)
+async def get_my_studio_capabilities(
+    studio_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+    software_id: UUID | None = Query(None),
+) -> StudioCapabilitiesOut:
+    """Effective RBAC flags for the current user; optional ``software_id`` resolves cross-studio grants."""
+    if software_id is None:
+        access = await resolve_studio_access(session, user, studio_id)
+    else:
+        software = await session.get(Software, software_id)
+        if software is None or software.studio_id != studio_id:
+            raise ApiError(
+                status_code=404,
+                code="NOT_FOUND",
+                message="Software not found",
+            )
+        access = await resolve_studio_access_for_software(session, user, software)
+    return await RbacCapabilitiesService(session).build_response(access)
 
 
 @router.get(

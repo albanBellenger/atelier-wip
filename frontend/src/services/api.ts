@@ -116,6 +116,35 @@ export async function me(): Promise<MeResponse> {
   return request<MeResponse>('GET', '/auth/me')
 }
 
+export interface StudioCapabilitiesOut {
+  is_tool_admin: boolean
+  membership_role: string | null
+  is_studio_admin: boolean
+  is_studio_editor: boolean
+  is_studio_member: boolean
+  is_cross_studio_viewer: boolean
+  can_publish: boolean
+  can_edit_software_definition: boolean
+  can_create_project: boolean
+  can_manage_project_outline: boolean
+  cross_studio_grant: CrossStudioGrantPublic | null
+}
+
+export async function getStudioCapabilities(
+  studioId: string,
+  softwareId?: string,
+): Promise<StudioCapabilitiesOut> {
+  const sp = new URLSearchParams()
+  if (softwareId) {
+    sp.set('software_id', softwareId)
+  }
+  const q = sp.toString()
+  return request<StudioCapabilitiesOut>(
+    'GET',
+    `/studios/${studioId}/me/capabilities${q ? `?${q}` : ''}`,
+  )
+}
+
 /** Tool-wide LLM identity (read-only; no secrets). */
 export interface LlmRuntimeInfo {
   llm_provider: string | null
@@ -298,10 +327,23 @@ export interface TokenUsageTotals {
   estimated_cost_usd: string
 }
 
+export type BudgetMonthSeverity = 'ok' | 'warn' | 'critical'
+
+/** Normalized MTD budget interpretation from the API (single ladder vs UI duplication). */
+export interface BudgetMonthStatus {
+  is_capped: boolean
+  usage_pct: number | null
+  remaining_monthly_usd: string | number | null
+  severity: BudgetMonthSeverity
+  over_cap: boolean
+  blocks_new_usage: boolean
+}
+
 export interface MeTokenUsageBuilderBudget {
   studio_id: string
   cap_monthly_usd: string | null
   spent_monthly_usd: string
+  budget_status: BudgetMonthStatus
 }
 
 export interface TokenUsageReport {
@@ -526,6 +568,7 @@ export interface StudioOverviewRow {
   mtd_spend_usd: string
   budget_cap_monthly_usd: string | null
   budget_overage_action: string
+  budget_status: BudgetMonthStatus
 }
 
 /** GitLab summary from GET/PATCH /admin/studios/{id}/gitlab or nested in studio detail. */
@@ -892,6 +935,7 @@ export interface AdminMemberBudgetRow {
   role: string
   budget_cap_monthly_usd: string | number | null
   mtd_spend_usd: string | number
+  budget_status: BudgetMonthStatus
 }
 
 export type MemberStudioBudgetPatchBody = {
@@ -2444,6 +2488,8 @@ export interface PrivateThreadStreamPayload {
   include_selection_in_context?: boolean
   thread_intent?: 'ask' | 'append' | 'replace_selection' | 'edit'
   command?: 'none' | 'improve' | 'critique'
+  /** Must be allowed for studio chat when registry/policy is configured. */
+  preferred_model?: string | null
 }
 
 export async function streamPrivateThreadReply(

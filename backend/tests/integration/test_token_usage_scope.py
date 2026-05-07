@@ -375,6 +375,11 @@ async def test_me_token_usage_budget_studio_id_cap_and_spend(
     assert bb["studio_id"] == studio_a
     assert Decimal(str(bb["spent_monthly_usd"])) == Decimal("12.5")
     assert Decimal(str(bb["cap_monthly_usd"])) == Decimal("100")
+    st = bb["budget_status"]
+    assert st["is_capped"] is True
+    assert st["severity"] == "ok"
+    assert st["blocks_new_usage"] is False
+    assert Decimal(str(st["remaining_monthly_usd"])) == Decimal("87.5")
 
     token_out = await _register(client, sfx, "budoutsider")
     client.cookies.set("atelier_token", token_out)

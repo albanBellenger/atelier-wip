@@ -53,15 +53,23 @@ function CapStepper({
   onChange,
   accent,
   pct,
+  severity,
 }: {
   value: number
   onChange: (v: number) => void
   accent: string
   pct: number
+  severity: 'ok' | 'warn' | 'critical'
 }): React.ReactElement {
   const inc = (): void => onChange(value + 50)
   const dec = (): void => onChange(Math.max(0, value - 50))
   const safePct = Math.min(Number.isFinite(pct) ? pct : 0, 1)
+  const barColor =
+    severity === 'critical'
+      ? '#f43f5e'
+      : severity === 'warn'
+        ? '#f59e0b'
+        : accent
   return (
     <div className="flex items-center gap-2">
       <div className="flex items-center overflow-hidden rounded-md border border-zinc-800 bg-zinc-950/60">
@@ -86,8 +94,7 @@ function CapStepper({
           className="absolute inset-y-0 left-0 rounded-full"
           style={{
             width: `${safePct * 100}%`,
-            background:
-              safePct >= 0.95 ? '#f43f5e' : safePct >= 0.75 ? '#f59e0b' : accent,
+            background: barColor,
           }}
         />
       </div>
@@ -253,10 +260,15 @@ export function BudgetsSection(): ReactElement {
                 const hasCap = capStr != null && capStr !== ''
                 const capNum = hasCap ? parseUsd(capStr) : null
                 const displayCap = capNum ?? 0
+                const bs = s.budget_status
+                const pctForBar =
+                  bs.is_capped && bs.usage_pct != null
+                    ? Math.min(1, bs.usage_pct / 100)
+                    : 0
                 const remaining =
-                  capNum != null && capNum > 0 ? capNum - spend : null
-                const pct =
-                  capNum != null && capNum > 0 ? spend / capNum : 0
+                  bs.is_capped && bs.remaining_monthly_usd != null
+                    ? parseUsd(bs.remaining_monthly_usd)
+                    : null
                 const saving =
                   patchStudioBudget.isPending &&
                   patchStudioBudget.variables?.studioId === s.studio_id
@@ -279,7 +291,8 @@ export function BudgetsSection(): ReactElement {
                         patchStudioBudget.mutate({ studioId: s.studio_id, capUsd: v })
                       }}
                       accent={ADMIN_CONSOLE_ACCENT}
-                      pct={pct}
+                      pct={pctForBar}
+                      severity={bs.severity}
                     />
                     <span
                       className={`font-mono text-[12px] tabular-nums ${
@@ -356,7 +369,11 @@ export function BudgetsSection(): ReactElement {
                 const hasCap = capStr != null && capStr !== ''
                 const capNum = hasCap ? parseUsd(capStr) : null
                 const displayCap = capNum ?? 0
-                const pct = capNum != null && capNum > 0 ? spend / capNum : 0
+                const bs = row.budget_status
+                const pctForBar =
+                  bs.is_capped && bs.usage_pct != null
+                    ? Math.min(1, bs.usage_pct / 100)
+                    : 0
                 const saving =
                   patchMemberBudget.isPending &&
                   patchMemberBudget.variables?.userId === row.user_id
@@ -395,7 +412,8 @@ export function BudgetsSection(): ReactElement {
                         }
                       }}
                       accent={ADMIN_CONSOLE_ACCENT}
-                      pct={pct}
+                      pct={pctForBar}
+                      severity={bs.severity}
                     />
                     <span className="text-right text-[11px] text-zinc-500">
                       {saving ? 'Saving…' : '—'}

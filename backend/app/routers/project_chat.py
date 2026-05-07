@@ -128,6 +128,11 @@ async def project_chat_websocket(
                 )
                 continue
 
+            raw_m = data.get("model")
+            preferred_model: str | None = None
+            if isinstance(raw_m, str) and raw_m.strip():
+                preferred_model = raw_m.strip()
+
             trim_notice_msg = None
             trimmed_for_stream: list[dict[str, str]] = []
             try:
@@ -139,7 +144,9 @@ async def project_chat_websocket(
                         user_id=user_id,
                     )
                     await LLMService(session).ensure_openai_llm_ready(
-                        context=probe_ctx, call_type="chat"
+                        context=probe_ctx,
+                        call_type="chat",
+                        preferred_model=preferred_model,
                     )
                     svc = ProjectChatService(session)
                     user_msg = await svc.append_message(
@@ -154,7 +161,7 @@ async def project_chat_websocket(
                         hist,
                         context=probe_ctx,
                         call_type="chat",
-                        preferred_model=None,
+                        preferred_model=preferred_model,
                     )
                     if trimmed:
                         trim_notice_msg = await svc.append_message(
@@ -205,6 +212,7 @@ async def project_chat_websocket(
                     user_id=user_id,
                     user_content=content,
                     chat_messages=trimmed_for_stream,
+                    preferred_model=preferred_model,
                 ):
                     buf.append(piece)
                     await broadcast_json(

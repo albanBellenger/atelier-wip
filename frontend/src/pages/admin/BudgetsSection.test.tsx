@@ -20,6 +20,14 @@ describe('BudgetsSection', () => {
           mtd_spend_usd: '100.00',
           budget_cap_monthly_usd: '600.00',
           budget_overage_action: 'pause_generations',
+          budget_status: {
+            is_capped: true,
+            usage_pct: 16.67,
+            remaining_monthly_usd: '500.00',
+            severity: 'ok',
+            over_cap: false,
+            blocks_new_usage: false,
+          },
         },
       ],
       mtd_spend_total_usd: '100.00',
@@ -63,6 +71,14 @@ describe('BudgetsSection', () => {
           mtd_spend_usd: '100.00',
           budget_cap_monthly_usd: '600.00',
           budget_overage_action: 'pause_generations',
+          budget_status: {
+            is_capped: true,
+            usage_pct: 16.67,
+            remaining_monthly_usd: '500.00',
+            severity: 'ok',
+            over_cap: false,
+            blocks_new_usage: false,
+          },
         },
       ],
       mtd_spend_total_usd: '100.00',
@@ -105,6 +121,14 @@ describe('BudgetsSection', () => {
           mtd_spend_usd: '100.00',
           budget_cap_monthly_usd: '600.00',
           budget_overage_action: 'pause_generations',
+          budget_status: {
+            is_capped: true,
+            usage_pct: 16.67,
+            remaining_monthly_usd: '500.00',
+            severity: 'ok',
+            over_cap: false,
+            blocks_new_usage: false,
+          },
         },
       ],
       mtd_spend_total_usd: '100.00',
@@ -120,6 +144,14 @@ describe('BudgetsSection', () => {
         role: 'studio_member',
         budget_cap_monthly_usd: '200.00',
         mtd_spend_usd: '50.00',
+        budget_status: {
+          is_capped: true,
+          usage_pct: 25,
+          remaining_monthly_usd: '150.00',
+          severity: 'ok',
+          over_cap: false,
+          blocks_new_usage: false,
+        },
       },
     ])
     const patchSpy = vi.spyOn(api, 'patchAdminStudioMemberBudget').mockResolvedValue({
@@ -129,6 +161,14 @@ describe('BudgetsSection', () => {
       role: 'studio_member',
       budget_cap_monthly_usd: '250.00',
       mtd_spend_usd: '50.00',
+      budget_status: {
+        is_capped: true,
+        usage_pct: 20,
+        remaining_monthly_usd: '200.00',
+        severity: 'ok',
+        over_cap: false,
+        blocks_new_usage: false,
+      },
     })
 
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })

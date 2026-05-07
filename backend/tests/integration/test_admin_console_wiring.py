@@ -92,6 +92,10 @@ async def test_admin_overview_and_activity_ok(
     if body["studios"]:
         assert "created_at" in body["studios"][0]
         assert "description" in body["studios"][0]
+        assert "budget_status" in body["studios"][0]
+        bs = body["studios"][0]["budget_status"]
+        assert "severity" in bs
+        assert "is_capped" in bs
     assert "mtd_spend_total_usd" in body
     assert "recent_activity" in body
     assert len(body["recent_activity"]) >= 1
