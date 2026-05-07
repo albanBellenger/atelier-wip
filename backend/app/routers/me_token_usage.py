@@ -49,7 +49,7 @@ async def _ensure_token_usage_eligible(session: AsyncSession, user: User) -> Non
             select(StudioMember).where(StudioMember.user_id == user.id).limit(1)
         )
     ).scalar_one_or_none()
-    if memberships is None and not user.is_tool_admin:
+    if memberships is None and not user.is_platform_admin:
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
@@ -70,7 +70,7 @@ async def _validate_studio_filters(
                 code="NOT_FOUND",
                 message="Studio not found.",
             )
-        if user.is_tool_admin:
+        if user.is_platform_admin:
             continue
         row = (
             await session.execute(

@@ -15,16 +15,14 @@ import {
   type TokenUsageQueryParams,
   type TokenUsageReport,
   type TokenUsageRow,
-  downloadAdminTokenUsageCsv,
   downloadMeTokenUsageCsv,
   downloadStudioTokenUsageCsv,
   downloadBlob,
-  getAdminTokenUsage,
   getMeTokenUsage,
   getStudioTokenUsage,
 } from '../../services/api'
 
-type Mode = 'admin' | 'studio' | 'me'
+type Mode = 'studio' | 'me'
 
 type Granularity = 'day' | 'week' | 'month'
 
@@ -73,7 +71,6 @@ export function TokenUsageReportPanel(props: {
   const [softwareId, setSoftwareId] = useState('')
   const [projectId, setProjectId] = useState('')
   const [studioFilterId, setStudioFilterId] = useState('')
-  const [userId, setUserId] = useState('')
   const [callType, setCallType] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
@@ -104,7 +101,6 @@ export function TokenUsageReportPanel(props: {
     if (softwareId.trim()) p.software_id = softwareId.trim()
     if (projectId.trim()) p.project_id = projectId.trim()
     if (mode === 'me' && studioFilterId.trim()) p.studio_id = studioFilterId.trim()
-    if (mode === 'admin' && userId.trim()) p.user_id = userId.trim()
     if (callType.trim()) p.call_type = callType.trim()
     if (dateFrom.trim()) p.date_from = dateFrom.trim()
     if (dateTo.trim()) p.date_to = dateTo.trim()
@@ -114,7 +110,6 @@ export function TokenUsageReportPanel(props: {
   const loadMut = useMutation({
     mutationFn: async (): Promise<TokenUsageReport> => {
       const p = buildParams()
-      if (mode === 'admin') return getAdminTokenUsage(p)
       if (mode === 'studio') {
         if (!studioId) throw new Error('studioId required')
         return getStudioTokenUsage(studioId, p)
@@ -127,7 +122,6 @@ export function TokenUsageReportPanel(props: {
   const csvMut = useMutation({
     mutationFn: async (): Promise<Blob> => {
       const p = buildParams()
-      if (mode === 'admin') return downloadAdminTokenUsageCsv(p)
       if (mode === 'studio') {
         if (!studioId) throw new Error('studioId required')
         return downloadStudioTokenUsageCsv(studioId, p)
@@ -135,12 +129,7 @@ export function TokenUsageReportPanel(props: {
       return downloadMeTokenUsageCsv(p)
     },
     onSuccess: (blob) => {
-      const name =
-        mode === 'admin'
-          ? 'token-usage.csv'
-          : mode === 'studio'
-            ? 'studio-token-usage.csv'
-            : 'my-token-usage.csv'
+      const name = mode === 'studio' ? 'studio-token-usage.csv' : 'my-token-usage.csv'
       downloadBlob(blob, name)
     },
   })
@@ -251,17 +240,6 @@ export function TokenUsageReportPanel(props: {
               className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-xs"
               value={studioFilterId}
               onChange={(e) => setStudioFilterId(e.target.value)}
-              placeholder="UUID"
-            />
-          </label>
-        ) : null}
-        {mode === 'admin' ? (
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-500">User ID</span>
-            <input
-              className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-xs"
-              value={userId}
-              onChange={(e) => setUserId(e.target.value)}
               placeholder="UUID"
             />
           </label>

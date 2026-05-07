@@ -44,15 +44,11 @@ class UserPublic(BaseModel):
     id: UUID
     email: str
     display_name: str
-    is_tool_admin: bool
-
-
-class AdminStatusUpdate(BaseModel):
-    is_tool_admin: bool
+    is_platform_admin: bool
 
 
 class UserPublicWithAdmin(UserPublic):
-    pass  # already has is_tool_admin
+    pass  # already has is_platform_admin
 
 
 class StudioMembershipPublic(BaseModel):
@@ -93,14 +89,11 @@ class UserProfilePatch(BaseModel):
     display_name: str = Field(min_length=1, max_length=255)
 
 
-class AdminConfigResponse(BaseModel):
+class EmbeddingAdminConfigResponse(BaseModel):
+    """GET ``/admin/embedding-config`` — tool-level embedding settings (no LLM fields)."""
+
     model_config = ConfigDict(from_attributes=True)
 
-    llm_provider: str | None
-    llm_model: str | None
-    llm_api_base_url: str | None
-    llm_api_key_set: bool
-    llm_api_key_hint: str | None = None
     embedding_provider: str | None
     embedding_model: str | None
     embedding_api_base_url: str | None
@@ -109,17 +102,15 @@ class AdminConfigResponse(BaseModel):
     embedding_dim: int | None = None
 
 
-class AdminConfigUpdate(BaseModel):
-    llm_provider: str | None = None
-    llm_model: str | None = None
-    llm_api_key: str | None = None
-    llm_api_base_url: str | None = None
+class EmbeddingAdminConfigUpdate(BaseModel):
+    """PUT ``/admin/embedding-config`` — partial updates supported."""
+
     embedding_provider: str | None = None
     embedding_model: str | None = None
     embedding_api_key: str | None = None
     embedding_api_base_url: str | None = None
 
-    @field_validator("llm_api_base_url", "embedding_api_base_url", mode="before")
+    @field_validator("embedding_api_base_url", mode="before")
     @classmethod
     def normalize_optional_api_base(cls, v: object) -> str | None:
         if v is None:
@@ -135,7 +126,7 @@ class AdminConfigUpdate(BaseModel):
 
 
 class AdminLlmProbeBody(BaseModel):
-    """Optional overrides for ``POST /admin/test/llm`` (defaults come from ``admin_config``)."""
+    """Optional overrides for ``POST /admin/test/llm`` (defaults from default registry row)."""
 
     model: str | None = None
     api_base_url: str | None = None

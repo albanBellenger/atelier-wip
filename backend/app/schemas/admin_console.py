@@ -8,7 +8,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.schemas.auth import AdminConfigResponse
 from app.schemas.studio_budget_overage import StudioBudgetOverageAction
 from app.schemas.token_usage_report import BudgetMonthStatusOut
 
@@ -40,7 +39,6 @@ class StudioOverviewRowResponse(BaseModel):
 
 class AdminConsoleOverviewResponse(BaseModel):
     studios: list[StudioOverviewRowResponse]
-    mtd_spend_total_usd: Decimal
     active_builders_count: int
     embedding_collection_count: int
     recent_activity: list[DeploymentActivityResponse]
@@ -75,9 +73,9 @@ class LlmProviderRegistryUpdate(BaseModel):
 
 
 class LlmDeploymentResponse(BaseModel):
-    """Tool-admin LLM page: singleton credentials + provider registry in one response."""
+    """Tool-admin LLM page: provider registry (credentials live on registry rows only)."""
 
-    credentials: AdminConfigResponse
+    has_providers: bool
     providers: list[LlmProviderRegistryResponse]
 
 
@@ -221,6 +219,6 @@ class AdminUserDirectoryRowResponse(BaseModel):
     user_id: UUID
     email: str
     display_name: str
-    is_tool_admin: bool
+    is_platform_admin: bool
     created_at: datetime
     studio_memberships: list[dict[str, str | UUID]]

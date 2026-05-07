@@ -77,12 +77,12 @@ async def test_admin_put_embedding_config_schedules_existing_sections(
         select(User).where(User.email == f"owner-{sfx}@example.com")
     )
     u = r.scalar_one()
-    u.is_tool_admin = True
+    u.is_platform_admin = True
     await db_session.flush()
 
     client.cookies.set("atelier_token", token)
     put = await client.put(
-        "/admin/config",
+        "/admin/embedding-config",
         json={
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",

@@ -26,7 +26,7 @@ async def test_admin_embedding_library_overview_ok(
     )
     assert r.status_code == 200
     await db_session.execute(
-        update(User).where(User.email == email.lower()).values(is_tool_admin=True)
+        update(User).where(User.email == email.lower()).values(is_platform_admin=True)
     )
     await db_session.flush()
 

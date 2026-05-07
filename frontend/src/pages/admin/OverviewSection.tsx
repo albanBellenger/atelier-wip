@@ -38,7 +38,9 @@ export function OverviewSection(): ReactElement {
   const totalBudgetMock = STUDIOS.reduce((s, x) => s + x.budget, 0)
   const activeUsersMock = BUILDERS.filter((b) => b.status === 'active').length
 
-  const mtdTotal = live ? Number.parseFloat(live.mtd_spend_total_usd || '0') : totalSpendMock
+  const mtdTotal = live
+    ? live.studios.reduce((s, r) => s + Number.parseFloat(r.mtd_spend_usd || '0'), 0)
+    : totalSpendMock
   const studioCount = live ? live.studios.length : STUDIOS.length
   const softwareTotal = live
     ? live.studios.reduce((acc, r) => acc + r.software_count, 0)
@@ -64,8 +66,8 @@ export function OverviewSection(): ReactElement {
       value: `$${mtdTotal.toFixed(2)}`,
       sub:
         budgetSum > 0
-          ? `of $${budgetSum.toFixed(2)} studio caps`
-          : `of $${totalBudgetMock} budget (demo)`,
+          ? `sum across listed studios · caps $${budgetSum.toFixed(2)}`
+          : `sum across listed studios · $${totalBudgetMock} caps (demo)`,
     },
     {
       label: 'Embedding indexes',
@@ -196,10 +198,8 @@ export function OverviewSection(): ReactElement {
         <div className="grid grid-cols-1 gap-2 p-4 sm:grid-cols-2 lg:grid-cols-3">
           {(
             [
-              ['+ Create studio', 'studios'],
-              ['Users & roles', 'users'],
+              ['View studios', 'studios'],
               ['Connect a provider', 'llm'],
-              ['Adjust budgets', 'budgets'],
               ['Reindex embeddings', 'embeddings'],
             ] as const
           ).map(([label, target]) => (

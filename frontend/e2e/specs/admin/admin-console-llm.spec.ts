@@ -3,7 +3,7 @@ import { AdminConsolePage } from '../../pages/admin/AdminConsolePage'
 import { AdminLlmPage } from '../../pages/admin/AdminLlmPage'
 
 test.describe('Admin console — LLM', () => {
-  test('tool admin sees LLM registry', async ({ toolAdminPage }) => {
+  test('platform admin sees LLM registry', async ({ toolAdminPage }) => {
     const console_ = new AdminConsolePage(toolAdminPage)
     const llm = new AdminLlmPage(toolAdminPage)
     await llm.stubTestLlmProbe()

@@ -26,23 +26,13 @@ describe('LlmSection', () => {
       { id: 'studio-1', name: 'Studio One', description: null, logo_path: null, created_at: '' },
     ])
     vi.spyOn(api, 'getAdminLlmDeployment').mockResolvedValue({
-      credentials: {
-        llm_provider: 'openai',
-        llm_model: 'gpt-4o-mini',
-        llm_api_base_url: null,
-        llm_api_key_set: true,
-        llm_api_key_hint: '…wxyz',
-        embedding_provider: null,
-        embedding_model: null,
-        embedding_api_base_url: null,
-        embedding_api_key_set: false,
-      },
+      has_providers: false,
       providers: [],
     })
     vi.spyOn(api, 'getAdminLlmRouting').mockResolvedValue([])
     vi.spyOn(api, 'getAdminStudioLlmPolicy').mockResolvedValue([])
 
-    const putSpy =     vi.spyOn(api, 'putAdminLlmProvider').mockResolvedValue({
+    const putSpy = vi.spyOn(api, 'putAdminLlmProvider').mockResolvedValue({
       id: 'new-id',
       provider_key: 'acme',
       display_name: 'Acme AI',
@@ -66,9 +56,8 @@ describe('LlmSection', () => {
       </MemoryRouter>,
     )
 
-    expect(await screen.findByText('gpt-4o-mini')).toBeInTheDocument()
-    expect(screen.getByText('…wxyz')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Tool settings' })).toHaveAttribute(
+    expect(await screen.findByText(/Model registry/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Embedding settings' })).toHaveAttribute(
       'href',
       '/admin/settings',
     )
@@ -126,17 +115,7 @@ describe('LlmSection', () => {
     }
     vi.spyOn(api, 'getAdminLlmDeployment').mockImplementation(() =>
       Promise.resolve({
-        credentials: {
-          llm_provider: 'openai',
-          llm_model: 'gpt-4o-mini',
-          llm_api_base_url: null,
-          llm_api_key_set: true,
-          llm_api_key_hint: '…wxyz',
-          embedding_provider: null,
-          embedding_model: null,
-          embedding_api_base_url: null,
-          embedding_api_key_set: false,
-        },
+        has_providers: true,
         providers: deploymentState.providers,
       }),
     )
@@ -239,17 +218,7 @@ describe('LlmSection', () => {
       { id: 'studio-1', name: 'Studio One', description: null, logo_path: null, created_at: '' },
     ])
     vi.spyOn(api, 'getAdminLlmDeployment').mockResolvedValue({
-      credentials: {
-        llm_provider: 'openai',
-        llm_model: 'gpt-4o-mini',
-        llm_api_base_url: null,
-        llm_api_key_set: true,
-        llm_api_key_hint: '…wxyz',
-        embedding_provider: null,
-        embedding_model: null,
-        embedding_api_base_url: null,
-        embedding_api_key_set: false,
-      },
+      has_providers: false,
       providers: [],
     })
     vi.spyOn(api, 'getAdminLlmRouting').mockResolvedValue([])
@@ -268,7 +237,7 @@ describe('LlmSection', () => {
       </MemoryRouter>,
     )
 
-    expect(await screen.findByText('gpt-4o-mini')).toBeInTheDocument()
+    expect(await screen.findByText(/Model registry/i)).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /add routing/i }))
 

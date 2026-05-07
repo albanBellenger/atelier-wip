@@ -40,7 +40,7 @@ describe('TokenUsageReportPanel', () => {
       },
     }
 
-    vi.spyOn(api, 'getAdminTokenUsage').mockResolvedValue(report)
+    vi.spyOn(api, 'getMeTokenUsage').mockResolvedValue(report)
 
     const qc = new QueryClient({
       defaultOptions: {
@@ -52,7 +52,7 @@ describe('TokenUsageReportPanel', () => {
     render(
       <MemoryRouter>
         <QueryClientProvider client={qc}>
-          <TokenUsageReportPanel mode="admin" />
+          <TokenUsageReportPanel mode="me" />
         </QueryClientProvider>
       </MemoryRouter>,
     )

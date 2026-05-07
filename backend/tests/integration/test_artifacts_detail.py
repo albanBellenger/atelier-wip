@@ -51,7 +51,7 @@ async def _studio_project(client: AsyncClient, sfx: str) -> tuple[str, str, str,
 async def _promote_tool_admin(db_session, email: str) -> None:
     r = await db_session.execute(select(User).where(User.email == email))
     u = r.scalar_one()
-    u.is_tool_admin = True
+    u.is_platform_admin = True
     await db_session.flush()
 
 
@@ -152,7 +152,7 @@ async def test_artifact_detail_member_sees_chunk_previews(
     await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/embedding-config",
         json={
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",
@@ -190,7 +190,7 @@ async def test_artifact_detail_viewer_no_chunk_previews(
     await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/embedding-config",
         json={
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",
@@ -238,7 +238,7 @@ async def test_artifact_detail_unauthenticated_401(
     await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/embedding-config",
         json={
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",
@@ -267,7 +267,7 @@ async def test_artifact_detail_wrong_studio_forbidden(
     await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
     client.cookies.set("atelier_token", token_a)
     await client.put(
-        "/admin/config",
+        "/admin/embedding-config",
         json={
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",
@@ -315,7 +315,7 @@ async def test_artifact_detail_cross_studio_stranger_forbidden(
     await _promote_tool_admin(db_session, f"ownerb-{sfx}@example.com")
     client.cookies.set("atelier_token", token_b)
     await client.put(
-        "/admin/config",
+        "/admin/embedding-config",
         json={
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",
@@ -347,7 +347,7 @@ async def test_artifact_detail_invalid_project_uuid_422(
     await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/embedding-config",
         json={
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",
@@ -375,7 +375,7 @@ async def test_artifact_detail_unknown_artifact_404(
     await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/embedding-config",
         json={
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",
@@ -419,7 +419,7 @@ async def test_artifact_detail_by_id_cross_studio_viewer_no_previews(
     await _promote_tool_admin(db_session, f"ownerb-{sfx}@example.com")
     client.cookies.set("atelier_token", token_b)
     await client.put(
-        "/admin/config",
+        "/admin/embedding-config",
         json={
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",

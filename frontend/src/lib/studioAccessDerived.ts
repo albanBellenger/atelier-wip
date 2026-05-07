@@ -6,7 +6,7 @@ export type StudioAccessFields = {
   isMember: boolean
   isStudioAdmin: boolean
   isStudioEditor: boolean
-  isToolAdmin: boolean
+  isPlatformAdmin: boolean
   isCrossStudioViewer: boolean
   canPublish: boolean
   canManageProjectOutline: boolean
@@ -23,7 +23,7 @@ export function mapStudioCapabilitiesOutToFields(
     isMember: c.is_studio_member,
     isStudioAdmin: c.is_studio_admin,
     isStudioEditor: c.is_studio_editor,
-    isToolAdmin: c.is_tool_admin,
+    isPlatformAdmin: c.is_platform_admin,
     isCrossStudioViewer: c.is_cross_studio_viewer,
     canPublish: c.can_publish,
     canManageProjectOutline: c.can_manage_project_outline,
@@ -42,7 +42,7 @@ export function deriveStudioAccessFromProfile(
   studioId: string | undefined,
   softwareId?: string,
 ): StudioAccessFields {
-  const isToolAdmin = profile?.user?.is_tool_admin ?? false
+  const isPlatformAdmin = profile?.user?.is_platform_admin ?? false
   const row = profile?.studios.find((s) => s.studio_id === studioId)
   const role = row?.role ?? null
 
@@ -58,39 +58,39 @@ export function deriveStudioAccessFromProfile(
     )
   })()
 
-  const isHomeMember = isToolAdmin || Boolean(row)
+  const isHomeMember = isPlatformAdmin || Boolean(row)
   const isMember = isHomeMember || Boolean(crossGrant)
 
   const homeStudioAdmin =
-    isToolAdmin || (!crossGrant && role === 'studio_admin')
+    isPlatformAdmin || (!crossGrant && role === 'studio_admin')
   const isStudioAdmin = homeStudioAdmin
 
   const homeEditor =
-    isToolAdmin || role === 'studio_admin' || role === 'studio_member'
+    isPlatformAdmin || role === 'studio_admin' || role === 'studio_member'
 
   const isStudioEditor =
     Boolean(homeEditor) || crossGrant?.access_level === 'external_editor'
 
   const isCrossStudioViewer = crossGrant?.access_level === 'viewer'
 
-  const canPublish = isToolAdmin || (!crossGrant && Boolean(isStudioEditor))
+  const canPublish = isPlatformAdmin || (!crossGrant && Boolean(isStudioEditor))
 
   const canManageProjectOutline =
-    !crossGrant && (isToolAdmin || role === 'studio_admin')
+    !crossGrant && (isPlatformAdmin || role === 'studio_admin')
 
   const canEditSoftwareDefinition =
-    !crossGrant && (isToolAdmin || role === 'studio_admin')
+    !crossGrant && (isPlatformAdmin || role === 'studio_admin')
 
   const canCreateProject =
     !crossGrant &&
-    (isToolAdmin || role === 'studio_admin' || role === 'studio_member')
+    (isPlatformAdmin || role === 'studio_admin' || role === 'studio_member')
 
   return {
     role,
     isMember,
     isStudioAdmin,
     isStudioEditor,
-    isToolAdmin,
+    isPlatformAdmin,
     isCrossStudioViewer,
     canPublish,
     canManageProjectOutline,
@@ -108,7 +108,7 @@ export function studioCapabilitiesOutFromProfile(
 ): StudioCapabilitiesOut {
   const f = deriveStudioAccessFromProfile(profile, studioId, softwareId)
   return {
-    is_tool_admin: f.isToolAdmin,
+    is_platform_admin: f.isPlatformAdmin,
     membership_role: f.role,
     is_studio_admin: f.isStudioAdmin,
     is_studio_editor: f.isStudioEditor,

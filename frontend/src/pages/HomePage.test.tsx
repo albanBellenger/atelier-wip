@@ -1,12 +1,16 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as api from '../services/api'
 import { HomePage } from './HomePage'
 
 describe('HomePage', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
   it('shows builder workspace when authenticated', async () => {
     vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
       items: [],
@@ -17,7 +21,7 @@ describe('HomePage', () => {
         id: 'u1',
         email: 'a@b.com',
         display_name: 'Alex',
-        is_tool_admin: false,
+        is_platform_admin: false,
       },
       studios: [
         { studio_id: 's1', studio_name: 'Studio One', role: 'studio_member' },
@@ -52,7 +56,7 @@ describe('HomePage', () => {
         id: 'u2',
         email: 'v@b.com',
         display_name: 'Viewer',
-        is_tool_admin: false,
+        is_platform_admin: false,
       },
       studios: [],
       cross_studio_grants: [],
@@ -80,7 +84,7 @@ describe('HomePage', () => {
         id: 'u3',
         email: 'e@b.com',
         display_name: 'Ed',
-        is_tool_admin: false,
+        is_platform_admin: false,
       },
       studios: [
         { studio_id: 's1', studio_name: 'S', role: 'studio_member' },
@@ -195,5 +199,8 @@ describe('HomePage', () => {
     await waitFor(() => {
       expect(screen.getByText('Portal')).toBeInTheDocument()
     })
+    const detailed = screen.getByRole('link', { name: /detailed report/i })
+    expect(detailed.getAttribute('href')).toMatch(/[?&]studio_id=s1(?:&|$)/)
+    expect(detailed.getAttribute('href')).toMatch(/[?&]date_from=/)
   })
 })

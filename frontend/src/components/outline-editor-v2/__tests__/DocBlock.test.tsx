@@ -18,4 +18,22 @@ describe('DocBlock', () => {
     )
     expect(onSelect).toHaveBeenCalledWith('u1')
   })
+
+  it('renders GFM table markdown as an HTML table and calls onSelect', async () => {
+    const onSelect = vi.fn()
+    const md = '| Col A | Col B |\n|-------|-------|\n| **x** | y |\n'
+    render(
+      <DocBlock
+        block={{ id: 't1', type: 'table', markdown: md }}
+        onSelect={onSelect}
+      />,
+    )
+    expect(screen.getByRole('table')).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Col A' })).toBeInTheDocument()
+    const wrap = screen.getByTestId('doc-block-t1')
+    wrap.dispatchEvent(
+      new MouseEvent('mousedown', { bubbles: true, cancelable: true }),
+    )
+    expect(onSelect).toHaveBeenCalledWith('t1')
+  })
 })

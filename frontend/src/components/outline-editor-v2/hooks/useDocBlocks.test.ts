@@ -3,12 +3,7 @@ import * as Y from 'yjs'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { YDOC_TEXT_FIELD } from '../../../services/ws'
-import { useDocBlocks } from './useDocBlocks'
-
-/** Mirrors `DocBlock` from `useDocBlocks.ts` once implemented */
-type DocBlock =
-  | { id: string; type: 'h2' | 'h3' | 'p'; text: string; renderedAsPlain?: boolean }
-  | { id: string; type: 'ul'; items: string[] }
+import { useDocBlocks, type DocBlock } from './useDocBlocks'
 
 function makeYtext(initial: string): Y.Text {
   const doc = new Y.Doc()
@@ -94,16 +89,18 @@ Closing line.
     expect(after[2].id).not.toBe(before[2].id)
   })
 
-  it('falls back to a single paragraph with renderedAsPlain for unsupported constructs', () => {
+  it('emits a table block for GFM pipe tables', () => {
     const md = '| a | b |\n|---|---|\n| 1 | 2 |\n'
     const ytext = makeYtext(md)
     const { result } = renderHook(() => useDocBlocks(ytext))
 
-    const blocks = result.current.blocks as DocBlock[]
+    const blocks = result.current.blocks
     expect(blocks).toHaveLength(1)
-    expect(blocks[0].type).toBe('p')
-    expect(blocks[0]).toMatchObject({ renderedAsPlain: true })
-    expect(blocks[0].text).toContain('|')
+    expect(blocks[0].type).toBe('table')
+    if (blocks[0].type === 'table') {
+      expect(blocks[0].markdown).toContain('| a | b |')
+      expect(blocks[0].markdown).toContain('| 1 | 2 |')
+    }
   })
 
   it('returns empty blocks when ytext is null', () => {

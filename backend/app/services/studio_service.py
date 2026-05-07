@@ -24,7 +24,7 @@ class StudioService:
         self.db = db
 
     async def list_studios(self, user: User) -> list[StudioResponse]:
-        if user.is_tool_admin:
+        if user.is_platform_admin:
             q = (
                 select(
                     Studio.id,
@@ -33,6 +33,7 @@ class StudioService:
                     Studio.logo_path,
                     Studio.created_at,
                     Studio.budget_cap_monthly_usd,
+                    Studio.budget_overage_action,
                 )
                 .order_by(Studio.name)
             )
@@ -45,6 +46,7 @@ class StudioService:
                     Studio.logo_path,
                     Studio.created_at,
                     Studio.budget_cap_monthly_usd,
+                    Studio.budget_overage_action,
                 )
                 .join(StudioMember, StudioMember.studio_id == Studio.id)
                 .where(StudioMember.user_id == user.id)
@@ -59,8 +61,9 @@ class StudioService:
                 logo_path=r.logo_path,
                 created_at=r.created_at,
                 budget_cap_monthly_usd=r.budget_cap_monthly_usd
-                if user.is_tool_admin
+                if user.is_platform_admin
                 else None,
+                budget_overage_action=r.budget_overage_action,
             )
             for r in rows
         ]

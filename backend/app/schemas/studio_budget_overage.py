@@ -1,4 +1,4 @@
-"""Valid values for `studios.budget_overage_action` (tool admin + LLM policy)."""
+"""Valid values for `studios.budget_overage_action` (Studio Owner budget settings + LLM policy)."""
 
 from __future__ import annotations
 

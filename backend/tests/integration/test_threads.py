@@ -67,7 +67,7 @@ async def _project_section(
 async def _promote_tool_admin(db_session, email: str) -> None:
     r = await db_session.execute(select(User).where(User.email == email))
     u = r.scalar_one()
-    u.is_tool_admin = True
+    u.is_platform_admin = True
     await db_session.flush()
 
 
@@ -88,10 +88,13 @@ async def test_stream_sse_envelope_format(
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/llm/providers/openai",
         json={
-            "llm_provider": "openai",
-            "llm_model": "gpt-4o-mini",
+            "display_name": "OpenAI",
+            "models": ["gpt-4o-mini"],
+            "status": "connected",
+            "is_default": True,
+            "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
@@ -149,10 +152,13 @@ async def test_stream_llm_failure_persists_error_and_completes_sse(
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/llm/providers/openai",
         json={
-            "llm_provider": "openai",
-            "llm_model": "gpt-4o-mini",
+            "display_name": "OpenAI",
+            "models": ["gpt-4o-mini"],
+            "status": "connected",
+            "is_default": True,
+            "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
@@ -195,10 +201,13 @@ async def test_stream_conflict_meta_populated(
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/llm/providers/openai",
         json={
-            "llm_provider": "openai",
-            "llm_model": "gpt-4o-mini",
+            "display_name": "OpenAI",
+            "models": ["gpt-4o-mini"],
+            "status": "connected",
+            "is_default": True,
+            "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
@@ -260,10 +269,13 @@ async def test_thread_post_passes_plaintext_override_to_rag(
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/llm/providers/openai",
         json={
-            "llm_provider": "openai",
-            "llm_model": "gpt-4o-mini",
+            "display_name": "OpenAI",
+            "models": ["gpt-4o-mini"],
+            "status": "connected",
+            "is_default": True,
+            "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
@@ -305,10 +317,13 @@ async def test_thread_post_passes_include_git_history_to_rag(
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/llm/providers/openai",
         json={
-            "llm_provider": "openai",
-            "llm_model": "gpt-4o-mini",
+            "display_name": "OpenAI",
+            "models": ["gpt-4o-mini"],
+            "status": "connected",
+            "is_default": True,
+            "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
@@ -383,10 +398,13 @@ async def test_get_thread_returns_history(
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/llm/providers/openai",
         json={
-            "llm_provider": "openai",
-            "llm_model": "gpt-4o-mini",
+            "display_name": "OpenAI",
+            "models": ["gpt-4o-mini"],
+            "status": "connected",
+            "is_default": True,
+            "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
@@ -432,10 +450,13 @@ async def test_llm_failure_writes_tombstone_message(
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/llm/providers/openai",
         json={
-            "llm_provider": "openai",
-            "llm_model": "gpt-4o-mini",
+            "display_name": "OpenAI",
+            "models": ["gpt-4o-mini"],
+            "status": "connected",
+            "is_default": True,
+            "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
@@ -479,10 +500,13 @@ async def test_stream_meta_context_truncated_true_when_budget_tight(
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/llm/providers/openai",
         json={
-            "llm_provider": "openai",
-            "llm_model": "gpt-4o-mini",
+            "display_name": "OpenAI",
+            "models": ["gpt-4o-mini"],
+            "status": "connected",
+            "is_default": True,
+            "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
@@ -538,10 +562,13 @@ async def test_reset_thread_clears_history(
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/llm/providers/openai",
         json={
-            "llm_provider": "openai",
-            "llm_model": "gpt-4o-mini",
+            "display_name": "OpenAI",
+            "models": ["gpt-4o-mini"],
+            "status": "connected",
+            "is_default": True,
+            "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
@@ -616,10 +643,13 @@ async def test_replace_selection_422_without_plaintext_override(
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/llm/providers/openai",
         json={
-            "llm_provider": "openai",
-            "llm_model": "gpt-4o-mini",
+            "display_name": "OpenAI",
+            "models": ["gpt-4o-mini"],
+            "status": "connected",
+            "is_default": True,
+            "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
@@ -657,10 +687,13 @@ async def test_replace_selection_422_without_selection_bounds(
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/llm/providers/openai",
         json={
-            "llm_provider": "openai",
-            "llm_model": "gpt-4o-mini",
+            "display_name": "OpenAI",
+            "models": ["gpt-4o-mini"],
+            "status": "connected",
+            "is_default": True,
+            "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
@@ -690,10 +723,13 @@ async def test_stream_meta_patch_proposal_append(
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/llm/providers/openai",
         json={
-            "llm_provider": "openai",
-            "llm_model": "gpt-4o-mini",
+            "display_name": "OpenAI",
+            "models": ["gpt-4o-mini"],
+            "status": "connected",
+            "is_default": True,
+            "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
@@ -751,10 +787,13 @@ async def test_stream_rejects_disallowed_preferred_model(
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/llm/providers/openai",
         json={
-            "llm_provider": "openai",
-            "llm_model": "gpt-4o-mini",
+            "display_name": "OpenAI",
+            "models": ["gpt-4o-mini"],
+            "status": "connected",
+            "is_default": True,
+            "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
@@ -811,10 +850,13 @@ async def test_stream_accepts_allowed_preferred_model(
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/llm/providers/openai",
         json={
-            "llm_provider": "openai",
-            "llm_model": "gpt-4o-mini",
+            "display_name": "OpenAI",
+            "models": ["gpt-4o-mini"],
+            "status": "connected",
+            "is_default": True,
+            "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )

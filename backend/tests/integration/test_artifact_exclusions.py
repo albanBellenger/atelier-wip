@@ -95,7 +95,7 @@ def fake_embed(monkeypatch: pytest.MonkeyPatch) -> None:
 async def _promote_tool_admin(db_session, email: str) -> None:
     r = await db_session.execute(select(User).where(User.email == email))
     u = r.scalar_one()
-    u.is_tool_admin = True
+    u.is_platform_admin = True
     await db_session.flush()
 
 
@@ -106,7 +106,7 @@ async def _studio_two_projects_one_artifact_each(
     await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
     client.cookies.set("atelier_token", token)
     put_cfg = await client.put(
-        "/admin/config",
+        "/admin/embedding-config",
         json={
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",

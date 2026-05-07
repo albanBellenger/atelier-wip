@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -16,14 +17,41 @@ from openai import (
     InternalServerError,
     RateLimitError,
 )
+from sqlalchemy import delete
 
 from app.exceptions import ApiError
-from app.models import AdminConfig
+from app.models import LlmProviderRegistry, LlmRoutingRule
 from app.schemas.auth import AdminConnectivityResult
 from app.schemas.token_context import TokenContext
+from app.security.field_encryption import encode_admin_stored_secret
 from app.services.llm_service import LLMService
 
 _REQ = httpx.Request("POST", "https://example.test/v1/chat/completions")
+
+
+async def _seed_openai_default_llm(db_session: Any, *, model: str, api_key: str = "sk-test") -> None:
+    await db_session.execute(delete(LlmRoutingRule))
+    await db_session.execute(delete(LlmProviderRegistry))
+    await db_session.flush()
+    db_session.add(
+        LlmProviderRegistry(
+            id=uuid.uuid4(),
+            provider_key="openai",
+            display_name="OpenAI",
+            models_json=json.dumps([model]),
+            api_base_url=None,
+            logo_url=None,
+            status="connected",
+            is_default=True,
+            sort_order=0,
+            api_key=encode_admin_stored_secret(api_key),
+            litellm_provider_slug="openai",
+        )
+    )
+    db_session.add(
+        LlmRoutingRule(use_case="chat", primary_model=model, fallback_model=None),
+    )
+    await db_session.flush()
 
 
 def _resp(status: int) -> httpx.Response:
@@ -44,12 +72,7 @@ async def test_chat_structured_read_timeout_maps_to_api_error(
     db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    row = await db_session.get(AdminConfig, 1)
-    assert row is not None
-    row.llm_model = "gpt-test"
-    row.llm_api_key = "sk-test"
-    row.llm_provider = "openai"
-    await db_session.flush()
+    await _seed_openai_default_llm(db_session, model="gpt-test")
 
     monkeypatch.setattr(
         "app.services.llm_service.litellm.acompletion",
@@ -74,12 +97,7 @@ async def test_chat_structured_connect_error_maps_to_transport_api_error(
     db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    row = await db_session.get(AdminConfig, 1)
-    assert row is not None
-    row.llm_model = "gpt-test"
-    row.llm_api_key = "sk-test"
-    row.llm_provider = "openai"
-    await db_session.flush()
+    await _seed_openai_default_llm(db_session, model="gpt-test")
 
     monkeypatch.setattr(
         "app.services.llm_service.litellm.acompletion",
@@ -104,12 +122,7 @@ async def test_chat_stream_connect_error_maps_to_transport_api_error(
     db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    row = await db_session.get(AdminConfig, 1)
-    assert row is not None
-    row.llm_model = "gpt-test"
-    row.llm_api_key = "sk-test"
-    row.llm_provider = "openai"
-    await db_session.flush()
+    await _seed_openai_default_llm(db_session, model="gpt-test")
 
     monkeypatch.setattr(
         "app.services.llm_service.litellm.acompletion",
@@ -131,33 +144,30 @@ async def test_chat_stream_connect_error_maps_to_transport_api_error(
 
 @pytest.mark.asyncio
 async def test_admin_connectivity_probe_missing_model_returns_result(db_session: Any) -> None:
-    row = await db_session.get(AdminConfig, 1)
-    assert row is not None
-    row.llm_model = ""
-    row.llm_api_key = "sk-test"
-    row.llm_provider = "openai"
+    await db_session.execute(delete(LlmRoutingRule))
+    await db_session.execute(delete(LlmProviderRegistry))
     await db_session.flush()
 
     llm = LLMService(db_session)
     out = await llm.admin_connectivity_probe()
     assert isinstance(out, AdminConnectivityResult)
     assert out.ok is False
-    assert "Configure LLM model and API key" in (out.message or "")
+    assert "model" in (out.message or "").lower() or "configure" in (out.message or "").lower()
 
 
 @pytest.mark.asyncio
-async def test_admin_connectivity_probe_unsupported_provider_returns_result(db_session: Any) -> None:
-    row = await db_session.get(AdminConfig, 1)
-    assert row is not None
-    row.llm_model = "gpt-test"
-    row.llm_api_key = "sk-test"
-    row.llm_provider = "azure"
-    await db_session.flush()
+async def test_admin_connectivity_probe_unknown_provider_key_returns_result(
+    db_session: Any,
+) -> None:
+    await _seed_openai_default_llm(db_session, model="gpt-test")
 
     llm = LLMService(db_session)
-    out = await llm.admin_connectivity_probe()
+    out = await llm.admin_connectivity_probe(
+        model_override="gpt-test",
+        provider_key="no-such-provider",
+    )
     assert out.ok is False
-    assert "openai" in (out.message or "").lower() or "openai" in (out.detail or "").lower()
+    assert "unknown" in (out.message or "").lower()
 
 
 def _probe_ok_response() -> MagicMock:
@@ -173,12 +183,7 @@ def _probe_ok_response() -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_admin_connectivity_probe_success(db_session: Any, monkeypatch: pytest.MonkeyPatch) -> None:
-    row = await db_session.get(AdminConfig, 1)
-    assert row is not None
-    row.llm_model = "gpt-test"
-    row.llm_api_key = "sk-test"
-    row.llm_provider = "openai"
-    await db_session.flush()
+    await _seed_openai_default_llm(db_session, model="gpt-test")
 
     monkeypatch.setattr(
         "app.services.llm_service.litellm.acompletion",
@@ -197,12 +202,7 @@ async def test_admin_connectivity_probe_http_error_returns_result(
     db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    row = await db_session.get(AdminConfig, 1)
-    assert row is not None
-    row.llm_model = "gpt-test"
-    row.llm_api_key = "sk-test"
-    row.llm_provider = "openai"
-    await db_session.flush()
+    await _seed_openai_default_llm(db_session, model="gpt-test")
 
     monkeypatch.setattr(
         "app.services.llm_service.litellm.acompletion",
@@ -220,12 +220,7 @@ async def test_admin_connectivity_probe_network_error_returns_result(
     db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    row = await db_session.get(AdminConfig, 1)
-    assert row is not None
-    row.llm_model = "gpt-test"
-    row.llm_api_key = "sk-test"
-    row.llm_provider = "openai"
-    await db_session.flush()
+    await _seed_openai_default_llm(db_session, model="gpt-test")
 
     monkeypatch.setattr(
         "app.services.llm_service.litellm.acompletion",
@@ -243,12 +238,7 @@ async def test_admin_connectivity_probe_acompletion_unexpected_error_returns_res
     db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    row = await db_session.get(AdminConfig, 1)
-    assert row is not None
-    row.llm_model = "gpt-test"
-    row.llm_api_key = "sk-test"
-    row.llm_provider = "openai"
-    await db_session.flush()
+    await _seed_openai_default_llm(db_session, model="gpt-test")
 
     monkeypatch.setattr(
         "app.services.llm_service.litellm.acompletion",
@@ -266,12 +256,7 @@ async def test_chat_structured_upstream_http_error_maps_to_api_error(
     db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    row = await db_session.get(AdminConfig, 1)
-    assert row is not None
-    row.llm_model = "gpt-test"
-    row.llm_api_key = "sk-test"
-    row.llm_provider = "openai"
-    await db_session.flush()
+    await _seed_openai_default_llm(db_session, model="gpt-test")
 
     monkeypatch.setattr(
         "app.services.llm_service.litellm.acompletion",
@@ -319,12 +304,7 @@ async def test_chat_structured_posts_openai_json_schema_request_body(
         captured.append(kwargs)
         return _structured_ok_response()
 
-    row = await db_session.get(AdminConfig, 1)
-    assert row is not None
-    row.llm_model = "gpt-test"
-    row.llm_api_key = "sk-test"
-    row.llm_provider = "openai"
-    await db_session.flush()
+    await _seed_openai_default_llm(db_session, model="gpt-test")
 
     monkeypatch.setattr(
         "app.services.llm_service.litellm.acompletion",
@@ -344,7 +324,7 @@ async def test_chat_structured_posts_openai_json_schema_request_body(
     assert len(captured) == 1
     body = captured[0]
     assert isinstance(body, dict)
-    assert body["model"] == "gpt-test"
+    assert body["model"] == "openai/gpt-test"
     assert body["messages"] == [
         {"role": "system", "content": "sys"},
         {"role": "user", "content": "user"},
@@ -422,12 +402,7 @@ async def test_chat_structured_upstream_error_log_omits_raw_body(
     db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    row = await db_session.get(AdminConfig, 1)
-    assert row is not None
-    row.llm_model = "gpt-test"
-    row.llm_api_key = "sk-test"
-    row.llm_provider = "openai"
-    await db_session.flush()
+    await _seed_openai_default_llm(db_session, model="gpt-test")
 
     captured: list[tuple[str, dict[str, Any]]] = []
 
@@ -467,12 +442,7 @@ async def test_chat_structured_empty_choices_maps_to_api_error(
     db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    row = await db_session.get(AdminConfig, 1)
-    assert row is not None
-    row.llm_model = "gpt-test"
-    row.llm_api_key = "sk-test"
-    row.llm_provider = "openai"
-    await db_session.flush()
+    await _seed_openai_default_llm(db_session, model="gpt-test")
 
     resp = MagicMock()
     resp.choices = []
@@ -499,12 +469,7 @@ async def test_chat_structured_invalid_content_json_maps_to_api_error(
     db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    row = await db_session.get(AdminConfig, 1)
-    assert row is not None
-    row.llm_model = "gpt-test"
-    row.llm_api_key = "sk-test"
-    row.llm_provider = "openai"
-    await db_session.flush()
+    await _seed_openai_default_llm(db_session, model="gpt-test")
 
     msg = MagicMock()
     msg.content = "not valid json {"
@@ -541,12 +506,7 @@ async def test_chat_stream_read_timeout_maps_to_api_error(
     db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    row = await db_session.get(AdminConfig, 1)
-    assert row is not None
-    row.llm_model = "gpt-test"
-    row.llm_api_key = "sk-test"
-    row.llm_provider = "openai"
-    await db_session.flush()
+    await _seed_openai_default_llm(db_session, model="gpt-test")
 
     monkeypatch.setattr(
         "app.services.llm_service.litellm.acompletion",
@@ -576,12 +536,7 @@ async def test_chat_stream_upstream_rate_limit_maps_to_api_error(
     db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    row = await db_session.get(AdminConfig, 1)
-    assert row is not None
-    row.llm_model = "gpt-test"
-    row.llm_api_key = "sk-test"
-    row.llm_provider = "openai"
-    await db_session.flush()
+    await _seed_openai_default_llm(db_session, model="gpt-test")
 
     monkeypatch.setattr(
         "app.services.llm_service.litellm.acompletion",
@@ -607,12 +562,7 @@ async def test_chat_stream_upstream_error_log_omits_raw_body(
     db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    row = await db_session.get(AdminConfig, 1)
-    assert row is not None
-    row.llm_model = "gpt-test"
-    row.llm_api_key = "sk-test"
-    row.llm_provider = "openai"
-    await db_session.flush()
+    await _seed_openai_default_llm(db_session, model="gpt-test")
 
     captured: list[tuple[str, dict[str, Any]]] = []
 
@@ -655,12 +605,7 @@ async def test_trim_chat_messages_for_stream_uses_model_from_config(
     db_session: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    row = await db_session.get(AdminConfig, 1)
-    assert row is not None
-    row.llm_model = "gpt-test"
-    row.llm_api_key = "sk-test"
-    row.llm_provider = "openai"
-    await db_session.flush()
+    await _seed_openai_default_llm(db_session, model="gpt-test")
 
     with patch(
         "app.services.llm_service.trim_openai_chat_messages",
@@ -676,4 +621,4 @@ async def test_trim_chat_messages_for_stream_uses_model_from_config(
     assert out == [{"role": "user", "content": "x"}]
     mock_trim.assert_called_once()
     _args, kwargs = mock_trim.call_args
-    assert kwargs["model"] == "gpt-test"
+    assert kwargs["model"] == "openai/gpt-test"

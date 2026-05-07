@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import json
 import os
 import uuid
 
 import pytest
 import pytest_asyncio
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import AdminConfig
+from app.models import AdminConfig, LlmProviderRegistry, LlmRoutingRule
+from app.security.field_encryption import encode_admin_stored_secret
 from app.security.jwt import create_access_token
 
 from tests.factories import (
@@ -37,7 +40,7 @@ def _require_llm_env(request: pytest.FixtureRequest) -> None:
 
 @pytest_asyncio.fixture(autouse=True)
 async def llm_admin_config(db_session: AsyncSession) -> None:
-    """Ensure AdminConfig row matches env so LLMService uses the real provider."""
+    """Sync embedding singleton + default LLM registry row from env for real provider calls."""
     row = await db_session.get(AdminConfig, 1)
     if row is None:
         row = AdminConfig(id=1)
@@ -50,9 +53,6 @@ async def llm_admin_config(db_session: AsyncSession) -> None:
         (os.environ.get("LLM_MODEL") or os.environ.get("OPENAI_MODEL") or "gpt-4o-mini")
         .strip()
     )
-    row.llm_api_key = key
-    row.llm_model = model
-    row.llm_provider = "openai"
     emb_key = (os.environ.get("EMBEDDING_API_KEY") or key).strip()
     emb_model = (
         os.environ.get("EMBEDDING_MODEL")
@@ -63,6 +63,29 @@ async def llm_admin_config(db_session: AsyncSession) -> None:
     row.embedding_model = emb_model
     row.embedding_provider = "openai"
     row.embedding_dim = row.embedding_dim or 1536
+    await db_session.flush()
+
+    await db_session.execute(delete(LlmRoutingRule))
+    await db_session.execute(delete(LlmProviderRegistry))
+    await db_session.flush()
+    db_session.add(
+        LlmProviderRegistry(
+            id=uuid.uuid4(),
+            provider_key="openai",
+            display_name="OpenAI",
+            models_json=json.dumps([model]),
+            api_base_url=None,
+            logo_url=None,
+            status="connected",
+            is_default=True,
+            sort_order=0,
+            api_key=encode_admin_stored_secret(key) if key else None,
+            litellm_provider_slug="openai",
+        )
+    )
+    db_session.add(
+        LlmRoutingRule(use_case="chat", primary_model=model, fallback_model=None),
+    )
     await db_session.flush()
 
 

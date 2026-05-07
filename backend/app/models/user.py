@@ -19,7 +19,10 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    is_tool_admin: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
+    #: Infrastructure-only (LLM registry, embeddings, connectivity tests, read-only studio directory).
+    is_platform_admin: Mapped[bool] = mapped_column(
+        Boolean, server_default="false", nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

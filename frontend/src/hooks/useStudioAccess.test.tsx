@@ -29,7 +29,7 @@ describe('useStudioAccess', () => {
         id: 'u1',
         email: 'a@b.com',
         display_name: 'A',
-        is_tool_admin: false,
+        is_platform_admin: false,
       },
       studios: [{ studio_id: studioId, studio_name: 'S', role: 'studio_admin' }],
     })
@@ -50,7 +50,7 @@ describe('useStudioAccess', () => {
         id: 'u1',
         email: 'a@b.com',
         display_name: 'A',
-        is_tool_admin: false,
+        is_platform_admin: false,
       },
       studios: [{ studio_id: studioId, studio_name: 'S', role: 'studio_member' }],
     })
@@ -71,7 +71,7 @@ describe('useStudioAccess', () => {
         id: 'u1',
         email: 'a@b.com',
         display_name: 'A',
-        is_tool_admin: false,
+        is_platform_admin: false,
       },
       studios: [{ studio_id: studioId, studio_name: 'S', role: 'studio_viewer' }],
     })
@@ -86,13 +86,13 @@ describe('useStudioAccess', () => {
     expect(result.current.canEditSoftwareDefinition).toBe(false)
   })
 
-  it('canEditSoftwareDefinition: tool admin is true', async () => {
+  it('canEditSoftwareDefinition: platform admin is true', async () => {
     const p = profile({
       user: {
         id: 'u1',
         email: 'a@b.com',
         display_name: 'A',
-        is_tool_admin: true,
+        is_platform_admin: true,
       },
       studios: [],
     })
@@ -113,7 +113,7 @@ describe('useStudioAccess', () => {
         id: 'u1',
         email: 'a@b.com',
         display_name: 'A',
-        is_tool_admin: false,
+        is_platform_admin: false,
       },
       studios: [],
       cross_studio_grants: [

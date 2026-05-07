@@ -55,7 +55,7 @@ export function LlmUsageFilterBar(props: {
   mobileFiltersOpen: boolean
   setMobileFiltersOpen: (open: boolean) => void
   profile: MeResponse
-  mode: 'admin' | 'studio' | 'me'
+  mode: 'studio' | 'me'
   filters: LlmUsageFilters
   updateFilters: (patch: Partial<LlmUsageFilters>) => void
   softwareOptions: { id: string; name: string; studio_id: string }[]
@@ -102,7 +102,7 @@ export function LlmUsageFilterBar(props: {
 
   const projectDisabled = filters.softwareIds.length === 0
   const workOrderDisabled = !primaryProjectId
-  const showUserFilter = mode === 'studio' || mode === 'admin'
+  const showUserFilter = mode === 'studio'
 
   const studioFiltered = useMemo(() => {
     const q = listSearch.trim().toLowerCase()
@@ -551,59 +551,41 @@ export function LlmUsageFilterBar(props: {
                 Clear
               </button>
             </div>
-            {mode === 'admin' ? (
-              <textarea
-                rows={5}
-                placeholder="User IDs (comma or newline separated)"
-                className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 font-mono text-xs text-zinc-200"
-                value={filters.userIds.join(', ')}
-                onChange={(e) => {
-                  const parts = e.target.value
-                    .split(/[\s,]+/)
-                    .map((x) => x.trim())
-                    .filter(Boolean)
-                  updateFilters({ userIds: [...new Set(parts)] })
-                }}
-              />
-            ) : (
-              <>
-                <input
-                  type="search"
-                  placeholder="Search…"
-                  autoComplete="off"
-                  className="mb-2 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-200 placeholder:text-zinc-600"
-                  value={listSearch}
-                  onChange={(e) => setListSearch(e.target.value)}
-                />
-                <div className="max-h-52 space-y-1 overflow-y-auto">
-                  {membersFiltered.map((m) => {
-                    const checked = filters.userIds.includes(m.user_id)
-                    const label = m.display_name?.trim() || m.email
-                    return (
-                      <label
-                        key={m.user_id}
-                        className="flex cursor-pointer items-start gap-2 rounded px-1 py-0.5 text-xs text-zinc-300 hover:bg-zinc-900"
-                      >
-                        <input
-                          type="checkbox"
-                          className="mt-0.5 shrink-0 rounded border-zinc-600"
-                          checked={checked}
-                          onChange={(e) => {
-                            const next = e.target.checked
-                              ? [...filters.userIds, m.user_id].filter(
-                                  (x, i, a) => a.indexOf(x) === i,
-                                )
-                              : filters.userIds.filter((x) => x !== m.user_id)
-                            updateFilters({ userIds: next })
-                          }}
-                        />
-                        <span className="min-w-0 break-words">{label}</span>
-                      </label>
-                    )
-                  })}
-                </div>
-              </>
-            )}
+            <input
+              type="search"
+              placeholder="Search…"
+              autoComplete="off"
+              className="mb-2 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-200 placeholder:text-zinc-600"
+              value={listSearch}
+              onChange={(e) => setListSearch(e.target.value)}
+            />
+            <div className="max-h-52 space-y-1 overflow-y-auto">
+              {membersFiltered.map((m) => {
+                const checked = filters.userIds.includes(m.user_id)
+                const label = m.display_name?.trim() || m.email
+                return (
+                  <label
+                    key={m.user_id}
+                    className="flex cursor-pointer items-start gap-2 rounded px-1 py-0.5 text-xs text-zinc-300 hover:bg-zinc-900"
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 shrink-0 rounded border-zinc-600"
+                      checked={checked}
+                      onChange={(e) => {
+                        const next = e.target.checked
+                          ? [...filters.userIds, m.user_id].filter(
+                              (x, i, a) => a.indexOf(x) === i,
+                            )
+                          : filters.userIds.filter((x) => x !== m.user_id)
+                        updateFilters({ userIds: next })
+                      }}
+                    />
+                    <span className="min-w-0 break-words">{label}</span>
+                  </label>
+                )
+              })}
+            </div>
           </>
         )
       case 'date':

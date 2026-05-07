@@ -16,7 +16,7 @@ from tests.integration.test_work_orders import _register, _studio_project_with_s
 async def _promote_tool_admin(db_session: AsyncSession, email: str) -> None:
     r = await db_session.execute(select(User).where(User.email == email))
     u = r.scalar_one()
-    u.is_tool_admin = True
+    u.is_platform_admin = True
     await db_session.flush()
 
 
@@ -89,7 +89,7 @@ async def test_attention_cross_studio_viewer_forbidden(
 
     client.cookies.set("atelier_token", token_ta)
     apr = await client.put(
-        f"/admin/cross-studio/{grant_id}",
+        f"/studios/{studio_a}/cross-studio-incoming/{grant_id}",
         json={"decision": "approve", "access_level": "viewer"},
     )
     assert apr.status_code == 200

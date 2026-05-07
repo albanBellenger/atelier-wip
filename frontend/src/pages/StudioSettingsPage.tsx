@@ -4,18 +4,28 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useStudioAccess } from '../hooks/useStudioAccess'
 import { STUDIO_ROLE_OPTIONS, crossStudioAccessLabel, studioRoleLabel } from '../lib/roleLabels'
+import { STUDIO_BUDGET_OVERAGE_OPTIONS } from '../constants/studioBudgetOverage'
+import { DEPLOYMENT_WIDE_HARD_CAP_USD } from '../data/adminConsoleMock'
 import {
   addMember,
   createSoftware,
   deleteStudio,
   getStudio,
+  getStudioCrossStudioIncoming,
+  getStudioCrossStudioOutgoing,
+  getStudioMemberBudgets,
   listMembers,
   me,
+  patchStudioBudget,
+  patchStudioMemberBudget,
   postStudioCrossStudioRequest,
+  putStudioCrossStudioIncoming,
   removeMember,
   updateMemberRole,
   updateStudio,
   type AuthErrorBody,
+  type CrossStudioIncomingRow,
+  type StudioMemberBudgetRow,
 } from '../services/api'
 
 function formatApiDetail(err: unknown): string {
@@ -156,9 +166,105 @@ export function StudioSettingsPage(): ReactElement {
       setCrossMsg('Request submitted.')
       setTargetSoftwareId('')
       void qc.invalidateQueries({ queryKey: ['auth', 'me'] })
+      void qc.invalidateQueries({ queryKey: ['studio', sid, 'cross-outgoing'] })
     },
     onError: (e: unknown) => {
       setCrossMsg(formatApiDetail(e))
+    },
+  })
+
+  const incomingQ = useQuery({
+    queryKey: ['studio', sid, 'cross-incoming'],
+    queryFn: () => getStudioCrossStudioIncoming(sid, { limit: 200 }),
+    enabled: Boolean(sid && access.isStudioAdmin),
+  })
+
+  const outgoingQ = useQuery({
+    queryKey: ['studio', sid, 'cross-outgoing'],
+    queryFn: () => getStudioCrossStudioOutgoing(sid, { limit: 200 }),
+    enabled: Boolean(sid && access.isStudioAdmin),
+  })
+
+  const memberBudgetsQ = useQuery({
+    queryKey: ['studio', sid, 'member-budgets'],
+    queryFn: () => getStudioMemberBudgets(sid),
+    enabled: Boolean(sid && access.isStudioAdmin),
+  })
+
+  const [studioCapInput, setStudioCapInput] = useState('')
+  const [studioOverage, setStudioOverage] = useState<string>('pause_generations')
+  const [budgetMsg, setBudgetMsg] = useState<string | null>(null)
+  const [incomingMsg, setIncomingMsg] = useState<string | null>(null)
+  const [memberCaps, setMemberCaps] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    const d = studioQ.data
+    if (!d) return
+    const raw = d.budget_cap_monthly_usd
+    setStudioCapInput(
+      raw == null || raw === '' ? '' : String(typeof raw === 'number' ? raw : raw),
+    )
+    if (d.budget_overage_action) {
+      setStudioOverage(d.budget_overage_action)
+    }
+  }, [studioQ.data?.id, studioQ.data?.budget_cap_monthly_usd, studioQ.data?.budget_overage_action])
+
+  useEffect(() => {
+    const rows = memberBudgetsQ.data
+    if (!rows) return
+    const next: Record<string, string> = {}
+    for (const r of rows) {
+      const c = r.budget_cap_monthly_usd
+      next[r.user_id] = c == null || c === '' ? '' : String(c)
+    }
+    setMemberCaps(next)
+  }, [memberBudgetsQ.data])
+
+  const patchStudioBudgetMut = useMutation({
+    mutationFn: () =>
+      patchStudioBudget(sid, {
+        budget_cap_monthly_usd: studioCapInput.trim()
+          ? Number.parseFloat(studioCapInput.trim()).toFixed(2)
+          : null,
+        budget_overage_action: studioOverage,
+      }),
+    onSuccess: async () => {
+      setBudgetMsg('Budget settings saved.')
+      await qc.invalidateQueries({ queryKey: ['studio', sid] })
+    },
+    onError: (e: unknown) => {
+      setBudgetMsg(formatApiDetail(e))
+    },
+  })
+
+  const patchMemberBudgetMut = useMutation({
+    mutationFn: (vars: { userId: string; capUsd: number | null }) =>
+      patchStudioMemberBudget(sid, vars.userId, {
+        budget_cap_monthly_usd: vars.capUsd == null ? null : vars.capUsd.toFixed(2),
+      }),
+    onSuccess: async () => {
+      setBudgetMsg('Member cap updated.')
+      await qc.invalidateQueries({ queryKey: ['studio', sid, 'member-budgets'] })
+    },
+    onError: (e: unknown) => {
+      setBudgetMsg(formatApiDetail(e))
+    },
+  })
+
+  const resolveIncomingMut = useMutation({
+    meta: { skipGlobalToast: true },
+    mutationFn: (vars: {
+      grantId: string
+      body: { decision: 'approve' | 'reject'; access_level?: 'viewer' | 'external_editor' }
+    }) => putStudioCrossStudioIncoming(sid, vars.grantId, vars.body),
+    onSuccess: async () => {
+      setIncomingMsg(null)
+      await qc.invalidateQueries({ queryKey: ['studio', sid, 'cross-incoming'] })
+      await qc.invalidateQueries({ queryKey: ['studio', sid, 'cross-outgoing'] })
+      await qc.invalidateQueries({ queryKey: ['auth', 'me'] })
+    },
+    onError: (e: unknown) => {
+      setIncomingMsg(formatApiDetail(e))
     },
   })
 
@@ -188,7 +294,7 @@ export function StudioSettingsPage(): ReactElement {
 
   return (
     <div className="min-h-screen bg-zinc-950 px-4 py-10 text-zinc-100">
-      <div className="mx-auto max-w-lg space-y-8">
+      <div className="mx-auto max-w-3xl space-y-8">
         <div className="flex flex-wrap items-center gap-4">
           <Link to={`/studios/${sid}`} className="text-sm text-violet-400 hover:underline">
             ← Studio
@@ -376,12 +482,234 @@ export function StudioSettingsPage(): ReactElement {
             </Link>
 
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
-              <h2 className="text-sm font-medium text-zinc-200">
-                Request cross-studio access
-              </h2>
+              <h2 className="text-sm font-medium text-zinc-200">Usage &amp; budget</h2>
               <p className="mt-1 text-xs text-zinc-500">
-                Ask Tool Admin for read or edit access to software owned by another studio.
-                Paste the target software UUID (owner validates on approval).
+                Monthly spend cap and overage handling for this studio. Per-member caps cannot exceed
+                the deployment ceiling of ${DEPLOYMENT_WIDE_HARD_CAP_USD.toFixed(2)} USD.
+              </p>
+              {budgetMsg ? (
+                <p className="mt-2 text-sm text-emerald-400">{budgetMsg}</p>
+              ) : null}
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <label className="block text-xs text-zinc-500">
+                  Studio monthly cap (USD)
+                  <input
+                    type="number"
+                    min={0}
+                    step={50}
+                    className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                    value={studioCapInput}
+                    onChange={(e) => {
+                      setBudgetMsg(null)
+                      setStudioCapInput(e.target.value)
+                    }}
+                  />
+                </label>
+                <label className="block text-xs text-zinc-500">
+                  When over monthly cap
+                  <select
+                    className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                    value={studioOverage}
+                    onChange={(e) => {
+                      setBudgetMsg(null)
+                      setStudioOverage(e.target.value)
+                    }}
+                  >
+                    {STUDIO_BUDGET_OVERAGE_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <button
+                type="button"
+                disabled={patchStudioBudgetMut.isPending}
+                className="mt-4 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+                onClick={() => {
+                  setBudgetMsg(null)
+                  patchStudioBudgetMut.mutate()
+                }}
+              >
+                {patchStudioBudgetMut.isPending ? 'Saving…' : 'Save studio budget'}
+              </button>
+
+              <h3 className="mt-8 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Per-member caps
+              </h3>
+              {memberBudgetsQ.isPending ? (
+                <p className="mt-2 text-sm text-zinc-500">Loading…</p>
+              ) : memberBudgetsQ.isError ? (
+                <p className="mt-2 text-sm text-red-400">Could not load member budgets.</p>
+              ) : (
+                <ul className="mt-3 space-y-3">
+                  {memberBudgetsQ.data?.map((r: StudioMemberBudgetRow) => (
+                    <li
+                      key={r.user_id}
+                      className="flex flex-wrap items-end gap-3 rounded-lg border border-zinc-800 px-3 py-2 text-sm"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="text-zinc-200">{r.display_name}</div>
+                        <div className="text-xs text-zinc-500">{r.email}</div>
+                      </div>
+                      <label className="text-xs text-zinc-500">
+                        Cap (USD)
+                        <input
+                          type="number"
+                          min={0}
+                          step={25}
+                          className="mt-1 w-28 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                          value={memberCaps[r.user_id] ?? ''}
+                          onChange={(e) => {
+                            setBudgetMsg(null)
+                            setMemberCaps((prev) => ({
+                              ...prev,
+                              [r.user_id]: e.target.value,
+                            }))
+                          }}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        disabled={patchMemberBudgetMut.isPending}
+                        className="rounded bg-zinc-700 px-2 py-1 text-xs hover:bg-zinc-600 disabled:opacity-50"
+                        onClick={() => {
+                          const raw = (memberCaps[r.user_id] ?? '').trim()
+                          const n = raw === '' ? null : Number.parseFloat(raw)
+                          if (n != null && (Number.isNaN(n) || n < 0)) {
+                            setBudgetMsg('Invalid cap.')
+                            return
+                          }
+                          patchMemberBudgetMut.mutate({
+                            userId: r.user_id,
+                            capUsd: n,
+                          })
+                        }}
+                      >
+                        Save
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5">
+              <h2 className="text-sm font-medium text-zinc-200">Access requests</h2>
+              <p className="mt-1 text-xs text-zinc-500">
+                Incoming requests target software in this studio. Outbound requests are decided by
+                the other studio&apos;s owners.
+              </p>
+              {incomingMsg ? <p className="mt-2 text-sm text-red-400">{incomingMsg}</p> : null}
+
+              <h3 className="mt-6 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Incoming
+              </h3>
+              {incomingQ.isPending ? (
+                <p className="mt-2 text-sm text-zinc-500">Loading…</p>
+              ) : incomingQ.isError ? (
+                <p className="mt-2 text-sm text-red-400">Could not load incoming requests.</p>
+              ) : (
+                <ul className="mt-2 space-y-2 text-sm">
+                  {(incomingQ.data ?? []).length === 0 ? (
+                    <li className="text-zinc-500">No requests.</li>
+                  ) : (
+                    (incomingQ.data ?? []).map((row: CrossStudioIncomingRow) => (
+                      <li
+                        key={row.id}
+                        className="rounded-lg border border-zinc-800 px-3 py-2 text-zinc-200"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="font-medium">{row.target_software_name}</div>
+                            <div className="text-xs text-zinc-500">
+                              From {row.requesting_studio_name} · {row.requester_email}
+                            </div>
+                            <div className="text-xs text-zinc-500">
+                              {crossStudioAccessLabel(row.access_level as 'viewer' | 'external_editor')}{' '}
+                              · {row.status}
+                            </div>
+                          </div>
+                          {row.status === 'pending' ? (
+                            <span className="flex gap-2">
+                              <button
+                                type="button"
+                                className="rounded bg-emerald-700 px-2 py-1 text-xs text-white hover:bg-emerald-600 disabled:opacity-50"
+                                disabled={resolveIncomingMut.isPending}
+                                onClick={() => {
+                                  setIncomingMsg(null)
+                                  resolveIncomingMut.mutate({
+                                    grantId: row.id,
+                                    body: {
+                                      decision: 'approve',
+                                      access_level:
+                                        row.access_level === 'external_editor'
+                                          ? 'external_editor'
+                                          : 'viewer',
+                                    },
+                                  })
+                                }}
+                              >
+                                Approve
+                              </button>
+                              <button
+                                type="button"
+                                className="rounded bg-zinc-700 px-2 py-1 text-xs hover:bg-zinc-600 disabled:opacity-50"
+                                disabled={resolveIncomingMut.isPending}
+                                onClick={() => {
+                                  setIncomingMsg(null)
+                                  resolveIncomingMut.mutate({
+                                    grantId: row.id,
+                                    body: { decision: 'reject' },
+                                  })
+                                }}
+                              >
+                                Reject
+                              </button>
+                            </span>
+                          ) : null}
+                        </div>
+                      </li>
+                    ))
+                  )}
+                </ul>
+              )}
+
+              <h3 className="mt-6 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                Outgoing
+              </h3>
+              {outgoingQ.isPending ? (
+                <p className="mt-2 text-sm text-zinc-500">Loading…</p>
+              ) : outgoingQ.isError ? (
+                <p className="mt-2 text-sm text-red-400">Could not load outgoing requests.</p>
+              ) : (
+                <ul className="mt-2 space-y-2 text-sm">
+                  {(outgoingQ.data ?? []).length === 0 ? (
+                    <li className="text-zinc-500">No outbound requests.</li>
+                  ) : (
+                    (outgoingQ.data ?? []).map((row) => (
+                      <li
+                        key={row.id}
+                        className="rounded-lg border border-zinc-800 px-3 py-2 text-zinc-200"
+                      >
+                        <div className="font-medium">{row.target_software_name}</div>
+                        <div className="text-xs text-zinc-500">
+                          Owner studio: {row.owner_studio_name} ·{' '}
+                          {crossStudioAccessLabel(row.access_level as 'viewer' | 'external_editor')} ·{' '}
+                          {row.status}
+                        </div>
+                      </li>
+                    ))
+                  )}
+                </ul>
+              )}
+
+              <h3 className="mt-8 text-xs font-medium uppercase tracking-wide text-zinc-500">
+                New outbound request
+              </h3>
+              <p className="mt-1 text-xs text-zinc-500">
+                Paste the target software UUID. The other studio&apos;s owners approve or reject.
               </p>
               {crossMsg ? (
                 <p

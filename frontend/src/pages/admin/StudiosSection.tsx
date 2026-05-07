@@ -20,12 +20,9 @@ import {
   getAdminStudio,
   getAdminStudioLlmPolicy,
   listAdminStudios,
-  patchAdminStudioGitlab,
   postAdminStudio,
   putAdminStudioLlmPolicy,
 } from '../../services/api'
-
-const PUBLISH_STRATEGIES = ['Pull Request', 'Direct push', 'Manual export'] as const
 
 function formatApiDetail(err: unknown): string {
   if (err && typeof err === 'object' && 'detail' in err) {
@@ -72,12 +69,6 @@ export function StudiosSection(): ReactElement {
   const [newName, setNewName] = useState('')
   const [newDescription, setNewDescription] = useState('')
 
-  const [gitProvider, setGitProvider] = useState('')
-  const [gitRepoUrl, setGitRepoUrl] = useState('')
-  const [gitBranch, setGitBranch] = useState('')
-  const [gitPublishStrategy, setGitPublishStrategy] = useState('')
-  const [newGitToken, setNewGitToken] = useState('')
-
   const studiosQ = useQuery({
     queryKey: ['admin', 'studios'],
     queryFn: () => listAdminStudios(),
@@ -113,20 +104,6 @@ export function StudiosSection(): ReactElement {
 
   const detail = detailQ.data
 
-  useEffect(() => {
-    if (!detail || detail.id !== selectedId) return
-    const g = detail.gitlab
-    setGitProvider(g.git_provider ?? '')
-    setGitRepoUrl(g.git_repo_url ?? '')
-    setGitBranch(g.git_branch ?? '')
-    setGitPublishStrategy(
-      g.git_publish_strategy && PUBLISH_STRATEGIES.includes(g.git_publish_strategy as (typeof PUBLISH_STRATEGIES)[number])
-        ? g.git_publish_strategy
-        : g.git_publish_strategy || PUBLISH_STRATEGIES[0],
-    )
-    setNewGitToken('')
-  }, [detail, selectedId])
-
   const createMut = useMutation({
     mutationFn: () =>
       postAdminStudio({
@@ -140,22 +117,6 @@ export function StudiosSection(): ReactElement {
       await qc.invalidateQueries({ queryKey: ['admin', 'studios'] })
       await qc.invalidateQueries({ queryKey: ['admin', 'overview'] })
       setSelectedId(studio.id)
-    },
-  })
-
-  const saveGitMut = useMutation({
-    mutationFn: () =>
-      patchAdminStudioGitlab(selectedId, {
-        git_provider: gitProvider.trim() ? gitProvider.trim() : null,
-        git_repo_url: gitRepoUrl.trim() ? gitRepoUrl.trim() : null,
-        git_branch: gitBranch.trim() ? gitBranch.trim() : null,
-        git_publish_strategy: gitPublishStrategy.trim()
-          ? gitPublishStrategy.trim()
-          : null,
-        git_token: newGitToken.trim() ? newGitToken.trim() : undefined,
-      }),
-    onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ['admin', 'studios', selectedId, 'detail'] })
     },
   })
 
@@ -192,13 +153,6 @@ export function StudiosSection(): ReactElement {
   )
 
   const list = studiosQ.data ?? []
-  const publishOptions = useMemo(() => {
-    const s = new Set<string>([...PUBLISH_STRATEGIES])
-    if (gitPublishStrategy && !s.has(gitPublishStrategy)) {
-      s.add(gitPublishStrategy)
-    }
-    return [...s]
-  }, [gitPublishStrategy])
   const gitlab = detail?.gitlab
   const connected =
     Boolean(gitlab?.git_repo_url?.trim()) && Boolean(gitlab?.git_token_set)
@@ -228,7 +182,7 @@ export function StudiosSection(): ReactElement {
       <div className="space-y-6">
         <PageTitle
           title="Studios"
-          subtitle="Create and configure studios. Connect GitLab for publishing; LLM access is managed in LLM connectivity."
+          subtitle="Read-only directory of all studios. Per-studio Git and budgets are managed by studio owners; LLM registry and routing stay in LLM connectivity."
         />
         <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-6 text-sm text-zinc-400">
           <p>No studios yet. Create one to get started.</p>
@@ -265,7 +219,7 @@ export function StudiosSection(): ReactElement {
     <div className="space-y-6">
       <PageTitle
         title="Studios"
-        subtitle="Create and configure studios. Connect GitLab for publishing; LLM access is managed in LLM connectivity."
+        subtitle="Read-only directory of all studios. Per-studio Git and budgets are managed by studio owners; LLM registry and routing stay in LLM connectivity."
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr]">
@@ -350,79 +304,36 @@ export function StudiosSection(): ReactElement {
                 }
               >
                 <div className="grid grid-cols-1 gap-x-6 gap-y-4 p-5 sm:grid-cols-2">
-                  <div className="sm:col-span-2">
-                    <StatLabel>Git provider</StatLabel>
-                    <input
-                      value={gitProvider}
-                      onChange={(e) => setGitProvider(e.target.value)}
-                      className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-[13px] text-zinc-100 outline-none focus:border-zinc-600"
-                      placeholder="gitlab"
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <StatLabel>Repository URL</StatLabel>
-                    <input
-                      value={gitRepoUrl}
-                      onChange={(e) => setGitRepoUrl(e.target.value)}
-                      className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[12px] text-zinc-100 outline-none focus:border-zinc-600"
-                      placeholder="https://gitlab.example.com/group/project.git"
-                    />
-                  </div>
-                  <div>
-                    <StatLabel>Default branch</StatLabel>
-                    <input
-                      value={gitBranch}
-                      onChange={(e) => setGitBranch(e.target.value)}
-                      className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[12px] text-zinc-100 outline-none focus:border-zinc-600"
-                      placeholder="main"
-                    />
-                  </div>
-                  <div>
-                    <StatLabel>Publish strategy</StatLabel>
-                    <select
-                      value={gitPublishStrategy}
-                      onChange={(e) => setGitPublishStrategy(e.target.value)}
-                      className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-[13px] text-zinc-100 outline-none"
-                    >
-                      {publishOptions.map((o) => (
-                        <option key={o} value={o}>
-                          {o}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <StatLabel>Deploy token</StatLabel>
-                    <p className="mt-1 text-[11px] text-zinc-500">
-                      Stored token: {gitlab?.git_token_set ? 'set' : 'not set'}. Enter a new
-                      value below to rotate (optional).
-                    </p>
-                    <input
-                      value={newGitToken}
-                      onChange={(e) => setNewGitToken(e.target.value)}
-                      type="password"
-                      autoComplete="off"
-                      className="mt-2 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[12px] text-zinc-100 outline-none focus:border-zinc-600"
-                      placeholder="glpat-…"
-                    />
-                  </div>
+                  <Field
+                    label="Git provider"
+                    value={gitlab?.git_provider?.trim() || '—'}
+                    readOnly
+                  />
+                  <Field
+                    label="Default branch"
+                    value={gitlab?.git_branch?.trim() || '—'}
+                    readOnly
+                  />
+                  <Field
+                    label="Repository URL"
+                    value={gitlab?.git_repo_url?.trim() || '—'}
+                    mono
+                    readOnly
+                  />
+                  <Field
+                    label="Publish strategy"
+                    value={gitlab?.git_publish_strategy?.trim() || '—'}
+                    readOnly
+                  />
+                  <Field
+                    label="Deploy token"
+                    value={gitlab?.git_token_set ? 'set' : 'not set'}
+                    readOnly
+                  />
                 </div>
-                <div className="flex items-center justify-end border-t border-zinc-800/60 px-5 py-3">
-                  <Btn
-                    type="button"
-                    tone="primary"
-                    style={{ background: ADMIN_CONSOLE_ACCENT }}
-                    disabled={saveGitMut.isPending || !selectedId}
-                    onClick={() => saveGitMut.mutate()}
-                  >
-                    {saveGitMut.isPending ? 'Saving…' : 'Save GitLab settings'}
-                  </Btn>
-                </div>
-                {saveGitMut.isError ? (
-                  <p className="px-5 pb-3 text-[12px] text-rose-300" role="alert">
-                    {formatApiDetail(saveGitMut.error)}
-                  </p>
-                ) : null}
+                <p className="border-t border-zinc-800/60 px-5 py-3 text-[11px] text-zinc-500">
+                  Git settings are managed by each studio&apos;s owners in software settings.
+                </p>
               </Card>
 
               <Card title="Allowed providers (this studio)">

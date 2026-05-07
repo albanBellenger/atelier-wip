@@ -14,7 +14,7 @@ function profileTwoStudios(): MeResponse {
       id: 'u1',
       email: 'a@b.com',
       display_name: 'Alex',
-      is_tool_admin: false,
+      is_platform_admin: false,
     },
     studios: [
       { studio_id: 's-active', studio_name: 'Northwind', role: 'studio_member' },
@@ -25,7 +25,7 @@ function profileTwoStudios(): MeResponse {
 }
 
 describe('BuilderHomeHeader', () => {
-  it('shows Admin console link before notifications for tool admin only', () => {
+  it('shows Admin console link before notifications for platform admin only', () => {
     vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
       items: [],
       next_cursor: null,
@@ -33,7 +33,7 @@ describe('BuilderHomeHeader', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const toolAdmin: MeResponse = {
       ...profileTwoStudios(),
-      user: { ...profileTwoStudios().user, is_tool_admin: true },
+      user: { ...profileTwoStudios().user, is_platform_admin: true },
     }
     render(
       <MemoryRouter initialEntries={['/']}>
@@ -64,6 +64,63 @@ describe('BuilderHomeHeader', () => {
     expect(
       screen.queryByRole('link', { name: /admin console/i }),
     ).not.toBeInTheDocument()
+  })
+
+  it('links current studio name to the studio page when switcher is enabled', () => {
+    vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
+      items: [],
+      next_cursor: null,
+    })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <QueryClientProvider client={qc}>
+          <BuilderHomeHeader
+            profile={profileTwoStudios()}
+            studioId="s-active"
+            onStudioChange={vi.fn()}
+            onLogout={vi.fn()}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('link', { name: /^northwind$/i })).toHaveAttribute(
+      'href',
+      '/studios/s-active',
+    )
+  })
+
+  it('links studio name to the studio page when only one studio (no switcher)', () => {
+    vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
+      items: [],
+      next_cursor: null,
+    })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const oneStudio: MeResponse = {
+      ...profileTwoStudios(),
+      studios: [
+        {
+          studio_id: 's-solo',
+          studio_name: 'Solo Studio',
+          role: 'studio_member',
+        },
+      ],
+    }
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <BuilderHomeHeader
+            profile={oneStudio}
+            studioId="s-solo"
+            onLogout={vi.fn()}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('link', { name: /^solo studio$/i })).toHaveAttribute(
+      'href',
+      '/studios/s-solo',
+    )
   })
 
   it('links the Atelier brand to the landing page', () => {
@@ -111,7 +168,7 @@ describe('BuilderHomeHeader', () => {
       </MemoryRouter>,
     )
 
-    await user.click(screen.getByRole('button', { name: /northwind/i }))
+    await user.click(screen.getByRole('button', { name: /switch studio/i }))
 
     const northwindRow = screen.getByRole('button', {
       name: /northwind.*builder/i,

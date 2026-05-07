@@ -17,7 +17,7 @@ function renderConsoleAt(
       id: 'u-admin',
       email: 'admin@example.com',
       display_name: 'Admin',
-      is_tool_admin: toolAdmin,
+      is_platform_admin: toolAdmin,
     },
     studios: [],
     cross_studio_grants: [],
@@ -42,20 +42,20 @@ function renderConsoleAt(
 }
 
 describe('AdminConsolePage', () => {
-  it('shows overview KPIs for tool admin', async () => {
+  it('shows overview KPIs for platform admin', async () => {
     renderConsoleAt('/admin/console/overview', true)
     expect(await screen.findByRole('heading', { name: /^Overview$/ })).toBeInTheDocument()
     expect(await screen.findByText('Studios at a glance')).toBeInTheDocument()
     expect(screen.getByText('Northwind Atelier')).toBeInTheDocument()
   })
 
-  it('denies access when user is not tool admin', async () => {
+  it('denies access when user is not platform admin', async () => {
     renderConsoleAt('/admin/console/overview', false)
     await waitFor(() => {
       expect(screen.getByText('Access denied')).toBeInTheDocument()
     })
     expect(
-      screen.getByText(/Tool administrator privileges are required/i),
+      screen.getByText(/Platform administrator privileges are required/i),
     ).toBeInTheDocument()
   })
 
@@ -82,16 +82,15 @@ describe('AdminConsolePage', () => {
           },
         },
       ],
-      mtd_spend_total_usd: '42.10',
       active_builders_count: 12,
       embedding_collection_count: 0,
       recent_activity: [],
     })
     await screen.findByRole('heading', { name: /^Overview$/ })
     const nav = screen.getByRole('navigation')
-    expect(await within(nav).findByText('$42.10')).toBeInTheDocument()
+    expect(await within(nav).findByText('$1.00')).toBeInTheDocument()
     expect(
-      within(nav).getByText(/across 1 studio · 12 active builders/i),
+      within(nav).getByText(/Sum of listed studios \(no cross-studio aggregate\) · 1 studio · 12 active builders/i),
     ).toBeInTheDocument()
   })
 })

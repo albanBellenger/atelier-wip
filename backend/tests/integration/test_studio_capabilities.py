@@ -153,7 +153,7 @@ async def test_capabilities_cross_studio_editor(client: AsyncClient) -> None:
 
     client.cookies.set("atelier_token", token_ta)
     apr = await client.put(
-        f"/admin/cross-studio/{grant_id}",
+        f"/studios/{studio_a}/cross-studio-incoming/{grant_id}",
         json={"decision": "approve", "access_level": "external_editor"},
     )
     assert apr.status_code == 200
@@ -214,7 +214,7 @@ async def test_capabilities_cross_studio_viewer(client: AsyncClient) -> None:
 
     client.cookies.set("atelier_token", token_ta)
     apr = await client.put(
-        f"/admin/cross-studio/{grant_id}",
+        f"/studios/{studio_a}/cross-studio-incoming/{grant_id}",
         json={"decision": "approve", "access_level": "viewer"},
     )
     assert apr.status_code == 200

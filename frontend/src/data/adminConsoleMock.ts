@@ -1,10 +1,10 @@
-/** Demo content for the tool-admin console UI until backend APIs exist. */
+/** Demo content for the platform-admin console UI until backend APIs exist. */
 
 export const ADMIN_USER = {
   name: 'Sasha Wren',
   email: 'sasha@atelier.dev',
   initials: 'SW',
-  role: 'Tool admin',
+  role: 'Platform admin',
 } as const
 
 export type StudioRow = {

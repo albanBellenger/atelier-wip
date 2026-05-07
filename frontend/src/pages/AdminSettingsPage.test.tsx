@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const apiMocks = vi.hoisted(() => ({
   me: vi.fn(),
-  getAdminConfig: vi.fn(),
+  getAdminEmbeddingConfig: vi.fn(),
   getAdminLlmModelSuggestions: vi.fn(),
 }))
 
@@ -15,7 +15,7 @@ vi.mock('../services/api', async (importOriginal) => {
   return {
     ...actual,
     me: apiMocks.me,
-    getAdminConfig: apiMocks.getAdminConfig,
+    getAdminEmbeddingConfig: apiMocks.getAdminEmbeddingConfig,
     getAdminLlmModelSuggestions: apiMocks.getAdminLlmModelSuggestions,
   }
 })
@@ -32,15 +32,11 @@ describe('AdminSettingsPage', () => {
         id: 'u1',
         email: 'ta@example.com',
         display_name: 'TA',
-        is_tool_admin: true,
+        is_platform_admin: true,
       },
       studios: [],
     })
-    apiMocks.getAdminConfig.mockResolvedValue({
-      llm_provider: 'openai',
-      llm_model: '',
-      llm_api_base_url: null,
-      llm_api_key_set: false,
+    apiMocks.getAdminEmbeddingConfig.mockResolvedValue({
       embedding_provider: 'openai',
       embedding_model: '',
       embedding_api_base_url: null,
@@ -56,7 +52,7 @@ describe('AdminSettingsPage', () => {
     vi.clearAllMocks()
   })
 
-  it('requests LLM catalog suggestions after debounced typing in model field', async () => {
+  it('requests embedding catalog suggestions after debounced typing in model field', async () => {
     const user = userEvent.setup()
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
@@ -67,11 +63,11 @@ describe('AdminSettingsPage', () => {
       </MemoryRouter>,
     )
 
-    await screen.findByText('Tool admin settings')
+    await screen.findByText('Embedding settings')
     const modelInput = await screen.findByPlaceholderText(
-      /Type 2\+ characters for LiteLLM catalog suggestions/i,
+      /Type 2\+ characters for embedding catalog suggestions/i,
     )
-    await user.type(modelInput, 'gp')
+    await user.type(modelInput, 'te')
 
     await waitFor(
       () => {
@@ -81,8 +77,8 @@ describe('AdminSettingsPage', () => {
     )
     expect(
       suggestSpy.mock.calls.some((c) => {
-        const p = c[0] as { q?: string | null }
-        return String(p?.q ?? '').includes('gp')
+        const p = c[0] as { q?: string | null; mode?: string }
+        return String(p?.q ?? '').includes('te') && p?.mode === 'embedding'
       }),
     ).toBe(true)
   })

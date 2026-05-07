@@ -128,33 +128,58 @@ export function BuilderHomeHeader({
           <span className="shrink-0 text-zinc-700">/</span>
           <div className="relative min-w-0">
             {showStudioSwitcher ? (
-              <button
-                type="button"
-                onClick={() => setStudioOpen((o) => !o)}
-                onBlur={() => setTimeout(() => setStudioOpen(false), 120)}
-                disabled={profile.studios.length === 0}
-                className="group flex max-w-full items-center gap-2 rounded-md border border-transparent px-2 py-1 text-left text-[15px] font-semibold text-zinc-100 hover:border-zinc-800 hover:bg-zinc-900/60 disabled:opacity-50"
+              <div
+                className={`group flex max-w-full items-center rounded-md border border-transparent text-[15px] font-semibold text-zinc-100 hover:border-zinc-800 hover:bg-zinc-900/60 ${
+                  profile.studios.length === 0 ? 'opacity-50' : ''
+                }`}
               >
-                <span className="truncate">
-                  {current?.studio_name ?? 'No studio'}
-                </span>
-                <svg
-                  width="10"
-                  height="10"
-                  viewBox="0 0 10 10"
-                  fill="none"
-                  className="shrink-0 text-zinc-500 group-hover:text-zinc-300"
-                  aria-hidden
+                {effectiveStudioId && profile.studios.length > 0 ? (
+                  <Link
+                    to={`/studios/${effectiveStudioId}`}
+                    className="min-w-0 flex-1 truncate px-2 py-1 text-left text-zinc-100 hover:text-zinc-50 focus-visible:z-10 focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
+                  >
+                    {current?.studio_name ?? 'No studio'}
+                  </Link>
+                ) : (
+                  <span className="block min-w-0 flex-1 truncate px-2 py-1 text-left">
+                    {current?.studio_name ?? 'No studio'}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  aria-label="Switch studio"
+                  aria-expanded={studioOpen}
+                  aria-haspopup="listbox"
+                  disabled={profile.studios.length === 0}
+                  onClick={() => setStudioOpen((o) => !o)}
+                  onBlur={() => setTimeout(() => setStudioOpen(false), 120)}
+                  className="flex shrink-0 items-center rounded-sm px-1.5 py-1 text-zinc-500 hover:text-zinc-300 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
                 >
-                  <path
-                    d="M2 4l3 3 3-3"
-                    stroke="currentColor"
-                    strokeWidth="1.3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
+                  <svg
+                    width="10"
+                    height="10"
+                    viewBox="0 0 10 10"
+                    fill="none"
+                    className="shrink-0"
+                    aria-hidden
+                  >
+                    <path
+                      d="M2 4l3 3 3-3"
+                      stroke="currentColor"
+                      strokeWidth="1.3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              </div>
+            ) : effectiveStudioId ? (
+              <Link
+                to={`/studios/${effectiveStudioId}`}
+                className="block max-w-full truncate px-2 py-1 text-[15px] font-semibold text-zinc-100 hover:text-zinc-50 focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
+              >
+                {current?.studio_name ?? 'No studio'}
+              </Link>
             ) : (
               <span className="block max-w-full truncate px-2 py-1 text-[15px] font-semibold text-zinc-100">
                 {current?.studio_name ?? 'No studio'}
@@ -389,7 +414,7 @@ export function BuilderHomeHeader({
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-4 text-sm">
-        {profile.user.is_tool_admin ? (
+        {profile.user.is_platform_admin ? (
           <Link
             to="/admin/console"
             className="flex h-9 shrink-0 items-center rounded-md border border-zinc-800 bg-zinc-900/60 px-2.5 text-[12px] font-semibold tracking-tight text-zinc-300 transition hover:border-zinc-700 hover:text-zinc-100"

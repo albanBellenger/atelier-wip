@@ -48,7 +48,7 @@ class AdminUserDirectoryService:
                     user_id=u.id,
                     email=u.email,
                     display_name=u.display_name,
-                    is_tool_admin=u.is_tool_admin,
+                    is_platform_admin=u.is_platform_admin,
                     created_at=u.created_at,
                     studio_memberships=studios_payload,
                 )

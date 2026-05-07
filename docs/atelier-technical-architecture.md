@@ -78,7 +78,7 @@ id            UUID PRIMARY KEY,
 email         TEXT UNIQUE NOT NULL,
 password_hash TEXT NOT NULL,
 display_name  TEXT NOT NULL,
-is_tool_admin BOOLEAN DEFAULT FALSE,
+is_platform_admin BOOLEAN DEFAULT FALSE,
 created_at    TIMESTAMPTZ DEFAULT NOW()
 ```
 
@@ -350,15 +350,16 @@ CREATE INDEX ON mcp_keys       (studio_id,  revoked_at);
 ### AuthService
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
-| `/auth/register` | POST | Public | Create user, return JWT. First user gets `is_tool_admin=true` |
+| `/auth/register` | POST | Public | Create user, return JWT. First user gets `is_platform_admin=true` |
 | `/auth/login` | POST | Public | Verify credentials, return JWT |
 | `/auth/me` | GET | JWT | Return current user + per-studio roles |
 
 ### AdminService
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
-| `/admin/config` | GET | Tool Admin | Get LLM + embedding config |
-| `/admin/config` | PUT | Tool Admin | Update config |
+| `/admin/embedding-config` | GET | Tool Admin | Get embedding singleton (model, keys, dimension) |
+| `/admin/embedding-config` | PUT | Tool Admin | Update embedding singleton |
+| `/admin/config` | GET/PUT | Tool Admin | **Removed** — returns **404** (use `/admin/embedding-config` and Admin Console → LLM) |
 | `/admin/cross-studio` | GET | Tool Admin | List pending cross-studio access requests |
 | `/admin/cross-studio/{id}` | PUT | Tool Admin | Approve or reject request |
 | `/admin/token-usage` | GET | Tool Admin | All-studio token usage with filters |
@@ -1092,7 +1093,8 @@ ENCRYPTION_KEY=changeme-32-byte-fernet-key
 ### Admin (Tool Admin only)
 | Method | Path | Description |
 |---|---|---|
-| GET/PUT | `/admin/config` | LLM + embedding config |
+| GET/PUT | `/admin/embedding-config` | Embedding singleton (not LLM chat credentials) |
+| GET/PUT | `/admin/config` | **404** — removed; use embedding-config + LLM registry |
 | GET | `/admin/cross-studio` | Pending access requests |
 | PUT | `/admin/cross-studio/{id}` | Approve / reject |
 | GET | `/admin/token-usage` | All-studio usage |

@@ -44,39 +44,17 @@ class AuthService:
                 message="An account with this email already exists",
             )
         n_users = await self.db.scalar(select(func.count()).select_from(User)) or 0
-        is_tool_admin = (n_users or 0) == 0
+        is_platform_admin = (n_users or 0) == 0
         user = User(
             id=uuid.uuid4(),
             email=body.email.lower().strip(),
             password_hash=hash_password(body.password),
             display_name=body.display_name.strip(),
-            is_tool_admin=is_tool_admin,
+            is_platform_admin=is_platform_admin,
         )
         self.db.add(user)
         await self.db.flush()
         return create_access_token(user.id)
-
-    async def create_user_by_admin(self, body: UserCreate) -> UserPublic:
-        """Create a registered user without issuing a session (tool admin provisioning)."""
-        existing_id = await self.db.scalar(
-            select(User.id).where(User.email == body.email.lower().strip())
-        )
-        if existing_id is not None:
-            raise ApiError(
-                status_code=409,
-                code="EMAIL_IN_USE",
-                message="An account with this email already exists",
-            )
-        user = User(
-            id=uuid.uuid4(),
-            email=body.email.lower().strip(),
-            password_hash=hash_password(body.password),
-            display_name=body.display_name.strip(),
-            is_tool_admin=False,
-        )
-        self.db.add(user)
-        await self.db.flush()
-        return UserPublic.model_validate(user)
 
     async def login(self, email: str, password: str) -> str:
         row = (
@@ -142,13 +120,16 @@ class AuthService:
         )
 
     async def llm_runtime_public(self) -> LlmRuntimePublic:
-        from app.services.admin_service import AdminService
-
-        row = await AdminService(self.db).get_or_create()
-        return LlmRuntimePublic(
-            llm_provider=row.llm_provider,
-            llm_model=row.llm_model,
+        from app.services.llm_registry_credentials import (
+            first_registry_model,
+            get_default_llm_registry_row,
         )
+
+        row = await get_default_llm_registry_row(self.db)
+        if row is None:
+            return LlmRuntimePublic(llm_provider=None, llm_model=None)
+        m = first_registry_model(row)
+        return LlmRuntimePublic(llm_provider=row.provider_key, llm_model=m)
 
     async def patch_profile(self, user: User, body: UserProfilePatch) -> MeResponse:
         row = await self.db.execute(select(User).where(User.id == user.id))
@@ -185,7 +166,7 @@ class AuthService:
                 User.email,
                 User.password_hash,
                 User.display_name,
-                User.is_tool_admin,
+                User.is_platform_admin,
                 User.created_at,
             ).where(User.id == uid)
         )
@@ -201,6 +182,6 @@ class AuthService:
             email=t.email,
             password_hash=t.password_hash,
             display_name=t.display_name,
-            is_tool_admin=t.is_tool_admin,
+            is_platform_admin=t.is_platform_admin,
             created_at=t.created_at,
         )

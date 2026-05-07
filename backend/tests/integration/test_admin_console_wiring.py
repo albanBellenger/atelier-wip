@@ -39,7 +39,7 @@ async def test_admin_users_directory_forbidden_for_member(client: AsyncClient) -
     assert tok
     client.cookies.set("atelier_token", tok)
     denied = await client.get("/admin/users")
-    assert denied.status_code == 403
+    assert denied.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -65,7 +65,7 @@ async def test_admin_overview_and_activity_ok(
     await db_session.execute(
         update(User)
         .where(User.email == admin_email.lower())
-        .values(is_tool_admin=True)
+        .values(is_platform_admin=True)
     )
     await db_session.flush()
 
@@ -96,17 +96,11 @@ async def test_admin_overview_and_activity_ok(
         bs = body["studios"][0]["budget_status"]
         assert "severity" in bs
         assert "is_capped" in bs
-    assert "mtd_spend_total_usd" in body
     assert "recent_activity" in body
     assert len(body["recent_activity"]) >= 1
 
     users = await client.get("/admin/users")
-    assert users.status_code == 200
-    urows = users.json()
-    assert isinstance(urows, list)
-    assert len(urows) >= 1
-    assert "created_at" in urows[0]
-    assert "studio_memberships" in urows[0]
+    assert users.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -130,7 +124,7 @@ async def test_admin_put_llm_provider_optional_api_base_url(
     from app.models import User
 
     await db_session.execute(
-        update(User).where(User.email == admin_email.lower()).values(is_tool_admin=True)
+        update(User).where(User.email == admin_email.lower()).values(is_platform_admin=True)
     )
     await db_session.flush()
 
@@ -191,7 +185,7 @@ async def test_admin_put_llm_routing_tool_admin_ok(
     from app.models import User
 
     await db_session.execute(
-        update(User).where(User.email == admin_email.lower()).values(is_tool_admin=True)
+        update(User).where(User.email == admin_email.lower()).values(is_platform_admin=True)
     )
     await db_session.flush()
 
@@ -334,7 +328,7 @@ async def test_admin_llm_deployment_ok(client: AsyncClient, db_session: AsyncSes
     from app.models import User
 
     await db_session.execute(
-        update(User).where(User.email == admin_email.lower()).values(is_tool_admin=True)
+        update(User).where(User.email == admin_email.lower()).values(is_platform_admin=True)
     )
     await db_session.flush()
 
@@ -350,13 +344,11 @@ async def test_admin_llm_deployment_ok(client: AsyncClient, db_session: AsyncSes
     r = await client.get("/admin/llm/deployment")
     assert r.status_code == 200
     payload = r.json()
-    assert "credentials" in payload
+    assert "has_providers" in payload
     assert "providers" in payload
     assert isinstance(payload["providers"], list)
-    cred = payload["credentials"]
-    assert "llm_provider" in cred
-    assert "llm_model" in cred
-    assert "llm_api_key_set" in cred
+    assert isinstance(payload["has_providers"], bool)
+    assert payload["has_providers"] == (len(payload["providers"]) > 0)
 
 
 @pytest.mark.asyncio
@@ -409,7 +401,7 @@ async def test_admin_post_test_llm_accepts_body(client: AsyncClient, db_session:
     from app.models import User
 
     await db_session.execute(
-        update(User).where(User.email == admin_email.lower()).values(is_tool_admin=True)
+        update(User).where(User.email == admin_email.lower()).values(is_platform_admin=True)
     )
     await db_session.flush()
 
@@ -466,7 +458,7 @@ async def test_admin_patch_studio_budget_overage_action(
     from app.models import User
 
     await db_session.execute(
-        update(User).where(User.email == admin_email.lower()).values(is_tool_admin=True)
+        update(User).where(User.email == admin_email.lower()).values(is_platform_admin=True)
     )
     await db_session.flush()
 
@@ -489,7 +481,7 @@ async def test_admin_patch_studio_budget_overage_action(
     assert row["budget_overage_action"] == "pause_generations"
 
     patch = await client.patch(
-        f"/admin/studios/{studio_id}/budget",
+        f"/studios/{studio_id}/budget",
         json={"budget_overage_action": "allow_with_warning"},
     )
     assert patch.status_code == 204
@@ -549,7 +541,7 @@ async def test_admin_llm_model_suggestions_catalog_mocked(
     from app.models import User
 
     await db_session.execute(
-        update(User).where(User.email == admin_email.lower()).values(is_tool_admin=True)
+        update(User).where(User.email == admin_email.lower()).values(is_platform_admin=True)
     )
     await db_session.flush()
 
@@ -616,27 +608,30 @@ async def test_admin_llm_model_suggestions_auto_catalog_when_upstream_404(
             "display_name": "TA",
         },
     )
-    from sqlalchemy import update
+    from sqlalchemy import delete, update
 
-    from app.models import AdminConfig, User
+    from app.models import LlmProviderRegistry, User
+    from app.security.field_encryption import encode_admin_stored_secret
 
     await db_session.execute(
-        update(User).where(User.email == admin_email.lower()).values(is_tool_admin=True)
+        update(User).where(User.email == admin_email.lower()).values(is_platform_admin=True)
     )
-    cfg = await db_session.get(AdminConfig, 1)
-    if cfg is None:
-        db_session.add(
-            AdminConfig(
-                id=1,
-                llm_provider="openai",
-                llm_model="gpt-4o-mini",
-                llm_api_key="sk-test",
-            )
+    await db_session.execute(delete(LlmProviderRegistry))
+    db_session.add(
+        LlmProviderRegistry(
+            id=uuid.uuid4(),
+            provider_key="openai",
+            display_name="OpenAI",
+            models_json='["gpt-4o-mini"]',
+            api_base_url=None,
+            logo_url=None,
+            status="connected",
+            is_default=True,
+            sort_order=0,
+            api_key=encode_admin_stored_secret("sk-test"),
+            litellm_provider_slug="openai",
         )
-    else:
-        cfg.llm_provider = "openai"
-        cfg.llm_model = "gpt-4o-mini"
-        cfg.llm_api_key = cfg.llm_api_key or "sk-test"
+    )
     await db_session.flush()
 
     class FakeResp:

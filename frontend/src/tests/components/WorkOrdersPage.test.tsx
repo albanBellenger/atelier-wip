@@ -48,7 +48,7 @@ describe('WorkOrdersPage archived', () => {
         id: 'u1',
         email: 'm@b.com',
         display_name: 'M',
-        is_tool_admin: false,
+        is_platform_admin: false,
       },
       studios: [
         { studio_id: 's1', studio_name: 'S', role: 'studio_member' },
@@ -96,7 +96,7 @@ describe('WorkOrdersPage archived', () => {
         id: 'u1',
         email: 'v@b.com',
         display_name: 'V',
-        is_tool_admin: false,
+        is_platform_admin: false,
       },
       studios: [
         { studio_id: 's1', studio_name: 'S', role: 'studio_viewer' },

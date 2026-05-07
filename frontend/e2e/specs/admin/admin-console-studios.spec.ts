@@ -3,7 +3,7 @@ import { AdminConsolePage } from '../../pages/admin/AdminConsolePage'
 import { AdminStudiosPage } from '../../pages/admin/AdminStudiosPage'
 
 test.describe('Admin console — studios', () => {
-  test('tool admin sees studios section', async ({ toolAdminPage }) => {
+  test('platform admin sees studios section', async ({ toolAdminPage }) => {
     const console_ = new AdminConsolePage(toolAdminPage)
     const studios = new AdminStudiosPage(toolAdminPage)
     await console_.goto('studios')

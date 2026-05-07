@@ -10,7 +10,7 @@ This document is the **source of truth** for human-role access to Atelier module
 
 | Persona | Implementation |
 |--------|------------------|
-| **Atelier admin** | `users.is_tool_admin` |
+| **Platform admin** | `users.is_platform_admin` |
 | **Studio owner** | `studio_members.role = studio_admin` (studio creator becomes admin; multiple admins allowed) |
 | **Builder** | `studio_members.role = studio_member` |
 | **External** | Approved `cross_studio_access` with `access_level = external_editor` (user is from a *requesting* studio, not the software owner studio) |
@@ -24,21 +24,23 @@ Legend in tables: **Y** = allowed, **N** = forbidden (typical 403), **—** = no
 
 Rows are **product modules**. Columns are personas. **R** = read/list/get, **C** = create, **U** = update/patch/put, **D** = delete. Extra columns note actions that are not plain CRUD.
 
-### 1. Tool admin (`/admin/*`)
+### 1. Platform admin — infrastructure only (`/admin/*`)
 
-| | Atelier admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
+| | Platform admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
 |--|:---:|:---:|:---:|:---:|:---:|:---:|
-| R (config, cross-studio queue, token usage) | Y | N | N | N | N | N |
-| U (config, resolve cross-studio, set user admin) | Y | N | N | N | N | N |
-| Connectivity tests (LLM / embedding) | Y | N | N | N | N | N |
+| R (embedding config, LLM registry & routing, connectivity tests, admin console overview, studio directory read-only, per-studio LLM policy & GitLab **read**) | Y | N | N | N | N | N |
+| C/U (registry rows, routing rules, embedding models & reindex policy, per-studio LLM policy via admin studio routes) | Y | N | N | N | N | N |
+| C `POST /admin/studios` (bootstrap / support) | Y | Y | Y | Y | Y | Y |
 
-*Enforced by:* `require_tool_admin` on [`backend/app/routers/admin.py`](../backend/app/routers/admin.py).
+**Not** platform-admin scope: cross-studio approval (studio owners), all-studio token usage, user provisioning, per-studio budget caps, GitLab writes for studios (owners use software/studio routes).
+
+*Enforced by:* `require_platform_admin` on [`backend/app/routers/admin.py`](../backend/app/routers/admin.py).
 
 ---
 
 ### 2. Studios (metadata)
 
-| | Atelier admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
+| | Platform admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
 |--|:---:|:---:|:---:|:---:|:---:|:---:|
 | R `GET /studios`, `GET /studios/{id}` | Y | Y | Y | Y† | Y | N‡ |
 | C `POST /studios` | Y | Y | Y | Y | Y | Y |
@@ -53,7 +55,7 @@ Rows are **product modules**. Columns are personas. **R** = read/list/get, **C**
 
 ### 3. Invites and roles
 
-| | Atelier admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
+| | Platform admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
 |--|:---:|:---:|:---:|:---:|:---:|:---:|
 | R `GET .../members` | Y | Y | Y | N | Y | N |
 | C/U/D invite, role, remove | Y | Y | N | N | N | N |
@@ -62,7 +64,7 @@ Rows are **product modules**. Columns are personas. **R** = read/list/get, **C**
 
 ### 4. Cross-studio request (requesting studio)
 
-| | Atelier admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
+| | Platform admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
 |--|:---:|:---:|:---:|:---:|:---:|:---:|
 | C `POST .../cross-studio-request` | Y | Y | N | N | N | N |
 
@@ -70,9 +72,20 @@ Rows are **product modules**. Columns are personas. **R** = read/list/get, **C**
 
 ---
 
+### 4b. Cross-studio approval (target software’s studio)
+
+| | Platform admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
+|--|:---:|:---:|:---:|:---:|:---:|:---:|
+| R `GET .../cross-studio-incoming`, `GET .../cross-studio-outgoing` | N | Y | N | N | N | N |
+| U `PUT .../cross-studio-incoming/{grant_id}` (approve / reject / revoke) | N | Y (owner of studio that owns target software) | N | N | N | N |
+
+*Enforced by:* `ensure_studio_owner_membership` + target-software ownership checks in [`CrossStudioService`](../backend/app/services/cross_studio_service.py).
+
+---
+
 ### 5. Studio token usage & MCP keys (studio UI)
 
-| | Atelier admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
+| | Platform admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
 |--|:---:|:---:|:---:|:---:|:---:|:---:|
 | R `GET .../token-usage` (studio scope) | Y | Y | N | N | N | N |
 | R/U `.../mcp-keys` | Y | Y | N | N | N | N |
@@ -81,7 +94,7 @@ Rows are **product modules**. Columns are personas. **R** = read/list/get, **C**
 
 ### 6. Software (under owner studio)
 
-| | Atelier admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
+| | Platform admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
 |--|:---:|:---:|:---:|:---:|:---:|:---:|
 | R list / get / `history` | Y | Y | Y | Y† | Y | Y† |
 | C `POST .../software` | Y | Y | N | N | N | N |
@@ -96,7 +109,7 @@ Rows are **product modules**. Columns are personas. **R** = read/list/get, **C**
 
 ### 7. Projects (`/software/{id}/projects/...`)
 
-| | Atelier admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
+| | Platform admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
 |--|:---:|:---:|:---:|:---:|:---:|:---:|
 | R list / get project | Y | Y | Y | Y | Y | Y |
 | C create project | Y | Y | Y | N | N | N |
@@ -108,7 +121,7 @@ Rows are **product modules**. Columns are personas. **R** = read/list/get, **C**
 
 ### 8. Sections & outline
 
-| | Atelier admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
+| | Platform admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
 |--|:---:|:---:|:---:|:---:|:---:|:---:|
 | R list / get section, context-preview | Y | Y | Y | Y | Y | Y |
 | C section / reorder / D section | Y | Y | N | N | N | N |
@@ -122,7 +135,7 @@ Rows are **product modules**. Columns are personas. **R** = read/list/get, **C**
 
 ### 9. Collab (Yjs WebSocket)
 
-| | Atelier admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
+| | Platform admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
 |--|:---:|:---:|:---:|:---:|:---:|:---:|
 | WS connect | Y | Y | Y | Y | N | N |
 
@@ -132,7 +145,7 @@ Rows are **product modules**. Columns are personas. **R** = read/list/get, **C**
 
 ### 10. Work orders
 
-| | Atelier admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
+| | Platform admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
 |--|:---:|:---:|:---:|:---:|:---:|:---:|
 | R list / detail | Y | Y | Y | Y | Y | Y |
 | C/U/D / generate / notes / deps / dismiss-stale | Y | Y | Y | Y | N | N |
@@ -143,7 +156,7 @@ Rows are **product modules**. Columns are personas. **R** = read/list/get, **C**
 
 ### 11. Private thread (section copilot)
 
-| | Atelier admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
+| | Platform admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
 |--|:---:|:---:|:---:|:---:|:---:|:---:|
 | R / stream / reset | Y | Y | Y | Y | N | N |
 
@@ -153,7 +166,7 @@ All routes: `require_project_member`.
 
 ### 12. Artifacts
 
-| | Atelier admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
+| | Platform admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
 |--|:---:|:---:|:---:|:---:|:---:|:---:|
 | R list / download / detail metadata | Y | Y | Y | Y | Y | Y |
 | C upload / create | Y | Y | Y | Y | N | N |
@@ -168,7 +181,7 @@ All routes: `require_project_member`.
 
 ### 13. Issues & analyze
 
-| | Atelier admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
+| | Platform admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
 |--|:---:|:---:|:---:|:---:|:---:|:---:|
 | R list | Y (all) | Y (all) | Y\* | Y\* | Y\* | **N** |
 | U issue | Y | Y | Y\*\* | Y\*\* | Y\*\* | N |
@@ -182,7 +195,7 @@ All routes: `require_project_member`.
 
 ### 14. Knowledge graph
 
-| | Atelier admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
+| | Platform admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
 |--|:---:|:---:|:---:|:---:|:---:|:---:|
 | R `GET .../graph` | Y | Y | Y | Y | Y | Y |
 | C `POST .../graph/analyze-sections` | Y | Y | Y | Y | N | N |
@@ -191,7 +204,7 @@ All routes: `require_project_member`.
 
 ### 15. Publish
 
-| | Atelier admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
+| | Platform admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
 |--|:---:|:---:|:---:|:---:|:---:|:---:|
 | C `POST .../publish` | Y | Y | Y | N | N | N |
 
@@ -201,7 +214,7 @@ All routes: `require_project_member`.
 
 ### 16. Project chat (REST + WebSocket)
 
-| | Atelier admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
+| | Platform admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
 |--|:---:|:---:|:---:|:---:|:---:|:---:|
 | R history / WS | Y | Y | Y | Y | N | N |
 
@@ -211,11 +224,11 @@ All routes: `require_project_member`.
 
 ### 17. My token usage (`GET /me/token-usage`)
 
-| | Atelier admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
+| | Platform admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
 |--|:---:|:---:|:---:|:---:|:---:|:---:|
 | R | Y | Y | Y | Y† | Y | Y† |
 
-†User must have **at least one** `studio_members` row OR be tool admin; otherwise 403 (“Viewer access does not include token usage”). Pure cross-studio user with **no** home membership: **N**.
+†User must have **at least one** `studio_members` row OR be platform admin; otherwise 403 (“Viewer access does not include token usage”). Pure cross-studio user with **no** home membership: **N**.
 
 ---
 
@@ -236,16 +249,30 @@ Auth ([`auth.py`](../backend/app/routers/auth.py)): `register`, `login`, `logout
 
 | Router | Method | Path pattern | RBAC dependency |
 |--------|--------|--------------|-----------------|
-| admin | GET/PUT | `/admin/config` | `require_tool_admin` |
-| admin | POST | `/admin/test/llm`, `/admin/test/embedding` | `require_tool_admin` |
-| admin | PUT | `/admin/users/{user_id}/admin-status` | `require_tool_admin` |
-| admin | GET/PUT | `/admin/cross-studio`, `/admin/cross-studio/{grant_id}` | `require_tool_admin` |
-| admin | GET | `/admin/token-usage` | `require_tool_admin` |
+| admin | GET/PUT | `/admin/embedding-config` | `require_platform_admin` |
+| admin | POST | `/admin/test/llm`, `/admin/test/embedding` | `require_platform_admin` |
+| admin | GET | `/admin/console/overview` | `require_platform_admin` |
+| admin | GET/POST | `/admin/studios` | `require_platform_admin` |
+| admin | GET | `/admin/studios/{studio_id}` | `require_platform_admin` + `get_studio_for_platform_admin` |
+| admin | GET | `/admin/studios/{studio_id}/gitlab` | `require_platform_admin` (read-only) |
+| admin | GET/PUT | `/admin/studios/{studio_id}/llm-policy` | `require_platform_admin` |
+| admin | GET/PUT/DELETE | `/admin/llm/providers/{provider_key}`, `/admin/llm/routing`, `/admin/llm/deployment` | `require_platform_admin` |
+| admin | GET/PUT/PATCH/DELETE | `/admin/embeddings/*` | `require_platform_admin` |
+| admin | GET/PUT | `/admin/config` | **404** (removed) |
+| admin | GET/PUT | `/admin/cross-studio`, `/admin/cross-studio/{grant_id}` | **404** (removed) |
+| admin | GET | `/admin/token-usage` | **404** (removed) |
+| admin | GET/POST/PUT | `/admin/users`, `/admin/users/{id}/admin-status` | **404** (removed) |
 | studios | GET | `/studios` | `get_current_user` |
 | studios | POST | `/studios` | `get_current_user` |
 | studios | GET/PATCH/DELETE | `/studios/{studio_id}` | `get_studio_access` / `require_studio_admin` |
 | studios | GET/POST/DELETE/PATCH | `/studios/{studio_id}/members...` | `get_studio_access` / `require_studio_admin` |
 | studios | POST | `/studios/{studio_id}/cross-studio-request` | `require_studio_admin` |
+| studios | GET | `/studios/{studio_id}/cross-studio-incoming` | `get_current_user` + `ensure_studio_owner_membership` |
+| studios | PUT | `/studios/{studio_id}/cross-studio-incoming/{grant_id}` | `get_current_user` + `ensure_studio_owner_membership` |
+| studios | GET | `/studios/{studio_id}/cross-studio-outgoing` | `get_current_user` + `ensure_studio_owner_membership` |
+| studios | PATCH | `/studios/{studio_id}/budget` | `require_studio_admin` |
+| studios | GET | `/studios/{studio_id}/member-budgets` | `require_studio_admin` |
+| studios | PATCH | `/studios/{studio_id}/members/{user_id}/budget` | `require_studio_admin` |
 | studios | GET | `/studios/{studio_id}/token-usage` | `require_studio_admin` |
 | studios | GET/POST/DELETE | `/studios/{studio_id}/mcp-keys...` | `require_studio_admin` |
 | software | GET | `/studios/{studio_id}/software` | `get_studio_software_list_access` |

@@ -24,14 +24,15 @@ import {
   type MeResponse,
 } from '../../services/api'
 import { formatRelativeTimeUtc } from '../../lib/formatRelativeTime'
+import { HOME_STUDIO_ID_LS_KEY } from '../../lib/homeStudioPreference'
 import {
   getHostedEnvironment,
   hostedEnvironmentLabel,
 } from '../../lib/hostedEnvironment'
+import { withUtcMonthQuery } from '../../lib/utcMonthBounds'
 import { useStudioAccess } from '../../hooks/useStudioAccess'
 import { APP_VERSION } from '../../version'
 
-const LS_STUDIO = 'atelier:home:studioId'
 const LS_SOFTWARE = 'atelier:home:softwareId'
 const LS_PROJECT = 'atelier:home:projectId'
 
@@ -60,7 +61,7 @@ export function BuilderHomeDashboard({
       if (current && profile.studios.some((s) => s.studio_id === current)) {
         return current
       }
-      const saved = localStorage.getItem(LS_STUDIO)
+      const saved = localStorage.getItem(HOME_STUDIO_ID_LS_KEY)
       if (saved && profile.studios.some((s) => s.studio_id === saved)) {
         return saved
       }
@@ -69,7 +70,7 @@ export function BuilderHomeDashboard({
   }, [profile.studios])
 
   const handleStudioChange = useCallback((sid: string) => {
-    localStorage.setItem(LS_STUDIO, sid)
+    localStorage.setItem(HOME_STUDIO_ID_LS_KEY, sid)
     setStudioId(sid)
     setSoftwareId(null)
     setProjectId(null)
@@ -381,10 +382,10 @@ export function BuilderHomeDashboard({
                     projectId={project.id}
                   />
                 ) : null}
-                {profile.user.is_tool_admin ? (
+                {profile.user.is_platform_admin ? (
                   <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
                     <h3 className="text-[13px] font-medium text-zinc-200">
-                      Tool administration
+                      Platform administration
                     </h3>
                     <ul className="mt-3 list-inside list-disc text-sm text-zinc-400">
                       <li>
@@ -400,23 +401,12 @@ export function BuilderHomeDashboard({
                           to="/admin/settings"
                           className="text-violet-400 hover:underline"
                         >
-                          Tool admin settings
+                          LLM &amp; embedding settings
                         </Link>
                       </li>
                       <li>
-                        <Link
-                          to="/admin/cross-studio"
-                          className="text-violet-400 hover:underline"
-                        >
-                          Cross-studio requests
-                        </Link>
-                      </li>
-                      <li>
-                        <Link
-                          to="/admin/token-usage"
-                          className="text-violet-400 hover:underline"
-                        >
-                          Token usage (global)
+                        <Link to="/llm-usage" className="text-violet-400 hover:underline">
+                          LLM usage (filters)
                         </Link>
                       </li>
                     </ul>
@@ -429,6 +419,11 @@ export function BuilderHomeDashboard({
                   isPending={tokenPending}
                   canSeeTokenUsage={canToken}
                   billedToStudioName={billedToStudioName}
+                  detailReportHref={
+                    studioId
+                      ? `/llm-usage${withUtcMonthQuery(`studio_id=${encodeURIComponent(studioId)}`)}`
+                      : '/llm-usage'
+                  }
                 />
                 {studioId && softwareId && projectId && access.isMember ? (
                   <>

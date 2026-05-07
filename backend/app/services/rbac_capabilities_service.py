@@ -48,7 +48,7 @@ class RbacCapabilitiesService:
         )
 
         return StudioCapabilitiesOut(
-            is_tool_admin=access.user.is_tool_admin,
+            is_platform_admin=access.user.is_platform_admin,
             membership_role=membership_role,
             is_studio_admin=access.is_studio_admin,
             is_studio_editor=access.is_studio_editor,

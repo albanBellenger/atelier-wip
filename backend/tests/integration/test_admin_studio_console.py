@@ -57,7 +57,7 @@ async def test_admin_studios_list_and_detail_tool_admin(
     await db_session.execute(
         update(User)
         .where(User.email == admin_email.lower())
-        .values(is_tool_admin=True)
+        .values(is_platform_admin=True)
     )
     await db_session.flush()
 
@@ -113,7 +113,7 @@ async def test_admin_studio_detail_not_found(client: AsyncClient, db_session) ->
     await db_session.execute(
         update(User)
         .where(User.email == admin_email.lower())
-        .values(is_tool_admin=True)
+        .values(is_platform_admin=True)
     )
     await db_session.flush()
     r_login = await client.post(
@@ -145,7 +145,7 @@ async def test_admin_post_studios_creates_studio(
     await db_session.execute(
         update(User)
         .where(User.email == admin_email.lower())
-        .values(is_tool_admin=True)
+        .values(is_platform_admin=True)
     )
     await db_session.flush()
     r_login = await client.post(

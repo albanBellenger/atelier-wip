@@ -89,7 +89,7 @@ export function StudioPage(): ReactElement {
   )
 
   const canListStudioTeam = Boolean(
-    sid && (access.role != null || access.isToolAdmin),
+    sid && (access.role != null || access.isPlatformAdmin),
   )
 
   const activityQ = useQuery({

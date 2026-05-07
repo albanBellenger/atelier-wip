@@ -9,10 +9,11 @@ from typing import Any
 
 import litellm
 import structlog
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
-from app.models import AdminConfig
+from app.models import LlmProviderRegistry
 from app.openai_compat_urls import openai_v1_base
 from app.schemas.auth import AdminConnectivityResult
 from app.schemas.token_context import TokenContext
@@ -26,7 +27,8 @@ from app.services.litellm_exception_mapping import (
     map_litellm_exception_to_probe_detail,
 )
 from app.services.llm_registry_credentials import (
-    assert_openai_compatible_provider_field,
+    first_registry_model,
+    get_default_llm_registry_row,
     resolve_openai_compatible_llm_credentials,
     resolve_provider_key_for_model,
 )
@@ -160,17 +162,6 @@ class LLMService:
         policy = LlmPolicyService(self.db)
         await policy.assert_studio_budget(context.studio_id)
         await policy.assert_builder_budget(context.studio_id, context.user_id)
-        row = await self.db.get(AdminConfig, 1)
-        if row is None:
-            log.warning(
-                "llm_config_rejected",
-                reason="no_admin_config_row",
-            )
-            raise ApiError(
-                status_code=503,
-                code="LLM_NOT_CONFIGURED",
-                message="Tool Admin must configure LLM provider, model, and API key.",
-            )
         eff_choice: str | None = None
         if preferred_model and call_type in ("chat", "private_thread"):
             eff_choice = await policy.resolve_preferred_chat_model(
@@ -181,49 +172,25 @@ class LLMService:
             studio_id=context.studio_id,
             call_type=call_type,
         )
-        eff = ((route_model if route_model else (row.llm_model or "")) or "").strip()
+        eff = (route_model or "").strip()
         if eff_choice:
             eff = eff_choice
-        if not route_pk and eff:
-            route_pk = await resolve_provider_key_for_model(self.db, eff)
-        assert_openai_compatible_provider_field(row)
-        try:
-            model, key, api_base = await resolve_openai_compatible_llm_credentials(
-                self.db,
-                admin=row,
-                effective_model=eff,
-                route_provider_key=route_pk,
-            )
-        except ApiError as e:
-            log.warning(
-                "llm_config_rejected",
-                reason="missing_model_or_api_key",
-                detail=str(e.detail),
-            )
-            raise
-        return model, key, api_base
-
-    async def _require_openai_config(self) -> tuple[str, str, str]:
-        """Legacy path without studio routing (admin probes only)."""
-        row = await self.db.get(AdminConfig, 1)
-        if row is None:
-            log.warning(
-                "llm_config_rejected",
-                reason="no_admin_config_row",
-            )
+        if not eff:
+            def_row = await get_default_llm_registry_row(self.db)
+            eff = (first_registry_model(def_row) or "").strip()
+        if not eff:
+            log.warning("llm_config_rejected", reason="no_default_registry_model")
             raise ApiError(
                 status_code=503,
                 code="LLM_NOT_CONFIGURED",
                 message="Tool Admin must configure LLM provider, model, and API key.",
             )
-        model_raw = (row.llm_model or "").strip()
-        route_pk = await resolve_provider_key_for_model(self.db, model_raw)
-        assert_openai_compatible_provider_field(row)
+        if not route_pk and eff:
+            route_pk = await resolve_provider_key_for_model(self.db, eff)
         try:
             model, key, api_base = await resolve_openai_compatible_llm_credentials(
                 self.db,
-                admin=row,
-                effective_model=model_raw,
+                effective_model=eff,
                 route_provider_key=route_pk,
             )
         except ApiError as e:
@@ -268,14 +235,17 @@ class LLMService:
         runs, so :class:`ApiError` raised inside the stream iterator cannot be turned
         into JSON and causes ``RuntimeError: response already started``.
         """
-        if context is not None:
-            await self._require_openai_config_for_context(
-                context=context,
-                call_type=call_type,
-                preferred_model=preferred_model,
+        if context is None:
+            raise ApiError(
+                status_code=500,
+                code="LLM_CONTEXT_REQUIRED",
+                message="LLM readiness check requires an authenticated token context.",
             )
-        else:
-            await self._require_openai_config()
+        await self._require_openai_config_for_context(
+            context=context,
+            call_type=call_type,
+            preferred_model=preferred_model,
+        )
 
     async def chat_structured(
         self,
@@ -447,31 +417,42 @@ class LLMService:
         api_base_url_override: str | None = None,
         provider_key: str | None = None,
     ) -> AdminConnectivityResult:
-        """Tool Admin UI: minimal non-streaming chat completion against stored LLM config."""
-        row = await self.db.get(AdminConfig, 1)
-        if row is None:
-            row = AdminConfig(id=1)
-            self.db.add(row)
-            await self.db.flush()
-        model = (model_override or "").strip() or (row.llm_model or "").strip()
+        """Tool Admin UI: minimal non-streaming chat completion using registry credentials."""
         pk = (provider_key or "").strip().lower() or None
-        if not pk and model:
-            pk = await resolve_provider_key_for_model(self.db, model)
-        try:
-            assert_openai_compatible_provider_field(row)
-        except ApiError as e:
-            d = e.detail
+        explicit_row: LlmProviderRegistry | None = None
+        if pk:
+            explicit_row = await self.db.scalar(
+                select(LlmProviderRegistry).where(LlmProviderRegistry.provider_key == pk)
+            )
+            if explicit_row is None:
+                return AdminConnectivityResult(
+                    ok=False,
+                    message="Unknown LLM provider_key.",
+                    detail=f"No registry row for provider_key «{pk}».",
+                )
+        model = (model_override or "").strip()
+        if not model:
+            model = (first_registry_model(explicit_row) or "").strip()
+        if not model:
+            def_row = await get_default_llm_registry_row(self.db)
+            model = (first_registry_model(def_row) or "").strip()
+        if not model:
             return AdminConnectivityResult(
                 ok=False,
-                message="LLM provider configuration is invalid.",
-                detail=d if isinstance(d, str) else str(d),
+                message="No LLM model configured.",
+                detail=(
+                    "Add models to the default provider in Admin Console → LLM, "
+                    "or pass model in the probe body."
+                ),
             )
+        pk_resolved = pk
+        if not pk_resolved and model:
+            pk_resolved = await resolve_provider_key_for_model(self.db, model)
         try:
-            _model_eff, key, api_base = await resolve_openai_compatible_llm_credentials(
+            model_litellm, key, api_base = await resolve_openai_compatible_llm_credentials(
                 self.db,
-                admin=row,
                 effective_model=model,
-                route_provider_key=pk,
+                route_provider_key=pk_resolved,
             )
         except ApiError as e:
             d = e.detail
@@ -484,7 +465,7 @@ class LLMService:
             api_base = openai_v1_base(api_base_url_override)
         try:
             response = await litellm.acompletion(
-                model=model,
+                model=model_litellm,
                 messages=[
                     {"role": "user", "content": 'Reply with exactly the word "OK".'}
                 ],

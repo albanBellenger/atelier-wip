@@ -155,7 +155,7 @@ describe('SectionPage V1/V2 toggle', () => {
         id: 'u1',
         email: 'e@example.com',
         display_name: 'Editor',
-        is_tool_admin: false,
+        is_platform_admin: false,
       },
       studios: [
         { studio_id: 's1', studio_name: 'Studio One', role: 'studio_member' },
@@ -204,7 +204,7 @@ describe('SectionPage V1/V2 toggle', () => {
         id: 'u1',
         email: 'e@example.com',
         display_name: 'Editor',
-        is_tool_admin: false,
+        is_platform_admin: false,
       },
       studios: [
         { studio_id: 's1', studio_name: 'Studio One', role: 'studio_member' },
@@ -250,7 +250,7 @@ describe('SectionPage V1/V2 toggle', () => {
         id: 'u1',
         email: 'e@example.com',
         display_name: 'Editor',
-        is_tool_admin: false,
+        is_platform_admin: false,
       },
       studios: [
         { studio_id: 's1', studio_name: 'Studio One', role: 'studio_member' },

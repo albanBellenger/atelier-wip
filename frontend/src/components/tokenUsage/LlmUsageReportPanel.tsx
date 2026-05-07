@@ -28,11 +28,9 @@ import {
   type TokenUsageQueryParams,
   type TokenUsageReport,
   type TokenUsageRow,
-  downloadAdminTokenUsageCsv,
   downloadMeTokenUsageCsv,
   downloadStudioTokenUsageCsv,
   downloadBlob,
-  getAdminTokenUsage,
   getMeTokenUsage,
   getStudioTokenUsage,
   listMembers,
@@ -290,9 +288,6 @@ export function LlmUsageReportPanel(props: {
         f.studioIds,
       )
       const base = buildApiParams(f)
-      if (m === 'admin') {
-        return getAdminTokenUsage(base)
-      }
       if (m === 'studio' && sid) {
         const { studio_id: _s, ...rest } = base
         return getStudioTokenUsage(sid, rest)
@@ -310,9 +305,6 @@ export function LlmUsageReportPanel(props: {
         filters.studioIds,
       )
       const base = buildApiParams(filters)
-      if (m === 'admin') {
-        return downloadAdminTokenUsageCsv(base)
-      }
       if (m === 'studio' && sid) {
         const { studio_id: _s, ...rest } = base
         return downloadStudioTokenUsageCsv(sid, rest)
@@ -326,11 +318,7 @@ export function LlmUsageReportPanel(props: {
         filters.studioIds,
       )
       const name =
-        m === 'admin'
-          ? 'token-usage.csv'
-          : m === 'studio'
-            ? 'studio-token-usage.csv'
-            : 'my-token-usage.csv'
+        m === 'studio' ? 'studio-token-usage.csv' : 'my-token-usage.csv'
       downloadBlob(blob, name)
     },
   })
@@ -434,11 +422,9 @@ export function LlmUsageReportPanel(props: {
       <p className="text-xs text-zinc-500">
         Data source:{' '}
         <span className="font-mono text-zinc-400">
-          {mode === 'admin'
-            ? '/admin/token-usage'
-            : mode === 'studio'
-              ? `/studios/${studioId ?? ''}/token-usage`
-              : '/me/token-usage'}
+          {mode === 'studio'
+            ? `/studios/${studioId ?? ''}/token-usage`
+            : '/me/token-usage'}
         </span>
         {mode === 'me' && filters.userIds.length > 0 ? (
           <span className="ml-2 text-amber-500/90">
@@ -499,9 +485,13 @@ export function LlmUsageReportPanel(props: {
             <p className="font-medium text-zinc-300">Totals</p>
             <p className="mt-2 text-zinc-400">
               Input tokens:{' '}
-              <span className="text-zinc-200">{report.totals.input_tokens}</span>{' '}
+              <span className="tabular-nums text-zinc-200">
+                {report.totals.input_tokens.toLocaleString()}
+              </span>{' '}
               · Output tokens:{' '}
-              <span className="text-zinc-200">{report.totals.output_tokens}</span>{' '}
+              <span className="tabular-nums text-zinc-200">
+                {report.totals.output_tokens.toLocaleString()}
+              </span>{' '}
               · Est. USD:{' '}
               <span className="text-zinc-200">
                 {report.totals.estimated_cost_usd}

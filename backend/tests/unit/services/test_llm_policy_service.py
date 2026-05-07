@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
 from app.models import (
-    AdminConfig,
     LlmProviderRegistry,
     LlmRoutingRule,
     Studio,
@@ -39,13 +38,7 @@ async def test_resolve_matches_routing_and_studio_policy(db_session: AsyncSessio
     db_session.add(
         Studio(id=sid, name="S", budget_overage_action="pause_generations")
     )
-    cfg = await db_session.get(AdminConfig, 1)
-    if cfg is None:
-        cfg = AdminConfig(id=1, llm_model="gpt-4o-mini", llm_api_key="sk-test")
-        db_session.add(cfg)
-    else:
-        cfg.llm_model = "gpt-4o-mini"
-        cfg.llm_api_key = "sk-test"
+    await db_session.flush()
     db_session.add(
         LlmProviderRegistry(
             id=uuid.uuid4(),
@@ -86,13 +79,6 @@ async def test_resolve_skips_disconnected_registry_provider(
     db_session.add(
         Studio(id=sid, name="S", budget_overage_action="pause_generations")
     )
-    cfg = await db_session.get(AdminConfig, 1)
-    if cfg is None:
-        cfg = AdminConfig(id=1, llm_model="gpt-4o-mini", llm_api_key="sk-test")
-        db_session.add(cfg)
-    else:
-        cfg.llm_model = "gpt-4o-mini"
-        cfg.llm_api_key = "sk-test"
     db_session.add(
         LlmProviderRegistry(
             id=uuid.uuid4(),
@@ -124,13 +110,7 @@ async def test_studio_chat_llm_models_lists_connected_policy_models_only(
     db_session.add(
         Studio(id=sid, name="S", budget_overage_action="pause_generations")
     )
-    cfg = await db_session.get(AdminConfig, 1)
-    if cfg is None:
-        cfg = AdminConfig(id=1, llm_model="gpt-4o-mini", llm_api_key="sk-test")
-        db_session.add(cfg)
-    else:
-        cfg.llm_model = "gpt-4o-mini"
-        cfg.llm_api_key = "sk-test"
+    await db_session.flush()
     db_session.add(
         LlmProviderRegistry(
             id=uuid.uuid4(),
@@ -305,13 +285,7 @@ async def test_resolve_preferred_chat_model_accepts_allowed_and_rejects_other(
     db_session.add(
         Studio(id=sid, name="S", budget_overage_action="pause_generations")
     )
-    cfg = await db_session.get(AdminConfig, 1)
-    if cfg is None:
-        cfg = AdminConfig(id=1, llm_model="gpt-4o-mini", llm_api_key="sk-test")
-        db_session.add(cfg)
-    else:
-        cfg.llm_model = "gpt-4o-mini"
-        cfg.llm_api_key = "sk-test"
+    await db_session.flush()
     db_session.add(
         LlmProviderRegistry(
             id=uuid.uuid4(),

@@ -151,7 +151,7 @@ async def test_cross_studio_external_editor_put_definition_forbidden(
     client.cookies.clear()
     client.cookies.set("atelier_token", token_ta)
     apr = await client.put(
-        f"/admin/cross-studio/{grant_id}",
+        f"/studios/{studio_a}/cross-studio-incoming/{grant_id}",
         json={"decision": "approve", "access_level": "external_editor"},
     )
     assert apr.status_code == 200

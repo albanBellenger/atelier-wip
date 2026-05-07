@@ -19,7 +19,7 @@ describe('MeProfilePage', () => {
         id: 'u1',
         email: 'a@b.com',
         display_name: 'Before',
-        is_tool_admin: false,
+        is_platform_admin: false,
       },
       studios: [],
       cross_studio_grants: [],
@@ -29,7 +29,7 @@ describe('MeProfilePage', () => {
         id: 'u1',
         email: 'a@b.com',
         display_name: 'After',
-        is_tool_admin: false,
+        is_platform_admin: false,
       },
       studios: [],
       cross_studio_grants: [],
@@ -57,7 +57,7 @@ describe('MeProfilePage', () => {
         id: 'u1',
         email: 'a@b.com',
         display_name: 'Alex',
-        is_tool_admin: false,
+        is_platform_admin: false,
       },
       studios: [
         { studio_id: 's-admin', studio_name: 'Acme', role: 'studio_admin' },
@@ -93,7 +93,7 @@ describe('MeProfilePage', () => {
         id: 'u1',
         email: 'solo@b.com',
         display_name: 'Solo',
-        is_tool_admin: false,
+        is_platform_admin: false,
       },
       studios: [],
       cross_studio_grants: [],
@@ -113,13 +113,13 @@ describe('MeProfilePage', () => {
     expect(browse).toHaveAttribute('href', '/studios')
   })
 
-  it('does not show tool admin badge for non-admin users', async () => {
+  it('does not show platform admin badge for non-admin users', async () => {
     vi.spyOn(api, 'me').mockResolvedValue({
       user: {
         id: 'u1',
         email: 'm@b.com',
         display_name: 'Member',
-        is_tool_admin: false,
+        is_platform_admin: false,
       },
       studios: [{ studio_id: 's1', studio_name: 'S', role: 'studio_member' }],
       cross_studio_grants: [],
@@ -133,6 +133,6 @@ describe('MeProfilePage', () => {
       </MemoryRouter>,
     )
     expect(await screen.findByText('Member')).toBeInTheDocument()
-    expect(screen.queryByText('Tool Admin')).not.toBeInTheDocument()
+    expect(screen.queryByText('Platform admin')).not.toBeInTheDocument()
   })
 })

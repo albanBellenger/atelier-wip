@@ -22,7 +22,7 @@ async def test_totals_for_filtered_empty_db_cost_is_zero_decimal() -> None:
 
     svc = TokenUsageQueryService(session)
     tin, tout, cost = await svc.totals_for_filtered(
-        scope="tool_admin",
+        scope="platform_admin",
         scope_studio_id=None,
         scope_user_id=None,
         studio_ids=None,
@@ -102,7 +102,7 @@ async def test_totals_for_filtered_single_call_type_branch() -> None:
 
     svc = TokenUsageQueryService(session)
     await svc.totals_for_filtered(
-        scope="tool_admin",
+        scope="platform_admin",
         scope_studio_id=None,
         scope_user_id=None,
         studio_ids=None,
@@ -126,7 +126,7 @@ async def test_totals_for_filtered_empty_call_types_list_no_filter() -> None:
 
     svc = TokenUsageQueryService(session)
     await svc.totals_for_filtered(
-        scope="tool_admin",
+        scope="platform_admin",
         scope_studio_id=None,
         scope_user_id=None,
         studio_ids=None,

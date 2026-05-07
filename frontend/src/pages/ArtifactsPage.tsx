@@ -173,7 +173,7 @@ export function ArtifactsPage(): ReactElement {
         <h1 className="text-2xl font-semibold">Artifacts</h1>
         <p className="mt-2 text-sm text-zinc-400">
           PDF and Markdown files for this project. Upload requires embedding to be
-          configured by a Tool Admin.
+          configured by a platform admin.
         </p>
 
         <section className="mt-8 space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">

@@ -69,6 +69,10 @@ describe('BuilderWorkingOnCard', () => {
       'href',
       '/studios/studio-a/software/sw-1',
     )
+    expect(screen.getByRole('link', { name: /^open chat$/i })).toHaveAttribute(
+      'href',
+      '/studios/studio-a/software/sw-1/projects/pr-1?tab=chat',
+    )
   })
 
   it('does not surface tool-admin or studio-settings links on this card', () => {
@@ -93,7 +97,7 @@ describe('BuilderWorkingOnCard', () => {
     )
 
     expect(
-      screen.queryByRole('link', { name: /tool admin settings/i }),
+      screen.queryByRole('link', { name: /LLM & embedding settings/i }),
     ).not.toBeInTheDocument()
     expect(
       screen.queryByRole('link', { name: /studio settings/i }),

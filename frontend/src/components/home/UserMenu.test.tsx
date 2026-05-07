@@ -14,7 +14,7 @@ function baseProfile(over: Partial<MeResponse> = {}): MeResponse {
       id: 'u1',
       email: 'a@b.com',
       display_name: 'Alex Builder',
-      is_tool_admin: false,
+      is_platform_admin: false,
     },
     studios: [{ studio_id: 's1', studio_name: 'S', role: 'studio_member' }],
     cross_studio_grants: [],
@@ -27,15 +27,15 @@ describe('userCanSeeMeTokenUsage', () => {
     expect(userCanSeeMeTokenUsage(baseProfile())).toBe(true)
   })
 
-  it('is true for tool admin without studios', () => {
+  it('is true for platform admin without studios', () => {
     expect(
       userCanSeeMeTokenUsage(
-        baseProfile({ studios: [], user: { ...baseProfile().user, is_tool_admin: true } }),
+        baseProfile({ studios: [], user: { ...baseProfile().user, is_platform_admin: true } }),
       ),
     ).toBe(true)
   })
 
-  it('is false with no studios and not tool admin', () => {
+  it('is false with no studios and not platform admin', () => {
     expect(userCanSeeMeTokenUsage(baseProfile({ studios: [] }))).toBe(false)
   })
 })

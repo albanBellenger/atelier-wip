@@ -28,6 +28,7 @@ class StudioResponse(BaseModel):
     logo_path: str | None
     created_at: datetime
     budget_cap_monthly_usd: Decimal | None = None
+    budget_overage_action: str = "pause_generations"
 
 
 class StudioMemberResponse(BaseModel):

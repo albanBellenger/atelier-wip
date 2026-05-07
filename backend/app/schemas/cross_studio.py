@@ -25,18 +25,25 @@ class CrossStudioAccessPublic(BaseModel):
     resolved_at: datetime | None = None
 
 
-class CrossStudioAccessAdminRow(BaseModel):
-    """Pending / resolved row for Tool Admin queue."""
+class CrossStudioIncomingRow(BaseModel):
+    """Pending / resolved row for the target studio's Studio Owners (incoming requests)."""
 
     id: UUID
-    requesting_studio_id: UUID
     requesting_studio_name: str
-    target_software_id: UUID
-    target_software_name: str
-    owner_studio_id: UUID
-    owner_studio_name: str
-    requested_by: UUID
     requester_email: str
+    target_software_name: str
+    access_level: str
+    status: str
+    created_at: datetime
+    resolved_at: datetime | None = None
+
+
+class CrossStudioOutgoingRow(BaseModel):
+    """Outbound cross-studio requests originated by the requesting studio."""
+
+    id: UUID
+    target_software_name: str
+    owner_studio_name: str
     access_level: str
     status: str
     created_at: datetime

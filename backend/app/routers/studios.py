@@ -11,6 +11,7 @@ from app.database import get_db
 from app.deps import (
     StudioAccess,
     StudioSoftwareListAccess,
+    ensure_studio_owner_membership,
     get_current_user,
     get_studio_access,
     get_studio_software_list_access,
@@ -20,13 +21,19 @@ from app.deps import (
     resolve_studio_access_for_software,
 )
 from app.exceptions import ApiError
-from app.models import Project, Software, User, WorkOrder
+from app.models import Project, Software, Studio, User, WorkOrder
 from app.schemas.artifact import (
     ArtifactResponse,
     MarkdownArtifactCreate,
     StudioArtifactRowOut,
 )
-from app.schemas.cross_studio import CrossStudioRequestCreate, CrossStudioRequestResult
+from app.schemas.cross_studio import (
+    CrossStudioIncomingRow,
+    CrossStudioOutgoingRow,
+    CrossStudioRequestCreate,
+    CrossStudioRequestResult,
+    CrossStudioResolveBody,
+)
 from app.schemas.mcp_keys import McpKeyCreateBody, McpKeyCreatedResponse, McpKeyPublic
 from app.schemas.token_usage_report import (
     TokenUsageReportOut,
@@ -43,6 +50,11 @@ from app.schemas.studio import (
     StudioResponse,
     StudioUpdate,
 )
+from app.schemas.admin_console import (
+    MemberBudgetRowResponse,
+    MemberBudgetUpdate,
+    StudioToolAdminUpdate,
+)
 from app.schemas.studio_capabilities import StudioCapabilitiesOut
 from app.schemas.studio_llm_public import StudioChatLlmModelsOut
 from app.services.artifact_service import ArtifactService
@@ -52,7 +64,9 @@ from app.services.mcp_key_admin_service import McpKeyAdminService
 from app.services.rbac_capabilities_service import RbacCapabilitiesService
 from app.services.project_service import ProjectService
 from app.services.software_activity_service import SoftwareActivityService
+from app.services.studio_member_budget_admin_service import StudioMemberBudgetAdminService
 from app.services.studio_service import StudioService
+from app.services.studio_tool_admin_service import StudioToolAdminService
 from app.services.token_usage_query_service import TokenUsageQueryService
 from app.services.llm_policy_service import LlmPolicyService
 from app.storage.minio_storage import get_storage_client
@@ -350,6 +364,133 @@ async def create_cross_studio_request(
     result = await CrossStudioService(session).create_request(access, body)
     await session.commit()
     return result
+
+
+@router.get(
+    "/{studio_id}/cross-studio-incoming",
+    response_model=list[CrossStudioIncomingRow],
+)
+async def list_cross_studio_incoming(
+    studio_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+    status: str | None = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+) -> list[CrossStudioIncomingRow]:
+    st = await session.get(Studio, studio_id)
+    if st is None:
+        raise ApiError(
+            status_code=404,
+            code="NOT_FOUND",
+            message="Studio not found.",
+        )
+    await ensure_studio_owner_membership(
+        session, user_id=user.id, studio_id=studio_id
+    )
+    return await CrossStudioService(session).list_pending_for_software_owner(
+        owner_studio_id=studio_id, status=status, limit=limit
+    )
+
+
+@router.put(
+    "/{studio_id}/cross-studio-incoming/{grant_id}",
+    response_model=CrossStudioRequestResult,
+)
+async def resolve_cross_studio_incoming(
+    studio_id: UUID,
+    grant_id: UUID,
+    body: CrossStudioResolveBody,
+    session: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> CrossStudioRequestResult:
+    st = await session.get(Studio, studio_id)
+    if st is None:
+        raise ApiError(
+            status_code=404,
+            code="NOT_FOUND",
+            message="Studio not found.",
+        )
+    result = await CrossStudioService(session).resolve(
+        grant_id,
+        owner_studio_id=studio_id,
+        acting_user=user,
+        body=body,
+    )
+    await session.commit()
+    return result
+
+
+@router.get(
+    "/{studio_id}/cross-studio-outgoing",
+    response_model=list[CrossStudioOutgoingRow],
+)
+async def list_cross_studio_outgoing(
+    studio_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+    limit: int = Query(100, ge=1, le=500),
+) -> list[CrossStudioOutgoingRow]:
+    st = await session.get(Studio, studio_id)
+    if st is None:
+        raise ApiError(
+            status_code=404,
+            code="NOT_FOUND",
+            message="Studio not found.",
+        )
+    await ensure_studio_owner_membership(
+        session, user_id=user.id, studio_id=studio_id
+    )
+    return await CrossStudioService(session).list_by_requesting_studio(
+        requesting_studio_id=studio_id, limit=limit
+    )
+
+
+@router.patch("/{studio_id}/budget", status_code=204)
+async def patch_studio_budget_studio(
+    studio_id: UUID,
+    body: StudioToolAdminUpdate,
+    session: AsyncSession = Depends(get_db),
+    access: StudioAccess = Depends(require_studio_admin),
+) -> Response:
+    st = await session.get(Studio, studio_id)
+    if st is None:
+        raise ApiError(
+            status_code=404,
+            code="NOT_FOUND",
+            message="Studio not found.",
+        )
+    await StudioToolAdminService(session).patch_budget(st, body)
+    return Response(status_code=204)
+
+
+@router.get(
+    "/{studio_id}/member-budgets",
+    response_model=list[MemberBudgetRowResponse],
+)
+async def list_studio_member_budgets_studio(
+    studio_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    access: StudioAccess = Depends(require_studio_admin),
+) -> list[MemberBudgetRowResponse]:
+    return await StudioMemberBudgetAdminService(session).list_member_budgets(
+        access.studio_id
+    )
+
+
+@router.patch(
+    "/{studio_id}/members/{user_id}/budget",
+    response_model=MemberBudgetRowResponse,
+)
+async def patch_studio_member_budget_studio(
+    studio_id: UUID,
+    user_id: UUID,
+    body: MemberBudgetUpdate,
+    session: AsyncSession = Depends(get_db),
+    access: StudioAccess = Depends(require_studio_admin),
+) -> MemberBudgetRowResponse:
+    return await StudioMemberBudgetAdminService(session).patch_member_budget(
+        access.studio_id, user_id, body
+    )
 
 
 @router.get("/{studio_id}/token-usage")

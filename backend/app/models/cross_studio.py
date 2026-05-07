@@ -1,4 +1,4 @@
-"""Cross-studio access requests (Tool Admin approval)."""
+"""Cross-studio access requests (approved by the target software's Studio Owner)."""
 
 import uuid
 from datetime import datetime
@@ -11,6 +11,8 @@ from app.models.base import Base
 
 
 class CrossStudioAccess(Base):
+    """Incoming requests are resolved by a Studio Owner of the studio that owns ``target_software``."""
+
     __tablename__ = "cross_studio_access"
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -34,3 +36,8 @@ class CrossStudioAccess(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_by_studio_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("studios.id", ondelete="SET NULL"),
+        nullable=True,
+    )

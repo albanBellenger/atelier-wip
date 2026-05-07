@@ -7,8 +7,9 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.security.field_encryption import encode_admin_stored_secret
+
 from app.models import (
-    AdminConfig,
     LlmProviderRegistry,
     LlmRoutingRule,
     StudioLlmProviderPolicy,
@@ -54,19 +55,6 @@ async def test_studio_llm_chat_models_member_ok_outsider_403(
         json={"email": f"llmmem-{sfx}@example.com", "role": "studio_member"},
     )
 
-    cfg = await db_session.get(AdminConfig, 1)
-    if cfg is None:
-        db_session.add(
-            AdminConfig(
-                id=1,
-                llm_provider="openai",
-                llm_model="gpt-4o-mini",
-                llm_api_key="sk-test",
-            )
-        )
-    else:
-        cfg.llm_model = "gpt-4o-mini"
-        cfg.llm_api_key = cfg.llm_api_key or "sk-test"
     prov_key = f"prov_{sfx}"
     db_session.add(
         LlmProviderRegistry(
@@ -74,9 +62,13 @@ async def test_studio_llm_chat_models_member_ok_outsider_403(
             provider_key=prov_key,
             display_name="Test LLM",
             models_json=json.dumps(["gpt-4o-mini", "gpt-4o"]),
+            api_base_url=None,
+            logo_url=None,
             status="connected",
             is_default=True,
             sort_order=0,
+            api_key=encode_admin_stored_secret("sk-test"),
+            litellm_provider_slug=None,
         )
     )
     db_session.add(

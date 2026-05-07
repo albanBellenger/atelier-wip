@@ -72,9 +72,9 @@ export function MeProfilePage(): ReactElement {
           <p className="text-lg font-medium text-zinc-100">
             {profile.user.display_name}
           </p>
-          {profile.user.is_tool_admin ? (
+          {profile.user.is_platform_admin ? (
             <span className="rounded-md border border-violet-500/40 bg-violet-600/20 px-2 py-0.5 text-xs font-medium text-violet-300">
-              Tool Admin
+              Platform admin
             </span>
           ) : null}
         </div>

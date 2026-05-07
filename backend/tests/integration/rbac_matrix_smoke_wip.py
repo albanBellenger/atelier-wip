@@ -148,24 +148,24 @@ async def _home_studio_graph(
 
 
 @pytest.mark.asyncio
-async def test_tool_admin_only_admin_config(
+async def test_tool_admin_only_embedding_config(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
     """Tool admin gate does not depend on registration ordering."""
-    admin = await create_user(db_session, is_tool_admin=True)
+    admin = await create_user(db_session, is_platform_admin=True)
     member = await create_user(
         db_session,
         email="rbac-member-tool@example.com",
-        is_tool_admin=False,
+        is_platform_admin=False,
     )
     await db_session.flush()
 
     client.cookies.set("atelier_token", create_access_token(admin.id))
-    ok = await client.get("/admin/config")
+    ok = await client.get("/admin/embedding-config")
     assert ok.status_code == 200
 
     client.cookies.set("atelier_token", create_access_token(member.id))
-    denied = await client.get("/admin/config")
+    denied = await client.get("/admin/embedding-config")
     assert denied.status_code == 403
 
 

@@ -5,15 +5,15 @@ import uuid
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import AdminConfig
+from app.models import LlmProviderRegistry
 
 
 @pytest_asyncio.fixture(autouse=True)
 async def _empty_user_table_for_bootstrap(db_session: AsyncSession) -> None:
-    """First registered user becomes tool admin only when ``users`` is empty.
+    """First registered user becomes platform admin only when ``users`` is empty.
 
     Other integration tests may leave committed rows in the shared ``atelier_test``
     database; this file asserts bootstrap semantics, so start each test with no users.
@@ -27,7 +27,7 @@ async def _empty_user_table_for_bootstrap(db_session: AsyncSession) -> None:
 async def test_auth_register_admin_member_rbac_and_login_errors(
     client: AsyncClient,
 ) -> None:
-    """Full slice-1 auth flow: bootstrap tool admin, second user denied admin routes, bad login 401."""
+    """Full slice-1 auth flow: bootstrap platform admin, second user denied admin routes, bad login 401."""
     suffix = uuid.uuid4().hex[:8]
     email_admin = f"admin-{suffix}@example.com"
     email_member = f"member-{suffix}@example.com"
@@ -60,16 +60,16 @@ async def test_auth_register_admin_member_rbac_and_login_errors(
 
     client.cookies.set("atelier_token", token_admin)
     me_admin = await client.get("/auth/me")
-    assert me_admin.json()["user"]["is_tool_admin"] is True
+    assert me_admin.json()["user"]["is_platform_admin"] is True
 
     client.cookies.set("atelier_token", token_member)
     me_member = await client.get("/auth/me")
-    assert me_member.json()["user"]["is_tool_admin"] is False
+    assert me_member.json()["user"]["is_platform_admin"] is False
 
     client.cookies.set("atelier_token", token_admin)
     cfg = await client.get("/admin/config")
-    assert cfg.status_code == 200
-    assert cfg.json()["llm_api_key_set"] is False
+    assert cfg.status_code == 404
+    assert cfg.json()["code"] == "NOT_FOUND"
 
     client.cookies.set("atelier_token", token_member)
     forbidden = await client.get("/admin/config")
@@ -85,11 +85,11 @@ async def test_auth_register_admin_member_rbac_and_login_errors(
 
 
 @pytest.mark.asyncio
-async def test_admin_put_llm_api_key_encrypted_at_rest_get_returns_suffix_hint(
+async def test_admin_put_llm_provider_api_key_encrypted_at_rest(
     client: AsyncClient,
     db_session: AsyncSession,
 ) -> None:
-    """Fernet at rest for admin LLM key; GET returns a safe suffix hint, not the secret."""
+    """Fernet at rest for registry LLM key; row stores ciphertext, not raw secret."""
     sfx = uuid.uuid4().hex[:8]
     email = f"adm-{sfx}@example.com"
     reg = await client.post(
@@ -103,11 +103,15 @@ async def test_admin_put_llm_api_key_encrypted_at_rest_get_returns_suffix_hint(
     assert reg.status_code == 200, reg.text
     client.cookies.set("atelier_token", reg.cookies.get("atelier_token"))
     secret = "sk-rotated-TESTKEYabcd"
+    pk = f"o{sfx}"[:64]
     put = await client.put(
-        "/admin/config",
+        f"/admin/llm/providers/{pk}",
         json={
-            "llm_provider": "openai",
-            "llm_model": "gpt-4o-mini",
+            "display_name": "OpenAI",
+            "models": ["gpt-4o-mini"],
+            "status": "connected",
+            "is_default": True,
+            "sort_order": 0,
             "llm_api_key": secret,
         },
     )
@@ -115,81 +119,49 @@ async def test_admin_put_llm_api_key_encrypted_at_rest_get_returns_suffix_hint(
     out = put.json()
     assert out["llm_api_key_set"] is True
     assert out["llm_api_key_hint"] == "…abcd"
-    row = await db_session.get(AdminConfig, 1)
+    row = (
+        await db_session.execute(
+            select(LlmProviderRegistry).where(LlmProviderRegistry.provider_key == pk)
+        )
+    ).scalar_one()
     assert row is not None
-    assert row.llm_api_key is not None
-    assert not str(row.llm_api_key).startswith("sk-")
-    get = await client.get("/admin/config")
-    assert get.status_code == 200
-    assert get.json()["llm_api_key_hint"] == "…abcd"
+    assert row.api_key is not None
+    assert not str(row.api_key).startswith("sk-")
 
 
 @pytest.mark.asyncio
-async def test_tool_admin_promotion_and_revocation(
+async def test_removed_admin_user_provisioning_and_token_usage_routes_return_404(
     client: AsyncClient,
 ) -> None:
-    # ARRANGE
-    suffix = uuid.uuid4().hex[:8]
-    email_admin = f"ta-promote-{suffix}@example.com"
-    email_member = f"ta-member-{suffix}@example.com"
-
-    r_admin = await client.post(
+    """User provisioning and platform token usage were removed; endpoints are gone (404)."""
+    sfx = uuid.uuid4().hex[:8]
+    email = f"pa-404-{sfx}@example.com"
+    reg = await client.post(
         "/auth/register",
         json={
-            "email": email_admin,
+            "email": email,
             "password": "securepass123",
-            "display_name": "Tool Admin",
+            "display_name": "Platform Admin",
         },
     )
-    assert r_admin.status_code == 200
-    assert r_admin.json() == {"message": "ok"}
-    token_admin = r_admin.cookies.get("atelier_token")
-    assert token_admin
-
-    r_member = await client.post(
-        "/auth/register",
+    assert reg.status_code == 200
+    client.cookies.set("atelier_token", reg.cookies.get("atelier_token"))
+    assert (await client.get("/admin/users")).status_code == 404
+    create = await client.post(
+        "/admin/users",
         json={
-            "email": email_member,
+            "email": f"new-{sfx}@example.com",
             "password": "securepass123",
-            "display_name": "Member",
+            "display_name": "New",
         },
     )
-    assert r_member.status_code == 200
-    assert r_member.json() == {"message": "ok"}
-    token_member = r_member.cookies.get("atelier_token")
-    assert token_member
-
-    client.cookies.set("atelier_token", token_member)
-    me_member = await client.get("/auth/me")
-    assert me_member.status_code == 200
-    member_id = me_member.json()["user"]["id"]
-
-    # ACT / ASSERT (c) — non-admin cannot call the endpoint
-    forbidden = await client.put(
-        f"/admin/users/{member_id}/admin-status",
-        json={"is_tool_admin": True},
+    assert create.status_code == 404
+    me = await client.get("/auth/me")
+    assert me.status_code == 200
+    uid = me.json()["user"]["id"]
+    put = await client.put(
+        f"/admin/users/{uid}/admin-status",
+        json={"is_platform_admin": False},
     )
-    assert forbidden.status_code == 403
-    assert forbidden.json()["code"] == "FORBIDDEN"
-
-    # ACT / ASSERT (a) — tool admin promotes a regular user
-    client.cookies.set("atelier_token", token_admin)
-    promote = await client.put(
-        f"/admin/users/{member_id}/admin-status",
-        json={"is_tool_admin": True},
-    )
-    assert promote.status_code == 200
-    data = promote.json()
-    assert data["is_tool_admin"] is True
-
-    client.cookies.set("atelier_token", token_member)
-    me_after = await client.get("/auth/me")
-    assert me_after.json()["user"]["is_tool_admin"] is True
-
-    # ACT / ASSERT (b) — new tool admin cannot self-revoke
-    self_revoke = await client.put(
-        f"/admin/users/{member_id}/admin-status",
-        json={"is_tool_admin": False},
-    )
-    assert self_revoke.status_code == 400
-    assert self_revoke.json()["code"] == "SELF_REVOCATION_BLOCKED"
+    assert put.status_code == 404
+    assert (await client.get("/admin/token-usage")).status_code == 404

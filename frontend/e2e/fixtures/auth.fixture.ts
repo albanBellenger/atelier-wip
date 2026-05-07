@@ -4,7 +4,7 @@ import { test as base, expect, request as launchApiRequest } from '@playwright/t
 import type { APIRequestContext, Page } from '@playwright/test'
 
 type MeJson = {
-  user: { id: string; email: string; display_name: string; is_tool_admin: boolean }
+  user: { id: string; email: string; display_name: string; is_platform_admin: boolean }
 }
 
 async function readMe(api: APIRequestContext): Promise<MeJson> {
@@ -29,13 +29,13 @@ export const test = base.extend<{ toolAdminPage: Page; nonAdminPage: Page }>({
       })
       if (!login.ok()) {
         throw new Error(
-          `Tool admin login failed (${login.status()}). Check PLAYWRIGHT_TOOL_ADMIN_EMAIL / PLAYWRIGHT_TOOL_ADMIN_PASSWORD.`,
+          `Platform admin login failed (${login.status()}). Check PLAYWRIGHT_TOOL_ADMIN_EMAIL / PLAYWRIGHT_TOOL_ADMIN_PASSWORD.`,
         )
       }
       const me = await readMe(request)
-      if (!me.user.is_tool_admin) {
+      if (!me.user.is_platform_admin) {
         throw new Error(
-          `User ${adminEmail} is not a tool admin (is_tool_admin=false). Grant tool admin or use a different account.`,
+          `User ${adminEmail} is not a platform admin (is_platform_admin=false). Grant platform admin or use a different account.`,
         )
       }
       storageState = await request.storageState()
@@ -47,12 +47,12 @@ export const test = base.extend<{ toolAdminPage: Page; nonAdminPage: Page }>({
         data: { email, password, display_name: 'E2E Tool Candidate' },
       })
       if (!reg.ok()) {
-        throw new Error(`Tool admin register failed: ${reg.status()} ${await reg.text()}`)
+        throw new Error(`Platform admin register failed: ${reg.status()} ${await reg.text()}`)
       }
       const me1 = await readMe(request)
-      if (!me1.user.is_tool_admin) {
+      if (!me1.user.is_platform_admin) {
         throw new Error(
-          'Registered user is not tool admin: set PLAYWRIGHT_TOOL_ADMIN_EMAIL and PLAYWRIGHT_TOOL_ADMIN_PASSWORD to a seeded tool-admin account, or use an isolated DB where the first registration becomes tool admin.',
+          'Registered user is not platform admin: set PLAYWRIGHT_TOOL_ADMIN_EMAIL and PLAYWRIGHT_TOOL_ADMIN_PASSWORD to a seeded platform-admin account, or use an isolated DB where the first registration becomes platform admin.',
         )
       }
       storageState = await request.storageState()
@@ -65,7 +65,7 @@ export const test = base.extend<{ toolAdminPage: Page; nonAdminPage: Page }>({
     })
     if (!cr.ok()) {
       await apiSeed.dispose()
-      throw new Error(`Could not seed studio for tool admin: ${cr.status()} ${await cr.text()}`)
+      throw new Error(`Could not seed studio for platform admin: ${cr.status()} ${await cr.text()}`)
     }
     await apiSeed.dispose()
 
@@ -102,8 +102,8 @@ export const test = base.extend<{ toolAdminPage: Page; nonAdminPage: Page }>({
       throw new Error(`nonAdmin login failed: ${login.status()} ${await login.text()}`)
     }
     const me = await readMe(request)
-    if (me.user.is_tool_admin) {
-      throw new Error('nonAdmin fixture user unexpectedly has tool admin role')
+    if (me.user.is_platform_admin) {
+      throw new Error('nonAdmin fixture user unexpectedly has platform admin role')
     }
     const storageState = await request.storageState()
     const ctx = await browser.newContext({ storageState })

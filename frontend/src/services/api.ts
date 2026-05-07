@@ -105,7 +105,7 @@ export interface MeResponse {
     id: string
     email: string
     display_name: string
-    is_tool_admin: boolean
+    is_platform_admin: boolean
   }
   /** Each ``role`` is a wire value such as ``studio_admin`` / ``studio_member`` / ``studio_viewer``; use ``studioRoleLabel`` for UI copy. */
   studios: { studio_id: string; studio_name: string; role: string }[]
@@ -117,7 +117,7 @@ export async function me(): Promise<MeResponse> {
 }
 
 export interface StudioCapabilitiesOut {
-  is_tool_admin: boolean
+  is_platform_admin: boolean
   membership_role: string | null
   is_studio_admin: boolean
   is_studio_editor: boolean
@@ -352,27 +352,6 @@ export interface TokenUsageReport {
   builder_budget?: MeTokenUsageBuilderBudget | null
 }
 
-export async function getAdminTokenUsage(
-  params?: TokenUsageQueryParams,
-): Promise<TokenUsageReport> {
-  const sp = new URLSearchParams()
-  appendTokenUsageParams(sp, params)
-  const q = sp.toString()
-  return request<TokenUsageReport>(
-    'GET',
-    `/admin/token-usage${q ? `?${q}` : ''}`,
-  )
-}
-
-export async function downloadAdminTokenUsageCsv(
-  params?: TokenUsageQueryParams,
-): Promise<Blob> {
-  const sp = new URLSearchParams()
-  appendTokenUsageParams(sp, params)
-  const q = sp.toString()
-  return fetchCsv(`/admin/token-usage${q ? `?${q}` : ''}`)
-}
-
 export async function getStudioTokenUsage(
   studioId: string,
   params?: Omit<TokenUsageQueryParams, 'studio_id'>,
@@ -439,33 +418,51 @@ export async function postStudioCrossStudioRequest(
   )
 }
 
-export interface CrossStudioAdminRow {
+export interface CrossStudioIncomingRow {
   id: string
-  requesting_studio_id: string
   requesting_studio_name: string
-  target_software_id: string
-  target_software_name: string
-  owner_studio_id: string
-  owner_studio_name: string
-  requested_by: string
   requester_email: string
+  target_software_name: string
   access_level: string
   status: string
   created_at: string
   resolved_at: string | null
 }
 
-export async function listAdminCrossStudio(params?: {
-  status?: string
-  limit?: number
-}): Promise<CrossStudioAdminRow[]> {
+export interface CrossStudioOutgoingRow {
+  id: string
+  target_software_name: string
+  owner_studio_name: string
+  access_level: string
+  status: string
+  created_at: string
+  resolved_at: string | null
+}
+
+export async function getStudioCrossStudioIncoming(
+  studioId: string,
+  params?: { status?: string; limit?: number },
+): Promise<CrossStudioIncomingRow[]> {
   const sp = new URLSearchParams()
   if (params?.status) sp.set('status', params.status)
   if (params?.limit != null) sp.set('limit', String(params.limit))
   const q = sp.toString()
-  return request<CrossStudioAdminRow[]>(
+  return request<CrossStudioIncomingRow[]>(
     'GET',
-    `/admin/cross-studio${q ? `?${q}` : ''}`,
+    `/studios/${encodeURIComponent(studioId)}/cross-studio-incoming${q ? `?${q}` : ''}`,
+  )
+}
+
+export async function getStudioCrossStudioOutgoing(
+  studioId: string,
+  params?: { limit?: number },
+): Promise<CrossStudioOutgoingRow[]> {
+  const sp = new URLSearchParams()
+  if (params?.limit != null) sp.set('limit', String(params.limit))
+  const q = sp.toString()
+  return request<CrossStudioOutgoingRow[]>(
+    'GET',
+    `/studios/${encodeURIComponent(studioId)}/cross-studio-outgoing${q ? `?${q}` : ''}`,
   )
 }
 
@@ -474,25 +471,21 @@ export interface CrossStudioResolveBody {
   access_level?: 'viewer' | 'external_editor' | null
 }
 
-export async function putAdminCrossStudioResolve(
+export async function putStudioCrossStudioIncoming(
+  studioId: string,
   grantId: string,
   body: CrossStudioResolveBody,
 ): Promise<CrossStudioRequestResult> {
   return request<CrossStudioRequestResult>(
     'PUT',
-    `/admin/cross-studio/${grantId}`,
+    `/studios/${encodeURIComponent(studioId)}/cross-studio-incoming/${encodeURIComponent(grantId)}`,
     body,
   )
 }
 
-// --- Tool admin /admin/config ---
+// --- Platform admin embedding singleton (/admin/embedding-config) ---
 
-export interface AdminConfigPublic {
-  llm_provider: string | null
-  llm_model: string | null
-  llm_api_base_url: string | null
-  llm_api_key_set: boolean
-  llm_api_key_hint?: string | null
+export interface EmbeddingAdminConfigPublic {
   embedding_provider: string | null
   embedding_model: string | null
   embedding_api_base_url: string | null
@@ -502,25 +495,21 @@ export interface AdminConfigPublic {
 }
 
 /** Only include fields you intend to change; omitted keys are left unchanged on the server. */
-export type AdminConfigUpdateBody = {
-  llm_provider?: string | null
-  llm_model?: string | null
-  llm_api_key?: string | null
-  llm_api_base_url?: string | null
+export type EmbeddingAdminConfigUpdateBody = {
   embedding_provider?: string | null
   embedding_model?: string | null
   embedding_api_key?: string | null
   embedding_api_base_url?: string | null
 }
 
-export async function getAdminConfig(): Promise<AdminConfigPublic> {
-  return request<AdminConfigPublic>('GET', '/admin/config')
+export async function getAdminEmbeddingConfig(): Promise<EmbeddingAdminConfigPublic> {
+  return request<EmbeddingAdminConfigPublic>('GET', '/admin/embedding-config')
 }
 
-export async function putAdminConfig(
-  body: AdminConfigUpdateBody,
-): Promise<AdminConfigPublic> {
-  return request<AdminConfigPublic>('PUT', '/admin/config', body)
+export async function putAdminEmbeddingConfig(
+  body: EmbeddingAdminConfigUpdateBody,
+): Promise<EmbeddingAdminConfigPublic> {
+  return request<EmbeddingAdminConfigPublic>('PUT', '/admin/embedding-config', body)
 }
 
 export interface AdminConnectivityResult {
@@ -529,7 +518,7 @@ export interface AdminConnectivityResult {
   detail: string | null
 }
 
-/** Optional overrides for POST /admin/test/llm (defaults from admin_config). */
+/** Optional overrides for POST /admin/test/llm (defaults from default registry row). */
 export type AdminLlmProbeBody = {
   model?: string | null
   api_base_url?: string | null
@@ -595,17 +584,8 @@ export interface AdminStudioDetail {
   gitlab: AdminStudioGitlabSummary
 }
 
-export type AdminStudioGitlabPatchBody = {
-  git_provider?: string | null
-  git_repo_url?: string | null
-  git_branch?: string | null
-  git_publish_strategy?: string | null
-  git_token?: string | null
-}
-
 export interface AdminConsoleOverview {
   studios: StudioOverviewRow[]
-  mtd_spend_total_usd: string
   active_builders_count: number
   embedding_collection_count: number
   recent_activity: DeploymentActivityRow[]
@@ -623,68 +603,6 @@ export async function getAdminStudio(studioId: string): Promise<AdminStudioDetai
   return request<AdminStudioDetail>(
     'GET',
     `/admin/studios/${encodeURIComponent(studioId)}`,
-  )
-}
-
-export async function patchAdminStudioGitlab(
-  studioId: string,
-  body: AdminStudioGitlabPatchBody,
-): Promise<AdminStudioGitlabSummary> {
-  return request<AdminStudioGitlabSummary>(
-    'PATCH',
-    `/admin/studios/${encodeURIComponent(studioId)}/gitlab`,
-    body,
-  )
-}
-
-export interface AdminStudioMembershipRow {
-  studio_id: string
-  studio_name: string
-  role: string
-}
-
-export interface AdminUserDirectoryRow {
-  user_id: string
-  email: string
-  display_name: string
-  is_tool_admin: boolean
-  created_at: string
-  studio_memberships: AdminStudioMembershipRow[]
-}
-
-export async function getAdminUsers(params?: {
-  limit?: number
-  offset?: number
-}): Promise<AdminUserDirectoryRow[]> {
-  const sp = new URLSearchParams()
-  if (params?.limit != null) sp.set('limit', String(params.limit))
-  if (params?.offset != null) sp.set('offset', String(params.offset))
-  const q = sp.toString()
-  return request<AdminUserDirectoryRow[]>('GET', `/admin/users${q ? `?${q}` : ''}`)
-}
-
-/** Tool admin: create a registered user (does not change the current session). */
-export async function postAdminCreateUser(
-  body: RegisterRequestBody,
-): Promise<AdminUserPublic> {
-  return request<AdminUserPublic>('POST', '/admin/users', body)
-}
-
-export interface AdminUserPublic {
-  id: string
-  email: string
-  display_name: string
-  is_tool_admin: boolean
-}
-
-export async function putAdminUserAdminStatus(
-  userId: string,
-  body: { is_tool_admin: boolean },
-): Promise<AdminUserPublic> {
-  return request<AdminUserPublic>(
-    'PUT',
-    `/admin/users/${encodeURIComponent(userId)}/admin-status`,
-    body,
   )
 }
 
@@ -716,9 +634,9 @@ export type LlmProviderUpsertBody = {
   litellm_provider_slug?: string | null
 }
 
-/** Combined Tool admin config + LLM provider registry for the LLM connectivity page. */
+/** LLM provider registry for the Admin Console LLM tab. */
 export interface AdminLlmDeployment {
-  credentials: AdminConfigPublic
+  has_providers: boolean
   providers: LlmProviderRegistryRow[]
 }
 
@@ -908,27 +826,25 @@ export async function patchAdminEmbeddingReindexPolicy(
   )
 }
 
-// --- Admin studio budget (tool admin) ---
+// --- Studio budget (Studio Owner self-service) ---
 
 export type StudioBudgetPatchBody = {
   budget_cap_monthly_usd?: string | null
   budget_overage_action?: string
 }
 
-export async function patchAdminStudioBudget(
+export async function patchStudioBudget(
   studioId: string,
   body: StudioBudgetPatchBody,
 ): Promise<void> {
   return request<void>(
     'PATCH',
-    `/admin/studios/${encodeURIComponent(studioId)}/budget`,
+    `/studios/${encodeURIComponent(studioId)}/budget`,
     body,
   )
 }
 
-// --- Admin per-member studio budgets (tool admin) ---
-
-export interface AdminMemberBudgetRow {
+export interface StudioMemberBudgetRow {
   user_id: string
   email: string
   display_name: string
@@ -942,23 +858,23 @@ export type MemberStudioBudgetPatchBody = {
   budget_cap_monthly_usd: string | null
 }
 
-export async function getAdminStudioMemberBudgets(
+export async function getStudioMemberBudgets(
   studioId: string,
-): Promise<AdminMemberBudgetRow[]> {
-  return request<AdminMemberBudgetRow[]>(
+): Promise<StudioMemberBudgetRow[]> {
+  return request<StudioMemberBudgetRow[]>(
     'GET',
-    `/admin/studios/${encodeURIComponent(studioId)}/member-budgets`,
+    `/studios/${encodeURIComponent(studioId)}/member-budgets`,
   )
 }
 
-export async function patchAdminStudioMemberBudget(
+export async function patchStudioMemberBudget(
   studioId: string,
   userId: string,
   body: MemberStudioBudgetPatchBody,
-): Promise<AdminMemberBudgetRow> {
-  return request<AdminMemberBudgetRow>(
+): Promise<StudioMemberBudgetRow> {
+  return request<StudioMemberBudgetRow>(
     'PATCH',
-    `/admin/studios/${encodeURIComponent(studioId)}/members/${encodeURIComponent(userId)}/budget`,
+    `/studios/${encodeURIComponent(studioId)}/members/${encodeURIComponent(userId)}/budget`,
     body,
   )
 }
@@ -991,6 +907,7 @@ export interface Studio {
   logo_path: string | null
   created_at: string
   budget_cap_monthly_usd?: string | null
+  budget_overage_action?: string
 }
 
 export interface StudioChatLlmModels {

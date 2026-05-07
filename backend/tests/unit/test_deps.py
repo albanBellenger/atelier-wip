@@ -24,7 +24,7 @@ async def test_resolve_studio_access_for_software_cross_studio_single_execute_gr
 
     user = MagicMock()
     user.id = user_id
-    user.is_tool_admin = False
+    user.is_platform_admin = False
 
     grant = MagicMock(spec=CrossStudioAccess)
 

@@ -72,11 +72,11 @@ def create_admin(ctx: click.Context, email: str, password: str | None) -> None:
                     email=email_norm,
                     password_hash=hash_password(plain),
                     display_name=_default_display_name(email_norm),
-                    is_tool_admin=True,
+                    is_platform_admin=True,
                 )
             )
         else:
-            user.is_tool_admin = True
+            user.is_platform_admin = True
             if password_explicit:
                 assert password is not None
                 user.password_hash = hash_password(password)
@@ -102,7 +102,7 @@ def list_admins() -> None:
     headers = ("id", "email", "display_name", "created_at")
     with session_factory() as session:
         users = session.scalars(
-            select(User).where(User.is_tool_admin.is_(True)).order_by(User.created_at)
+            select(User).where(User.is_platform_admin.is_(True)).order_by(User.created_at)
         ).all()
 
     rows: list[tuple[str, str, str, str]] = [

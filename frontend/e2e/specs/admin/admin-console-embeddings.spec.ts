@@ -3,7 +3,7 @@ import { AdminConsolePage } from '../../pages/admin/AdminConsolePage'
 import { AdminEmbeddingsPage } from '../../pages/admin/AdminEmbeddingsPage'
 
 test.describe('Admin console — embeddings', () => {
-  test('tool admin sees embeddings sections', async ({ toolAdminPage }) => {
+  test('platform admin sees embeddings sections', async ({ toolAdminPage }) => {
     const console_ = new AdminConsolePage(toolAdminPage)
     const emb = new AdminEmbeddingsPage(toolAdminPage)
     await console_.goto('embeddings')

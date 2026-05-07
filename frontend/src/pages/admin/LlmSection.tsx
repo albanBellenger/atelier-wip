@@ -369,7 +369,7 @@ function AddProviderModal({
           <span className="font-mono text-zinc-400">ENCRYPTION_KEY</span> is set). If omitted,
           inference falls back to the key from{' '}
           <Link className="text-violet-400 hover:underline" to="/admin/settings">
-            Tool admin settings
+            Platform settings · LLM keys
           </Link>
           .
         </p>
@@ -673,7 +673,7 @@ function EditProviderModal({
           <span className="font-mono text-zinc-400">{provider.provider_key}</span>. Per-provider API
           keys are optional; leave blank to keep the stored key, or use remove to fall back to{' '}
           <Link className="text-violet-400 hover:underline" to="/admin/settings">
-            Tool admin settings
+            Platform settings · LLM keys
           </Link>
           .
         </p>
@@ -986,7 +986,6 @@ export function LlmSection(): ReactElement {
   })
 
   const providers = deploymentQ.data?.providers ?? EMPTY_LLM_PROVIDERS
-  const credentials = deploymentQ.data?.credentials
 
   const updateRegistry = useMutation({
     mutationFn: ({ key, body }: { key: string; body: LlmProviderUpsertBody }) =>
@@ -1027,7 +1026,7 @@ export function LlmSection(): ReactElement {
     <div className="space-y-6">
       <PageTitle
         title="LLM connectivity"
-        subtitle="One deployment: Tool admin credentials for live inference, plus a routing registry and per-studio policy when configured."
+        subtitle="Provider registry, routing rules, and per-studio policy. API keys and base URLs live on each registry row; the default row supplies credentials when routing does not pick a specific provider."
       />
 
       {policyQ.isError ? (
@@ -1042,7 +1041,7 @@ export function LlmSection(): ReactElement {
               className="text-[12px] font-medium text-violet-400 hover:underline"
               to="/admin/settings"
             >
-              Tool settings
+              Embedding settings
             </Link>
             <Btn
               type="button"
@@ -1062,84 +1061,16 @@ export function LlmSection(): ReactElement {
         {deploymentQ.isError ? (
           <p className="px-5 py-6 text-[13px] text-rose-300">Could not load deployment data.</p>
         ) : null}
-        {credentials ? (
+        {deploymentQ.data && !deploymentQ.isError ? (
           <>
-            <div className="space-y-4 px-5 py-4">
-              <StatLabel>Live inference credentials</StatLabel>
-              <p className="mt-2 text-[12px] leading-relaxed text-zinc-400">
-                Default <span className="text-zinc-200">OpenAI-compatible</span> endpoint, API key,
-                and fallback model come from{' '}
-                <Link className="text-violet-400 hover:underline" to="/admin/settings">
-                  /admin/settings
-                </Link>
-                . Registry rows may supply a per-provider API key and base URL; when a provider key
-                is set it takes precedence for routes that resolve to that provider. Otherwise the
-                Tool settings key is used.
-              </p>
-              <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div>
-                  <dt className="text-[10.5px] uppercase tracking-wide text-zinc-500">Provider</dt>
-                  <dd className="mt-0.5 font-mono text-[13px] text-zinc-200">
-                    {(credentials.llm_provider ?? '').trim() || 'openai (default)'}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[10.5px] uppercase tracking-wide text-zinc-500">
-                    Fallback model
-                  </dt>
-                  <dd className="mt-0.5 font-mono text-[13px] text-zinc-200">
-                    {(credentials.llm_model ?? '').trim() || '—'}
-                  </dd>
-                </div>
-                <div className="sm:col-span-2">
-                  <dt className="text-[10.5px] uppercase tracking-wide text-zinc-500">API base URL</dt>
-                  <dd className="mt-0.5 break-all font-mono text-[12px] text-zinc-300">
-                    {(credentials.llm_api_base_url ?? '').trim() || 'Default host'}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[10.5px] uppercase tracking-wide text-zinc-500">API key</dt>
-                  <dd className="mt-0.5 text-[13px] text-zinc-200">
-                    {credentials.llm_api_key_set ? (
-                      <span>
-                        <span className="text-emerald-400/90">Stored</span>
-                        {credentials.llm_api_key_hint ? (
-                          <span className="ml-1 font-mono text-zinc-300">
-                            {credentials.llm_api_key_hint}
-                          </span>
-                        ) : null}
-                      </span>
-                    ) : (
-                      <span className="text-amber-400/90">Not set — configure in Tool settings</span>
-                    )}
-                  </dd>
-                </div>
-              </dl>
-              <div className="border-t border-zinc-800/60 pt-3">
-                <p className="text-[11px] text-zinc-500">
-                  Sends a minimal chat completion probe using the saved credentials (same as Tool
-                  settings).
-                </p>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <Btn
-                    type="button"
-                    size="sm"
-                    disabled={testLlmMut.isPending}
-                    onClick={() => testLlmMut.mutate({})}
-                  >
-                    {testLlmMut.isPending ? 'Testing…' : 'Test LLM'}
-                  </Btn>
-                </div>
-              </div>
-            </div>
-            <Hairline className="mx-5" />
             <div className="px-5 py-4">
               <StatLabel>Model registry</StatLabel>
               <p className="mt-2 text-[12px] text-zinc-500">
-                Registered providers and model IDs for routing and studio allow-lists. Optional
-                per-provider API keys are stored encrypted when configured server-side. For LiteLLM,
-                inference uses <span className="font-mono text-zinc-400">slug/model</span> when the
-                model id has no slash: the slug is the optional field below or else the provider key.{' '}
+                Registered providers and model IDs for routing and studio allow-lists. Keys are
+                stored encrypted when configured. Mark one row as{' '}
+                <span className="text-zinc-400">default</span> for fallbacks. For LiteLLM, inference
+                uses <span className="font-mono text-zinc-400">slug/model</span> when the model id has
+                no slash: the slug is the optional field below or else the provider key.{' '}
                 <a
                   href={LITELLM_PROVIDERS_DOCS}
                   target="_blank"
@@ -1149,6 +1080,28 @@ export function LlmSection(): ReactElement {
                   Provider slugs
                 </a>
               </p>
+              {!deploymentQ.data.has_providers ? (
+                <p className="mt-3 rounded-md border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-[12px] text-amber-200/90">
+                  No providers yet. Add a provider below, set models and API key, and mark one row
+                  as default so chat and probes can resolve credentials.
+                </p>
+              ) : null}
+              <div className="mt-3 border-t border-zinc-800/60 pt-3">
+                <p className="text-[11px] text-zinc-500">
+                  Sends a minimal chat completion using the default registry row (or pass a
+                  provider from a row&apos;s <span className="text-zinc-400">Test</span> button).
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Btn
+                    type="button"
+                    size="sm"
+                    disabled={testLlmMut.isPending}
+                    onClick={() => testLlmMut.mutate({})}
+                  >
+                    {testLlmMut.isPending ? 'Testing…' : 'Test LLM (default)'}
+                  </Btn>
+                </div>
+              </div>
               {providers.length === 0 ? (
                 <p className="mt-4 px-0 py-2 text-[13px] text-zinc-500">
                   No rows yet. Use <span className="font-medium text-zinc-300">Add provider</span> or

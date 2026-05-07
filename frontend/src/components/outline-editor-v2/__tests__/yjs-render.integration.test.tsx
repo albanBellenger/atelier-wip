@@ -48,7 +48,7 @@ const memberMe: api.MeResponse = {
     id: 'u1',
     email: 'e@example.com',
     display_name: 'Editor',
-    is_tool_admin: false,
+    is_platform_admin: false,
   },
   studios: [{ studio_id: 's1', studio_name: 'Studio', role: 'studio_member' }],
   cross_studio_grants: [],

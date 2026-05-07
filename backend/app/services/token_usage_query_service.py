@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import TokenUsage
 
-Scope = Literal["tool_admin", "studio", "self"]
+Scope = Literal["platform_admin", "studio", "self"]
 
 
 def _non_empty(ids: list[UUID] | None) -> list[UUID] | None:

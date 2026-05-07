@@ -365,7 +365,7 @@ export function ProjectPage(): ReactElement {
   }, [activityQ.data?.items, pid])
 
   const canListStudioTeam = Boolean(
-    sid && (access.role != null || access.isToolAdmin),
+    sid && (access.role != null || access.isPlatformAdmin),
   )
 
   const membersQ = useQuery({

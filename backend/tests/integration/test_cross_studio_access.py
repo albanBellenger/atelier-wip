@@ -82,7 +82,7 @@ async def test_cross_studio_viewer_revoke_and_me_grants(
 
     client.cookies.set("atelier_token", token_ta)
     apr = await client.put(
-        f"/admin/cross-studio/{grant_id}",
+        f"/studios/{studio_a}/cross-studio-incoming/{grant_id}",
         json={"decision": "approve", "access_level": "viewer"},
     )
     assert apr.status_code == 200
@@ -120,7 +120,7 @@ async def test_cross_studio_viewer_revoke_and_me_grants(
 
     client.cookies.set("atelier_token", token_ta)
     rev = await client.put(
-        f"/admin/cross-studio/{grant_id}",
+        f"/studios/{studio_a}/cross-studio-incoming/{grant_id}",
         json={"decision": "revoke"},
     )
     assert rev.status_code == 200
@@ -185,7 +185,7 @@ async def test_cross_studio_external_editor_patch_not_publish(
 
     client.cookies.set("atelier_token", token_ta)
     apr = await client.put(
-        f"/admin/cross-studio/{grant_id}",
+        f"/studios/{studio_a}/cross-studio-incoming/{grant_id}",
         json={"decision": "approve", "access_level": "external_editor"},
     )
     assert apr.status_code == 200
@@ -247,7 +247,7 @@ async def test_cross_studio_viewer_studio_software_list_filtered(
 
     client.cookies.set("atelier_token", token_ta)
     apr = await client.put(
-        f"/admin/cross-studio/{grant_id}",
+        f"/studios/{studio_a}/cross-studio-incoming/{grant_id}",
         json={"decision": "approve", "access_level": "viewer"},
     )
     assert apr.status_code == 200
@@ -329,7 +329,7 @@ async def test_cross_studio_external_editor_outline_forbidden(
 
     client.cookies.set("atelier_token", token_ta)
     apr = await client.put(
-        f"/admin/cross-studio/{grant_id}",
+        f"/studios/{studio_a}/cross-studio-incoming/{grant_id}",
         json={"decision": "approve", "access_level": "external_editor"},
     )
     assert apr.status_code == 200
@@ -362,7 +362,7 @@ async def test_cross_studio_external_editor_outline_forbidden(
     gid_v = req_v.json()["id"]
     client.cookies.set("atelier_token", token_ta)
     await client.put(
-        f"/admin/cross-studio/{gid_v}",
+        f"/studios/{studio_a}/cross-studio-incoming/{gid_v}",
         json={"decision": "approve", "access_level": "viewer"},
     )
 
@@ -376,7 +376,7 @@ async def test_me_token_usage_requires_home_studio_membership(
     client: AsyncClient,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    tool_admin_token = await _register(client, sfx, "firstuser")
+    await _register(client, sfx, "firstuser")
     lonely = await _register(client, sfx, "lonely")
     client.cookies.set("atelier_token", lonely)
     denied = await client.get("/me/token-usage")
@@ -415,9 +415,9 @@ async def test_me_token_usage_requires_home_studio_membership(
     assert req.status_code == 200
     grant_id = req.json()["id"]
 
-    client.cookies.set("atelier_token", tool_admin_token)
+    client.cookies.set("atelier_token", token_ta)
     apr = await client.put(
-        f"/admin/cross-studio/{grant_id}",
+        f"/studios/{studio_a}/cross-studio-incoming/{grant_id}",
         json={"decision": "approve", "access_level": "viewer"},
     )
     assert apr.status_code == 200
@@ -425,3 +425,76 @@ async def test_me_token_usage_requires_home_studio_membership(
     client.cookies.set("atelier_token", token_m)
     ok = await client.get("/me/token-usage")
     assert ok.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_cross_studio_wrong_studio_owner_cannot_resolve(client: AsyncClient) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token_a = await _register(client, sfx, "owna")
+    client.cookies.set("atelier_token", token_a)
+    studio_a = (
+        await client.post("/studios", json={"name": f"WA{sfx}", "description": ""})
+    ).json()["id"]
+    sw_id = (
+        await client.post(
+            f"/studios/{studio_a}/software",
+            json={"name": f"SWW{sfx}", "description": ""},
+        )
+    ).json()["id"]
+
+    token_b = await _register(client, sfx, "ownb")
+    client.cookies.set("atelier_token", token_b)
+    studio_b = (
+        await client.post("/studios", json={"name": f"WB{sfx}", "description": ""})
+    ).json()["id"]
+    req = await client.post(
+        f"/studios/{studio_b}/cross-studio-request",
+        json={"target_software_id": sw_id, "requested_access_level": "viewer"},
+    )
+    assert req.status_code == 200
+    grant_id = req.json()["id"]
+
+    token_c = await _register(client, sfx, "ownc")
+    client.cookies.set("atelier_token", token_c)
+    studio_c = (
+        await client.post("/studios", json={"name": f"WC{sfx}", "description": ""})
+    ).json()["id"]
+
+    bad = await client.put(
+        f"/studios/{studio_c}/cross-studio-incoming/{grant_id}",
+        json={"decision": "approve", "access_level": "viewer"},
+    )
+    assert bad.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_admin_cross_studio_route_removed(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    from sqlalchemy import update
+
+    from app.models import User
+
+    sfx = uuid.uuid4().hex[:8]
+    email = f"cpa-{sfx}@example.com"
+    await client.post(
+        "/auth/register",
+        json={
+            "email": email,
+            "password": "securepass123",
+            "display_name": "PA",
+        },
+    )
+    await db_session.execute(
+        update(User).where(User.email == email.lower()).values(is_platform_admin=True)
+    )
+    await db_session.flush()
+    login = await client.post(
+        "/auth/login",
+        json={"email": email, "password": "securepass123"},
+    )
+    client.cookies.set("atelier_token", login.cookies.get("atelier_token"))
+    r = await client.get("/admin/cross-studio")
+    assert r.status_code == 404
+

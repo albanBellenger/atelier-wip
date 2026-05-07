@@ -1,4 +1,4 @@
-"""Tool-admin POST /admin/users (provision account without switching session)."""
+"""POST /admin/users was removed (self-registration only)."""
 
 import uuid
 
@@ -10,7 +10,7 @@ from app.models import User
 
 
 @pytest.mark.asyncio
-async def test_admin_create_user_unauthenticated(client: AsyncClient) -> None:
+async def test_admin_create_user_route_removed_unauthenticated(client: AsyncClient) -> None:
     r = await client.post(
         "/admin/users",
         json={
@@ -19,11 +19,11 @@ async def test_admin_create_user_unauthenticated(client: AsyncClient) -> None:
             "display_name": "X",
         },
     )
-    assert r.status_code == 401
+    assert r.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_admin_create_user_forbidden_for_member(client: AsyncClient) -> None:
+async def test_admin_create_user_route_removed_for_member(client: AsyncClient) -> None:
     sfx = uuid.uuid4().hex[:8]
     owner_email = f"cu-own-{sfx}@example.com"
     await client.post(
@@ -49,28 +49,28 @@ async def test_admin_create_user_forbidden_for_member(client: AsyncClient) -> No
             "display_name": "N",
         },
     )
-    assert denied.status_code == 403
+    assert denied.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_admin_create_user_tool_admin_201_and_409(
+async def test_admin_create_user_route_removed_for_platform_admin(
     client: AsyncClient,
     db_session,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    admin_email = f"cu-ta-{sfx}@example.com"
+    admin_email = f"cu-pa-{sfx}@example.com"
     await client.post(
         "/auth/register",
         json={
             "email": admin_email,
             "password": "securepass123",
-            "display_name": "TA",
+            "display_name": "PA",
         },
     )
     await db_session.execute(
         update(User)
         .where(User.email == admin_email.lower())
-        .values(is_tool_admin=True)
+        .values(is_platform_admin=True)
     )
     await db_session.flush()
 
@@ -83,28 +83,12 @@ async def test_admin_create_user_tool_admin_201_and_409(
     assert tok
     client.cookies.set("atelier_token", tok)
 
-    new_email = f"cu-created-{sfx}@example.com"
     r = await client.post(
         "/admin/users",
         json={
-            "email": new_email,
+            "email": f"cu-created-{sfx}@example.com",
             "password": "securepass123",
             "display_name": "Provisioned",
         },
     )
-    assert r.status_code == 201
-    body = r.json()
-    assert body["email"] == new_email.lower()
-    assert body["display_name"] == "Provisioned"
-    assert body["is_tool_admin"] is False
-    assert "id" in body
-
-    dup = await client.post(
-        "/admin/users",
-        json={
-            "email": new_email,
-            "password": "securepass123",
-            "display_name": "Dup",
-        },
-    )
-    assert dup.status_code == 409
+    assert r.status_code == 404

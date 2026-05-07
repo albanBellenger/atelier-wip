@@ -7,18 +7,6 @@ import { describe, expect, it, vi } from 'vitest'
 import * as api from '../../services/api'
 import { StudiosSection } from './StudiosSection'
 
-const creds: api.AdminConfigPublic = {
-  llm_provider: 'openai',
-  llm_model: 'gpt-4o-mini',
-  llm_api_base_url: null,
-  llm_api_key_set: true,
-  llm_api_key_hint: '…wxyz',
-  embedding_provider: null,
-  embedding_model: null,
-  embedding_api_base_url: null,
-  embedding_api_key_set: false,
-}
-
 const sampleList: api.StudioOverviewRow[] = [
   {
     studio_id: '11111111-1111-1111-1111-111111111111',
@@ -68,7 +56,7 @@ function renderStudios(): {
   vi.spyOn(api, 'listAdminStudios').mockResolvedValue(sampleList)
   const detailSpy = vi.spyOn(api, 'getAdminStudio').mockResolvedValue(sampleDetail)
   vi.spyOn(api, 'getAdminLlmDeployment').mockResolvedValue({
-    credentials: creds,
+    has_providers: true,
     providers: [
       {
         id: 'p1',
@@ -111,7 +99,9 @@ describe('StudiosSection', () => {
     await waitFor(() => {
       expect(detailSpy).toHaveBeenCalledWith('11111111-1111-1111-1111-111111111111')
     })
-    expect(await screen.findByDisplayValue('https://gitlab.example.com/g/p.git')).toBeInTheDocument()
+    expect(
+      await screen.findByDisplayValue('https://gitlab.example.com/g/p.git'),
+    ).toBeInTheDocument()
   })
 
   it('creates a studio via postAdminStudio', async () => {

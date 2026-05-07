@@ -37,20 +37,20 @@ async def get_current_user(
     return await AuthService(session).get_user_from_token(token)
 
 
-async def require_tool_admin(user: User = Depends(get_current_user)) -> User:
-    if not user.is_tool_admin:
+async def require_platform_admin(user: User = Depends(get_current_user)) -> User:
+    if not user.is_platform_admin:
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Tool admin access required",
+            message="Platform admin access required",
         )
     return user
 
 
-async def get_studio_for_tool_admin(
+async def get_studio_for_platform_admin(
     studio_id: UUID,
     session: AsyncSession = Depends(get_db),
-    _: User = Depends(require_tool_admin),
+    _: User = Depends(require_platform_admin),
 ) -> Studio:
     st = await session.get(Studio, studio_id)
     if st is None:
@@ -60,6 +60,28 @@ async def get_studio_for_tool_admin(
             message="Studio not found",
         )
     return st
+
+
+async def ensure_studio_owner_membership(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+    studio_id: UUID,
+) -> None:
+    """Require ``studio_admin`` on ``studio_id`` (platform admins without membership do not pass)."""
+    row = await session.execute(
+        select(StudioMember.user_id).where(
+            StudioMember.studio_id == studio_id,
+            StudioMember.user_id == user_id,
+            StudioMember.role == "studio_admin",
+        )
+    )
+    if row.scalar_one_or_none() is None:
+        raise ApiError(
+            status_code=403,
+            code="FORBIDDEN",
+            message="Studio Owner membership on this studio is required.",
+        )
 
 
 @dataclass(frozen=True)
@@ -87,7 +109,7 @@ class StudioAccess:
 
     @property
     def is_studio_admin(self) -> bool:
-        if self.user.is_tool_admin:
+        if self.user.is_platform_admin:
             return True
         if self.cross_studio_grant is not None:
             return False
@@ -97,7 +119,7 @@ class StudioAccess:
 
     @property
     def is_studio_member(self) -> bool:
-        if self.user.is_tool_admin:
+        if self.user.is_platform_admin:
             return True
         if self.cross_studio_grant is not None:
             return True
@@ -106,7 +128,7 @@ class StudioAccess:
     @property
     def is_studio_editor(self) -> bool:
         """Edit specs/WO/artifacts/chat/thread for this software context."""
-        if self.user.is_tool_admin:
+        if self.user.is_platform_admin:
             return True
         if self.is_cross_studio_external_editor:
             return True
@@ -116,7 +138,7 @@ class StudioAccess:
 
     @property
     def can_publish(self) -> bool:
-        if self.user.is_tool_admin:
+        if self.user.is_platform_admin:
             return True
         if self.cross_studio_grant is not None:
             return False
@@ -129,7 +151,7 @@ class StudioAccess:
         Software Definition is restricted to Studio Owner per FR §6.2. Builder role does NOT grant edit.
         Cross-studio grantees never receive this (definition changes are owner-studio only).
         """
-        if self.user.is_tool_admin:
+        if self.user.is_platform_admin:
             return True
         if self.cross_studio_grant is not None:
             return False
@@ -140,7 +162,7 @@ class StudioAccess:
     @property
     def can_create_project(self) -> bool:
         """Only members of the owning studio (not cross-studio grants)."""
-        if self.user.is_tool_admin:
+        if self.user.is_platform_admin:
             return True
         if self.cross_studio_grant is not None:
             return False
@@ -176,7 +198,7 @@ async def resolve_studio_access(
         )
     )
     membership = row.scalar_one_or_none()
-    if membership is None and not user.is_tool_admin:
+    if membership is None and not user.is_platform_admin:
         raise ApiError(
             status_code=403,
             code="NOT_STUDIO_MEMBER",
@@ -195,7 +217,7 @@ async def resolve_studio_access_for_software(
     user: User,
     software: Software,
 ) -> StudioAccess:
-    """Member of owning studio, tool admin, or approved cross-studio grant to this software."""
+    """Member of owning studio, platform admin, or approved cross-studio grant to this software."""
     studio_id = software.studio_id
     try:
         return await resolve_studio_access(session, user, studio_id)
@@ -261,7 +283,7 @@ async def get_studio_software_list_access(
         )
     )
     membership = row.scalar_one_or_none()
-    if membership is not None or user.is_tool_admin:
+    if membership is not None or user.is_platform_admin:
         access = await resolve_studio_access(session, user, studio_id)
         return StudioSoftwareListAccess(
             studio_access=access,
@@ -584,7 +606,7 @@ async def ensure_user_can_download_artifact(
             )
         )
         mem = row.scalar_one_or_none()
-        if mem is None and not user.is_tool_admin:
+        if mem is None and not user.is_platform_admin:
             raise ApiError(
                 status_code=403,
                 code="FORBIDDEN",
@@ -620,7 +642,7 @@ async def ensure_user_can_delete_artifact(
     artifact: Artifact,
 ) -> None:
     """Studio Owner on the owning studio (or Tool Admin) may delete or configure any artifact scope."""
-    if user.is_tool_admin:
+    if user.is_platform_admin:
         return
     scope = artifact.scope_level or "project"
     if scope == "project":
@@ -688,7 +710,7 @@ async def ensure_user_can_reindex_artifact(
     artifact: Artifact,
 ) -> None:
     """Studio Owner or Builder on the owning studio (or Tool Admin); Studio Viewers cannot re-index."""
-    if user.is_tool_admin:
+    if user.is_platform_admin:
         return
     scope = artifact.scope_level or "project"
     if scope == "project":

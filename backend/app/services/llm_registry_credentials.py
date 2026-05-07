@@ -1,4 +1,4 @@
-"""Resolve OpenAI-compatible HTTP credentials from registry rows + admin_config fallback."""
+"""Resolve OpenAI-compatible HTTP credentials from llm_provider_registry."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
-from app.models import AdminConfig, LlmProviderRegistry
+from app.models import LlmProviderRegistry
 from app.openai_compat_urls import openai_v1_base
 from app.security.field_encryption import decode_admin_stored_secret
 from app.services.litellm_model_id import normalize_litellm_chat_model
@@ -28,6 +28,13 @@ def _registry_connected(pr: LlmProviderRegistry) -> bool:
     return (pr.status or "").strip().lower() == "connected"
 
 
+def first_registry_model(row: LlmProviderRegistry | None) -> str | None:
+    if row is None:
+        return None
+    models = _models_from_registry_row(row)
+    return models[0] if models else None
+
+
 async def load_ordered_registry_providers(
     db: AsyncSession,
 ) -> list[LlmProviderRegistry]:
@@ -39,6 +46,17 @@ async def load_ordered_registry_providers(
         )
     )
     return list(result.scalars().all())
+
+
+async def get_default_llm_registry_row(db: AsyncSession) -> LlmProviderRegistry | None:
+    """First registry row with ``is_default`` (tie-break: sort_order, provider_key)."""
+    result = await db.execute(
+        select(LlmProviderRegistry)
+        .where(LlmProviderRegistry.is_default.is_(True))
+        .order_by(LlmProviderRegistry.sort_order, LlmProviderRegistry.provider_key)
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
 
 
 async def resolve_provider_key_for_model(
@@ -58,27 +76,24 @@ async def resolve_provider_key_for_model(
     return None
 
 
-def _api_base_for_registry_row(row: LlmProviderRegistry | None, admin: AdminConfig) -> str:
+def _api_base_for_registry_row(row: LlmProviderRegistry) -> str:
     """OpenAI-compatible API root (…/v1) for LiteLLM ``api_base``."""
     base: str | None = None
-    if row is not None and row.api_base_url and str(row.api_base_url).strip():
+    if row.api_base_url and str(row.api_base_url).strip():
         base = str(row.api_base_url).strip()
-    else:
-        base = (admin.llm_api_base_url or "").strip() or None
     return openai_v1_base(base)
 
 
 async def resolve_openai_compatible_llm_credentials(
     db: AsyncSession,
     *,
-    admin: AdminConfig,
     effective_model: str,
     route_provider_key: str | None,
 ) -> tuple[str, str, str]:
     """Return ``(model_id, bearer_token, api_base)`` — ``api_base`` is OpenAI v1 root for LiteLLM.
 
-    Uses per-registry ``api_key`` when set and non-empty after decode; otherwise falls back
-    to ``admin.llm_api_key``. Base URL: registry ``api_base_url`` when set, else admin default.
+    Credentials always come from ``llm_provider_registry`` (explicit ``route_provider_key``
+    row, or the default row when ``route_provider_key`` is unset).
     """
     model = (effective_model or "").strip()
     if not model:
@@ -94,41 +109,27 @@ async def resolve_openai_compatible_llm_credentials(
         reg_row = await db.scalar(
             select(LlmProviderRegistry).where(LlmProviderRegistry.provider_key == pk)
         )
-
-    admin_key = (decode_admin_stored_secret(admin.llm_api_key) or "").strip()
-
-    if reg_row is not None:
-        row_key = (decode_admin_stored_secret(reg_row.api_key) or "").strip()
-        key = row_key or admin_key
-        if not key:
+        if reg_row is None:
             raise ApiError(
                 status_code=503,
                 code="LLM_NOT_CONFIGURED",
                 message="Tool Admin must configure LLM model and API key.",
             )
-        api_base = _api_base_for_registry_row(reg_row, admin)
-        return normalize_litellm_chat_model(model, registry_row=reg_row), key, api_base
+    else:
+        reg_row = await get_default_llm_registry_row(db)
+        if reg_row is None:
+            raise ApiError(
+                status_code=503,
+                code="LLM_NOT_CONFIGURED",
+                message="Tool Admin must configure LLM model and API key.",
+            )
 
-    key = admin_key
+    key = (decode_admin_stored_secret(reg_row.api_key) or "").strip()
     if not key:
         raise ApiError(
             status_code=503,
             code="LLM_NOT_CONFIGURED",
             message="Tool Admin must configure LLM model and API key.",
         )
-    api_base = openai_v1_base(admin.llm_api_base_url)
-    return model, key, api_base
-
-
-def assert_openai_compatible_provider_field(admin: AdminConfig) -> None:
-    """Reject non-OpenAI-compatible provider labels (legacy admin_config check)."""
-    prov = (admin.llm_provider or "").strip().lower()
-    if prov and prov != "openai":
-        raise ApiError(
-            status_code=503,
-            code="LLM_PROVIDER_UNSUPPORTED",
-            message=(
-                "Set llm_provider to 'openai' (or leave empty) for OpenAI-compatible APIs; "
-                "use LLM API base URL for a custom endpoint."
-            ),
-        )
+    api_base = _api_base_for_registry_row(reg_row)
+    return normalize_litellm_chat_model(model, registry_row=reg_row), key, api_base

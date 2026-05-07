@@ -3,7 +3,7 @@ import { AdminConsolePage } from '../../pages/admin/AdminConsolePage'
 import { AdminOverviewPage } from '../../pages/admin/AdminOverviewPage'
 
 test.describe('Admin console — overview', () => {
-  test('tool admin sees overview KPIs', async ({ toolAdminPage }) => {
+  test('platform admin sees overview KPIs', async ({ toolAdminPage }) => {
     const console_ = new AdminConsolePage(toolAdminPage)
     const overview = new AdminOverviewPage(toolAdminPage)
     await console_.goto('overview')

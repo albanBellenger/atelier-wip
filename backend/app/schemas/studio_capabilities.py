@@ -10,7 +10,7 @@ from app.schemas.auth import CrossStudioGrantPublic
 class StudioCapabilitiesOut(BaseModel):
     """Mirrors ``StudioAccess`` in ``deps.py`` plus outline management (see ``require_outline_manager``)."""
 
-    is_tool_admin: bool
+    is_platform_admin: bool
     membership_role: str | None = Field(
         default=None,
         description="Home-studio wire role when enrolled (e.g. studio_admin); null for pure cross-studio.",

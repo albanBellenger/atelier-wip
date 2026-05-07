@@ -1,4 +1,4 @@
-"""Embedding model catalog and reindex policy (tool admin)."""
+"""Embedding model catalog and reindex policy (platform admin)."""
 
 import uuid
 from decimal import Decimal

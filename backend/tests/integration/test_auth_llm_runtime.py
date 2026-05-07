@@ -32,19 +32,25 @@ async def test_llm_runtime_ok_for_authenticated_user(
     assert reg.status_code == 200
     client.cookies.set("atelier_token", reg.cookies.get("atelier_token"))
 
+    rid = uuid.uuid4()
+    pk = f"rt{sfx}"[:32]
+    await db_session.execute(text("UPDATE llm_provider_registry SET is_default = false"))
     await db_session.execute(
         text(
-            "INSERT INTO admin_config (id, llm_provider, llm_model) "
-            "VALUES (1, 'openai', 'gpt-4o-mini') "
-            "ON CONFLICT (id) DO UPDATE SET "
-            "llm_provider = EXCLUDED.llm_provider, "
-            "llm_model = EXCLUDED.llm_model"
-        )
+            """
+            INSERT INTO llm_provider_registry (
+                id, provider_key, display_name, models_json, status, is_default, sort_order
+            ) VALUES (
+                CAST(:id AS uuid), :pk, 'Runtime test', :models_json, 'connected', true, 0
+            )
+            """
+        ),
+        {"id": str(rid), "pk": pk, "models_json": '["gpt-4o-mini"]'},
     )
     await db_session.flush()
 
     r = await client.get("/auth/llm-runtime")
     assert r.status_code == 200
     body = r.json()
-    assert body["llm_provider"] == "openai"
+    assert body["llm_provider"] == pk
     assert body["llm_model"] == "gpt-4o-mini"

@@ -10,10 +10,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
-from app.models import AdminConfig, LlmProviderRegistry
+from app.models import LlmProviderRegistry
 from app.schemas.admin_console import LlmModelSuggestionItem, LlmModelSuggestionsResponse
 from app.services.llm_registry_credentials import (
-    assert_openai_compatible_provider_field,
+    get_default_llm_registry_row,
     resolve_openai_compatible_llm_credentials,
 )
 
@@ -115,12 +115,6 @@ class LlmModelSuggestionsService:
         source: Source,
     ) -> LlmModelSuggestionsResponse:
         warnings: list[str] = []
-        admin = await self.db.get(AdminConfig, 1)
-        if admin is None:
-            admin = AdminConfig(id=1)
-            self.db.add(admin)
-            await self.db.flush()
-
         reg_row: LlmProviderRegistry | None = None
         pk = (provider_key or "").strip().lower() or None
         if pk:
@@ -135,13 +129,15 @@ class LlmModelSuggestionsService:
                 or None
             )
         if not catalog_slug:
-            catalog_slug = (admin.llm_provider or "openai").strip().lower() or "openai"
+            catalog_slug = "openai"
 
         effective_model = ""
         if reg_row is not None:
             effective_model = _first_models_json_id(reg_row.models_json) or ""
         if not effective_model:
-            effective_model = (admin.llm_model or "").strip()
+            def_row = await get_default_llm_registry_row(self.db)
+            if def_row is not None:
+                effective_model = _first_models_json_id(def_row.models_json) or ""
         if not effective_model:
             effective_model = "gpt-4o-mini"
 
@@ -152,38 +148,31 @@ class LlmModelSuggestionsService:
 
         if want_upstream:
             try:
-                assert_openai_compatible_provider_field(admin)
+                _norm_model, key, api_base = await resolve_openai_compatible_llm_credentials(
+                    self.db,
+                    effective_model=effective_model,
+                    route_provider_key=pk,
+                )
             except ApiError as e:
-                wmsg = str(e.detail) if isinstance(e.detail, str) else "Invalid LLM provider config."
-                warnings.append(wmsg)
+                wmsg = str(e.detail) if isinstance(e.detail, str) else str(e)
+                warnings.append(f"Upstream credentials unavailable: {wmsg}")
             else:
+                url = f"{api_base.rstrip('/')}/models"
                 try:
-                    _norm_model, key, api_base = await resolve_openai_compatible_llm_credentials(
-                        self.db,
-                        admin=admin,
-                        effective_model=effective_model,
-                        route_provider_key=pk,
-                    )
-                except ApiError as e:
-                    wmsg = str(e.detail) if isinstance(e.detail, str) else str(e)
-                    warnings.append(f"Upstream credentials unavailable: {wmsg}")
-                else:
-                    url = f"{api_base.rstrip('/')}/models"
-                    try:
-                        async with httpx.AsyncClient(timeout=15.0) as client:
-                            resp = await client.get(
-                                url,
-                                headers={"Authorization": f"Bearer {key}"},
-                            )
-                        if resp.status_code == 200:
-                            for it in parse_openai_v1_models_body(resp.json()):
-                                merged[it.id] = it
-                        else:
-                            warnings.append(
-                                f"Upstream /v1/models returned HTTP {resp.status_code}."
-                            )
-                    except Exception as e:
-                        warnings.append(f"Upstream model list failed: {str(e)[:200]}")
+                    async with httpx.AsyncClient(timeout=15.0) as client:
+                        resp = await client.get(
+                            url,
+                            headers={"Authorization": f"Bearer {key}"},
+                        )
+                    if resp.status_code == 200:
+                        for it in parse_openai_v1_models_body(resp.json()):
+                            merged[it.id] = it
+                    else:
+                        warnings.append(
+                            f"Upstream /v1/models returned HTTP {resp.status_code}."
+                        )
+                except Exception as e:
+                    warnings.append(f"Upstream model list failed: {str(e)[:200]}")
 
         need_catalog = want_catalog and (
             source == "catalog" or (source == "auto" and len(merged) == 0)

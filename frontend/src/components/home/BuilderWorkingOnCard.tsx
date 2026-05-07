@@ -48,7 +48,7 @@ export function BuilderWorkingOnCard({
         ? `/studios/${studioId}/software/${software.id}/projects/${project.id}`
         : softwareLandingPath
   const chatPath = project
-    ? `/studios/${studioId}/software/${software.id}/projects/${project.id}`
+    ? `/studios/${studioId}/software/${software.id}/projects/${project.id}?tab=chat`
     : `/studios/${studioId}/software/${software.id}`
 
   const repoLabel =

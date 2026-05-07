@@ -50,7 +50,7 @@ async def _studio_project(client: AsyncClient, sfx: str) -> tuple[str, str, str,
 async def _promote_tool_admin(db_session, email: str) -> None:
     r = await db_session.execute(select(User).where(User.email == email))
     u = r.scalar_one()
-    u.is_tool_admin = True
+    u.is_platform_admin = True
     await db_session.flush()
 
 
@@ -128,7 +128,7 @@ async def test_artifacts_upload_list_download_delete(
 
     client.cookies.set("atelier_token", token)
     put_cfg = await client.put(
-        "/admin/config",
+        "/admin/embedding-config",
         json={
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",
@@ -180,7 +180,7 @@ async def test_artifacts_md_create_and_rbac(
     await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/embedding-config",
         json={
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",
@@ -261,7 +261,7 @@ async def test_upload_storage_error_does_not_leave_orphan(
 
     client.cookies.set("atelier_token", token)
     put_cfg = await client.put(
-        "/admin/config",
+        "/admin/embedding-config",
         json={
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",
@@ -304,7 +304,7 @@ async def test_delete_artifact_minio_failure_still_returns_204(
 
     client.cookies.set("atelier_token", token)
     put_cfg = await client.put(
-        "/admin/config",
+        "/admin/embedding-config",
         json={
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",
@@ -370,7 +370,7 @@ async def test_cross_studio_viewer_can_download_artifact(
     await _promote_tool_admin(db_session, f"ownerb-{sfx}@example.com")
     client.cookies.set("atelier_token", token_b)
     await client.put(
-        "/admin/config",
+        "/admin/embedding-config",
         json={
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",
@@ -433,7 +433,7 @@ async def test_delete_project_artifact_studio_member_forbidden(
     await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/embedding-config",
         json={
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",
@@ -494,7 +494,7 @@ async def test_cross_studio_viewer_cannot_delete_or_reindex_project_artifact(
     await _promote_tool_admin(db_session, f"ownerbd-{sfx}@example.com")
     client.cookies.set("atelier_token", token_b)
     await client.put(
-        "/admin/config",
+        "/admin/embedding-config",
         json={
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",
@@ -559,7 +559,7 @@ async def test_reindex_project_artifact_studio_member_invokes_embed(
     await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/embedding-config",
         json={
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",
@@ -609,7 +609,7 @@ async def test_patch_chunking_strategy_studio_member_forbidden(
     await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/embedding-config",
         json={
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",
@@ -650,7 +650,7 @@ async def test_patch_chunking_strategy_owner_ok(
     await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/embedding-config",
         json={
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",

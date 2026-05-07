@@ -9,7 +9,7 @@ export type UserMenuProps = {
 }
 
 export function userCanSeeMeTokenUsage(profile: MeResponse): boolean {
-  return profile.studios.length > 0 || profile.user.is_tool_admin
+  return profile.studios.length > 0 || profile.user.is_platform_admin
 }
 
 export function UserMenu({ profile, onLogout }: UserMenuProps): ReactElement {

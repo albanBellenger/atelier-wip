@@ -25,7 +25,7 @@ from app.services.studio_service import StudioService
 def _access(user_id: uuid.UUID, studio_id: uuid.UUID) -> StudioAccess:
     u = MagicMock(spec=User)
     u.id = user_id
-    u.is_tool_admin = False
+    u.is_platform_admin = False
     return StudioAccess(user=u, studio_id=studio_id, membership=None)
 
 
@@ -40,6 +40,7 @@ async def test_list_studios_tool_admin_queries_all() -> None:
         logo_path=None,
         created_at=now,
         budget_cap_monthly_usd=None,
+        budget_overage_action="pause_generations",
     )
     result = MagicMock()
     result.all.return_value = [row]
@@ -48,7 +49,7 @@ async def test_list_studios_tool_admin_queries_all() -> None:
 
     user = MagicMock(spec=User)
     user.id = uuid.uuid4()
-    user.is_tool_admin = True
+    user.is_platform_admin = True
 
     out = await StudioService(db).list_studios(user)
     assert len(out) == 1
@@ -66,6 +67,8 @@ async def test_list_studios_member_joins_membership() -> None:
         description="d",
         logo_path="/l.png",
         created_at=now,
+        budget_cap_monthly_usd=None,
+        budget_overage_action="pause_generations",
     )
     result = MagicMock()
     result.all.return_value = [row]
@@ -74,7 +77,7 @@ async def test_list_studios_member_joins_membership() -> None:
 
     user = MagicMock(spec=User)
     user.id = uuid.uuid4()
-    user.is_tool_admin = False
+    user.is_platform_admin = False
 
     out = await StudioService(db).list_studios(user)
     assert out[0].logo_path == "/l.png"
@@ -86,7 +89,7 @@ async def test_create_studio_strips_name_and_adds_admin_member() -> None:
     uid = uuid.uuid4()
     user = MagicMock(spec=User)
     user.id = uid
-    user.is_tool_admin = False
+    user.is_platform_admin = False
 
     db = MagicMock()
     db.add = MagicMock()

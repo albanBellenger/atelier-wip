@@ -13,7 +13,7 @@ function mockProfile(role: 'studio_member' | 'viewer'): MeResponse {
       id: 'u1',
       email: 'a@b.com',
       display_name: 'Alex',
-      is_tool_admin: false,
+      is_platform_admin: false,
     },
     studios: [
       { studio_id: 's1', studio_name: 'Studio One', role },

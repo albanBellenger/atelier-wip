@@ -28,7 +28,7 @@ async def _register(client: AsyncClient, suffix: str, label: str) -> str:
 async def _promote_tool_admin(db_session, email: str) -> None:
     r = await db_session.execute(select(User).where(User.email == email))
     u = r.scalar_one()
-    u.is_tool_admin = True
+    u.is_platform_admin = True
     await db_session.flush()
 
 
@@ -115,7 +115,7 @@ async def test_studio_software_upload_and_library_list(
     await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
     client.cookies.set("atelier_token", token)
     put_cfg = await client.put(
-        "/admin/config",
+        "/admin/embedding-config",
         json={
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",
@@ -201,7 +201,7 @@ async def test_studio_upload_forbidden_non_member(
     await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
     client.cookies.set("atelier_token", token)
     put_cfg = await client.put(
-        "/admin/config",
+        "/admin/embedding-config",
         json={
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",
@@ -232,7 +232,7 @@ async def test_delete_library_artifact_by_id_studio_admin(
     await _promote_tool_admin(db_session, f"ownlib-{sfx}@example.com")
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/embedding-config",
         json={
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",
@@ -267,7 +267,7 @@ async def test_delete_library_artifact_by_id_non_member_forbidden(
     await _promote_tool_admin(db_session, f"ownlib2-{sfx}@example.com")
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/embedding-config",
         json={
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",
@@ -300,7 +300,7 @@ async def test_patch_artifact_scope_studio_then_project_download_ok(
     await _promote_tool_admin(db_session, f"scopemv-{sfx}@example.com")
     client.cookies.set("atelier_token", token)
     await client.put(
-        "/admin/config",
+        "/admin/embedding-config",
         json={
             "embedding_provider": "openai",
             "embedding_model": "text-embedding-3-small",

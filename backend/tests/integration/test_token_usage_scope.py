@@ -126,16 +126,13 @@ async def test_token_usage_scope_member_studio_admin_tool_admin_csv(
 
     client.cookies.set("atelier_token", token_ta)
     admin_r = await client.get("/admin/token-usage")
-    assert admin_r.status_code == 200
-    assert len(admin_r.json()["rows"]) >= 2
+    assert admin_r.status_code == 404
 
     csv_r = await client.get(
         "/admin/token-usage",
         headers={"Accept": "text/csv"},
     )
-    assert csv_r.status_code == 200
-    assert "text/csv" in (csv_r.headers.get("content-type") or "")
-    assert "call_type" in csv_r.text
+    assert csv_r.status_code == 404
 
     # --- /me/token-usage?studio_id=... (member: filter rows; outsider: 403) ---
     other = (

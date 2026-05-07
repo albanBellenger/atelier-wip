@@ -6,12 +6,14 @@ export type DocBlock =
   | { id: string; type: 'h3'; text: string }
   | { id: string; type: 'p'; text: string; renderedAsPlain?: boolean }
   | { id: string; type: 'ul'; items: string[] }
+  | { id: string; type: 'table'; markdown: string }
 
 type ParsedBlock =
   | { type: 'h2'; text: string }
   | { type: 'h3'; text: string }
   | { type: 'p'; text: string; renderedAsPlain?: boolean }
   | { type: 'ul'; items: string[] }
+  | { type: 'table'; markdown: string }
 
 function hashBlockId(index: number, kind: string, textSample: string): string {
   const sample = textSample.slice(0, 24)
@@ -26,6 +28,9 @@ function hashBlockId(index: number, kind: string, textSample: string): string {
 function textSampleForBlock(block: ParsedBlock): string {
   if (block.type === 'ul') {
     return block.items.join('\n')
+  }
+  if (block.type === 'table') {
+    return block.markdown
   }
   return block.text
 }
@@ -44,6 +49,9 @@ function withIds(blocks: ParsedBlock[]): DocBlock[] {
     if (block.type === 'ul') {
       return { id, type: 'ul', items: block.items }
     }
+    if (block.type === 'table') {
+      return { id, type: 'table', markdown: block.markdown }
+    }
     return {
       id,
       type: 'p',
@@ -53,6 +61,20 @@ function withIds(blocks: ParsedBlock[]): DocBlock[] {
   })
 }
 
+/** GitHub-flavoured markdown pipe table (header + separator row). */
+function isGfmTable(text: string): boolean {
+  const t = text.trim()
+  if (t.length === 0) {
+    return false
+  }
+  const lines = text.split(/\r?\n/)
+  const pipeLines = lines.filter((l) => l.includes('|'))
+  if (pipeLines.length < 2) {
+    return false
+  }
+  return lines.some((l) => /^\s*\|[\s\-:|]+\|\s*$/.test(l))
+}
+
 function isUnsupportedParagraph(text: string): boolean {
   const t = text.trim()
   if (t.length === 0) {
@@ -60,16 +82,6 @@ function isUnsupportedParagraph(text: string): boolean {
   }
   if (t.includes('```')) {
     return true
-  }
-  const lines = text.split(/\r?\n/)
-  const pipeLines = lines.filter((l) => l.includes('|'))
-  if (pipeLines.length >= 2) {
-    const hasSeparator = lines.some((l) =>
-      /^\s*\|[\s\-:|]+\|\s*$/.test(l),
-    )
-    if (hasSeparator) {
-      return true
-    }
   }
   if (/^\s*!\[[^\]]*\]\([^)]+\)/m.test(text)) {
     return true
@@ -132,12 +144,16 @@ function parseMarkdownBlocks(markdown: string): ParsedBlock[] {
       i += 1
     }
     const text = paraLines.join('\n')
-    const plain = isUnsupportedParagraph(text)
-    blocks.push({
-      type: 'p',
-      text,
-      ...(plain ? { renderedAsPlain: true } : {}),
-    })
+    if (isGfmTable(text)) {
+      blocks.push({ type: 'table', markdown: text })
+    } else {
+      const plain = isUnsupportedParagraph(text)
+      blocks.push({
+        type: 'p',
+        text,
+        ...(plain ? { renderedAsPlain: true } : {}),
+      })
+    }
   }
 
   return blocks

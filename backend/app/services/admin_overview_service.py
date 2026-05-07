@@ -29,7 +29,6 @@ class AdminOverviewService:
 
     async def overview(self) -> AdminConsoleOverviewResponse:
         studios, mtd_map, sw_map, mem_map = await load_studio_aggregate_maps(self.db)
-        mtd_total = sum(mtd_map.values(), start=Decimal("0"))
 
         active_builders = int(
             await self.db.scalar(select(func.count(func.distinct(StudioMember.user_id)))) or 0
@@ -72,7 +71,6 @@ class AdminOverviewService:
 
         return AdminConsoleOverviewResponse(
             studios=studio_rows,
-            mtd_spend_total_usd=mtd_total,
             active_builders_count=active_builders,
             embedding_collection_count=embed_collections,
             recent_activity=recent,

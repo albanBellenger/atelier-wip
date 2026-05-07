@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
 from app.models import (
-    AdminConfig,
     LlmProviderRegistry,
     LlmRoutingRule,
     Studio,
@@ -22,6 +21,7 @@ from app.models import (
 )
 from app.schemas.studio_budget_overage import StudioBudgetOverageAction
 from app.schemas.studio_llm_public import StudioChatLlmModelsOut
+from app.services.llm_registry_credentials import first_registry_model, get_default_llm_registry_row
 from app.services.budget_month_status import studio_overage_soft_allow
 
 
@@ -61,7 +61,7 @@ class LlmPolicyService:
         studio_id: UUID,
         call_type: str,
     ) -> tuple[str | None, str | None]:
-        """Return (effective_model_override, provider_key) or (None, None) for AdminConfig defaults."""
+        """Return (effective_model_override, provider_key) or (None, None) for registry defaults."""
         use_case = use_case_for_call_type(call_type)
         reg_count = await self.db.scalar(
             select(func.count()).select_from(LlmProviderRegistry)
@@ -137,7 +137,7 @@ class LlmPolicyService:
         studio_id: UUID,
         call_type: str,
     ) -> str | None:
-        """Return override model id or None to use AdminConfig.llm_model."""
+        """Return override model id or None to use default registry model."""
         m, _pk = await self.resolve_effective_llm_route(
             studio_id=studio_id,
             call_type=call_type,
@@ -150,10 +150,8 @@ class LlmPolicyService:
             studio_id=studio_id,
             call_type="chat",
         )
-        cfg = await self.db.get(AdminConfig, 1)
-        workspace_default = (
-            (cfg.llm_model or "").strip() or None if cfg is not None else None
-        )
+        default_row = await get_default_llm_registry_row(self.db)
+        workspace_default = first_registry_model(default_row)
 
         providers_all = list(
             (
@@ -315,6 +313,6 @@ class LlmPolicyService:
                 code="BUILDER_BUDGET_EXCEEDED",
                 message=(
                     "You have exceeded your monthly LLM spend cap for this studio. "
-                    "Ask a studio or tool admin to raise your cap."
+                    "Ask a Studio Owner to raise your cap."
                 ),
             )

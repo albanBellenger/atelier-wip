@@ -15,7 +15,7 @@ const memberMe: api.MeResponse = {
     id: 'u1',
     email: 'a@b.com',
     display_name: 'Alex',
-    is_tool_admin: false,
+    is_platform_admin: false,
   },
   studios: [{ studio_id: 's1', studio_name: 'S', role: 'studio_member' }],
   cross_studio_grants: [],
@@ -46,6 +46,21 @@ describe('DocsUserGuidePage', () => {
         screen.getByRole('heading', { name: /^documentation$/i }),
       ).toBeInTheDocument()
     })
+    expect(screen.getByRole('link', { name: /^atelier$/i })).toHaveAttribute(
+      'href',
+      '/',
+    )
+    expect(screen.getByRole('link', { name: /^S$/i })).toHaveAttribute(
+      'href',
+      '/studios/s1',
+    )
+    expect(
+      screen.getByRole('banner'),
+    ).toHaveTextContent('Documentation')
+    expect(screen.getByText(/Atelier · Builder workspace/i)).toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: /back to home/i }),
+    ).not.toBeInTheDocument()
     expect(
       screen.getByRole('heading', { level: 2, name: /atelier.*builder guide/i }),
     ).toBeInTheDocument()

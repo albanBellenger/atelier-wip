@@ -13,12 +13,12 @@ There is **no** `webServer` block in `playwright.config.ts` — start Docker Com
 | Variable | Required | Purpose |
 |----------|----------|---------|
 | `PLAYWRIGHT_BASE_URL` | No (defaults to `http://127.0.0.1:5173`) | Origin for `page.goto` and the built-in API request fixture. |
-| `PLAYWRIGHT_TOOL_ADMIN_EMAIL` | Recommended on shared DBs | Pre-seeded **tool admin** email for `toolAdminPage` fixture. |
+| `PLAYWRIGHT_TOOL_ADMIN_EMAIL` | Recommended on shared DBs | Pre-seeded **platform admin** email for `toolAdminPage` fixture (env name is legacy). |
 | `PLAYWRIGHT_TOOL_ADMIN_PASSWORD` | With email above | Password for that account. |
 | `PLAYWRIGHT_STUDIO_URL` | For legacy studio specs only | See `studio-landing.spec.ts`. |
 | `PLAYWRIGHT_ARTIFACTS_URL` | For artifact RAG spec | See `artifact-rag-indexing.spec.ts`. |
 
-If `PLAYWRIGHT_TOOL_ADMIN_*` are **not** set, the `toolAdminPage` fixture registers a new user and requires that user to become tool admin (true only when that registration is the **first** user in an empty database). Otherwise set the env vars to a seeded tool-admin account.
+If `PLAYWRIGHT_TOOL_ADMIN_*` are **not** set, the `toolAdminPage` fixture registers a new user and requires that user to become platform admin (`is_platform_admin`, true only when that registration is the **first** user in an empty database). Otherwise set the env vars to a seeded platform-admin account.
 
 ## Commands
 

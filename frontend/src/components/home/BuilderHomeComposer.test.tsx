@@ -19,7 +19,7 @@ function editorProfile(): MeResponse {
       id: 'u1',
       email: 'a@b.com',
       display_name: 'Alex Builder',
-      is_tool_admin: false,
+      is_platform_admin: false,
     },
     studios: [
       {

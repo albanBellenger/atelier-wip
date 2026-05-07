@@ -1,11 +1,5 @@
 /** Route segments under `/admin/console`. */
-export type AdminConsoleSection =
-  | 'overview'
-  | 'studios'
-  | 'llm'
-  | 'budgets'
-  | 'embeddings'
-  | 'users'
+export type AdminConsoleSection = 'overview' | 'studios' | 'llm' | 'embeddings'
 
 export const ADMIN_CONSOLE_BASE = '/admin/console'
 

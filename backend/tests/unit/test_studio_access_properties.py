@@ -16,7 +16,7 @@ def _user(tool_admin: bool = False) -> User:
         email="u@example.com",
         password_hash="x",
         display_name="U",
-        is_tool_admin=tool_admin,
+        is_platform_admin=tool_admin,
     )
 
 

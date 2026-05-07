@@ -77,7 +77,7 @@ describe('request — JSON happy path', () => {
             id: 'u1',
             email: 'a@b.com',
             display_name: 'A',
-            is_tool_admin: false,
+            is_platform_admin: false,
           },
           studios: [],
         }),
@@ -170,7 +170,7 @@ describe('request — shape', () => {
             id: 'u1',
             email: 'a@b.com',
             display_name: 'New',
-            is_tool_admin: false,
+            is_platform_admin: false,
           },
           studios: [],
         })

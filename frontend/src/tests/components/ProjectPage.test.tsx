@@ -88,7 +88,7 @@ describe('ProjectPage publish success', () => {
         id: 'u1',
         email: 'a@b.com',
         display_name: 'A',
-        is_tool_admin: false,
+        is_platform_admin: false,
       },
       studios: [
         { studio_id: 's1', studio_name: 'S', role: 'studio_member' },
@@ -181,7 +181,7 @@ describe('ProjectPage outline status pills (Slice A)', () => {
         id: 'u1',
         email: 'a@b.com',
         display_name: 'A',
-        is_tool_admin: false,
+        is_platform_admin: false,
       },
       studios: [
         { studio_id: 's1', studio_name: 'S', role: 'studio_member' },
@@ -262,7 +262,7 @@ describe('ProjectPage landing layout', () => {
         id: 'u1',
         email: 'a@b.com',
         display_name: 'A',
-        is_tool_admin: false,
+        is_platform_admin: false,
       },
       studios: [
         { studio_id: 's1', studio_name: 'Northwind', role: 'studio_member' },
@@ -331,7 +331,7 @@ describe('ProjectPage landing layout', () => {
         id: 'u1',
         email: 'a@b.com',
         display_name: 'A',
-        is_tool_admin: false,
+        is_platform_admin: false,
       },
       studios: [
         { studio_id: 's1', studio_name: 'S', role: 'studio_viewer' },
@@ -388,7 +388,7 @@ describe('ProjectPage landing layout', () => {
         id: 'u1',
         email: 'a@b.com',
         display_name: 'A',
-        is_tool_admin: false,
+        is_platform_admin: false,
       },
       studios: [
         { studio_id: 's1', studio_name: 'S', role: 'studio_admin' },
@@ -447,7 +447,7 @@ describe('ProjectPage landing layout', () => {
         id: 'u1',
         email: 'a@b.com',
         display_name: 'A',
-        is_tool_admin: false,
+        is_platform_admin: false,
       },
       studios: [
         { studio_id: 's1', studio_name: 'S', role: 'studio_member' },
@@ -514,7 +514,7 @@ describe('ProjectPage aggregated artifacts', () => {
         id: 'u1',
         email: 'a@b.com',
         display_name: 'A',
-        is_tool_admin: false,
+        is_platform_admin: false,
       },
       studios: [
         { studio_id: 's1', studio_name: 'S', role: 'studio_member' },
@@ -605,7 +605,7 @@ describe('ProjectPage aggregated artifacts', () => {
         id: 'u1',
         email: 'a@b.com',
         display_name: 'A',
-        is_tool_admin: false,
+        is_platform_admin: false,
       },
       studios: [
         { studio_id: 's1', studio_name: 'S', role: 'studio_viewer' },

@@ -16,7 +16,9 @@ See [README.md](../README.md#emergency-recovery) for details.
 
 ## LLM and embeddings
 
-Tool Admin configures provider, model, API keys, and optional OpenAI-compatible base URLs in **Admin → Settings** (`GET/PUT /admin/config`). Without this, LLM-dependent features return `503` with structured error codes.
+**LLM inference** (provider keys, models, optional OpenAI-compatible base URLs) is configured in **Admin → Console → LLM** via the provider registry API (`/admin/llm/...`). Chat and structured calls resolve credentials from the **default** registry row (and routing rules where applicable). Without a configured default provider and API key, LLM-dependent features return `503` with structured error codes such as `LLM_NOT_CONFIGURED`.
+
+**Embeddings** (embedding model, API key, dimension, and related fields) remain a separate singleton: Tool Admin uses **Admin → Settings** with `GET/PUT /admin/embedding-config`. The legacy `GET/PUT /admin/config` paths were removed (they return **404** for Tool Admins; unauthenticated users still receive **401**).
 
 ## GitLab tokens
 

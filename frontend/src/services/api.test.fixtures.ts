@@ -143,12 +143,7 @@ function attentionCounts(): Api.AttentionCounts {
 
 /** MSW handlers for fixed ids st1 / sw1 / p1 / sec1 / art1 / wo1 / iss1 / grant1 / key1 */
 export function apiCoverageHandlers(): RequestHandler[] {
-  const adminCfg: Api.AdminConfigPublic = {
-    llm_provider: null,
-    llm_model: null,
-    llm_api_base_url: null,
-    llm_api_key_set: false,
-    llm_api_key_hint: null,
+  const adminEmb: Api.EmbeddingAdminConfigPublic = {
     embedding_provider: null,
     embedding_model: null,
     embedding_api_base_url: null,
@@ -209,16 +204,21 @@ export function apiCoverageHandlers(): RequestHandler[] {
     revoked_at: null,
   }
 
-  const crossRow: Api.CrossStudioAdminRow = {
+  const crossIncoming: Api.CrossStudioIncomingRow = {
     id: 'grant1',
-    requesting_studio_id: 'st1',
     requesting_studio_name: 'A',
-    target_software_id: 'sw1',
-    target_software_name: 'Sw',
-    owner_studio_id: 'st1',
-    owner_studio_name: 'O',
-    requested_by: 'u',
     requester_email: 'a@b.com',
+    target_software_name: 'Sw',
+    access_level: 'viewer',
+    status: 'pending',
+    created_at: '',
+    resolved_at: null,
+  }
+
+  const crossOutgoing: Api.CrossStudioOutgoingRow = {
+    id: 'grant1',
+    target_software_name: 'Sw',
+    owner_studio_name: 'O',
     access_level: 'viewer',
     status: 'pending',
     created_at: '',
@@ -296,7 +296,7 @@ export function apiCoverageHandlers(): RequestHandler[] {
   }
 
   const studioCaps: Api.StudioCapabilitiesOut = {
-    is_tool_admin: false,
+    is_platform_admin: false,
     membership_role: 'studio_admin',
     is_studio_admin: true,
     is_studio_editor: true,
@@ -313,22 +313,20 @@ export function apiCoverageHandlers(): RequestHandler[] {
     http.get('http://api.test/auth/llm-runtime', () =>
       HttpResponse.json({ llm_provider: null, llm_model: null }),
     ),
-    http.get('http://api.test/admin/config', () => HttpResponse.json(adminCfg)),
-    http.put('http://api.test/admin/config', () => HttpResponse.json(adminCfg)),
+    http.get('http://api.test/admin/embedding-config', () => HttpResponse.json(adminEmb)),
+    http.put('http://api.test/admin/embedding-config', () => HttpResponse.json(adminEmb)),
     http.post('http://api.test/admin/test/llm', () => HttpResponse.json(connectivity)),
     http.post('http://api.test/admin/test/embedding', () =>
       HttpResponse.json(connectivity),
     ),
-    http.get('http://api.test/admin/cross-studio', () => HttpResponse.json([crossRow])),
-    http.put('http://api.test/admin/cross-studio/grant1', () =>
+    http.get('http://api.test/studios/st1/cross-studio-incoming', () =>
+      HttpResponse.json([crossIncoming]),
+    ),
+    http.put('http://api.test/studios/st1/cross-studio-incoming/grant1', () =>
       HttpResponse.json(crossResolve),
     ),
-    http.get('http://api.test/admin/token-usage', ({ request }) =>
-      request.headers.get('Accept')?.includes('csv')
-        ? new HttpResponse(new TextEncoder().encode(''), {
-            headers: { 'Content-Type': 'text/csv' },
-          })
-        : HttpResponse.json(emptyTokenReport()),
+    http.get('http://api.test/studios/st1/cross-studio-outgoing', () =>
+      HttpResponse.json([crossOutgoing]),
     ),
     http.get('http://api.test/studios/st1/token-usage', ({ request }) =>
       request.headers.get('Accept')?.includes('csv')
@@ -552,14 +550,13 @@ export async function invokeThinApiCoverage(api: typeof import('./api')): Promis
   await api.login({ email: 'n@e.com', password: 'pw' })
   await api.logout()
   await api.getLlmRuntimeInfo()
-  await api.getAdminConfig()
-  await api.putAdminConfig({ llm_model: null })
+  await api.getAdminEmbeddingConfig()
+  await api.putAdminEmbeddingConfig({ embedding_model: null })
   await api.postAdminTestLlm()
   await api.postAdminTestEmbedding()
-  await api.listAdminCrossStudio()
-  await api.putAdminCrossStudioResolve('grant1', { decision: 'approve' })
-  await api.getAdminTokenUsage()
-  await api.downloadAdminTokenUsageCsv()
+  await api.getStudioCrossStudioIncoming('st1')
+  await api.putStudioCrossStudioIncoming('st1', 'grant1', { decision: 'approve' })
+  await api.getStudioCrossStudioOutgoing('st1')
   await api.getStudioTokenUsage('st1')
   await api.downloadStudioTokenUsageCsv('st1')
   await api.postStudioCrossStudioRequest('st1', { target_software_id: 'sw1' })

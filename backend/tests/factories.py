@@ -28,7 +28,7 @@ async def create_user(
     email: str | None = None,
     password: str = "llm-test-password-ok-1",
     display_name: str | None = None,
-    is_tool_admin: bool = False,
+    is_platform_admin: bool = False,
 ) -> User:
     uid = uuid.uuid4()
     em = email or f"user-{uid.hex[:12]}@example.com"
@@ -37,7 +37,7 @@ async def create_user(
         email=em.lower(),
         password_hash=hash_password(password),
         display_name=display_name or _faker.name(),
-        is_tool_admin=is_tool_admin,
+        is_platform_admin=is_platform_admin,
     )
     session.add(user)
     await session.flush()

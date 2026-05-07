@@ -11,11 +11,9 @@ const ADMIN_CONSOLE_ACCENT = '#8b5cf6'
 
 const NAV: { id: AdminConsoleSection; label: string; hint: string }[] = [
   { id: 'overview', label: 'Overview', hint: 'At-a-glance' },
-  { id: 'studios', label: 'Studios', hint: 'Create & configure' },
-  { id: 'llm', label: 'LLM connectivity', hint: 'Providers per studio' },
-  { id: 'budgets', label: 'Budgets', hint: 'Studio & builder caps' },
+  { id: 'studios', label: 'Studios', hint: 'Directory (read-only)' },
+  { id: 'llm', label: 'LLM connectivity', hint: 'Providers & routing' },
   { id: 'embeddings', label: 'Embeddings', hint: 'Indexes & models' },
-  { id: 'users', label: 'Users & roles', hint: 'Directory & tool admin' },
 ]
 
 function AdminHeader(): ReactElement {
@@ -44,7 +42,7 @@ function AdminHeader(): ReactElement {
           </Link>
           <span className="text-zinc-700">/</span>
           <span className="text-zinc-200">Admin console</span>
-          <Pill tone="violet">Tool Admin</Pill>
+          <Pill tone="violet">Platform admin</Pill>
         </div>
       </div>
       <div className="flex items-center gap-3 text-[12px]">
@@ -67,7 +65,9 @@ function SideNav(): ReactElement {
   const totalSpendMock = STUDIOS.reduce((s, x) => s + x.monthSpend, 0)
   const activeUsersMock = BUILDERS.filter((b) => b.status === 'active').length
 
-  const mtdTotal = live ? Number.parseFloat(live.mtd_spend_total_usd || '0') : totalSpendMock
+  const mtdTotal = live
+    ? live.studios.reduce((s, r) => s + Number.parseFloat(r.mtd_spend_usd || '0'), 0)
+    : totalSpendMock
   const studioCount = live ? live.studios.length : STUDIOS.length
   const activeBuilders = live ? live.active_builders_count : activeUsersMock
 
@@ -124,7 +124,7 @@ function SideNav(): ReactElement {
             'Loading usage…'
           ) : (
             <>
-              across {studioLabel} · {builderLabel}
+              Sum of listed studios (no cross-studio aggregate) · {studioLabel} · {builderLabel}
             </>
           )}
         </div>
@@ -156,13 +156,13 @@ export function AdminConsolePage(): ReactElement {
     )
   }
 
-  if (!profileQ.data.user.is_tool_admin) {
+  if (!profileQ.data.user.is_platform_admin) {
     return (
       <div className="min-h-screen bg-[#0a0a0b] px-4 py-12 text-zinc-100">
         <div className="mx-auto max-w-lg">
           <h1 className="text-xl font-semibold">Access denied</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Tool administrator privileges are required for the admin console.
+            Platform administrator privileges are required for the admin console.
           </p>
           <Link to="/" className="mt-6 inline-block text-violet-400 hover:underline">
             Back to home

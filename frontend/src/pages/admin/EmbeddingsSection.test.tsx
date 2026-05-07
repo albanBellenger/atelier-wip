@@ -10,7 +10,6 @@ describe('EmbeddingsSection', () => {
   it('loads library table and model registry from admin APIs', async () => {
     vi.spyOn(api, 'getAdminConsoleOverview').mockResolvedValue({
       studios: [],
-      mtd_spend_total_usd: '0',
       active_builders_count: 0,
       embedding_collection_count: 42,
       recent_activity: [],
