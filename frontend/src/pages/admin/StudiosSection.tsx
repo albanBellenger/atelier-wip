@@ -16,6 +16,7 @@ import {
 import type { AuthErrorBody } from '../../services/api'
 import type { LlmProviderRegistryRow, StudioLlmPolicyRow } from '../../services/api'
 import {
+  deleteAdminStudio,
   getAdminLlmDeployment,
   getAdminStudio,
   getAdminStudioLlmPolicy,
@@ -95,7 +96,10 @@ export function StudiosSection(): ReactElement {
 
   useEffect(() => {
     const list = studiosQ.data
-    if (!list?.length) return
+    if (!list?.length) {
+      setSelectedId('')
+      return
+    }
     setSelectedId((prev) => {
       if (prev && list.some((s) => s.studio_id === prev)) return prev
       return list[0].studio_id
@@ -117,6 +121,16 @@ export function StudiosSection(): ReactElement {
       await qc.invalidateQueries({ queryKey: ['admin', 'studios'] })
       await qc.invalidateQueries({ queryKey: ['admin', 'overview'] })
       setSelectedId(studio.id)
+    },
+  })
+
+  const deleteMut = useMutation({
+    mutationFn: (studioId: string) => deleteAdminStudio(studioId),
+    onSuccess: async (_, deletedId) => {
+      await qc.invalidateQueries({ queryKey: ['admin', 'studios'] })
+      await qc.invalidateQueries({ queryKey: ['admin', 'overview'] })
+      void qc.removeQueries({ queryKey: ['admin', 'studios', deletedId, 'detail'] })
+      void qc.removeQueries({ queryKey: ['admin', 'llm', 'policy', deletedId] })
     },
   })
 
@@ -182,7 +196,7 @@ export function StudiosSection(): ReactElement {
       <div className="space-y-6">
         <PageTitle
           title="Studios"
-          subtitle="Read-only directory of all studios. Per-studio Git and budgets are managed by studio owners; LLM registry and routing stay in LLM connectivity."
+          subtitle="All studios in one list. Platform admins can create or delete a studio here; per-studio Git and budgets are managed by studio owners; LLM registry and routing stay in LLM connectivity."
         />
         <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-6 text-sm text-zinc-400">
           <p>No studios yet. Create one to get started.</p>
@@ -219,7 +233,7 @@ export function StudiosSection(): ReactElement {
     <div className="space-y-6">
       <PageTitle
         title="Studios"
-        subtitle="Read-only directory of all studios. Per-studio Git and budgets are managed by studio owners; LLM registry and routing stay in LLM connectivity."
+        subtitle="All studios in one list. Platform admins can create or delete a studio here; per-studio Git and budgets are managed by studio owners; LLM registry and routing stay in LLM connectivity."
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr]">
@@ -291,6 +305,31 @@ export function StudiosSection(): ReactElement {
                     value={`${detail.member_count} members`}
                     readOnly
                   />
+                </div>
+                <div className="flex flex-col items-end gap-2 border-t border-zinc-800/60 px-5 py-3">
+                  <Btn
+                    type="button"
+                    tone="danger"
+                    size="sm"
+                    disabled={deleteMut.isPending}
+                    onClick={() => {
+                      if (
+                        !confirm(
+                          `Delete studio "${detail.name}" and all software and projects under it? This cannot be undone.`,
+                        )
+                      ) {
+                        return
+                      }
+                      deleteMut.mutate(selectedId)
+                    }}
+                  >
+                    {deleteMut.isPending ? 'Deleting…' : 'Delete studio'}
+                  </Btn>
+                  {deleteMut.isError ? (
+                    <p className="max-w-md text-right text-[11px] text-rose-300" role="alert">
+                      {formatApiDetail(deleteMut.error)}
+                    </p>
+                  ) : null}
                 </div>
               </Card>
 

@@ -1,20 +1,27 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+
+import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
+import {
+  getHostedEnvironment,
+  hostedEnvironmentLabel,
+} from '../lib/hostedEnvironment'
 import { useStudioAccess } from '../hooks/useStudioAccess'
+import { APP_VERSION } from '../version'
 import { STUDIO_ROLE_OPTIONS, crossStudioAccessLabel, studioRoleLabel } from '../lib/roleLabels'
 import { STUDIO_BUDGET_OVERAGE_OPTIONS } from '../constants/studioBudgetOverage'
 import { DEPLOYMENT_WIDE_HARD_CAP_USD } from '../data/adminConsoleMock'
 import {
   addMember,
   createSoftware,
-  deleteStudio,
   getStudio,
   getStudioCrossStudioIncoming,
   getStudioCrossStudioOutgoing,
   getStudioMemberBudgets,
   listMembers,
+  logout as logoutApi,
   me,
   patchStudioBudget,
   patchStudioMemberBudget,
@@ -40,6 +47,8 @@ export function StudioSettingsPage(): ReactElement {
   const { studioId } = useParams<{ studioId: string }>()
   const navigate = useNavigate()
   const sid = studioId ?? ''
+  const hostedEnv = getHostedEnvironment()
+  const hostedEnvLabel = hostedEnvironmentLabel(hostedEnv)
 
   const profileQ = useQuery({
     queryKey: ['auth', 'me'],
@@ -55,6 +64,22 @@ export function StudioSettingsPage(): ReactElement {
 
   const access = useStudioAccess(profileQ.data, sid)
   const qc = useQueryClient()
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await logoutApi()
+    } catch {
+      /* still leave */
+    }
+    void navigate('/auth', { replace: true })
+  }, [navigate])
+
+  const handleStudioChange = useCallback(
+    (nextStudioId: string) => {
+      void navigate(`/studios/${nextStudioId}/settings`)
+    },
+    [navigate],
+  )
 
   const studioQ = useQuery({
     queryKey: ['studio', sid],
@@ -136,15 +161,6 @@ export function StudioSettingsPage(): ReactElement {
       void qc.invalidateQueries({ queryKey: ['software', sid] })
       void navigate(`/studios/${sid}/software/${newSw.id}`)
       setSwName('')
-    },
-  })
-
-  const deleteMut = useMutation({
-    mutationFn: () => deleteStudio(sid),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['studios'] })
-      void qc.invalidateQueries({ queryKey: ['auth', 'me'] })
-      void navigate('/studios')
     },
   })
 
@@ -292,17 +308,20 @@ export function StudioSettingsPage(): ReactElement {
     )
   }
 
+  const profile = profileQ.data
+
   return (
-    <div className="min-h-screen bg-zinc-950 px-4 py-10 text-zinc-100">
-      <div className="mx-auto max-w-3xl space-y-8">
-        <div className="flex flex-wrap items-center gap-4">
-          <Link to={`/studios/${sid}`} className="text-sm text-violet-400 hover:underline">
-            ← Studio
-          </Link>
-          <Link to="/" className="text-sm text-zinc-500 hover:text-zinc-300">
-            Home
-          </Link>
-        </div>
+    <div className="min-h-screen bg-[#0a0a0b] px-8 pb-16 pt-8 font-sans text-zinc-100">
+      <div className="mx-auto max-w-[1240px]">
+        <BuilderHomeHeader
+          profile={profile}
+          studioId={sid}
+          onStudioChange={handleStudioChange}
+          onLogout={() => void handleLogout()}
+          trailingCrumb={{ projectLabel: 'Studio settings' }}
+        />
+
+        <div className="mx-auto max-w-3xl space-y-8">
         <h1 className="text-2xl font-semibold">Studio settings</h1>
         {msg ? <p className="text-sm text-emerald-400">{msg}</p> : null}
 
@@ -466,17 +485,6 @@ export function StudioSettingsPage(): ReactElement {
               <h2 className="text-sm font-medium text-zinc-200">MCP server</h2>
               <p className="mt-1 text-xs text-zinc-500">
                 API base URL, endpoints, and keys for coding-agent integrations.
-              </p>
-              <span className="mt-3 inline-block text-sm text-violet-400">Open →</span>
-            </Link>
-
-            <Link
-              to={`/studios/${sid}/token-usage`}
-              className="block rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 transition hover:border-zinc-700"
-            >
-              <h2 className="text-sm font-medium text-zinc-200">Token usage</h2>
-              <p className="mt-1 text-xs text-zinc-500">
-                Usage across members and projects in this studio (aggregated rows).
               </p>
               <span className="mt-3 inline-block text-sm text-violet-400">Open →</span>
             </Link>
@@ -758,24 +766,30 @@ export function StudioSettingsPage(): ReactElement {
               </button>
             </div>
 
-            <div className="border-t border-zinc-800 pt-8">
-              <button
-                type="button"
-                className="text-sm text-red-400 hover:underline"
-                onClick={() => {
-                  if (
-                    confirm(
-                      'Delete this studio and all software and projects under it?',
-                    )
-                  )
-                    deleteMut.mutate()
-                }}
-              >
-                Delete studio
-              </button>
-            </div>
           </>
         ) : null}
+        </div>
+
+        <footer className="mt-16 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-zinc-800/60 pt-6 text-[11px] text-zinc-600">
+          <span>Atelier · Builder workspace</span>
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono">
+            <Link
+              to="/changelog"
+              className="text-zinc-500 hover:text-zinc-300 hover:underline focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
+            >
+              v{APP_VERSION}
+            </Link>
+            <span className="select-none font-sans text-zinc-700" aria-hidden>
+              ·
+            </span>
+            <span
+              className="rounded border border-zinc-700/70 px-1.5 py-px text-[10px] font-sans font-normal uppercase tracking-wider text-zinc-500"
+              title={`Hosted environment: ${hostedEnvLabel}`}
+            >
+              {hostedEnvLabel}
+            </span>
+          </span>
+        </footer>
       </div>
     </div>
   )

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -8,8 +8,41 @@ import * as api from '../services/api'
 import { MeProfilePage } from './MeProfilePage'
 
 describe('MeProfilePage', () => {
+  beforeEach(() => {
+    vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
+      items: [],
+      next_cursor: null,
+    })
+  })
+
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+  it('uses builder home header crumb and dashboard-style footer', async () => {
+    vi.spyOn(api, 'me').mockResolvedValue({
+      user: {
+        id: 'u1',
+        email: 'a@b.com',
+        display_name: 'Alex',
+        is_platform_admin: false,
+      },
+      studios: [{ studio_id: 's1', studio_name: 'Studio One', role: 'studio_member' }],
+      cross_studio_grants: [],
+    })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <MeProfilePage />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    expect(await screen.findByRole('heading', { name: 'Profile' })).toBeInTheDocument()
+    const banner = screen.getByRole('banner')
+    expect(within(banner).getByText('Profile')).toBeInTheDocument()
+    expect(screen.getByText('Atelier · Builder workspace')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /^back to home$/i })).not.toBeInTheDocument()
   })
 
   it('loads profile and submits PATCH', async () => {
@@ -76,13 +109,22 @@ describe('MeProfilePage', () => {
       </MemoryRouter>,
     )
     expect(await screen.findByRole('heading', { name: /your studios/i })).toBeInTheDocument()
-    const acme = screen.getByRole('link', { name: 'Acme' })
+    const studiosHeading = screen.getByRole('heading', { name: /your studios/i })
+    const studiosSection = studiosHeading.closest('section')
+    expect(studiosSection).not.toBeNull()
+    const acme = within(studiosSection as HTMLElement).getByRole('link', {
+      name: 'Acme',
+    })
     expect(acme).toHaveAttribute('href', '/studios/s-admin')
     expect(screen.getByText('Owner')).toBeInTheDocument()
-    const northwind = screen.getByRole('link', { name: 'Northwind' })
-    expect(northwind).toHaveAttribute('href', '/studios/s-build')
+    expect(within(studiosSection as HTMLElement).getByRole('link', { name: 'Northwind' })).toHaveAttribute(
+      'href',
+      '/studios/s-build',
+    )
     expect(screen.getByText('Builder')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Contoso' })).toHaveAttribute('href', '/studios/s-view')
+    expect(
+      within(studiosSection as HTMLElement).getByRole('link', { name: 'Contoso' }),
+    ).toHaveAttribute('href', '/studios/s-view')
     const viewerLabels = screen.getAllByText('Viewer')
     expect(viewerLabels.length).toBeGreaterThanOrEqual(2)
   })

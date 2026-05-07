@@ -31,6 +31,7 @@ import {
 } from '../lib/hostedEnvironment'
 import { APP_VERSION } from '../version'
 import {
+  createSection,
   getProject,
   getSection,
   getSectionHealth,
@@ -40,6 +41,7 @@ import {
   listSoftware,
   logout as logoutApi,
   me,
+  reorderSections,
   resetPrivateThread,
 } from '../services/api'
 
@@ -131,6 +133,7 @@ export function SectionPageV1(): ReactElement {
     const baseLabel = swQ.data.name
     return {
       label: baseLabel,
+      softwareId: sfid,
       projectLabel: projectQ.data.name,
       softwareSwitcher:
         swRows.length > 1
@@ -381,6 +384,34 @@ export function SectionPageV1(): ReactElement {
   }, [collab?.ytext, breadcrumbDocEpoch])
 
   const queryClient = useQueryClient()
+
+  const createSectionMut = useMutation({
+    mutationFn: (input: { title: string; slug: string | null }) =>
+      createSection(pid, {
+        title: input.title,
+        slug: input.slug,
+      }),
+    onSuccess: async (section) => {
+      await queryClient.invalidateQueries({
+        queryKey: ['sections', pid, 'outlineHealth'],
+      })
+      await queryClient.invalidateQueries({ queryKey: ['project', sfid, pid] })
+      void navigate(
+        `/studios/${sid}/software/${sfid}/projects/${pid}/sections/${section.id}`,
+      )
+    },
+  })
+
+  const reorderSectionsMut = useMutation({
+    mutationFn: (orderedIds: string[]) => reorderSections(pid, orderedIds),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ['sections', pid, 'outlineHealth'],
+      })
+      await queryClient.invalidateQueries({ queryKey: ['project', sfid, pid] })
+    },
+  })
+
   const resetThreadMut = useMutation({
     mutationFn: () => resetPrivateThread(pid, secid),
     onSuccess: () => {
@@ -607,6 +638,26 @@ export function SectionPageV1(): ReactElement {
                   activeSectionId={secid}
                   collapsed={railCollapsed}
                   onToggleCollapsed={() => setRailCollapsed((c) => !c)}
+                  addSection={
+                    access.canManageProjectOutline
+                      ? {
+                          isPending: createSectionMut.isPending,
+                          onCreate: async (input) => {
+                            await createSectionMut.mutateAsync(input)
+                          },
+                        }
+                      : undefined
+                  }
+                  reorderSections={
+                    access.canManageProjectOutline
+                      ? {
+                          isPending: reorderSectionsMut.isPending,
+                          onReorder: (orderedIds) => {
+                            reorderSectionsMut.mutate(orderedIds)
+                          },
+                        }
+                      : undefined
+                  }
                 />
                 <div className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-zinc-800/80 bg-zinc-950/30">
                   {sectionTitleToolbar}

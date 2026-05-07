@@ -225,6 +225,9 @@ describe('BuilderHomeHeader', () => {
       </MemoryRouter>,
     )
     expect(screen.getByText('Employee Hub')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: /^employee hub$/i }),
+    ).not.toBeInTheDocument()
   })
 
   it('renders software combo when switcher has multiple options', async () => {
@@ -259,10 +262,15 @@ describe('BuilderHomeHeader', () => {
       </MemoryRouter>,
     )
 
-    const employeeHubTriggers = screen.getAllByRole('button', {
+    const employeeHubLink = screen.getByRole('link', {
       name: /^employee hub$/i,
     })
-    await user.click(employeeHubTriggers[0]!)
+    expect(employeeHubLink).toHaveAttribute(
+      'href',
+      '/studios/s-active/software/sw-a',
+    )
+
+    await user.click(screen.getByRole('button', { name: /switch software/i }))
 
     expect(screen.getByText('Switch software')).toBeInTheDocument()
     const revenueRow = screen.getByRole('button', { name: /^revenue hub$/i })
@@ -271,7 +279,7 @@ describe('BuilderHomeHeader', () => {
     expect(onSoftwareSelect).toHaveBeenCalledWith('sw-b')
   })
 
-  it('keeps trailing software as text when switcher has only one option', () => {
+  it('links software crumb when softwareId is set and switcher is not shown (single option)', () => {
     vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
       items: [],
       next_cursor: null,
@@ -287,6 +295,7 @@ describe('BuilderHomeHeader', () => {
             onLogout={vi.fn()}
             trailingCrumb={{
               label: 'Solo Product',
+              softwareId: 'sw1',
               softwareSwitcher: {
                 currentSoftwareId: 'sw1',
                 softwareOptions: [{ id: 'sw1', name: 'Solo Product' }],
@@ -298,7 +307,9 @@ describe('BuilderHomeHeader', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByText('Solo Product')).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: /^solo product$/i }),
+    ).toHaveAttribute('href', '/studios/s-active/software/sw1')
     expect(
       screen.queryAllByRole('button', { name: /solo product/i }),
     ).toHaveLength(0)
@@ -379,5 +390,34 @@ describe('BuilderHomeHeader', () => {
     expect(
       screen.queryAllByRole('button', { name: /only project/i }),
     ).toHaveLength(0)
+  })
+
+  it('renders after-project crumb when afterProjectLabel is set', () => {
+    vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
+      items: [],
+      next_cursor: null,
+    })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <BuilderHomeHeader
+            profile={profileTwoStudios()}
+            studioId="s-active"
+            onStudioChange={vi.fn()}
+            onLogout={vi.fn()}
+            trailingCrumb={{
+              label: 'SW',
+              softwareId: 'sw1',
+              projectLabel: 'Alpha',
+              afterProjectLabel: 'Work orders',
+            }}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByTitle('Alpha')).toBeInTheDocument()
+    expect(screen.getByTitle('Work orders')).toHaveTextContent('Work orders')
   })
 })

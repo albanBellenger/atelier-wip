@@ -9,6 +9,7 @@ import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
 import { BuilderTokenStrip } from '../components/home/BuilderTokenStrip'
 import { userCanSeeMeTokenUsage } from '../components/home/UserMenu'
 import { NeedsAttentionCard } from '../components/home/NeedsAttentionCard'
+import { StudioArtifactsSection } from '../components/studio/StudioArtifactsSection'
 import { SoftwareArtifactsSection } from '../components/software/SoftwareArtifactsSection'
 import { SoftwareBuildingTeamCard } from '../components/software/SoftwareBuildingTeamCard'
 import { SoftwareDefinitionPreviewCard } from '../components/software/SoftwareDefinitionPreviewCard'
@@ -34,6 +35,7 @@ import {
   listProjects,
   listSoftware,
   listSoftwareArtifacts,
+  listStudioArtifacts,
   logout as logoutApi,
   me,
 } from '../services/api'
@@ -96,7 +98,7 @@ export function SoftwarePage(): ReactElement {
   const headerTrailingCrumb = useMemo(() => {
     if (!swQ.data) return undefined
     const rows = studioSoftwareListQ.data ?? []
-    const base = { label: swQ.data.name }
+    const base = { label: swQ.data.name, softwareId: sfid }
     if (rows.length <= 1) return base
     return {
       ...base,
@@ -245,6 +247,13 @@ export function SoftwarePage(): ReactElement {
     queryKey: ['software', sfid, 'artifacts'],
     queryFn: () => listSoftwareArtifacts(sfid),
     enabled: Boolean(sfid && access.isMember),
+    retry: false,
+  })
+
+  const studioArtifactsQ = useQuery({
+    queryKey: ['studio', sid, 'artifacts'],
+    queryFn: () => listStudioArtifacts(sid),
+    enabled: Boolean(sid && access.isMember),
     retry: false,
   })
 
@@ -687,6 +696,18 @@ export function SoftwarePage(): ReactElement {
               isPending={artifactsQ.isPending}
               isError={artifactsQ.isError}
               rows={artifactsQ.data}
+              onDownload={handleArtifactDownload}
+            />
+
+            <StudioArtifactsSection
+              studioId={sid}
+              defaultSoftwareId={sfid}
+              defaultProjectId={defaultProjectId}
+              canStudioEditor={access.isStudioEditor}
+              isMember={access.isMember}
+              isPending={studioArtifactsQ.isPending}
+              isError={studioArtifactsQ.isError}
+              rows={studioArtifactsQ.data}
               onDownload={handleArtifactDownload}
             />
 

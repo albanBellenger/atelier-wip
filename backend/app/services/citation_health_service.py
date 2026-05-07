@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
 
-import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.citation_health_agent import CitationHealthAgent
 from app.exceptions import ApiError
 from app.models import Software
 from app.models.project import Project, Section
@@ -15,33 +14,6 @@ from app.schemas.citation_health import CitationHealthOut, CitationMissingItemOu
 from app.schemas.token_context import TokenContext
 from app.services.llm_service import LLMService
 from app.services.section_service import effective_section_plaintext
-
-log = structlog.get_logger("atelier.citation_health")
-
-CITATION_HEALTH_SCHEMA: dict[str, Any] = {
-    "name": "citation_health",
-    "strict": True,
-    "schema": {
-        "type": "object",
-        "additionalProperties": False,
-        "properties": {
-            "citations_resolved": {"type": "integer"},
-            "citations_missing": {"type": "integer"},
-            "missing_items": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "additionalProperties": False,
-                    "properties": {
-                        "statement": {"type": "string"},
-                    },
-                    "required": ["statement"],
-                },
-            },
-        },
-        "required": ["citations_resolved", "citations_missing", "missing_items"],
-    },
-}
 
 
 class CitationHealthService:
@@ -84,26 +56,8 @@ class CitationHealthService:
             user_id=user_id,
         )
         llm = LLMService(self.db)
-        await llm.ensure_openai_llm_ready(context=ctx, call_type="citation_health")
-        user_prompt = (
-            "Analyze the following specification markdown. Count statements that are "
-            "grounded with explicit traceability (e.g. links to work orders, artifacts, "
-            "other sections, or clear normative references) as citations_resolved. "
-            "Count normative or data claims that lack any traceable source as "
-            "citations_missing, and list up to 12 of the most important missing items "
-            "with short statement text.\n\n---\n\n"
-            f"{text[:24_000]}"
-        )
-        raw = await llm.chat_structured(
-            system_prompt=(
-                "You audit specification citations. Be conservative: only count "
-                "resolved when a claim clearly ties to a named source. Do not invent "
-                "sources. Output strictly follows the JSON schema."
-            ),
-            user_prompt=user_prompt,
-            json_schema=CITATION_HEALTH_SCHEMA,
-            context=ctx,
-            call_type="citation_health",
+        raw = await CitationHealthAgent(self.db, llm).analyze_section_text(
+            ctx, text[:24_000]
         )
         if not isinstance(raw, dict):
             raise ApiError(

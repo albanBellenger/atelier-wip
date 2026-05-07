@@ -8,7 +8,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.exceptions import ApiError
+from app.agents.section_relationship_agent import SectionRelationshipAgent
 from app.services.graph_service import GraphService, node_id
+from app.services.llm_service import LLMService
 
 
 def test_node_id_format() -> None:
@@ -158,11 +160,13 @@ async def test_detect_section_relationships_adds_reference_edges(
         return {"links": [{"from_index": 0, "to_index": 1}]}
 
     monkeypatch.setattr(
-        "app.services.graph_service.LLMService.chat_structured",
+        "app.services.llm_service.LLMService.chat_structured",
         fake_chat,
     )
 
-    await GraphService(db).detect_section_relationships(pid, context_user_id=uid)
+    await SectionRelationshipAgent(db, LLMService(db)).detect_section_relationships(
+        pid, context_user_id=uid
+    )
     assert any(c[0] == "references" for c in calls)
 
 
@@ -181,10 +185,10 @@ async def test_detect_section_relationships_returns_early_under_two_sections(
         return {}
 
     monkeypatch.setattr(
-        "app.services.graph_service.LLMService.chat_structured",
+        "app.services.llm_service.LLMService.chat_structured",
         track,
     )
-    await GraphService(db).detect_section_relationships(
+    await SectionRelationshipAgent(db, LLMService(db)).detect_section_relationships(
         uuid.uuid4(), context_user_id=uuid.uuid4()
     )
     assert llm_calls == []
@@ -222,7 +226,9 @@ async def test_detect_section_relationships_swallows_llm_api_error(
         raise ApiError(status_code=502, code="LLM", message="x")
 
     monkeypatch.setattr(
-        "app.services.graph_service.LLMService.chat_structured",
+        "app.services.llm_service.LLMService.chat_structured",
         boom,
     )
-    await GraphService(db).detect_section_relationships(pid, context_user_id=uid)
+    await SectionRelationshipAgent(db, LLMService(db)).detect_section_relationships(
+        pid, context_user_id=uid
+    )

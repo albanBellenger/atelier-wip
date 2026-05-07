@@ -62,6 +62,7 @@ describe('SoftwarePage', () => {
       next_cursor: null,
     })
     vi.spyOn(api, 'listSoftwareArtifacts').mockResolvedValue([])
+    vi.spyOn(api, 'listStudioArtifacts').mockResolvedValue([])
     vi.spyOn(api, 'me').mockResolvedValue(memberMe)
     vi.spyOn(api, 'getSoftware').mockResolvedValue({
       id: 'sw1',
@@ -133,16 +134,25 @@ describe('SoftwarePage', () => {
       screen.getByRole('heading', { name: /software artifacts/i }),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: /^upload file$/i }),
+      screen.getByRole('heading', { name: /studio artifacts/i }),
     ).toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: /^new markdown$/i }),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByRole('link', { name: /open library/i }),
-    ).toHaveAttribute(
+    expect(screen.getAllByRole('button', { name: /^upload file$/i }).length).toBe(
+      2,
+    )
+    expect(screen.getAllByRole('button', { name: /^new markdown$/i }).length).toBe(
+      2,
+    )
+    const openLibraryLinks = screen.getAllByRole('link', {
+      name: /open library/i,
+    })
+    expect(openLibraryLinks).toHaveLength(2)
+    expect(openLibraryLinks[0]).toHaveAttribute(
       'href',
       '/studios/s1/artifact-library?softwareId=sw1',
+    )
+    expect(openLibraryLinks[1]).toHaveAttribute(
+      'href',
+      '/studios/s1/artifact-library',
     )
     expect(
       screen.queryByRole('link', { name: /software settings/i }),
@@ -175,6 +185,7 @@ describe('SoftwarePage', () => {
       next_cursor: null,
     })
     vi.spyOn(api, 'listSoftwareArtifacts').mockResolvedValue([])
+    vi.spyOn(api, 'listStudioArtifacts').mockResolvedValue([])
     vi.spyOn(api, 'me').mockResolvedValue({
       user: {
         id: 'u3',
@@ -259,6 +270,7 @@ describe('SoftwarePage', () => {
       next_cursor: null,
     })
     vi.spyOn(api, 'listSoftwareArtifacts').mockResolvedValue([])
+    vi.spyOn(api, 'listStudioArtifacts').mockResolvedValue([])
     vi.spyOn(api, 'me').mockResolvedValue(memberMe)
     vi.spyOn(api, 'getSoftware').mockResolvedValue({
       id: 'sw1',
@@ -345,6 +357,7 @@ describe('SoftwarePage', () => {
       next_cursor: null,
     })
     vi.spyOn(api, 'listSoftwareArtifacts').mockResolvedValue([])
+    vi.spyOn(api, 'listStudioArtifacts').mockResolvedValue([])
     vi.spyOn(api, 'me').mockResolvedValue({
       user: {
         id: 'u2',
@@ -479,6 +492,7 @@ describe('SoftwarePage', () => {
         excluded_at_project: null,
       },
     ])
+    vi.spyOn(api, 'listStudioArtifacts').mockResolvedValue([])
     vi.spyOn(api, 'me').mockResolvedValue(memberMe)
     vi.spyOn(api, 'getSoftware').mockResolvedValue({
       id: 'sw1',

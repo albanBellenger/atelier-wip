@@ -1,0 +1,95 @@
+---
+description: Rules for backend agent files — classes that orchestrate an LLM call with a prompt.
+globs: "backend/app/agents/**/*.py"
+alwaysApply: false
+---
+
+## What is an agent
+
+An agent is a class whose primary responsibility is to call LLMService with a
+prompt it owns. If a class calls LLMService, it is an agent — name it and place
+it accordingly. If a class does not call LLMService, it is a service — keep it
+in `backend/app/services/`.
+
+Current agents:
+
+- `drift_agent.py` — detects whether a Work Order is stale after a section save
+- `conflict_agent.py` — finds conflicts and gaps between section pairs
+- `work_order_agent.py` — generates Work Orders from selected sections
+- `section_relationship_agent.py` — detects relationships between sections on publish
+- `software_chat_agent.py` — software-scoped chat streaming
+- `project_chat_agent.py` — project-scoped chat streaming (system prompt + RAG text)
+- `citation_health_agent.py` — structured citation coverage for a section
+- `builder_composer_agent.py` — builder home composer hint strings
+- `section_improve_agent.py` — revises section markdown from RAG + instruction
+
+---
+
+## File structure — non-negotiable
+
+Every agent file must follow this exact top-to-bottom layout:
+
+```python
+# ── Prompts ───────────────────────────────────────────────────────────────────
+
+SYSTEM_PROMPT = """..."""
+
+USER_PROMPT = """..."""
+
+# ── Agent ─────────────────────────────────────────────────────────────────────
+
+class XxxAgent:
+    ...
+```
+
+Rules:
+
+- Prompts are module-level constants, above the class, under the `# ── Prompts` section comment.
+- Use SCREAMING_SNAKE_CASE: `SYSTEM_PROMPT`, `USER_PROMPT`. If a file needs more
+  than one user prompt, be specific: `ANALYSIS_PROMPT`, `SUMMARY_PROMPT`.
+- Never define prompt strings inside methods or as class attributes.
+- Prompts must be written in English only.
+- For `chat_stream`-only agents, `USER_PROMPT` may be an empty string (user turns are in `messages`).
+- Structured agents may use `USER_PROMPT` as a format template (e.g. contains `{placeholder}`) when the final string is built with `.format(...)`.
+
+---
+
+## Naming
+
+- Class name ends in `Agent`: `DriftAgent`, `ConflictAgent`, `WorkOrderAgent`.
+- File name ends in `_agent.py`: `drift_agent.py`.
+
+---
+
+## Dependencies
+
+- Agents receive `LLMService` (and usually `AsyncSession`) via constructor injection.
+- Orchestrating services may import agents to delegate LLM calls; agents must not import those services back (avoid cycles).
+- Agents may use SQLAlchemy models with an injected `AsyncSession` when they load or persist domain data as part of the same flow.
+
+---
+
+## LLM calls
+
+- Always use `LLMService.chat_structured()` for structured output (JSON schema required).
+- Always use `LLMService.chat_stream()` for streaming user-facing responses.
+- Never call an LLM provider SDK directly.
+- Always pass `call_type` so TokenTracker records it correctly.
+
+---
+
+## Prompt content
+
+- All prompt strings must be written in English only.
+- Prompts must be extracted verbatim from their origin — do not paraphrase or
+  restructure during a refactor. Behaviour changes require a separate PR.
+- Each agent owns its prompts. Do not share prompt constants across agents.
+
+---
+
+## Tests
+
+- Unit test file: `backend/tests/unit/agents/test_<name>_agent.py`
+- Mock `LLMService` deterministically — never make real LLM calls in unit tests.
+- LLM integration test: `backend/tests/llm/test_<name>_agent.py` with `@pytest.mark.llm`.
+- Renaming a service to an agent requires renaming its test files accordingly.

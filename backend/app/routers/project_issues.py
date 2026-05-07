@@ -15,7 +15,8 @@ from app.deps import (
 from app.exceptions import ApiError
 from app.models import Issue
 from app.schemas.issues import AnalyzeResponse, IssueResponse, IssueUpdateBody
-from app.services.conflict_service import ConflictService
+from app.agents.conflict_agent import ConflictAgent
+from app.services.llm_service import LLMService
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["issues"])
 
@@ -99,7 +100,8 @@ async def run_manual_conflict_analysis(
     pa: ProjectAccess = Depends(require_project_member),
 ) -> AnalyzeResponse:
     _ensure_project(pa, project_id)
-    n = await ConflictService(session).run_conflict_analysis(
+    llm = LLMService(session)
+    n = await ConflictAgent(session, llm).run_conflict_analysis(
         project_id=project_id,
         run_actor_id=pa.studio_access.user.id,
         origin="manual",

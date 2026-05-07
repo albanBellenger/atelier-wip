@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
 import {
   useCallback,
@@ -30,7 +30,9 @@ import {
   hostedEnvironmentLabel,
 } from '../../lib/hostedEnvironment'
 import { APP_VERSION } from '../../version'
+import type { SectionUpdateBody } from '../../services/api'
 import {
+  createSection,
   getProject,
   getSection,
   getSectionHealth,
@@ -42,6 +44,8 @@ import {
   listWorkOrders,
   logout as logoutApi,
   me,
+  reorderSections,
+  updateSection,
 } from '../../services/api'
 import { CopilotPanel } from '../thread/CopilotPanel'
 import { colorsForUser, useYjsCollab } from '../../hooks/useYjsCollab'
@@ -82,6 +86,40 @@ export function OutlineEditorV2(): ReactElement {
   }, [profileError, navigate])
 
   const access = useStudioAccess(profile, sid, sfid)
+  const queryClient = useQueryClient()
+
+  const createSectionMut = useMutation({
+    mutationFn: (input: { title: string; slug: string | null }) =>
+      createSection(pid, {
+        title: input.title,
+        slug: input.slug,
+      }),
+    onSuccess: async (section) => {
+      await queryClient.invalidateQueries({ queryKey: ['sections', pid] })
+      await queryClient.invalidateQueries({ queryKey: ['project', sfid, pid] })
+      void navigate(
+        `/studios/${sid}/software/${sfid}/projects/${pid}/sections/${section.id}`,
+      )
+    },
+  })
+
+  const reorderSectionsMut = useMutation({
+    mutationFn: (orderedIds: string[]) => reorderSections(pid, orderedIds),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['sections', pid] })
+      await queryClient.invalidateQueries({ queryKey: ['project', sfid, pid] })
+    },
+  })
+
+  const renameSectionMut = useMutation({
+    mutationFn: (body: SectionUpdateBody) =>
+      updateSection(pid, secid, body),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['section', pid, secid] })
+      await queryClient.invalidateQueries({ queryKey: ['sections', pid] })
+      await queryClient.invalidateQueries({ queryKey: ['project', sfid, pid] })
+    },
+  })
 
   const sectionQ = useQuery({
     queryKey: ['section', pid, secid],
@@ -147,6 +185,7 @@ export function OutlineEditorV2(): ReactElement {
     const baseLabel = swQ.data.name
     return {
       label: baseLabel,
+      softwareId: sfid,
       projectLabel: projectQ.data.name,
       softwareSwitcher:
         swRows.length > 1
@@ -379,6 +418,23 @@ export function OutlineEditorV2(): ReactElement {
             <TopBar
               title={sectionQ.data.title}
               slug={sectionQ.data.slug}
+              rename={
+                access.isStudioAdmin
+                  ? {
+                      isSaving: renameSectionMut.isPending,
+                      onSave: async (patch) => {
+                        const body: SectionUpdateBody = {}
+                        if (patch.title !== undefined) {
+                          body.title = patch.title
+                        }
+                        if (patch.slug !== undefined) {
+                          body.slug = patch.slug
+                        }
+                        await renameSectionMut.mutateAsync(body)
+                      },
+                    }
+                  : undefined
+              }
               trailing={
                 <CopilotToggle
                   open={copilotOpen}
@@ -397,6 +453,26 @@ export function OutlineEditorV2(): ReactElement {
                 collapsed={railCollapsed}
                 onToggleCollapsed={() => setRailCollapsed((c) => !c)}
                 pinned={v2prefs.outlineRailPinned}
+                addSection={
+                  access.canManageProjectOutline
+                    ? {
+                        isPending: createSectionMut.isPending,
+                        onCreate: async (input) => {
+                          await createSectionMut.mutateAsync(input)
+                        },
+                      }
+                    : undefined
+                }
+                reorderSections={
+                  access.canManageProjectOutline
+                    ? {
+                        isPending: reorderSectionsMut.isPending,
+                        onReorder: (orderedIds) => {
+                          reorderSectionsMut.mutate(orderedIds)
+                        },
+                      }
+                    : undefined
+                }
               />
               <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
                 <div className="relative flex min-h-0 flex-1 flex-col">

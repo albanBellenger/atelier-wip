@@ -159,4 +159,53 @@ describe('StudiosSection', () => {
     const openai = arg.rows.find((r) => r.provider_key === 'openai')
     expect(openai?.enabled).toBe(true)
   })
+
+  it('calls deleteAdminStudio when Delete studio is confirmed', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.spyOn(api, 'listAdminStudios').mockResolvedValue(sampleList)
+    vi.spyOn(api, 'getAdminStudio').mockResolvedValue(sampleDetail)
+    vi.spyOn(api, 'getAdminLlmDeployment').mockResolvedValue({
+      has_providers: true,
+      providers: [
+        {
+          id: 'p1',
+          provider_key: 'openai',
+          display_name: 'OpenAI',
+          models: ['gpt-4o-mini'],
+          api_base_url: null,
+          logo_url: null,
+          status: 'connected',
+          is_default: true,
+          sort_order: 0,
+          llm_api_key_set: true,
+          llm_api_key_hint: '…abcd',
+        },
+      ],
+    })
+    vi.spyOn(api, 'getAdminStudioLlmPolicy').mockResolvedValue([
+      { provider_key: 'openai', enabled: false, selected_model: 'gpt-4o-mini' },
+    ])
+    vi.spyOn(api, 'putAdminStudioLlmPolicy').mockResolvedValue([
+      { provider_key: 'openai', enabled: true, selected_model: 'gpt-4o-mini' },
+    ])
+    const deleteSpy = vi.spyOn(api, 'deleteAdminStudio').mockResolvedValue(undefined)
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <StudiosSection />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await screen.findByText('Studio Alpha')
+    const deleteBtn = await screen.findByRole('button', { name: /delete studio/i })
+    await user.click(deleteBtn)
+
+    await waitFor(() => {
+      expect(deleteSpy).toHaveBeenCalledWith('11111111-1111-1111-1111-111111111111')
+    })
+  })
 })

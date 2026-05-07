@@ -15,10 +15,13 @@ import { ProjectWorkOrderKanbanPreview } from '../components/project/ProjectWork
 import { ProjectAggregatedArtifactsSection } from '../components/software/ProjectAggregatedArtifactsSection'
 import { SoftwareBuildingTeamCard } from '../components/software/SoftwareBuildingTeamCard'
 import { SoftwareRecentActivityCard } from '../components/software/SoftwareRecentActivityCard'
-import { SettingsGearIcon } from '../components/icons/SettingsGearIcon'
 import { ListSkeleton } from '../components/ui/ListSkeleton'
 import { showPublishSuccessToast } from '../components/ui/Toast'
 import { useStudioAccess } from '../hooks/useStudioAccess'
+import {
+  getHostedEnvironment,
+  hostedEnvironmentLabel,
+} from '../lib/hostedEnvironment'
 import { formatRelativeTimeUtc } from '../lib/formatRelativeTime'
 import { withUtcMonthQuery } from '../lib/utcMonthBounds'
 import {
@@ -44,6 +47,7 @@ import {
   reorderSections,
 } from '../services/api'
 import type { SectionSummary } from '../services/api'
+import { APP_VERSION } from '../version'
 
 function ProjectWorkspaceStatusPill(props: {
   attentionTotal: number
@@ -121,6 +125,8 @@ export function ProjectPage(): ReactElement {
   const sid = studioId ?? ''
   const sfid = softwareId ?? ''
   const pid = projectId ?? ''
+  const hostedEnv = getHostedEnvironment()
+  const hostedEnvLabel = hostedEnvironmentLabel(hostedEnv)
 
   const {
     data: profile,
@@ -173,6 +179,7 @@ export function ProjectPage(): ReactElement {
     const baseLabel = swQ.data.name
     return {
       label: baseLabel,
+      softwareId: sfid,
       projectLabel: projectQ.data.name,
       softwareSwitcher:
         swRows.length > 1
@@ -587,6 +594,23 @@ export function ProjectPage(): ReactElement {
                 Issues
               </Link>
             ) : null}
+            {profile && userCanSeeMeTokenUsage(profile) ? (
+              <Link
+                to={`/llm-usage${withUtcMonthQuery(`project_id=${encodeURIComponent(pid)}`)}`}
+                className="shrink-0 hover:text-zinc-200"
+              >
+                Token usage
+              </Link>
+            ) : null}
+            {access.isStudioAdmin ? (
+              <Link
+                to={`/studios/${sid}/software/${sfid}/projects/${pid}/settings`}
+                className="shrink-0 hover:text-zinc-200"
+                aria-label="Open project settings"
+              >
+                Project settings
+              </Link>
+            ) : null}
           </nav>
         </div>
 
@@ -649,24 +673,6 @@ export function ProjectPage(): ReactElement {
                         />
                       </div>
                     </div>
-                  </div>
-                  <div className="flex flex-row flex-wrap items-center justify-start gap-2 lg:justify-end">
-                    <Link
-                      to={`/llm-usage${withUtcMonthQuery(`project_id=${encodeURIComponent(pid)}`)}`}
-                      className="inline-flex items-center justify-center rounded-md border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-[12px] font-medium text-zinc-300 hover:bg-zinc-800"
-                    >
-                      Token usage
-                    </Link>
-                    {access.isStudioAdmin ? (
-                      <Link
-                        to={`/studios/${sid}/software/${sfid}/projects/${pid}/settings`}
-                        className="inline-flex items-center justify-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-[12px] font-medium text-zinc-300 hover:bg-zinc-800"
-                        aria-label="Open project settings"
-                      >
-                        <SettingsGearIcon />
-                        Project settings
-                      </Link>
-                    ) : null}
                   </div>
                 </div>
               </div>
@@ -862,6 +868,27 @@ export function ProjectPage(): ReactElement {
             )}
           </>
         )}
+
+        <footer className="mt-16 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-zinc-800/60 pt-6 text-[11px] text-zinc-600">
+          <span>Atelier · Builder workspace</span>
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono">
+            <Link
+              to="/changelog"
+              className="text-zinc-500 hover:text-zinc-300 hover:underline focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
+            >
+              v{APP_VERSION}
+            </Link>
+            <span className="select-none font-sans text-zinc-700" aria-hidden>
+              ·
+            </span>
+            <span
+              className="rounded border border-zinc-700/70 px-1.5 py-px text-[10px] font-sans font-normal uppercase tracking-wider text-zinc-500"
+              title={`Hosted environment: ${hostedEnvLabel}`}
+            >
+              {hostedEnvLabel}
+            </span>
+          </span>
+        </footer>
       </div>
       {publishOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">

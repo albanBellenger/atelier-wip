@@ -148,6 +148,8 @@ describe('ProjectPage publish success', () => {
       ).toBeInTheDocument()
     })
 
+    expect(screen.getByText(/Atelier · Builder workspace/i)).toBeInTheDocument()
+
     await user.click(screen.getByRole('button', { name: /publish to gitlab/i }))
     await user.click(
       screen.getByRole('button', { name: 'Confirm publish to GitLab' }),

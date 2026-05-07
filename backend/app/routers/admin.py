@@ -1,4 +1,4 @@
-"""Platform admin routes (infrastructure: embeddings, LLM registry, read-only studio directory)."""
+"""Platform admin routes (infrastructure: embeddings, LLM registry, studio directory)."""
 
 from typing import Literal
 from uuid import UUID
@@ -158,6 +158,17 @@ async def admin_get_studio(
 ) -> AdminStudioDetailResponse:
     assert studio.id == studio_id
     return await AdminStudioConsoleService(session).get_studio(studio)
+
+
+@router.delete("/studios/{studio_id}", status_code=204)
+async def admin_delete_studio(
+    studio_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    studio: Studio = Depends(get_studio_for_platform_admin),
+) -> Response:
+    assert studio.id == studio_id
+    await StudioService(session).delete_studio_by_id(studio_id)
+    return Response(status_code=204)
 
 
 @router.get("/llm/deployment", response_model=LlmDeploymentResponse)

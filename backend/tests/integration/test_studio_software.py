@@ -4,6 +4,9 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import update
+
+from app.models import User
 
 
 async def _register(client: AsyncClient, suffix: str, label: str) -> str:
@@ -182,7 +185,10 @@ async def test_demote_last_admin_returns_400(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_delete_studio_cascades_software(client: AsyncClient) -> None:
+async def test_delete_studio_cascades_software(
+    client: AsyncClient,
+    db_session,
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     token_admin = await _register(client, sfx, "admin")
     client.cookies.set("atelier_token", token_admin)
@@ -195,7 +201,13 @@ async def test_delete_studio_cascades_software(client: AsyncClient) -> None:
         )
     ).json()
     sw_id = sw["id"]
-    del_r = await client.delete(f"/studios/{studio_id}")
+    await db_session.execute(
+        update(User)
+        .where(User.email == f"admin-{sfx}@example.com".lower())
+        .values(is_platform_admin=True)
+    )
+    await db_session.flush()
+    del_r = await client.delete(f"/admin/studios/{studio_id}")
     assert del_r.status_code == 204
     r = await client.get(f"/studios/{studio_id}/software/{sw_id}")
     assert r.status_code in (403, 404)

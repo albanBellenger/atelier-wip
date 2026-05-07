@@ -1,11 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+
+import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
+import {
+  getHostedEnvironment,
+  hostedEnvironmentLabel,
+} from '../lib/hostedEnvironment'
 import { useStudioAccess } from '../hooks/useStudioAccess'
+import { APP_VERSION } from '../version'
 import {
   createMcpKey,
   listMcpKeys,
+  logout as logoutApi,
   me,
   revokeMcpKey,
 } from '../services/api'
@@ -44,6 +52,8 @@ export function McpServerSettingsPage(): ReactElement {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const sid = studioId ?? ''
+  const hostedEnv = getHostedEnvironment()
+  const hostedEnvLabel = hostedEnvironmentLabel(hostedEnv)
 
   const profileQ = useQuery({
     queryKey: ['auth', 'me'],
@@ -58,6 +68,22 @@ export function McpServerSettingsPage(): ReactElement {
   }, [profileQ.isError, navigate])
 
   const access = useStudioAccess(profileQ.data, sid)
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await logoutApi()
+    } catch {
+      /* still leave */
+    }
+    void navigate('/auth', { replace: true })
+  }, [navigate])
+
+  const handleStudioChange = useCallback(
+    (nextStudioId: string) => {
+      void navigate(`/studios/${nextStudioId}/settings/mcp`)
+    },
+    [navigate],
+  )
 
   const keysQ = useQuery({
     queryKey: ['mcpKeys', sid],
@@ -108,6 +134,17 @@ export function McpServerSettingsPage(): ReactElement {
     )
   }
 
+  if (!access.isMember) {
+    return (
+      <div className="min-h-screen bg-zinc-950 px-4 py-12 text-zinc-100">
+        <p>No access.</p>
+        <Link to="/studios" className="mt-4 inline-block text-violet-400">
+          Back to studios
+        </Link>
+      </div>
+    )
+  }
+
   if (!access.isStudioAdmin) {
     return (
       <div className="min-h-screen bg-zinc-950 px-4 py-12 text-zinc-100">
@@ -119,18 +156,20 @@ export function McpServerSettingsPage(): ReactElement {
     )
   }
 
-  return (
-    <div className="min-h-screen bg-zinc-950 px-4 py-10 text-zinc-100">
-      <div className="mx-auto max-w-2xl space-y-8">
-        <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
-          <Link to={`/studios/${sid}`} className="text-violet-400 hover:underline">
-            ← Studio
-          </Link>
-          <Link to={`/studios/${sid}/settings`} className="text-zinc-500 hover:text-zinc-300">
-            Studio settings
-          </Link>
-        </div>
+  const profile = profileQ.data
 
+  return (
+    <div className="min-h-screen bg-[#0a0a0b] px-8 pb-16 pt-8 font-sans text-zinc-100">
+      <div className="mx-auto max-w-[1240px]">
+        <BuilderHomeHeader
+          profile={profile}
+          studioId={sid}
+          onStudioChange={handleStudioChange}
+          onLogout={() => void handleLogout()}
+          trailingCrumb={{ projectLabel: 'MCP server' }}
+        />
+
+        <div className="mx-auto max-w-2xl space-y-8">
         <div>
           <h1 className="text-2xl font-semibold">MCP server</h1>
           <p className="mt-2 text-sm text-zinc-400">
@@ -246,6 +285,28 @@ export function McpServerSettingsPage(): ReactElement {
             ))}
           </ul>
         </section>
+        </div>
+
+        <footer className="mt-16 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-zinc-800/60 pt-6 text-[11px] text-zinc-600">
+          <span>Atelier · Builder workspace</span>
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono">
+            <Link
+              to="/changelog"
+              className="text-zinc-500 hover:text-zinc-300 hover:underline focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
+            >
+              v{APP_VERSION}
+            </Link>
+            <span className="select-none font-sans text-zinc-700" aria-hidden>
+              ·
+            </span>
+            <span
+              className="rounded border border-zinc-700/70 px-1.5 py-px text-[10px] font-sans font-normal uppercase tracking-wider text-zinc-500"
+              title={`Hosted environment: ${hostedEnvLabel}`}
+            >
+              {hostedEnvLabel}
+            </span>
+          </span>
+        </footer>
       </div>
     </div>
   )

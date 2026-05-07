@@ -26,7 +26,7 @@ import { SectionPage } from './pages/SectionPage'
 import { SoftwarePage } from './pages/SoftwarePage'
 import { SoftwareSettingsPage } from './pages/SoftwareSettingsPage'
 import { StudioPage } from './pages/StudioPage'
-import { StudioTokenUsagePage } from './pages/StudioTokenUsagePage'
+import { StudioTokenUsageRedirect } from './pages/StudioTokenUsageRedirect'
 import { McpServerSettingsPage } from './pages/McpServerSettingsPage'
 import { StudioSettingsPage } from './pages/StudioSettingsPage'
 import { StudiosListPage } from './pages/StudiosListPage'
@@ -63,7 +63,7 @@ function App(): ReactElement {
         <Route path="/studios/:studioId/settings" element={<StudioSettingsPage />} />
         <Route
           path="/studios/:studioId/token-usage"
-          element={<StudioTokenUsagePage />}
+          element={<StudioTokenUsageRedirect />}
         />
         <Route
           path="/studios/:studioId/artifact-library"

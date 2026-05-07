@@ -53,10 +53,8 @@ export function StudioArtifactsSection(props: {
     return null
   }
 
-  const libraryHref =
-    defaultSoftwareId != null && defaultSoftwareId !== ''
-      ? `/studios/${studioId}/artifact-library?softwareId=${encodeURIComponent(defaultSoftwareId)}`
-      : `/studios/${studioId}/artifact-library`
+  // Omit softwareId so the library page shows "All software" (not the quick-upload default).
+  const libraryHref = `/studios/${studioId}/artifact-library`
 
   return (
     <section className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60">

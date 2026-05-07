@@ -33,8 +33,9 @@ from app.schemas.work_order import (
     WorkOrderResponse,
     WorkOrderUpdate,
 )
+from app.agents.work_order_agent import WorkOrderAgent
 from app.services.graph_service import GraphService
-from app.services.llm_service import WORK_ORDER_BATCH_JSON_SCHEMA, LLMService
+from app.services.llm_service import LLMService
 from app.services.notification_dispatch_service import NotificationDispatchService
 
 log = structlog.get_logger("atelier.work_order")
@@ -505,38 +506,18 @@ class WorkOrderService:
             )
         sections_blob = "\n\n".join(section_lines)
 
-        system_prompt = (
-            f"You are a technical project manager. Software: {sw_name}.\n\n"
-            f"Software definition (context):\n{def_block}\n"
-        )
-        user_prompt = (
-            "Given the following spec sections, decompose the work into discrete, "
-            "implementable Work Orders. Each Work Order must be independently executable "
-            "by a single developer or coding agent.\n\n"
-            "For each Work Order output JSON objects with:\n"
-            "- title (short, action-oriented)\n"
-            "- description (what needs to be built)\n"
-            "- implementation_guide (how to approach it)\n"
-            "- acceptance_criteria (verifiable outcomes)\n"
-            "- linked_section_slugs (array of section slugs this derives from; "
-            "must be chosen from the sections provided below)\n\n"
-            "Sections:\n"
-            f"{sections_blob}"
-        )
-
-        llm = LLMService(self.db)
         ctx = TokenContext(
             studio_id=studio_id,
             software_id=software_id,
             project_id=project_id,
             user_id=user_id,
         )
-        parsed = await llm.chat_structured(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            json_schema=WORK_ORDER_BATCH_JSON_SCHEMA,
-            context=ctx,
-            call_type="work_order_gen",
+        llm = LLMService(self.db)
+        parsed = await WorkOrderAgent(self.db, llm).generate_work_order_batch(
+            ctx,
+            sw_name=sw_name,
+            def_block=def_block,
+            sections_blob=sections_blob,
         )
         items = parsed.get("items")
         if not isinstance(items, list):

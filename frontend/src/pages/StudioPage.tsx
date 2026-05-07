@@ -1,6 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
@@ -20,7 +20,6 @@ import { withUtcMonthQuery } from '../lib/utcMonthBounds'
 import { useStudioAccess } from '../hooks/useStudioAccess'
 import { APP_VERSION } from '../version'
 import {
-  createSoftware,
   downloadArtifactBlobById,
   getMeTokenUsage,
   getStudio,
@@ -135,18 +134,6 @@ export function StudioPage(): ReactElement {
     if (!pick) return null
     return { projectId: pick.id, softwareId: pick.software_id }
   }, [studioProjectsQ.data])
-
-  const [newSoftwareName, setNewSoftwareName] = useState('')
-
-  const createSwMut = useMutation({
-    mutationFn: () => createSoftware(sid, { name: newSoftwareName.trim() }),
-    onSuccess: (newSw) => {
-      setNewSoftwareName('')
-      void qc.invalidateQueries({ queryKey: ['software', sid] })
-      void qc.invalidateQueries({ queryKey: ['studio', sid, 'projects'] })
-      void navigate(`/studios/${sid}/software/${newSw.id}`)
-    },
-  })
 
   const handleLogout = useCallback(async () => {
     try {
@@ -277,14 +264,6 @@ export function StudioPage(): ReactElement {
                   studioId={sid}
                   software={softwareQ.data}
                   isPending={softwareQ.isPending}
-                  canCreateSoftware={access.isStudioAdmin}
-                  newSoftwareName={newSoftwareName}
-                  onNewSoftwareNameChange={setNewSoftwareName}
-                  onCreateSoftware={() => {
-                    if (!newSoftwareName.trim()) return
-                    createSwMut.mutate()
-                  }}
-                  createPending={createSwMut.isPending}
                 />
                 <StudioProjectsSection
                   studioId={sid}

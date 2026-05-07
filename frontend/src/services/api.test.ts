@@ -89,13 +89,13 @@ describe('request — JSON happy path', () => {
 })
 
 describe('request — empty 204 body', () => {
-  it('returns undefined when body is empty', async () => {
+  it('deleteAdminStudio returns undefined on 204', async () => {
     mswServer.use(
-      http.delete('http://api.test/studios/s1', () =>
+      http.delete('http://api.test/admin/studios/sid-1', () =>
         new HttpResponse(null, { status: 204 }),
       ),
     )
-    await expect(api.deleteStudio('s1')).resolves.toBeUndefined()
+    await expect(api.deleteAdminStudio('sid-1')).resolves.toBeUndefined()
   })
 })
 

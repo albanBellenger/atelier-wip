@@ -8,6 +8,7 @@ from collections.abc import AsyncIterator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.project_chat_agent import ProjectChatAgent
 from app.exceptions import ApiError
 from app.models import ChatMessage, Project, Software
 from app.schemas.token_context import TokenContext
@@ -114,39 +115,20 @@ class ProjectChatService:
                 message="Software not found.",
             )
 
-        ctx = TokenContext(
-            studio_id=software.studio_id,
-            software_id=software.id,
-            project_id=project_id,
-            user_id=user_id,
-        )
-
-        openai_msgs = (
-            chat_messages
-            if chat_messages is not None
-            else await self.openai_messages_for_project(project_id)
-        )
         rag = await RAGService(self.db).build_context(
             query=user_content,
             project_id=project_id,
             current_section_id=None,
             token_budget=6000,
         )
-        system_prompt = (
-            "You are a concise assistant helping the whole project team discuss "
-            "the specification and implementation. Ground answers in the context.\n\n"
-            + rag.text
-        )
-
         llm = LLMService(self.db)
-        try:
-            async for piece in llm.chat_stream(
-                system_prompt=system_prompt,
-                messages=openai_msgs,
-                context=ctx,
-                call_type="chat",
-                preferred_model=preferred_model,
-            ):
-                yield piece, ctx
-        except Exception:
-            yield "[error: LLM call failed]", ctx
+        agent = ProjectChatAgent(self.db, llm)
+        async for piece, ctx in agent.stream_assistant_tokens(
+            project_id=project_id,
+            user_id=user_id,
+            user_content=user_content,
+            chat_messages=chat_messages,
+            preferred_model=preferred_model,
+            rag_text=rag.text,
+        ):
+            yield piece, ctx

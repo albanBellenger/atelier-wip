@@ -163,3 +163,102 @@ async def test_admin_post_studios_creates_studio(
     data = r.json()
     assert data["name"] == f"Admin Post {sfx}"
     assert data["description"] == "via admin"
+
+
+@pytest.mark.asyncio
+async def test_admin_delete_studio_unauthenticated(client: AsyncClient) -> None:
+    r = await client.delete(f"/admin/studios/{uuid.uuid4()}")
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_admin_delete_studio_forbidden_for_member(client: AsyncClient) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    email = f"asc-del-mem-{sfx}@example.com"
+    await client.post(
+        "/auth/register",
+        json={
+            "email": email,
+            "password": "securepass123",
+            "display_name": "M",
+        },
+    )
+    r_login = await client.post(
+        "/auth/login",
+        json={"email": email, "password": "securepass123"},
+    )
+    assert r_login.status_code == 200
+    client.cookies.set("atelier_token", r_login.cookies.get("atelier_token"))
+    denied = await client.delete(f"/admin/studios/{uuid.uuid4()}")
+    assert denied.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_admin_delete_studio_not_found(client: AsyncClient, db_session) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    admin_email = f"asc-del-nf-{sfx}@example.com"
+    await client.post(
+        "/auth/register",
+        json={
+            "email": admin_email,
+            "password": "securepass123",
+            "display_name": "TA",
+        },
+    )
+    await db_session.execute(
+        update(User)
+        .where(User.email == admin_email.lower())
+        .values(is_platform_admin=True)
+    )
+    await db_session.flush()
+    r_login = await client.post(
+        "/auth/login",
+        json={"email": admin_email, "password": "securepass123"},
+    )
+    assert r_login.status_code == 200
+    client.cookies.set("atelier_token", r_login.cookies.get("atelier_token"))
+
+    missing = await client.delete(f"/admin/studios/{uuid.uuid4()}")
+    assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_admin_delete_studio_success(
+    client: AsyncClient,
+    db_session,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    admin_email = f"asc-del-ok-{sfx}@example.com"
+    await client.post(
+        "/auth/register",
+        json={
+            "email": admin_email,
+            "password": "securepass123",
+            "display_name": "TA",
+        },
+    )
+    await db_session.execute(
+        update(User)
+        .where(User.email == admin_email.lower())
+        .values(is_platform_admin=True)
+    )
+    await db_session.flush()
+    r_login = await client.post(
+        "/auth/login",
+        json={"email": admin_email, "password": "securepass123"},
+    )
+    assert r_login.status_code == 200
+    client.cookies.set("atelier_token", r_login.cookies.get("atelier_token"))
+
+    cr = await client.post(
+        "/studios",
+        json={"name": f"To Delete {sfx}", "description": None},
+    )
+    assert cr.status_code == 200
+    studio_id = cr.json()["id"]
+
+    dr = await client.delete(f"/admin/studios/{studio_id}")
+    assert dr.status_code == 204
+
+    gone = await client.get(f"/admin/studios/{studio_id}")
+    assert gone.status_code == 404

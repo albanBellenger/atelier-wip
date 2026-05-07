@@ -7,22 +7,8 @@ export function StudioSoftwareSection(props: {
   studioId: string
   software: Software[] | undefined
   isPending: boolean
-  canCreateSoftware: boolean
-  newSoftwareName: string
-  onNewSoftwareNameChange: (v: string) => void
-  onCreateSoftware: () => void
-  createPending: boolean
 }): ReactElement {
-  const {
-    studioId,
-    software,
-    isPending,
-    canCreateSoftware,
-    newSoftwareName,
-    onNewSoftwareNameChange,
-    onCreateSoftware,
-    createPending,
-  } = props
+  const { studioId, software, isPending } = props
 
   return (
     <section className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60">
@@ -63,27 +49,6 @@ export function StudioSoftwareSection(props: {
               </li>
             ))}
           </ul>
-        ) : null}
-        {canCreateSoftware ? (
-          <div className="mt-4 flex flex-wrap gap-2 border-t border-zinc-800/80 pt-4">
-            <input
-              className="min-w-[12rem] flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-[13px] text-zinc-100 placeholder:text-zinc-600"
-              placeholder="New software name"
-              value={newSoftwareName}
-              onChange={(e) => onNewSoftwareNameChange(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') onCreateSoftware()
-              }}
-            />
-            <button
-              type="button"
-              disabled={createPending || !newSoftwareName.trim()}
-              className="rounded-lg bg-violet-600 px-4 py-2 text-[12px] font-semibold text-white hover:bg-violet-500 disabled:opacity-50"
-              onClick={() => onCreateSoftware()}
-            >
-              Add software
-            </button>
-          </div>
         ) : null}
       </div>
     </section>

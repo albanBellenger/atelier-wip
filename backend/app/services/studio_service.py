@@ -107,8 +107,9 @@ class StudioService:
         await self.db.refresh(row)
         return StudioResponse.model_validate(row)
 
-    async def delete_studio(self, access: StudioAccess) -> None:
-        row = await self.db.get(Studio, access.studio_id)
+    async def delete_studio_by_id(self, studio_id: uuid.UUID) -> None:
+        """Delete a studio row (DB cascades). Caller must enforce platform-admin auth."""
+        row = await self.db.get(Studio, studio_id)
         if row is None:
             return
         await self.db.delete(row)

@@ -10,16 +10,19 @@ Each service owns exactly one domain:
 
 - `llm_service.py` — all LLM provider calls (stream + structured)
 - `rag_service.py` — context assembly, chunking, embedding, pgvector search
-- `drift_service.py` — Work Order staleness detection
-- `conflict_service.py` — section pair conflict/gap analysis
-- `graph_service.py` — knowledge graph edge management
+- `graph_service.py` — knowledge graph edge persistence and `get_graph` assembly (no LLM)
 - `publish_service.py` — spec compilation, git commit, trigger analysis
 - `git_service.py` — GitLab API calls only
+- `admin_service.py` — platform admin operations (may call `LLMService` for connectivity probe only)
+
+Classes that call `LLMService` with owned prompts live in `backend/app/agents/` — see `agents.mdc`.
 
 ## Cross-service calls
 
 Services may call other services but must not import routers or models directly.
 Pass dependencies via constructor injection — never import a service as a singleton.
+
+Orchestrating services may import agents from `app.agents` to delegate LLM calls.
 
 ## Token tracking
 

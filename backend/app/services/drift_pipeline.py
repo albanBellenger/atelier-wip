@@ -8,9 +8,10 @@ import uuid
 
 import structlog
 
+from app.agents.drift_agent import DriftAgent
 from app.database import async_session_factory
 from app.exceptions import ApiError
-from app.services.drift_service import DriftService
+from app.services.llm_service import LLMService
 
 log = structlog.get_logger("atelier.drift_pipeline")
 
@@ -54,7 +55,8 @@ async def _run_drift_after_quiet(section_id: uuid.UUID) -> None:
 async def enqueue_drift_check(section_id: uuid.UUID) -> None:
     async with async_session_factory() as session:
         try:
-            await DriftService(session).run_after_section_change(section_id)
+            llm = LLMService(session)
+            await DriftAgent(session, llm).run_after_section_change(section_id)
             await session.commit()
         except ApiError as e:
             await session.rollback()

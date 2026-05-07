@@ -74,32 +74,11 @@ export function LlmUsagePage(): ReactElement {
             </h1>
             <button
               type="button"
-              className="inline-flex h-7 w-7 shrink-0 cursor-help items-center justify-center rounded-full border border-zinc-700/90 text-zinc-500 transition hover:border-zinc-600 hover:text-zinc-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
+              className="inline-flex shrink-0 cursor-help items-baseline justify-center rounded px-0.5 text-[13px] font-semibold leading-none text-zinc-500 transition hover:text-zinc-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
               aria-label={LLM_USAGE_FILTERS_HELP}
               title={LLM_USAGE_FILTERS_HELP}
             >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 16 16"
-                fill="none"
-                className="shrink-0"
-                aria-hidden
-              >
-                <circle
-                  cx="8"
-                  cy="8"
-                  r="6.25"
-                  stroke="currentColor"
-                  strokeWidth="1.25"
-                />
-                <path
-                  d="M8 11.2V11M8 4.8v3.2"
-                  stroke="currentColor"
-                  strokeWidth="1.25"
-                  strokeLinecap="round"
-                />
-              </svg>
+              <span aria-hidden="true">?</span>
             </button>
           </div>
           <div className="mt-3">

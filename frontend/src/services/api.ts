@@ -929,6 +929,11 @@ export async function postAdminStudio(body: StudioCreateBody): Promise<Studio> {
   return request<Studio>('POST', '/admin/studios', body)
 }
 
+/** Platform admin only — removes the studio and cascaded data. */
+export async function deleteAdminStudio(studioId: string): Promise<void> {
+  return request<void>('DELETE', `/admin/studios/${studioId}`)
+}
+
 export async function getStudio(studioId: string): Promise<Studio> {
   return request<Studio>('GET', `/studios/${studioId}`)
 }
@@ -947,10 +952,6 @@ export async function updateStudio(
   body: StudioUpdateBody,
 ): Promise<Studio> {
   return request<Studio>('PATCH', `/studios/${studioId}`, body)
-}
-
-export async function deleteStudio(studioId: string): Promise<void> {
-  return request<void>('DELETE', `/studios/${studioId}`)
 }
 
 export interface StudioMember {

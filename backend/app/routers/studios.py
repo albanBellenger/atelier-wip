@@ -305,15 +305,6 @@ async def update_studio(
     return await StudioService(session).update_studio(access, body)
 
 
-@router.delete("/{studio_id}", status_code=204)
-async def delete_studio(
-    session: AsyncSession = Depends(get_db),
-    access: StudioAccess = Depends(require_studio_admin),
-) -> Response:
-    await StudioService(session).delete_studio(access)
-    return Response(status_code=204)
-
-
 @router.get("/{studio_id}/members", response_model=list[StudioMemberResponse])
 async def list_members(
     session: AsyncSession = Depends(get_db),

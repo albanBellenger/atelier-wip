@@ -22,12 +22,19 @@ export type BuilderHomeHeaderProjectSwitcher = {
 export type BuilderHomeHeaderTrailingCrumb = {
   /** Software segment after studio; omit when the page has no software crumb (e.g. studio-only or project under studio). */
   label?: string
+  /**
+   * With a studio crumb, links the software name to this software when there is no software switcher
+   * (or alongside the switcher for the name segment).
+   */
+  softwareId?: string
   /** When present and ``softwareOptions`` has 2+ items, the crumb is a switcher (same pattern as studio). */
   softwareSwitcher?: BuilderHomeHeaderSoftwareSwitcher
   /** Optional segment after software: ``Studio / Software / {projectLabel}``. */
   projectLabel?: string
   /** When present and ``projectOptions`` has 2+ items, the project segment is a switcher (same pattern as software). */
   projectSwitcher?: BuilderHomeHeaderProjectSwitcher
+  /** Leaf segment after project (e.g. ``Work orders`` on the work-orders route). Only shown when ``projectLabel`` is set. */
+  afterProjectLabel?: string
 }
 
 export type BuilderHomeHeaderProps = {
@@ -244,33 +251,51 @@ export function BuilderHomeHeader({
                   <span className="shrink-0 text-zinc-700">/</span>
                   {showSoftwareSwitcher && softwareSwitcher ? (
                     <div className="relative min-w-0">
-                      <button
-                        type="button"
-                        onClick={() => setSoftwareOpen((o) => !o)}
-                        onBlur={() =>
-                          setTimeout(() => setSoftwareOpen(false), 120)
-                        }
-                        className="group flex max-w-full items-center gap-2 rounded-md border border-transparent px-2 py-1 text-left text-[15px] font-semibold text-zinc-100 hover:border-zinc-800 hover:bg-zinc-900/60"
+                      <div
+                        className="group flex max-w-full items-center rounded-md border border-transparent text-[15px] font-semibold text-zinc-100 hover:border-zinc-800 hover:bg-zinc-900/60"
                         title={softwareButtonLabel}
                       >
-                        <span className="truncate">{softwareButtonLabel}</span>
-                        <svg
-                          width="10"
-                          height="10"
-                          viewBox="0 0 10 10"
-                          fill="none"
-                          className="shrink-0 text-zinc-500 group-hover:text-zinc-300"
-                          aria-hidden
+                        {effectiveStudioId ? (
+                          <Link
+                            to={`/studios/${effectiveStudioId}/software/${softwareSwitcher.currentSoftwareId}`}
+                            className="min-w-0 flex-1 truncate px-2 py-1 text-left text-zinc-100 hover:text-zinc-50 focus-visible:z-10 focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
+                          >
+                            {softwareButtonLabel}
+                          </Link>
+                        ) : (
+                          <span className="block min-w-0 flex-1 truncate px-2 py-1 text-left">
+                            {softwareButtonLabel}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          aria-label="Switch software"
+                          aria-expanded={softwareOpen}
+                          aria-haspopup="listbox"
+                          onClick={() => setSoftwareOpen((o) => !o)}
+                          onBlur={() =>
+                            setTimeout(() => setSoftwareOpen(false), 120)
+                          }
+                          className="flex shrink-0 items-center rounded-sm px-1.5 py-1 text-zinc-500 hover:text-zinc-300 focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
                         >
-                          <path
-                            d="M2 4l3 3 3-3"
-                            stroke="currentColor"
-                            strokeWidth="1.3"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      </button>
+                          <svg
+                            width="10"
+                            height="10"
+                            viewBox="0 0 10 10"
+                            fill="none"
+                            className="shrink-0"
+                            aria-hidden
+                          >
+                            <path
+                              d="M2 4l3 3 3-3"
+                              stroke="currentColor"
+                              strokeWidth="1.3"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </button>
+                      </div>
                       {softwareOpen ? (
                         <div className="absolute left-0 top-[calc(100%+4px)] z-30 max-h-72 w-72 overflow-y-auto overflow-x-hidden rounded-lg border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/40">
                           <div className="border-b border-zinc-800/80 px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-zinc-500">
@@ -312,6 +337,14 @@ export function BuilderHomeHeader({
                         </div>
                       ) : null}
                     </div>
+                  ) : effectiveStudioId && trailingCrumb.softwareId ? (
+                    <Link
+                      to={`/studios/${effectiveStudioId}/software/${trailingCrumb.softwareId}`}
+                      className="min-w-0 truncate text-[15px] font-semibold tracking-tight text-zinc-100 hover:text-zinc-50 focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
+                      title={trailingSoftwareLabel}
+                    >
+                      {trailingSoftwareLabel}
+                    </Link>
                   ) : (
                     <span
                       className="min-w-0 truncate text-[15px] font-semibold tracking-tight text-zinc-100"
@@ -407,6 +440,18 @@ export function BuilderHomeHeader({
                       {trailingCrumb.projectLabel}
                     </span>
                   )}
+                </>
+              ) : null}
+              {trailingCrumb.projectLabel?.trim() &&
+              trailingCrumb.afterProjectLabel?.trim() ? (
+                <>
+                  <span className="shrink-0 text-zinc-700">/</span>
+                  <span
+                    className="min-w-0 truncate text-[15px] font-semibold tracking-tight text-zinc-200"
+                    title={trailingCrumb.afterProjectLabel.trim()}
+                  >
+                    {trailingCrumb.afterProjectLabel.trim()}
+                  </span>
                 </>
               ) : null}
             </>

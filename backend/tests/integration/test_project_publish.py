@@ -48,11 +48,11 @@ async def test_publish_happy_path_mocked_commit(
 
     monkeypatch.setattr("app.services.publish_service.commit_files", fake_commit)
     monkeypatch.setattr(
-        "app.services.conflict_service.ConflictService.run_conflict_analysis",
+        "app.services.publish_service.ConflictAgent.run_conflict_analysis",
         AsyncMock(return_value=0),
     )
     monkeypatch.setattr(
-        "app.services.graph_service.GraphService.detect_section_relationships",
+        "app.services.publish_service.SectionRelationshipAgent.detect_section_relationships",
         AsyncMock(),
     )
 

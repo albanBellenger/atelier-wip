@@ -37,10 +37,7 @@ describe('StudioArtifactsSection', () => {
     )
     expect(
       screen.getByRole('link', { name: /open library/i }),
-    ).toHaveAttribute(
-      'href',
-      '/studios/s1/artifact-library?softwareId=sw1',
-    )
+    ).toHaveAttribute('href', '/studios/s1/artifact-library')
     expect(
       screen.getByRole('button', { name: /^upload file$/i }),
     ).toBeInTheDocument()

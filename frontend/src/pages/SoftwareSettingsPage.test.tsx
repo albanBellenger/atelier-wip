@@ -96,6 +96,11 @@ describe('SoftwareSettingsPage', () => {
     expect(
       screen.getByRole('heading', { name: /artifact visibility \(software scope\)/i }),
     ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', {
+        name: /name, description, llm context, and gitlab connection for my sw/i,
+      }),
+    ).toBeInTheDocument()
   })
 
   it('viewer cannot save software settings', async () => {
@@ -149,6 +154,11 @@ describe('SoftwareSettingsPage', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /^Details$/i })).toBeInTheDocument()
     })
+    expect(
+      screen.getByRole('button', {
+        name: /name, description, llm context, and gitlab connection for sw/i,
+      }),
+    ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^save$/i })).not.toBeInTheDocument()
     expect(
       screen.queryByRole('switch', { name: /exclude doc from software context/i }),

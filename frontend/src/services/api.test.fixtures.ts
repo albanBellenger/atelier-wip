@@ -345,7 +345,7 @@ export function apiCoverageHandlers(): RequestHandler[] {
     http.post('http://api.test/studios', () => HttpResponse.json(studio())),
     http.get('http://api.test/studios/st1', () => HttpResponse.json(studio())),
     http.patch('http://api.test/studios/st1', () => HttpResponse.json(studio())),
-    http.delete('http://api.test/studios/st1', () => new HttpResponse(null, { status: 204 })),
+    http.delete('http://api.test/admin/studios/st1', () => new HttpResponse(null, { status: 204 })),
     http.get('http://api.test/studios/st1/members', () => HttpResponse.json([studioMember])),
     http.post('http://api.test/studios/st1/members', () => HttpResponse.json(studioMember)),
     http.delete('http://api.test/studios/st1/members/u1', () =>
@@ -651,5 +651,5 @@ export async function invokeThinApiCoverage(api: typeof import('./api')): Promis
   await api.deleteSection('p1', 'sec1')
   await api.deleteProject('sw1', 'p1')
   await api.deleteSoftware('st1', 'sw1')
-  await api.deleteStudio('st1')
+  await api.deleteAdminStudio('st1')
 }

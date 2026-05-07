@@ -7,8 +7,9 @@ import uuid
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.drift_agent import DriftAgent
 from app.models import WorkOrder
-from app.services.drift_service import DriftService
+from app.services.llm_service import LLMService
 
 from tests.factories import (
     add_studio_member,
@@ -23,7 +24,7 @@ from tests.factories import (
 pytestmark = [pytest.mark.llm, pytest.mark.asyncio]
 
 
-async def test_section_change_triggers_stale_work_order_via_drift_service(
+async def test_section_change_triggers_stale_work_order_via_drift_agent(
     db_session: AsyncSession,
 ) -> None:
     owner = await create_user(
@@ -73,7 +74,8 @@ async def test_section_change_triggers_stale_work_order_via_drift_service(
     )
     await db_session.flush()
 
-    await DriftService(db_session).run_after_section_change(section.id)
+    llm = LLMService(db_session)
+    await DriftAgent(db_session, llm).run_after_section_change(section.id)
     await db_session.flush()
 
     reloaded = await db_session.get(WorkOrder, wo.id)

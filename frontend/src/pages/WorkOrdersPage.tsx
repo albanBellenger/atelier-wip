@@ -11,17 +11,28 @@ import {
 } from '@dnd-kit/core'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
+import {
+  getHostedEnvironment,
+  hostedEnvironmentLabel,
+} from '../lib/hostedEnvironment'
 import { useStudioAccess } from '../hooks/useStudioAccess'
+import { APP_VERSION } from '../version'
 import {
   addWorkOrderNote,
   dismissWorkOrderStale,
   generateWorkOrders,
+  getProject,
+  getSoftware,
   getWorkOrder,
   listMembers,
+  listProjects,
   listSections,
+  listSoftware,
   listWorkOrders,
+  logout as logoutApi,
   me,
   updateWorkOrder,
   type AuthErrorBody,
@@ -215,6 +226,8 @@ export function WorkOrdersPage(): ReactElement {
   const sid = studioId ?? ''
   const sfid = softwareId ?? ''
   const pid = projectId ?? ''
+  const hostedEnv = getHostedEnvironment()
+  const hostedEnvLabel = hostedEnvironmentLabel(hostedEnv)
 
   const [view, setView] = useState<'kanban' | 'list'>('kanban')
   const [filters, setFilters] = useState<WorkOrderListFilters>({})
@@ -238,6 +251,90 @@ export function WorkOrdersPage(): ReactElement {
   }, [profileQ.isError, navigate])
 
   const access = useStudioAccess(profileQ.data, sid, sfid)
+
+  const swQ = useQuery({
+    queryKey: ['softwareOne', sid, sfid],
+    queryFn: () => getSoftware(sid, sfid),
+    enabled: Boolean(sid && sfid && access.isMember),
+  })
+
+  const projectQ = useQuery({
+    queryKey: ['project', sfid, pid],
+    queryFn: () => getProject(sfid, pid),
+    enabled: Boolean(sfid && pid && access.isMember),
+  })
+
+  const studioSoftwareListQ = useQuery({
+    queryKey: ['software', sid],
+    queryFn: () => listSoftware(sid),
+    enabled: Boolean(sid && access.isMember),
+  })
+
+  const softwareProjectsNavQ = useQuery({
+    queryKey: ['projects', sfid, 'breadcrumb'],
+    queryFn: () => listProjects(sfid),
+    enabled: Boolean(sfid && access.isMember),
+  })
+
+  const headerTrailingCrumb = useMemo(() => {
+    if (!swQ.data || !projectQ.data) return undefined
+    const swRows = studioSoftwareListQ.data ?? []
+    const projRows = (softwareProjectsNavQ.data ?? []).filter((p) => !p.archived)
+    const baseLabel = swQ.data.name
+    return {
+      label: baseLabel,
+      softwareId: sfid,
+      projectLabel: projectQ.data.name,
+      afterProjectLabel: 'Work orders',
+      softwareSwitcher:
+        swRows.length > 1
+          ? {
+              currentSoftwareId: sfid,
+              softwareOptions: swRows.map((r) => ({ id: r.id, name: r.name })),
+              onSoftwareSelect: (nextId: string) => {
+                void navigate(`/studios/${sid}/software/${nextId}`)
+              },
+            }
+          : undefined,
+      projectSwitcher:
+        projRows.length > 1
+          ? {
+              currentProjectId: pid,
+              projectOptions: projRows.map((p) => ({ id: p.id, name: p.name })),
+              onProjectSelect: (nextId: string) => {
+                void navigate(
+                  `/studios/${sid}/software/${sfid}/projects/${nextId}/work-orders`,
+                )
+              },
+            }
+          : undefined,
+    }
+  }, [
+    swQ.data,
+    projectQ.data,
+    studioSoftwareListQ.data,
+    softwareProjectsNavQ.data,
+    sfid,
+    sid,
+    pid,
+    navigate,
+  ])
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await logoutApi()
+    } catch {
+      /* still leave */
+    }
+    void navigate('/auth', { replace: true })
+  }, [navigate])
+
+  const handleStudioChange = useCallback(
+    (nextStudioId: string) => {
+      void navigate(`/studios/${nextStudioId}`)
+    },
+    [navigate],
+  )
 
   useEffect(() => {
     if (!profileQ.isSuccess) {
@@ -433,24 +530,18 @@ export function WorkOrdersPage(): ReactElement {
     </aside>
   )
 
+  const profile = profileQ.data
+
   return (
-    <div className="min-h-screen bg-zinc-950 px-4 py-10 text-zinc-100">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-6 flex flex-wrap items-center gap-4 text-sm">
-          <Link
-            to={`/studios/${sid}/software/${sfid}/projects/${pid}`}
-            className="text-violet-400 hover:underline"
-          >
-            ← Project
-          </Link>
-          <span className="text-zinc-600">|</span>
-          <Link
-            to={`/studios/${sid}/artifact-library?softwareId=${encodeURIComponent(sfid)}`}
-            className="text-violet-400 hover:underline"
-          >
-            Artifacts
-          </Link>
-        </div>
+    <div className="min-h-screen bg-[#0a0a0b] px-8 pb-16 pt-8 font-sans text-zinc-100">
+      <div className="mx-auto max-w-[1240px]">
+        <BuilderHomeHeader
+          profile={profile}
+          studioId={sid}
+          onStudioChange={handleStudioChange}
+          onLogout={() => void handleLogout()}
+          trailingCrumb={headerTrailingCrumb}
+        />
 
         <div className="mb-6 flex flex-wrap items-end gap-4">
           <h1 className="text-2xl font-semibold">Work orders</h1>
@@ -826,6 +917,26 @@ export function WorkOrdersPage(): ReactElement {
             </div>
           </div>
         )}
+        <footer className="mt-16 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-zinc-800/60 pt-6 text-[11px] text-zinc-600">
+          <span>Atelier · Builder workspace</span>
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono">
+            <Link
+              to="/changelog"
+              className="text-zinc-500 hover:text-zinc-300 hover:underline focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
+            >
+              v{APP_VERSION}
+            </Link>
+            <span className="select-none font-sans text-zinc-700" aria-hidden>
+              ·
+            </span>
+            <span
+              className="rounded border border-zinc-700/70 px-1.5 py-px text-[10px] font-sans font-normal uppercase tracking-wider text-zinc-500"
+              title={`Hosted environment: ${hostedEnvLabel}`}
+            >
+              {hostedEnvLabel}
+            </span>
+          </span>
+        </footer>
       </div>
     </div>
   )

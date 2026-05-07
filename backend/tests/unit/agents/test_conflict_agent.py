@@ -1,4 +1,4 @@
-"""Unit tests for ConflictService (analysis flow, edge creation, LLM errors)."""
+"""Unit tests for ConflictAgent (analysis flow, edge creation, LLM errors)."""
 
 from __future__ import annotations
 
@@ -7,15 +7,17 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.agents.conflict_agent import ConflictAgent
 from app.exceptions import ApiError
 from app.models import Project, Section, Software
-from app.services.conflict_service import ConflictService
+from app.services.llm_service import LLMService
 
 
 @pytest.mark.asyncio
 async def test_clear_open_auto_issues_runs_delete() -> None:
     db = AsyncMock()
-    await ConflictService(db).clear_open_auto_issues(uuid.uuid4())
+    llm = LLMService(db)
+    await ConflictAgent(db, llm).clear_open_auto_issues(uuid.uuid4())
     assert db.execute.await_count == 1
 
 
@@ -23,11 +25,12 @@ async def test_clear_open_auto_issues_runs_delete() -> None:
 async def test_run_conflict_analysis_raises_when_no_project_context() -> None:
     """Empty sections (or missing software chain) -> NOT_FOUND before analysis."""
     db = AsyncMock()
+    llm = LLMService(db)
     res = MagicMock()
     res.scalars.return_value.all.return_value = []
     db.execute = AsyncMock(return_value=res)
     with pytest.raises(ApiError) as e:
-        await ConflictService(db).run_conflict_analysis(
+        await ConflictAgent(db, llm).run_conflict_analysis(
             project_id=uuid.uuid4(),
             run_actor_id=uuid.uuid4(),
             origin="manual",
@@ -75,16 +78,17 @@ async def test_run_conflict_analysis_returns_zero_on_llm_api_error(
     db.get = AsyncMock(side_effect=[pr, sw])
     db.add = MagicMock()
     db.flush = AsyncMock()
+    llm = LLMService(db)
 
     async def boom(self, **kwargs):
         raise ApiError(status_code=502, code="LLM_ERR", message="down")
 
     monkeypatch.setattr(
-        "app.services.conflict_service.LLMService.chat_structured",
+        "app.agents.conflict_agent.LLMService.chat_structured",
         boom,
     )
 
-    n = await ConflictService(db).run_conflict_analysis(
+    n = await ConflictAgent(db, llm).run_conflict_analysis(
         project_id=pid,
         run_actor_id=uuid.uuid4(),
         origin="manual",
@@ -138,6 +142,7 @@ async def test_run_conflict_analysis_creates_pair_issue_and_edges(
     db.get = AsyncMock(side_effect=[pr, sw])
     db.add = MagicMock()
     db.flush = AsyncMock()
+    llm = LLMService(db)
 
     add_calls: list[str] = []
 
@@ -163,11 +168,11 @@ async def test_run_conflict_analysis_creates_pair_issue_and_edges(
         }
 
     monkeypatch.setattr(
-        "app.services.conflict_service.LLMService.chat_structured",
+        "app.agents.conflict_agent.LLMService.chat_structured",
         ok_llm,
     )
 
-    n = await ConflictService(db).run_conflict_analysis(
+    n = await ConflictAgent(db, llm).run_conflict_analysis(
         project_id=pid,
         run_actor_id=uuid.uuid4(),
         origin="manual",
@@ -208,6 +213,7 @@ async def test_run_conflict_analysis_skips_malformed_findings(
     db.execute = AsyncMock(side_effect=[r1, MagicMock()])
     db.get = AsyncMock(side_effect=[pr, sw])
     db.flush = AsyncMock()
+    llm = LLMService(db)
 
     async def bad(self, **kwargs):
         return {
@@ -229,11 +235,11 @@ async def test_run_conflict_analysis_skips_malformed_findings(
         }
 
     monkeypatch.setattr(
-        "app.services.conflict_service.LLMService.chat_structured",
+        "app.agents.conflict_agent.LLMService.chat_structured",
         bad,
     )
 
-    n = await ConflictService(db).run_conflict_analysis(
+    n = await ConflictAgent(db, llm).run_conflict_analysis(
         project_id=pid,
         run_actor_id=uuid.uuid4(),
         origin="auto",

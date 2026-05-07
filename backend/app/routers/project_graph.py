@@ -9,7 +9,9 @@ from app.database import get_db
 from app.deps import ProjectAccess, get_project_access, require_project_member
 from app.exceptions import ApiError
 from app.schemas.graph import GraphAnalyzeResponse, ProjectGraphResponse
+from app.agents.section_relationship_agent import SectionRelationshipAgent
 from app.services.graph_service import GraphService
+from app.services.llm_service import LLMService
 
 router = APIRouter(prefix="/projects/{project_id}", tags=["graph"])
 
@@ -41,7 +43,8 @@ async def analyze_section_relationships(
     pa: ProjectAccess = Depends(require_project_member),
 ) -> GraphAnalyzeResponse:
     _ensure_project(pa, project_id)
-    await GraphService(session).detect_section_relationships(
+    llm = LLMService(session)
+    await SectionRelationshipAgent(session, llm).detect_section_relationships(
         project_id,
         context_user_id=pa.studio_access.user.id,
     )

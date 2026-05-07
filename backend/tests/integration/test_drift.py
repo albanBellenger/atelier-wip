@@ -11,7 +11,7 @@ from sqlalchemy import select, update
 from app.models import WorkOrder
 from app.models.work_order import WorkOrderNote
 from app.services import drift_pipeline
-from app.services.drift_service import DriftService
+from app.agents.drift_agent import DriftAgent
 from app.services.llm_service import LLMService
 
 from tests.integration.test_work_orders import _studio_project_with_sections
@@ -50,7 +50,9 @@ async def test_drift_service_marks_work_order_stale(
     monkeypatch.setattr(LLMService, "ensure_openai_llm_ready", fake_ready)
     monkeypatch.setattr(LLMService, "chat_structured", fake_chat)
 
-    await DriftService(db_session).run_after_section_change(uuid.UUID(sec_a))
+    await DriftAgent(db_session, LLMService(db_session)).run_after_section_change(
+        uuid.UUID(sec_a)
+    )
     await db_session.flush()
 
     wo = await db_session.get(WorkOrder, wid)
@@ -102,7 +104,9 @@ async def test_drift_skips_done_work_orders(
     monkeypatch.setattr(LLMService, "ensure_openai_llm_ready", fake_ready)
     monkeypatch.setattr(LLMService, "chat_structured", fake_chat)
 
-    await DriftService(db_session).run_after_section_change(uuid.UUID(sec_a))
+    await DriftAgent(db_session, LLMService(db_session)).run_after_section_change(
+        uuid.UUID(sec_a)
+    )
     await db_session.flush()
 
     assert calls == []
@@ -185,7 +189,7 @@ async def test_drift_pipeline_semaphore_limits_concurrency(
         active -= 1
 
     monkeypatch.setattr(
-        DriftService,
+        DriftAgent,
         "run_after_section_change",
         fake_run_after_section_change,
     )

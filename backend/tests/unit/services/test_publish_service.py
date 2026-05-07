@@ -204,11 +204,11 @@ async def test_publish_success_commits_and_returns_result(
         _FakeND,
     )
     monkeypatch.setattr(
-        "app.services.publish_service.ConflictService.run_conflict_analysis",
+        "app.services.publish_service.ConflictAgent.run_conflict_analysis",
         AsyncMock(return_value=0),
     )
     monkeypatch.setattr(
-        "app.services.publish_service.GraphService.detect_section_relationships",
+        "app.services.publish_service.SectionRelationshipAgent.detect_section_relationships",
         AsyncMock(),
     )
 

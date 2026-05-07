@@ -1,7 +1,11 @@
 import type { ReactElement } from 'react'
 
 import type { Section } from '../../../services/api'
-import { SectionRail } from '../../section/SectionRail'
+import {
+  SectionRail,
+  type SectionRailAddSectionHandlers,
+  type SectionRailReorderHandlers,
+} from '../../section/SectionRail'
 
 export function OutlineRail(props: {
   studioId: string
@@ -12,6 +16,8 @@ export function OutlineRail(props: {
   collapsed: boolean
   onToggleCollapsed: () => void
   pinned?: boolean
+  addSection?: SectionRailAddSectionHandlers
+  reorderSections?: SectionRailReorderHandlers
 }): ReactElement {
   const { pinned, collapsed, onToggleCollapsed, ...rest } = props
   return (

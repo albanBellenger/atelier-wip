@@ -3,7 +3,6 @@
 import re
 import unicodedata
 import uuid
-from typing import Any
 
 from pycrdt import Doc, Text
 from sqlalchemy import func, or_, select
@@ -11,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import structlog
 
+from app.agents.section_improve_agent import SectionImproveAgent
 from app.exceptions import ApiError
 from app.models import Issue, Project, Section, Software, WorkOrder, WorkOrderSection
 from app.schemas.section import SectionCreate, SectionResponse, SectionUpdate
@@ -25,19 +25,6 @@ from app.services.section_status import SectionStatusLiteral, rollup_section_sta
 SECTION_YJS_TEXT_FIELD = "codemirror"
 
 log = structlog.get_logger("atelier.section")
-
-SECTION_IMPROVE_SCHEMA: dict[str, Any] = {
-    "name": "section_improve",
-    "strict": True,
-    "schema": {
-        "type": "object",
-        "additionalProperties": False,
-        "properties": {
-            "improved_markdown": {"type": "string"},
-        },
-        "required": ["improved_markdown"],
-    },
-}
 
 
 def snapshot_from_yjs_update_bytes(blob: bytes | None) -> str | None:
@@ -494,22 +481,12 @@ class SectionService:
             current_section_plaintext_override=current_section_plaintext,
         )
         llm = LLMService(self.db)
-        user_block = (
-            f"Section title: {s.title}\n\nCurrent markdown:\n{body_text}\n"
-        )
-        if instruction and instruction.strip():
-            user_block += f"\nAuthor instruction:\n{instruction.strip()}\n"
-        raw = await llm.chat_structured(
-            system_prompt=(
-                "You revise specification markdown. Preserve intent and structure where "
-                "reasonable; remove ambiguity; do not invent requirements absent from the "
-                "input or context. Return JSON only with improved_markdown.\n\n"
-                + rag.text
-            ),
-            user_prompt=user_block,
-            json_schema=SECTION_IMPROVE_SCHEMA,
-            context=ctx,
-            call_type="section_improve",
+        raw = await SectionImproveAgent(self.db, llm).improve_markdown(
+            ctx,
+            rag_text=rag.text,
+            title=s.title,
+            body_text=body_text,
+            instruction=instruction,
         )
         if not isinstance(raw, dict):
             raise ApiError(

@@ -5,7 +5,6 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
 import { ArtifactExclusionPanel } from '../components/software/ArtifactExclusionPanel'
-import { SettingsGearIcon } from '../components/icons/SettingsGearIcon'
 import { useStudioAccess } from '../hooks/useStudioAccess'
 import {
   deleteSoftware,
@@ -18,6 +17,10 @@ import {
   testGitConnection,
   updateSoftware,
 } from '../services/api'
+
+function softwareSettingsPageIntroHelp(softwareName: string): string {
+  return `Name, description, LLM context, and GitLab connection for ${softwareName}.`
+}
 
 export function SoftwareSettingsPage(): ReactElement {
   const { studioId, softwareId } = useParams<{
@@ -90,7 +93,11 @@ export function SoftwareSettingsPage(): ReactElement {
   const headerTrailingCrumb = useMemo(() => {
     if (!swQ.data) return undefined
     const rows = studioSoftwareListQ.data ?? []
-    const base = { label: swQ.data.name }
+    const base = {
+      label: swQ.data.name,
+      softwareId: sfid,
+      projectLabel: 'Software settings',
+    }
     if (rows.length <= 1) return base
     return {
       ...base,
@@ -227,21 +234,6 @@ export function SoftwareSettingsPage(): ReactElement {
           trailingCrumb={headerTrailingCrumb}
         />
 
-        <div className="mb-8 flex flex-wrap items-center gap-4 text-sm">
-          <Link
-            to={`/studios/${sid}/software/${sfid}`}
-            className="inline-flex items-center gap-2 text-violet-400 hover:underline"
-          >
-            <span aria-hidden>←</span>
-            Software
-          </Link>
-          <span className="text-zinc-600">/</span>
-          <span className="inline-flex items-center gap-2 text-zinc-300">
-            <SettingsGearIcon />
-            Software settings
-          </span>
-        </div>
-
         {swQ.isPending && <p className="text-zinc-500">Loading…</p>}
         {swQ.isError && (
           <p className="text-red-400">Could not load software.</p>
@@ -249,13 +241,19 @@ export function SoftwareSettingsPage(): ReactElement {
 
         {swQ.data && (
           <>
-            <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">
-              Software settings
-            </h1>
-            <p className="mt-1 text-sm text-zinc-500">
-              Name, description, LLM context, and GitLab connection for{' '}
-              <span className="text-zinc-300">{swQ.data.name}</span>.
-            </p>
+            <div className="flex flex-wrap items-baseline gap-2">
+              <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">
+                Software settings
+              </h1>
+              <button
+                type="button"
+                className="inline-flex shrink-0 cursor-help items-baseline justify-center rounded px-0.5 text-[13px] font-semibold leading-none text-zinc-500 transition hover:text-zinc-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
+                aria-label={softwareSettingsPageIntroHelp(swQ.data.name)}
+                title={softwareSettingsPageIntroHelp(swQ.data.name)}
+              >
+                <span aria-hidden="true">?</span>
+              </button>
+            </div>
 
             {msg ? <p className="mt-4 text-sm text-emerald-400">{msg}</p> : null}
 

@@ -214,16 +214,15 @@ async def test_update_studio_strips_name_when_provided() -> None:
 
 
 @pytest.mark.asyncio
-async def test_delete_studio_noop_when_missing() -> None:
+async def test_delete_studio_by_id_noop_when_missing() -> None:
     db = MagicMock()
     db.get = AsyncMock(return_value=None)
-    acc = _access(uuid.uuid4(), uuid.uuid4())
-    await StudioService(db).delete_studio(acc)
+    await StudioService(db).delete_studio_by_id(uuid.uuid4())
     db.delete.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_delete_studio_deletes_row() -> None:
+async def test_delete_studio_by_id_deletes_row() -> None:
     sid = uuid.uuid4()
     row = MagicMock()
     db = MagicMock()
@@ -231,8 +230,7 @@ async def test_delete_studio_deletes_row() -> None:
     db.delete = AsyncMock()
     db.commit = AsyncMock()
 
-    acc = _access(uuid.uuid4(), sid)
-    await StudioService(db).delete_studio(acc)
+    await StudioService(db).delete_studio_by_id(sid)
     db.delete.assert_awaited_once_with(row)
     db.commit.assert_awaited_once()
 

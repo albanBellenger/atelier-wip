@@ -3,35 +3,15 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.builder_composer_agent import BuilderComposerAgent
 from app.exceptions import ApiError
 from app.models import Project, Software, User
 from app.schemas.builder_composer import BuilderComposerHintResponse
 from app.schemas.token_context import TokenContext
 from app.services.llm_service import LLMService
-
-BUILDER_COMPOSER_HINT_JSON_SCHEMA: dict[str, Any] = {
-    "name": "builder_composer_hint",
-    "strict": True,
-    "schema": {
-        "type": "object",
-        "additionalProperties": False,
-        "properties": {
-            "headline": {
-                "type": "string",
-                "description": "One short line welcoming the user (max ~120 chars).",
-            },
-            "input_placeholder": {
-                "type": "string",
-                "description": "Placeholder for the main input (what to ask or do next).",
-            },
-        },
-        "required": ["headline", "input_placeholder"],
-    },
-}
 
 
 class BuilderComposerService:
@@ -72,10 +52,6 @@ class BuilderComposerService:
             "input_placeholder: a single question or invitation to type in the composer "
             "(like a chat placeholder), not repeating the headline verbatim."
         )
-        system_prompt = (
-            "You write short UI strings for a specification builder product (Atelier). "
-            "Stay professional and concrete. No markdown, no quotes around outputs."
-        )
         ctx = TokenContext(
             studio_id=software.studio_id,
             software_id=software.id,
@@ -83,12 +59,8 @@ class BuilderComposerService:
             user_id=user.id,
         )
         llm = LLMService(self.db)
-        parsed = await llm.chat_structured(
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            json_schema=BUILDER_COMPOSER_HINT_JSON_SCHEMA,
-            context=ctx,
-            call_type="builder_composer_hint",
+        parsed = await BuilderComposerAgent(self.db, llm).hint_for_software(
+            ctx, user_prompt
         )
         headline_raw = parsed.get("headline")
         placeholder_raw = parsed.get("input_placeholder")

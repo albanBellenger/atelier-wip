@@ -1,0 +1,132 @@
+"""Software-scoped chat LLM streaming (no project RAG)."""
+
+from __future__ import annotations
+
+import uuid
+from collections.abc import AsyncIterator
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.exceptions import ApiError
+from app.models import Project, Software, SoftwareChatMessage
+from app.schemas.token_context import TokenContext
+from app.services.llm_service import LLMService
+
+# ── Prompts ───────────────────────────────────────────────────────────────────
+
+SOFTWARE_CHAT_SYSTEM_PROMPT_TEMPLATE = (
+    "You are a concise assistant for the whole software product team "
+    "(all projects under this software). "
+    "Ground answers in the following product context only.\n\n"
+    "Software name: {software_name}\n"
+    "Description: {description}\n"
+    "Project names under this software: {projects_line}\n\n"
+    "Software definition (may be truncated):\n{def_blob}"
+)
+
+# User turns are supplied via the chat API `messages` list; no static user prompt body.
+USER_PROMPT = ""
+
+# ── Agent ─────────────────────────────────────────────────────────────────────
+
+
+def _trim_text(text: str | None, max_chars: int) -> str:
+    if not text:
+        return ""
+    t = text.strip()
+    if len(t) <= max_chars:
+        return t
+    return t[: max_chars - 1] + "…"
+
+
+class SoftwareChatAgent:
+    def __init__(self, db: AsyncSession, llm: LLMService) -> None:
+        self.db = db
+        self.llm = llm
+
+    async def build_software_system_prompt(self, software_id: uuid.UUID) -> str:
+        software = await self.db.get(Software, software_id)
+        if software is None:
+            raise ApiError(
+                status_code=404,
+                code="NOT_FOUND",
+                message="Software not found.",
+            )
+        names_stmt = (
+            select(Project.name)
+            .where(Project.software_id == software_id)
+            .order_by(Project.name.asc())
+            .limit(40)
+        )
+        names = list((await self.db.execute(names_stmt)).scalars().all())
+        projects_line = (
+            ", ".join(n for n in names if n)
+            if names
+            else "(no projects yet)"
+        )
+        def_blob = _trim_text(software.definition, 12_000)
+        desc = _trim_text(software.description, 2000)
+        return SOFTWARE_CHAT_SYSTEM_PROMPT_TEMPLATE.format(
+            software_name=software.name,
+            description=desc or "—",
+            projects_line=projects_line,
+            def_blob=def_blob or "—",
+        )
+
+    async def stream_assistant_tokens(
+        self,
+        *,
+        software_id: uuid.UUID,
+        user_id: uuid.UUID,
+        user_content: str,
+        preferred_model: str | None = None,
+        chat_messages: list[dict[str, str]] | None = None,
+    ) -> AsyncIterator[tuple[str, TokenContext]]:
+        """Yield LLM token strings; caller persists assistant message after iteration."""
+        _ = user_content  # retained for API parity; history includes latest user turn
+        software = await self.db.get(Software, software_id)
+        if software is None:
+            raise ApiError(
+                status_code=404,
+                code="NOT_FOUND",
+                message="Software not found.",
+            )
+
+        ctx = TokenContext(
+            studio_id=software.studio_id,
+            software_id=software.id,
+            project_id=None,
+            user_id=user_id,
+        )
+
+        openai_msgs = (
+            chat_messages
+            if chat_messages is not None
+            else await self._openai_messages_for_software(software_id)
+        )
+        system_prompt = await self.build_software_system_prompt(software_id)
+
+        try:
+            async for piece in self.llm.chat_stream(
+                system_prompt=system_prompt,
+                messages=openai_msgs,
+                context=ctx,
+                call_type="chat",
+                preferred_model=preferred_model,
+            ):
+                yield piece, ctx
+        except Exception:
+            yield "[error: LLM call failed]", ctx
+
+    async def _openai_messages_for_software(
+        self, software_id: uuid.UUID, max_messages: int = 40
+    ) -> list[dict[str, str]]:
+        stmt = (
+            select(SoftwareChatMessage)
+            .where(SoftwareChatMessage.software_id == software_id)
+            .order_by(SoftwareChatMessage.created_at.desc())
+            .limit(max_messages)
+        )
+        rows = list(reversed((await self.db.execute(stmt)).scalars().all()))
+        return [{"role": m.role, "content": m.content} for m in rows]

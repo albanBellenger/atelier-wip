@@ -7,6 +7,7 @@ from typing import Any
 
 import structlog
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.exceptions import ApiError
@@ -17,7 +18,33 @@ from app.services.llm_service import LLMService
 
 log = structlog.get_logger("atelier.drift")
 
-# Structured output from drift LLM check.
+# ── Prompts ───────────────────────────────────────────────────────────────────
+
+SYSTEM_PROMPT = (
+    "You compare software specification excerpts to a Work Order. "
+    "Answer conservatively: mark likely_stale true only when the spec change "
+    "would meaningfully invalidate or obsolete the Work Order's description "
+    "or acceptance criteria."
+)
+
+USER_PROMPT = """
+Work Order:
+Title: {title}
+
+Description:
+{description}
+
+Acceptance criteria:
+{acceptance_criteria}
+
+Current linked specification sections:
+{sections_blob}
+
+If the specification no longer matches what the Work Order asks for, set likely_stale to true and give a short reason. Otherwise likely_stale false and leave reason empty.
+""".strip()
+
+# ── Schemas ───────────────────────────────────────────────────────────────────
+
 DRIFT_CHECK_JSON_SCHEMA: dict[str, Any] = {
     "name": "drift_check",
     "strict": True,
@@ -40,12 +67,15 @@ DRIFT_CHECK_JSON_SCHEMA: dict[str, Any] = {
 
 _DRIFT_STATUSES = frozenset({"backlog", "in_progress"})
 
+# ── Agent ─────────────────────────────────────────────────────────────────────
 
-class DriftService:
+
+class DriftAgent:
     """LLM-assisted stale detection for work orders linked to edited sections."""
 
-    def __init__(self, db: Any) -> None:
+    def __init__(self, db: AsyncSession, llm: LLMService) -> None:
         self.db = db
+        self.llm = llm
 
     async def run_after_section_change(self, section_id: uuid.UUID) -> None:
         """Evaluate drift for work orders linked to this section. Commits caller-owned."""
@@ -89,9 +119,8 @@ class DriftService:
         if not work_orders:
             return
 
-        llm = LLMService(self.db)
         try:
-            await llm.ensure_openai_llm_ready(context=ctx, call_type="section_drift")
+            await self.llm.ensure_openai_llm_ready(context=ctx, call_type="section_drift")
         except ApiError as e:
             log.warning(
                 "drift_skipped_llm_unavailable",
@@ -101,12 +130,11 @@ class DriftService:
             return
 
         for wo in work_orders:
-            await self._check_one_work_order(ctx, llm, wo)
+            await self._check_one_work_order(ctx, wo)
 
     async def _check_one_work_order(
         self,
         ctx: TokenContext,
-        llm: LLMService,
         wo: WorkOrder,
     ) -> None:
         sections = list(wo.sections or [])
@@ -120,24 +148,16 @@ class DriftService:
             )
         sections_blob = "\n\n".join(section_lines)
 
-        system_prompt = (
-            "You compare software specification excerpts to a Work Order. "
-            "Answer conservatively: mark likely_stale true only when the spec change "
-            "would meaningfully invalidate or obsolete the Work Order's description "
-            "or acceptance criteria."
-        )
-        user_prompt = (
-            f"Work Order:\nTitle: {wo.title}\n\nDescription:\n{wo.description}\n\n"
-            f"Acceptance criteria:\n{wo.acceptance_criteria or '(none)'}\n\n"
-            f"Current linked specification sections:\n{sections_blob}\n\n"
-            "If the specification no longer matches what the Work Order asks for, "
-            "set likely_stale to true and give a short reason. Otherwise likely_stale "
-            "false and leave reason empty."
+        user_prompt = USER_PROMPT.format(
+            title=wo.title,
+            description=wo.description,
+            acceptance_criteria=wo.acceptance_criteria or "(none)",
+            sections_blob=sections_blob,
         )
 
         try:
-            parsed = await llm.chat_structured(
-                system_prompt=system_prompt,
+            parsed = await self.llm.chat_structured(
+                system_prompt=SYSTEM_PROMPT,
                 user_prompt=user_prompt,
                 json_schema=DRIFT_CHECK_JSON_SCHEMA,
                 context=ctx,

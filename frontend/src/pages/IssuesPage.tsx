@@ -1,10 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
-import { useEffect } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { useStudioAccess } from '../hooks/useStudioAccess'
+
+import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
 import {
+  getHostedEnvironment,
+  hostedEnvironmentLabel,
+} from '../lib/hostedEnvironment'
+import { useStudioAccess } from '../hooks/useStudioAccess'
+import { APP_VERSION } from '../version'
+import {
+  getProject,
+  getSoftware,
   listProjectIssues,
+  listProjects,
+  listSoftware,
+  logout as logoutApi,
   me,
   runProjectAnalyze,
   updateIssue,
@@ -21,6 +33,8 @@ export function IssuesPage(): ReactElement {
   const sid = studioId ?? ''
   const sfid = softwareId ?? ''
   const pid = projectId ?? ''
+  const hostedEnv = getHostedEnvironment()
+  const hostedEnvLabel = hostedEnvironmentLabel(hostedEnv)
 
   const profileQ = useQuery({
     queryKey: ['auth', 'me'],
@@ -35,6 +49,89 @@ export function IssuesPage(): ReactElement {
   }, [profileQ.isError, navigate])
 
   const access = useStudioAccess(profileQ.data, sid, sfid)
+
+  const swQ = useQuery({
+    queryKey: ['softwareOne', sid, sfid],
+    queryFn: () => getSoftware(sid, sfid),
+    enabled: Boolean(sid && sfid && access.isMember),
+  })
+
+  const projectQ = useQuery({
+    queryKey: ['project', sfid, pid],
+    queryFn: () => getProject(sfid, pid),
+    enabled: Boolean(sfid && pid && access.isMember),
+  })
+
+  const studioSoftwareListQ = useQuery({
+    queryKey: ['software', sid],
+    queryFn: () => listSoftware(sid),
+    enabled: Boolean(sid && access.isMember),
+  })
+
+  const softwareProjectsNavQ = useQuery({
+    queryKey: ['projects', sfid, 'breadcrumb'],
+    queryFn: () => listProjects(sfid),
+    enabled: Boolean(sfid && access.isMember),
+  })
+
+  const headerTrailingCrumb = useMemo(() => {
+    if (!swQ.data || !projectQ.data) return undefined
+    const swRows = studioSoftwareListQ.data ?? []
+    const projRows = (softwareProjectsNavQ.data ?? []).filter((p) => !p.archived)
+    const baseLabel = swQ.data.name
+    return {
+      label: baseLabel,
+      softwareId: sfid,
+      projectLabel: projectQ.data.name,
+      softwareSwitcher:
+        swRows.length > 1
+          ? {
+              currentSoftwareId: sfid,
+              softwareOptions: swRows.map((r) => ({ id: r.id, name: r.name })),
+              onSoftwareSelect: (nextId: string) => {
+                void navigate(`/studios/${sid}/software/${nextId}`)
+              },
+            }
+          : undefined,
+      projectSwitcher:
+        projRows.length > 1
+          ? {
+              currentProjectId: pid,
+              projectOptions: projRows.map((p) => ({ id: p.id, name: p.name })),
+              onProjectSelect: (nextId: string) => {
+                void navigate(
+                  `/studios/${sid}/software/${sfid}/projects/${nextId}/issues`,
+                )
+              },
+            }
+          : undefined,
+    }
+  }, [
+    swQ.data,
+    projectQ.data,
+    studioSoftwareListQ.data,
+    softwareProjectsNavQ.data,
+    sfid,
+    sid,
+    pid,
+    navigate,
+  ])
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await logoutApi()
+    } catch {
+      /* still leave */
+    }
+    void navigate('/auth', { replace: true })
+  }, [navigate])
+
+  const handleStudioChange = useCallback(
+    (nextStudioId: string) => {
+      void navigate(`/studios/${nextStudioId}`)
+    },
+    [navigate],
+  )
 
   const issuesQ = useQuery({
     queryKey: ['issues', pid],
@@ -81,81 +178,137 @@ export function IssuesPage(): ReactElement {
     )
   }
 
+  const profile = profileQ.data
+
   if (access.isCrossStudioViewer) {
     return (
-      <div className="min-h-screen bg-zinc-950 px-4 py-12 text-zinc-100">
-        <p>Issues are not visible with read-only cross-studio access.</p>
-        <Link
-          to={`/studios/${sid}/software/${sfid}/projects/${pid}`}
-          className="mt-4 inline-block text-violet-400"
-        >
-          Back to project
-        </Link>
+      <div className="min-h-screen bg-[#0a0a0b] px-8 pb-16 pt-8 font-sans text-zinc-100">
+        <div className="mx-auto max-w-[1240px]">
+          <BuilderHomeHeader
+            profile={profile}
+            studioId={sid}
+            onStudioChange={handleStudioChange}
+            onLogout={() => void handleLogout()}
+            trailingCrumb={headerTrailingCrumb}
+          />
+          <div className="mx-auto max-w-3xl space-y-4 py-8">
+            <p>Issues are not visible with read-only cross-studio access.</p>
+            <Link
+              to={`/studios/${sid}/software/${sfid}/projects/${pid}`}
+              className="inline-block text-violet-400 hover:underline"
+            >
+              Back to project
+            </Link>
+          </div>
+          <footer className="mt-16 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-zinc-800/60 pt-6 text-[11px] text-zinc-600">
+            <span>Atelier · Builder workspace</span>
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono">
+              <Link
+                to="/changelog"
+                className="text-zinc-500 hover:text-zinc-300 hover:underline focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
+              >
+                v{APP_VERSION}
+              </Link>
+              <span className="select-none font-sans text-zinc-700" aria-hidden>
+                ·
+              </span>
+              <span
+                className="rounded border border-zinc-700/70 px-1.5 py-px text-[10px] font-sans font-normal uppercase tracking-wider text-zinc-500"
+                title={`Hosted environment: ${hostedEnvLabel}`}
+              >
+                {hostedEnvLabel}
+              </span>
+            </span>
+          </footer>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 px-4 py-10 text-zinc-100">
-      <div className="mx-auto max-w-3xl space-y-6">
-        <div className="flex flex-wrap gap-4 text-sm">
-          <Link
-            to={`/studios/${sid}/software/${sfid}/projects/${pid}`}
-            className="text-violet-400 hover:underline"
-          >
-            ← Project
-          </Link>
-        </div>
-        <h1 className="text-2xl font-semibold">Issues</h1>
-        {access.isStudioEditor ? (
-          <button
-            type="button"
-            disabled={analyzeMut.isPending}
-            className="rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-100 hover:bg-zinc-700 disabled:opacity-50"
-            onClick={() => analyzeMut.mutate()}
-          >
-            Run analysis
-          </button>
-        ) : null}
-        {analyzeMut.isSuccess && (
-          <p className="text-sm text-emerald-400">
-            Created {analyzeMut.data.issues_created} issue(s).
-          </p>
-        )}
-        {issuesQ.isPending && (
-          <p className="text-zinc-500">Loading issues…</p>
-        )}
-        {issuesQ.isError && (
-          <p className="text-red-400">Could not load issues.</p>
-        )}
-        <ul className="space-y-4">
-          {(issuesQ.data ?? []).map((issue) => (
-            <li
-              key={issue.id}
-              className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
+    <div className="min-h-screen bg-[#0a0a0b] px-8 pb-16 pt-8 font-sans text-zinc-100">
+      <div className="mx-auto max-w-[1240px]">
+        <BuilderHomeHeader
+          profile={profile}
+          studioId={sid}
+          onStudioChange={handleStudioChange}
+          onLogout={() => void handleLogout()}
+          trailingCrumb={headerTrailingCrumb}
+        />
+
+        <div className="mx-auto max-w-3xl space-y-6">
+          <h1 className="text-2xl font-semibold">Issues</h1>
+          {access.isStudioEditor ? (
+            <button
+              type="button"
+              disabled={analyzeMut.isPending}
+              className="rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-100 hover:bg-zinc-700 disabled:opacity-50"
+              onClick={() => analyzeMut.mutate()}
             >
-              <p className="text-sm text-zinc-300 whitespace-pre-wrap">
-                {issue.description}
-              </p>
-              <p className="mt-2 text-xs text-zinc-500">
-                Status: {issue.status} · origin: {issue.origin}
-              </p>
-              {issue.status === 'open' && access.isStudioEditor ? (
-                <button
-                  type="button"
-                  className="mt-3 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500"
-                  onClick={() => resolveMut.mutate(issue.id)}
-                  disabled={resolveMut.isPending}
-                >
-                  Mark resolved
-                </button>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-        {!issuesQ.isPending && (issuesQ.data?.length ?? 0) === 0 && (
-          <p className="text-zinc-500">No issues yet.</p>
-        )}
+              Run analysis
+            </button>
+          ) : null}
+          {analyzeMut.isSuccess && (
+            <p className="text-sm text-emerald-400">
+              Created {analyzeMut.data.issues_created} issue(s).
+            </p>
+          )}
+          {issuesQ.isPending && (
+            <p className="text-zinc-500">Loading issues…</p>
+          )}
+          {issuesQ.isError && (
+            <p className="text-red-400">Could not load issues.</p>
+          )}
+          <ul className="space-y-4">
+            {(issuesQ.data ?? []).map((issue) => (
+              <li
+                key={issue.id}
+                className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
+              >
+                <p className="text-sm text-zinc-300 whitespace-pre-wrap">
+                  {issue.description}
+                </p>
+                <p className="mt-2 text-xs text-zinc-500">
+                  Status: {issue.status} · origin: {issue.origin}
+                </p>
+                {issue.status === 'open' && access.isStudioEditor ? (
+                  <button
+                    type="button"
+                    className="mt-3 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500"
+                    onClick={() => resolveMut.mutate(issue.id)}
+                    disabled={resolveMut.isPending}
+                  >
+                    Mark resolved
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          {!issuesQ.isPending && (issuesQ.data?.length ?? 0) === 0 && (
+            <p className="text-zinc-500">No issues yet.</p>
+          )}
+        </div>
+
+        <footer className="mt-16 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-zinc-800/60 pt-6 text-[11px] text-zinc-600">
+          <span>Atelier · Builder workspace</span>
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono">
+            <Link
+              to="/changelog"
+              className="text-zinc-500 hover:text-zinc-300 hover:underline focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
+            >
+              v{APP_VERSION}
+            </Link>
+            <span className="select-none font-sans text-zinc-700" aria-hidden>
+              ·
+            </span>
+            <span
+              className="rounded border border-zinc-700/70 px-1.5 py-px text-[10px] font-sans font-normal uppercase tracking-wider text-zinc-500"
+              title={`Hosted environment: ${hostedEnvLabel}`}
+            >
+              {hostedEnvLabel}
+            </span>
+          </span>
+        </footer>
       </div>
     </div>
   )

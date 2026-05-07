@@ -16,9 +16,10 @@ from app.deps import ProjectAccess
 from app.exceptions import ApiError
 from app.models import Project, Section, WorkOrder
 from app.security.field_encryption import decrypt_secret, fernet_configured
-from app.services.conflict_service import ConflictService
+from app.agents.conflict_agent import ConflictAgent
+from app.agents.section_relationship_agent import SectionRelationshipAgent
 from app.services.git_service import commit_files
-from app.services.graph_service import GraphService
+from app.services.llm_service import LLMService
 from app.services.notification_dispatch_service import NotificationDispatchService
 
 log = structlog.get_logger("atelier.publish")
@@ -196,12 +197,13 @@ class PublishService:
             await pub_sess.commit()
 
         try:
-            await ConflictService(self.db).run_conflict_analysis(
+            llm = LLMService(self.db)
+            await ConflictAgent(self.db, llm).run_conflict_analysis(
                 project_id=project.id,
                 run_actor_id=actor,
                 origin="auto",
             )
-            await GraphService(self.db).detect_section_relationships(
+            await SectionRelationshipAgent(self.db, llm).detect_section_relationships(
                 project.id,
                 context_user_id=actor,
             )

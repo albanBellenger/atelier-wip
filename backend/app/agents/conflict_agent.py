@@ -17,6 +17,22 @@ from app.services.llm_service import LLMService
 
 log = structlog.get_logger("atelier.conflict")
 
+# ── Prompts ───────────────────────────────────────────────────────────────────
+
+SYSTEM_PROMPT = (
+    "You analyze software specification sections for contradictions between "
+    "pairs of sections and for obvious gaps within single sections.\n"
+    "- pair_conflict: contradictory requirements between section_index_a and "
+    "section_index_b (both indices valid).\n"
+    "- section_gap: missing critical info for section_index_a only; set "
+    "section_index_b to null.\n"
+    "Use indices exactly as given (0-based). Be concise."
+)
+
+USER_PROMPT = "Sections catalog:\n\n{catalog}"
+
+# ── Schemas ───────────────────────────────────────────────────────────────────
+
 CONFLICT_ANALYSIS_SCHEMA: dict[str, Any] = {
     "name": "conflict_analysis",
     "strict": True,
@@ -51,10 +67,13 @@ CONFLICT_ANALYSIS_SCHEMA: dict[str, Any] = {
     },
 }
 
+# ── Agent ─────────────────────────────────────────────────────────────────────
 
-class ConflictService:
-    def __init__(self, db: AsyncSession) -> None:
+
+class ConflictAgent:
+    def __init__(self, db: AsyncSession, llm: LLMService) -> None:
         self.db = db
+        self.llm = llm
 
     async def clear_open_auto_issues(self, project_id: uuid.UUID) -> None:
         await self.db.execute(
@@ -121,20 +140,10 @@ class ConflictService:
             project_id=project_id,
             user_id=run_actor_id,
         )
-        llm = LLMService(self.db)
-        prompt = (
-            "You analyze software specification sections for contradictions between "
-            "pairs of sections and for obvious gaps within single sections.\n"
-            "- pair_conflict: contradictory requirements between section_index_a and "
-            "section_index_b (both indices valid).\n"
-            "- section_gap: missing critical info for section_index_a only; set "
-            "section_index_b to null.\n"
-            "Use indices exactly as given (0-based). Be concise."
-        )
         try:
-            parsed = await llm.chat_structured(
-                system_prompt=prompt,
-                user_prompt=f"Sections catalog:\n\n{catalog}",
+            parsed = await self.llm.chat_structured(
+                system_prompt=SYSTEM_PROMPT,
+                user_prompt=USER_PROMPT.format(catalog=catalog),
                 json_schema=CONFLICT_ANALYSIS_SCHEMA,
                 context=ctx,
                 call_type="conflict",

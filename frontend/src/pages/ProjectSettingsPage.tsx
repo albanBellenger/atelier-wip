@@ -108,6 +108,7 @@ export function ProjectSettingsPage(): ReactElement {
     const baseLabel = swQ.data.name
     return {
       label: baseLabel,
+      softwareId: sfid,
       projectLabel: projectQ.data.name,
       softwareSwitcher:
         swRows.length > 1
