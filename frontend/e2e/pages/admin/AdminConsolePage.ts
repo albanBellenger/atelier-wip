@@ -8,7 +8,7 @@ const SIDE_NAV_LINK: Record<AdminConsoleSection, RegExp> = {
   llm: /LLM connectivity/i,
   budgets: /Budgets/i,
   embeddings: /Embeddings/i,
-  users: /Users & roles/i,
+  users: /^Users$/i,
 }
 
 export class AdminConsolePage {

@@ -3,9 +3,11 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AdminConsolePage } from './pages/admin/AdminConsolePage'
 import { AdminSettingsPage } from './pages/AdminSettingsPage'
 import { EmbeddingsSection } from './pages/admin/EmbeddingsSection'
+import { BudgetsSection } from './pages/admin/BudgetsSection'
 import { LlmSection } from './pages/admin/LlmSection'
 import { OverviewSection } from './pages/admin/OverviewSection'
 import { StudiosSection } from './pages/admin/StudiosSection'
+import { UsersSection } from './pages/admin/UsersSection'
 import { AuthPage } from './pages/AuthPage'
 import { ChangelogPage } from './pages/ChangelogPage'
 import { DocsUserGuidePage } from './pages/DocsUserGuidePage'
@@ -50,7 +52,9 @@ function App(): ReactElement {
           <Route path="overview" element={<OverviewSection />} />
           <Route path="studios" element={<StudiosSection />} />
           <Route path="llm" element={<LlmSection />} />
+          <Route path="budgets" element={<BudgetsSection />} />
           <Route path="embeddings" element={<EmbeddingsSection />} />
+          <Route path="users" element={<UsersSection />} />
         </Route>
         <Route path="/admin/settings" element={<AdminSettingsPage />} />
         <Route path="/llm-usage" element={<LlmUsagePage />} />

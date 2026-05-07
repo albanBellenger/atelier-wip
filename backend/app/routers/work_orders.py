@@ -12,6 +12,8 @@ from app.exceptions import ApiError
 from app.schemas.work_order import (
     GenerateWorkOrdersBody,
     WorkOrderCreate,
+    WorkOrderDedupeAnalyzeResponse,
+    WorkOrderDedupeApplyBody,
     WorkOrderDetailResponse,
     WorkOrderNoteCreate,
     WorkOrderNoteResponse,
@@ -83,6 +85,34 @@ async def generate_work_orders(
         project_id,
         body,
         user_id=pa.studio_access.user.id,
+    )
+
+
+@router.post("/dedupe/analyze", response_model=WorkOrderDedupeAnalyzeResponse)
+async def analyze_backlog_duplicates(
+    project_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    pa: ProjectAccess = Depends(require_project_member),
+) -> WorkOrderDedupeAnalyzeResponse:
+    _ensure_project(pa, project_id)
+    return await WorkOrderService(session).analyze_backlog_duplicates(
+        project_id,
+        user_id=pa.studio_access.user.id,
+    )
+
+
+@router.post("/dedupe/apply", response_model=WorkOrderResponse)
+async def apply_backlog_dedupe_merge(
+    project_id: UUID,
+    body: WorkOrderDedupeApplyBody,
+    session: AsyncSession = Depends(get_db),
+    pa: ProjectAccess = Depends(require_project_member),
+) -> WorkOrderResponse:
+    _ensure_project(pa, project_id)
+    return await WorkOrderService(session).apply_backlog_dedupe_merge(
+        project_id,
+        body,
+        actor_id=pa.studio_access.user.id,
     )
 
 

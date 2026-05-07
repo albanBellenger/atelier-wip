@@ -297,6 +297,14 @@ async def test_viewer_cannot_mutate_work_orders(client: AsyncClient) -> None:
     )
     assert c.status_code == 200, c.text
     wid = c.json()["id"]
+    # Owner adds second WO for viewer apply RBAC check
+    client.cookies.set("atelier_token", token)
+    c2 = await client.post(
+        f"/projects/{pid}/work-orders",
+        json={"title": "T2", "description": "D2", "section_ids": [sec_a]},
+    )
+    assert c2.status_code == 200, c2.text
+    wid2 = c2.json()["id"]
 
     client.cookies.set("atelier_token", viewer_tok)
     assert (
@@ -318,6 +326,19 @@ async def test_viewer_cannot_mutate_work_orders(client: AsyncClient) -> None:
         await client.post(
             f"/projects/{pid}/work-orders/generate",
             json={"section_ids": [sec_a]},
+        )
+    ).status_code == 403
+    assert (
+        await client.post(f"/projects/{pid}/work-orders/dedupe/analyze")
+    ).status_code == 403
+    assert (
+        await client.post(
+            f"/projects/{pid}/work-orders/dedupe/apply",
+            json={
+                "keep_work_order_id": wid,
+                "archive_work_order_ids": [wid2],
+                "merged_fields": {"title": "Combined", "description": "One"},
+            },
         )
     ).status_code == 403
 
@@ -373,3 +394,222 @@ async def test_delete_removes_work_order_sections(client: AsyncClient) -> None:
     lst = await client.get(f"/projects/{pid}/work-orders")
     assert lst.status_code == 200
     assert all(row["id"] != wid for row in lst.json())
+
+
+@pytest.mark.asyncio
+async def test_dedupe_analyze_without_backlog_skips_llm(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _studio_id, _software_id, pid, _sec_a, _sec_b = (
+        await _studio_project_with_sections(client, sfx)
+    )
+    client.cookies.set("atelier_token", token)
+
+    async def boom(self, **kwargs: object) -> dict[str, object]:
+        raise AssertionError("LLM should not run without backlog")
+
+    monkeypatch.setattr(
+        "app.services.llm_service.LLMService.chat_structured",
+        boom,
+    )
+
+    r = await client.post(f"/projects/{pid}/work-orders/dedupe/analyze")
+    assert r.status_code == 200, r.text
+    assert r.json()["groups"] == []
+
+
+@pytest.mark.asyncio
+async def test_dedupe_analyze_mocked_and_apply_merge(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _studio_id, _software_id, pid, sec_a, _sec_b = (
+        await _studio_project_with_sections(client, sfx)
+    )
+    client.cookies.set("atelier_token", token)
+
+    c1 = await client.post(
+        f"/projects/{pid}/work-orders",
+        json={
+            "title": "Alpha task",
+            "description": "First",
+            "section_ids": [sec_a],
+        },
+    )
+    assert c1.status_code == 200, c1.text
+    wid1 = c1.json()["id"]
+    c2 = await client.post(
+        f"/projects/{pid}/work-orders",
+        json={
+            "title": "Beta task",
+            "description": "Second",
+            "section_ids": [sec_a],
+        },
+    )
+    assert c2.status_code == 200, c2.text
+    wid2 = c2.json()["id"]
+
+    async def fake_chat_structured(self, **kwargs: object) -> dict[str, object]:
+        return {
+            "groups": [
+                {
+                    "work_order_ids": [wid1, wid2],
+                    "rationale": "Overlapping scope.",
+                    "suggested_combined": {
+                        "title": "Merged title",
+                        "description": "Merged description",
+                        "implementation_guide": "ig",
+                        "acceptance_criteria": "ac",
+                    },
+                }
+            ],
+        }
+
+    monkeypatch.setattr(
+        "app.services.llm_service.LLMService.chat_structured",
+        fake_chat_structured,
+    )
+
+    r = await client.post(f"/projects/{pid}/work-orders/dedupe/analyze")
+    assert r.status_code == 200, r.text
+    groups = r.json()["groups"]
+    assert len(groups) == 1
+    assert groups[0]["rationale"] == "Overlapping scope."
+    assert wid1 in groups[0]["work_order_ids"]
+    assert wid2 in groups[0]["work_order_ids"]
+
+    apply_r = await client.post(
+        f"/projects/{pid}/work-orders/dedupe/apply",
+        json={
+            "keep_work_order_id": wid1,
+            "archive_work_order_ids": [wid2],
+            "merged_fields": {
+                "title": "Applied merged title",
+                "description": "Applied merged description",
+                "implementation_guide": None,
+                "acceptance_criteria": None,
+            },
+        },
+    )
+    assert apply_r.status_code == 200, apply_r.text
+    kept = apply_r.json()
+    assert kept["title"] == "Applied merged title"
+    assert kept["status"] == "backlog"
+
+    lst = await client.get(f"/projects/{pid}/work-orders")
+    rows = lst.json()
+    by_id = {row["id"]: row for row in rows}
+    assert by_id[wid2]["status"] == "archived"
+
+    det = await client.get(f"/projects/{pid}/work-orders/{wid1}")
+    notes = det.json()["notes"]
+    assert any("Merged duplicate backlog" in n["content"] for n in notes)
+
+
+@pytest.mark.asyncio
+async def test_dedupe_analyze_requires_auth(client: AsyncClient) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    _token, _studio_id, _software_id, pid, _sec_a, _sec_b = (
+        await _studio_project_with_sections(client, sfx)
+    )
+    client.cookies.clear()
+    r = await client.post(f"/projects/{pid}/work-orders/dedupe/analyze")
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_dedupe_analyze_unknown_project(client: AsyncClient) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _studio_id, _software_id, _pid, _sec_a, _sec_b = (
+        await _studio_project_with_sections(client, sfx)
+    )
+    client.cookies.set("atelier_token", token)
+    fake_pid = str(uuid.uuid4())
+    r = await client.post(f"/projects/{fake_pid}/work-orders/dedupe/analyze")
+    assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_dedupe_apply_invalid_keep_in_archive(client: AsyncClient) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _studio_id, _software_id, pid, sec_a, _sec_b = (
+        await _studio_project_with_sections(client, sfx)
+    )
+    client.cookies.set("atelier_token", token)
+    c1 = await client.post(
+        f"/projects/{pid}/work-orders",
+        json={
+            "title": "A",
+            "description": "d",
+            "section_ids": [sec_a],
+        },
+    )
+    wid = c1.json()["id"]
+    r = await client.post(
+        f"/projects/{pid}/work-orders/dedupe/apply",
+        json={
+            "keep_work_order_id": wid,
+            "archive_work_order_ids": [wid],
+            "merged_fields": {"title": "T", "description": "D"},
+        },
+    )
+    assert r.status_code == 422
+    assert r.json()["code"] == "INVALID_MERGE"
+
+
+@pytest.mark.asyncio
+async def test_dedupe_apply_target_not_backlog(client: AsyncClient) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _studio_id, _software_id, pid, sec_a, _sec_b = (
+        await _studio_project_with_sections(client, sfx)
+    )
+    client.cookies.set("atelier_token", token)
+    c1 = await client.post(
+        f"/projects/{pid}/work-orders",
+        json={
+            "title": "A",
+            "description": "d",
+            "section_ids": [sec_a],
+        },
+    )
+    wid1 = c1.json()["id"]
+    c2 = await client.post(
+        f"/projects/{pid}/work-orders",
+        json={
+            "title": "B",
+            "description": "d",
+            "section_ids": [sec_a],
+        },
+    )
+    wid2 = c2.json()["id"]
+    up = await client.put(
+        f"/projects/{pid}/work-orders/{wid2}",
+        json={"status": "in_progress"},
+    )
+    assert up.status_code == 200
+    r = await client.post(
+        f"/projects/{pid}/work-orders/dedupe/apply",
+        json={
+            "keep_work_order_id": wid1,
+            "archive_work_order_ids": [wid2],
+            "merged_fields": {"title": "T", "description": "D"},
+        },
+    )
+    assert r.status_code == 422
+    assert r.json()["code"] == "INVALID_MERGE"
+
+
+@pytest.mark.asyncio
+async def test_outsider_dedupe_analyze_forbidden(client: AsyncClient) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _studio_id, _software_id, pid, _sec_a, _sec_b = (
+        await _studio_project_with_sections(client, sfx)
+    )
+    client.cookies.set("atelier_token", token)
+    outsider_tok = await _register(client, sfx, "outsiderd")
+    client.cookies.set("atelier_token", outsider_tok)
+    r = await client.post(f"/projects/{pid}/work-orders/dedupe/analyze")
+    assert r.status_code == 403

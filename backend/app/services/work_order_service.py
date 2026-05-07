@@ -27,6 +27,10 @@ from app.schemas.token_context import TokenContext
 from app.schemas.work_order import (
     GenerateWorkOrdersBody,
     WorkOrderCreate,
+    WorkOrderDedupeAnalyzeResponse,
+    WorkOrderDedupeApplyBody,
+    WorkOrderDedupeGroup,
+    WorkOrderDedupeSuggestedCombined,
     WorkOrderDetailResponse,
     WorkOrderNoteCreate,
     WorkOrderNoteResponse,
@@ -34,6 +38,7 @@ from app.schemas.work_order import (
     WorkOrderUpdate,
 )
 from app.agents.work_order_agent import WorkOrderAgent
+from app.agents.work_order_dedupe_agent import WorkOrderDedupeAgent
 from app.services.graph_service import GraphService
 from app.services.llm_service import LLMService
 from app.services.notification_dispatch_service import NotificationDispatchService
@@ -43,6 +48,9 @@ log = structlog.get_logger("atelier.work_order")
 VALID_STATUSES = frozenset(
     {"backlog", "in_progress", "in_review", "done", "archived"}
 )
+
+_DEDUPE_FIELD_MAX = 2000
+_DEDUPE_BACKLOG_COUNT_WARN = 80
 
 _PATCHABLE_SCALAR_FIELDS: tuple[str, ...] = (
     "title",
@@ -647,3 +655,317 @@ class WorkOrderService:
             )
         await self.db.delete(row)
         await self.db.flush()
+
+    def _truncate_for_dedupe_prompt(self, text: str | None, max_len: int) -> str:
+        s = (text or "").strip()
+        if len(s) <= max_len:
+            return s
+        return s[: max_len - 1] + "…"
+
+    async def analyze_backlog_duplicates(
+        self,
+        project_id: uuid.UUID,
+        *,
+        user_id: uuid.UUID,
+    ) -> WorkOrderDedupeAnalyzeResponse:
+        project = await self.db.get(Project, project_id)
+        if project is None:
+            raise ApiError(
+                status_code=404,
+                code="NOT_FOUND",
+                message="Project not found.",
+            )
+        software = await self.db.get(Software, project.software_id)
+        if software is None:
+            raise ApiError(
+                status_code=404,
+                code="NOT_FOUND",
+                message="Software not found.",
+            )
+        studio_id = software.studio_id
+        software_id = software.id
+
+        q = select(WorkOrder).where(
+            WorkOrder.project_id == project_id,
+            WorkOrder.status == "backlog",
+        )
+        backlog_rows = list((await self.db.execute(q)).scalars().unique().all())
+        if len(backlog_rows) <= 1:
+            return WorkOrderDedupeAnalyzeResponse(groups=[])
+
+        if len(backlog_rows) > _DEDUPE_BACKLOG_COUNT_WARN:
+            log.warning(
+                "work_order_dedupe_large_backlog",
+                project_id=str(project_id),
+                count=len(backlog_rows),
+            )
+
+        valid_ids = {w.id for w in backlog_rows}
+
+        lines: list[str] = []
+        for w in sorted(backlog_rows, key=lambda x: x.title):
+            desc = self._truncate_for_dedupe_prompt(
+                w.description, _DEDUPE_FIELD_MAX
+            )
+            ig = self._truncate_for_dedupe_prompt(
+                w.implementation_guide, _DEDUPE_FIELD_MAX
+            )
+            ac = self._truncate_for_dedupe_prompt(
+                w.acceptance_criteria, _DEDUPE_FIELD_MAX
+            )
+            lines.append(
+                f"- id={w.id}\n  title: {w.title}\n  description:\n{desc}\n"
+                f"  implementation_guide:\n{ig or '(none)'}\n"
+                f"  acceptance_criteria:\n{ac or '(none)'}\n"
+            )
+        backlog_blob = "\n".join(lines)
+        def_block = (software.definition or "").strip() or "(No software definition.)"
+        sw_name = software.name
+
+        ctx = TokenContext(
+            studio_id=studio_id,
+            software_id=software_id,
+            project_id=project_id,
+            user_id=user_id,
+        )
+        llm = LLMService(self.db)
+        parsed = await WorkOrderDedupeAgent(self.db, llm).analyze(
+            ctx,
+            sw_name=sw_name,
+            def_block=def_block,
+            backlog_blob=backlog_blob,
+        )
+        raw_groups = parsed.get("groups")
+        if not isinstance(raw_groups, list):
+            raise ApiError(
+                status_code=502,
+                code="LLM_INVALID_SHAPE",
+                message="LLM JSON must contain a 'groups' array.",
+            )
+
+        out_groups: list[WorkOrderDedupeGroup] = []
+        for g in raw_groups:
+            if not isinstance(g, dict):
+                continue
+            raw_ids = g.get("work_order_ids")
+            if not isinstance(raw_ids, list):
+                continue
+            resolved: list[uuid.UUID] = []
+            for x in raw_ids:
+                if not isinstance(x, str):
+                    continue
+                try:
+                    uid = uuid.UUID(x.strip())
+                except ValueError:
+                    continue
+                if uid not in valid_ids:
+                    continue
+                if uid not in resolved:
+                    resolved.append(uid)
+            if len(resolved) < 2:
+                continue
+            rationale = str(g.get("rationale") or "").strip()
+            if not rationale:
+                continue
+            sc_raw = g.get("suggested_combined")
+            if not isinstance(sc_raw, dict):
+                continue
+            title = str(sc_raw.get("title") or "").strip()
+            desc = str(sc_raw.get("description") or "").strip()
+            if not title or not desc:
+                continue
+            ig = str(sc_raw.get("implementation_guide") or "").strip() or None
+            ac = str(sc_raw.get("acceptance_criteria") or "").strip() or None
+            out_groups.append(
+                WorkOrderDedupeGroup(
+                    work_order_ids=resolved,
+                    rationale=rationale,
+                    suggested_combined=WorkOrderDedupeSuggestedCombined(
+                        title=title[:512],
+                        description=desc,
+                        implementation_guide=ig,
+                        acceptance_criteria=ac,
+                    ),
+                )
+            )
+
+        return WorkOrderDedupeAnalyzeResponse(groups=out_groups)
+
+    async def _rewire_graph_edges_for_dedupe_merge(
+        self,
+        project_id: uuid.UUID,
+        keep_id: uuid.UUID,
+        archive_ids: list[uuid.UUID],
+    ) -> None:
+        archive_set = frozenset(archive_ids)
+        r = await self.db.execute(
+            select(GraphEdge).where(GraphEdge.project_id == project_id)
+        )
+        edges = r.scalars().all()
+        replacements: list[tuple[GraphEdge, uuid.UUID, uuid.UUID]] = []
+
+        for e in edges:
+            ns = (
+                keep_id
+                if e.source_type == "work_order" and e.source_id in archive_set
+                else e.source_id
+            )
+            nt = (
+                keep_id
+                if e.target_type == "work_order" and e.target_id in archive_set
+                else e.target_id
+            )
+            if ns != e.source_id or nt != e.target_id:
+                replacements.append((e, ns, nt))
+
+        for e, _, _ in replacements:
+            await self.db.delete(e)
+        await self.db.flush()
+
+        gs = GraphService(self.db)
+        for e, ns, nt in replacements:
+            if (
+                e.source_type == "work_order"
+                and e.target_type == "work_order"
+                and ns == nt
+                and e.edge_type == "depends_on"
+            ):
+                continue
+            await gs.add_edge(
+                project_id=project_id,
+                source_type=e.source_type,
+                source_id=ns,
+                target_type=e.target_type,
+                target_id=nt,
+                edge_type=e.edge_type,
+            )
+        await self.db.flush()
+
+    async def _union_sections_from_archived_work_orders(
+        self,
+        project_id: uuid.UUID,
+        keep_id: uuid.UUID,
+        archive_ids: list[uuid.UUID],
+    ) -> None:
+        existing = set(
+            (
+                await self.db.execute(
+                    select(WorkOrderSection.section_id).where(
+                        WorkOrderSection.work_order_id == keep_id
+                    )
+                )
+            ).scalars().all()
+        )
+        gs = GraphService(self.db)
+        for aid in archive_ids:
+            sec_rows = (
+                await self.db.execute(
+                    select(WorkOrderSection.section_id).where(
+                        WorkOrderSection.work_order_id == aid
+                    )
+                )
+            ).scalars().all()
+            for sid in sec_rows:
+                if sid in existing:
+                    continue
+                existing.add(sid)
+                self.db.add(
+                    WorkOrderSection(work_order_id=keep_id, section_id=sid)
+                )
+                await self.db.flush()
+                await gs.add_edge(
+                    project_id=project_id,
+                    source_type="section",
+                    source_id=sid,
+                    target_type="work_order",
+                    target_id=keep_id,
+                    edge_type="generates",
+                )
+
+    async def apply_backlog_dedupe_merge(
+        self,
+        project_id: uuid.UUID,
+        body: WorkOrderDedupeApplyBody,
+        *,
+        actor_id: uuid.UUID,
+    ) -> WorkOrderResponse:
+        archive_ids = list(dict.fromkeys(body.archive_work_order_ids))
+        keep_id = body.keep_work_order_id
+        if keep_id in archive_ids:
+            raise ApiError(
+                status_code=422,
+                code="INVALID_MERGE",
+                message="keep_work_order_id must not appear in archive_work_order_ids.",
+            )
+
+        keep = await self._get_wo(project_id, keep_id)
+        if keep.status != "backlog":
+            raise ApiError(
+                status_code=422,
+                code="INVALID_MERGE",
+                message="Kept work order must be in backlog.",
+            )
+
+        archived_titles: list[str] = []
+        for aid in archive_ids:
+            wo = await self._get_wo(project_id, aid)
+            if wo.status != "backlog":
+                raise ApiError(
+                    status_code=422,
+                    code="INVALID_MERGE",
+                    message="Archived work orders must be in backlog.",
+                )
+            archived_titles.append(wo.title)
+
+        mf = body.merged_fields
+        keep.title = mf.title.strip()[:512]
+        keep.description = mf.description.strip()
+        keep.implementation_guide = (
+            mf.implementation_guide.strip() if mf.implementation_guide else None
+        )
+        keep.acceptance_criteria = (
+            mf.acceptance_criteria.strip() if mf.acceptance_criteria else None
+        )
+        keep.updated_by_id = actor_id
+
+        await self._union_sections_from_archived_work_orders(
+            project_id, keep_id, archive_ids
+        )
+
+        for aid in archive_ids:
+            wo = await self.db.get(WorkOrder, aid)
+            if wo is None:
+                continue
+            wo.status = "archived"
+            wo.updated_by_id = actor_id
+
+        await self.db.flush()
+
+        await self._rewire_graph_edges_for_dedupe_merge(
+            project_id, keep_id, archive_ids
+        )
+
+        titles_blob = ", ".join(archived_titles) if archived_titles else ""
+        note_body = (
+            f"Merged duplicate backlog work orders into this item (archived): {titles_blob}"
+        )
+        self.db.add(
+            WorkOrderNote(
+                id=uuid.uuid4(),
+                work_order_id=keep_id,
+                author_id=actor_id,
+                source="dedupe_merge",
+                content=note_body[:8000],
+            )
+        )
+        await self.db.flush()
+        await self.db.refresh(keep)
+
+        sec_map = await self._section_ids_for_work_orders([keep.id])
+        names = await self._user_display_names(self._user_ids_for_work_orders([keep]))
+        return self._to_response(
+            keep,
+            section_ids=sec_map.get(keep.id, []),
+            assignee_name=names.get(keep.assignee_id) if keep.assignee_id else None,
+            updated_by_name=names.get(keep.updated_by_id) if keep.updated_by_id else None,
+        )

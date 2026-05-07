@@ -39,7 +39,7 @@ async def test_admin_users_directory_forbidden_for_member(client: AsyncClient) -
     assert tok
     client.cookies.set("atelier_token", tok)
     denied = await client.get("/admin/users")
-    assert denied.status_code == 404
+    assert denied.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -100,7 +100,14 @@ async def test_admin_overview_and_activity_ok(
     assert len(body["recent_activity"]) >= 1
 
     users = await client.get("/admin/users")
-    assert users.status_code == 404
+    assert users.status_code == 200
+    user_rows = users.json()
+    assert isinstance(user_rows, list)
+    assert len(user_rows) >= 1
+    sample = next(u for u in user_rows if u["email"] == admin_email.lower())
+    assert "user_id" in sample
+    assert "studio_memberships" in sample
+    assert sample["is_platform_admin"] is True
 
 
 @pytest.mark.asyncio

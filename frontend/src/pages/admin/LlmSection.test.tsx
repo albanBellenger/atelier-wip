@@ -242,7 +242,7 @@ describe('LlmSection', () => {
     await user.click(screen.getByRole('button', { name: /add routing/i }))
 
     const dialog = await screen.findByRole('dialog', { name: /add routing rule/i })
-    await user.type(within(dialog).getByLabelText(/^Primary model ID/i), 'gpt-4o-mini')
+    await user.type(within(dialog).getByLabelText(/^Primary model$/i), 'gpt-4o-mini')
     await user.click(within(dialog).getByRole('button', { name: /^add rule$/i }))
 
     await waitFor(() => {

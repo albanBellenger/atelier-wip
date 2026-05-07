@@ -22,6 +22,8 @@ import { useStudioAccess } from '../hooks/useStudioAccess'
 import { APP_VERSION } from '../version'
 import {
   addWorkOrderNote,
+  analyzeWorkOrderDedupe,
+  applyWorkOrderDedupe,
   dismissWorkOrderStale,
   generateWorkOrders,
   getProject,
@@ -37,6 +39,8 @@ import {
   updateWorkOrder,
   type AuthErrorBody,
   type Section,
+  type WorkOrderDedupeAnalyzeResult,
+  type WorkOrderDedupeGroup,
   type WorkOrder,
   type WorkOrderDetail,
   type WorkOrderListFilters,
@@ -235,6 +239,10 @@ export function WorkOrdersPage(): ReactElement {
   const [genOpen, setGenOpen] = useState(false)
   const [genSelected, setGenSelected] = useState<Set<string>>(new Set())
   const [activeDrag, setActiveDrag] = useState<WorkOrder | null>(null)
+  const [dedupeOpen, setDedupeOpen] = useState(false)
+  const [dedupeResult, setDedupeResult] = useState<WorkOrderDedupeAnalyzeResult | null>(
+    null,
+  )
 
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -399,6 +407,45 @@ export function WorkOrdersPage(): ReactElement {
     },
   })
 
+  const dedupeAnalyzeMut = useMutation({
+    mutationFn: () => analyzeWorkOrderDedupe(pid),
+    onSuccess: (data) => {
+      setDedupeResult(data)
+    },
+  })
+
+  const dedupeApplyMut = useMutation({
+    mutationFn: (args: {
+      keepId: string
+      group: { work_order_ids: string[] }
+      merged: {
+        title: string
+        description: string
+        implementation_guide: string
+        acceptance_criteria: string
+      }
+    }) => {
+      const { keepId, group, merged } = args
+      const archiveIds = group.work_order_ids.filter((id) => id !== keepId)
+      return applyWorkOrderDedupe(pid, {
+        keep_work_order_id: keepId,
+        archive_work_order_ids: archiveIds,
+        merged_fields: {
+          title: merged.title.trim(),
+          description: merged.description.trim(),
+          implementation_guide: merged.implementation_guide.trim() || null,
+          acceptance_criteria: merged.acceptance_criteria.trim() || null,
+        },
+      })
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['workOrders', pid] })
+      setDedupeOpen(false)
+      setDedupeResult(null)
+      dedupeAnalyzeMut.reset()
+    },
+  })
+
   const noteMut = useMutation({
     mutationFn: (args: { content: string }) =>
       addWorkOrderNote(pid, selectedId!, args),
@@ -420,6 +467,14 @@ export function WorkOrdersPage(): ReactElement {
   )
 
   const orders = ordersQ.data ?? []
+
+  const workOrderTitleById = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const w of orders) {
+      m.set(w.id, w.title)
+    }
+    return m
+  }, [orders])
 
   const byStatus = useMemo(() => {
     const m: Record<string, WorkOrder[]> = {}
@@ -570,16 +625,30 @@ export function WorkOrdersPage(): ReactElement {
             </button>
           </div>
           {access.isStudioEditor ? (
-            <button
-              type="button"
-              className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500"
-              onClick={() => {
-                genMut.reset()
-                setGenOpen(true)
-              }}
-            >
-              Generate…
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500"
+                onClick={() => {
+                  genMut.reset()
+                  setGenOpen(true)
+                }}
+              >
+                Generate…
+              </button>
+              <button
+                type="button"
+                className="rounded-lg border border-zinc-600 px-4 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-800"
+                onClick={() => {
+                  dedupeAnalyzeMut.reset()
+                  dedupeApplyMut.reset()
+                  setDedupeResult(null)
+                  setDedupeOpen(true)
+                }}
+              >
+                De-duping
+              </button>
+            </div>
           ) : null}
         </div>
 
@@ -917,6 +986,94 @@ export function WorkOrdersPage(): ReactElement {
             </div>
           </div>
         )}
+        {dedupeOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+            <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-900 p-6 shadow-xl">
+              <h2 className="text-lg font-semibold">Backlog de-dupe</h2>
+              <p className="mt-2 text-sm text-zinc-400">
+                Compare backlog work orders for overlapping work. Run analysis, then
+                apply a merge to archive duplicates into one item.
+              </p>
+              {!dedupeResult ? (
+                <div className="mt-6">
+                  <button
+                    type="button"
+                    disabled={dedupeAnalyzeMut.isPending}
+                    className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                    onClick={() => dedupeAnalyzeMut.mutate()}
+                  >
+                    {dedupeAnalyzeMut.isPending ? 'Analyzing…' : 'Analyze backlog'}
+                  </button>
+                </div>
+              ) : null}
+              {dedupeAnalyzeMut.isError && (
+                <div
+                  className="mt-3 rounded-lg border border-red-900/60 bg-red-950/50 px-3 py-2 text-sm"
+                  role="alert"
+                >
+                  <p className="font-medium text-red-200">Analysis failed</p>
+                  <p className="mt-1 text-red-100/90">
+                    {formatApiError(dedupeAnalyzeMut.error)}
+                  </p>
+                  {apiErrorCode(dedupeAnalyzeMut.error) === 'LLM_NOT_CONFIGURED' ||
+                  apiErrorCode(dedupeAnalyzeMut.error) === 'LLM_PROVIDER_UNSUPPORTED' ? (
+                    <p className="mt-2 text-xs text-zinc-400">
+                      Configure the LLM in{' '}
+                      <Link
+                        to="/admin/settings"
+                        className="text-violet-400 underline"
+                      >
+                        Admin settings
+                      </Link>
+                      .
+                    </p>
+                  ) : null}
+                </div>
+              )}
+              {dedupeApplyMut.isError && (
+                <div
+                  className="mt-3 rounded-lg border border-red-900/60 bg-red-950/50 px-3 py-2 text-sm"
+                  role="alert"
+                >
+                  <p className="font-medium text-red-200">Merge failed</p>
+                  <p className="mt-1 text-red-100/90">
+                    {formatApiError(dedupeApplyMut.error)}
+                  </p>
+                </div>
+              )}
+              {dedupeResult && dedupeResult.groups.length === 0 ? (
+                <p className="mt-4 text-sm text-zinc-500">
+                  No duplicate groups suggested for this backlog.
+                </p>
+              ) : null}
+              {dedupeResult
+                ? dedupeResult.groups.map((group, idx) => (
+                    <DedupeGroupCard
+                      key={`${group.work_order_ids.join('-')}-${idx}`}
+                      group={group}
+                      titleById={workOrderTitleById}
+                      applyPending={dedupeApplyMut.isPending}
+                      onApply={(args) => dedupeApplyMut.mutate(args)}
+                    />
+                  ))
+                : null}
+              <div className="mt-6 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="rounded-lg border border-zinc-600 px-4 py-2 text-sm"
+                  onClick={() => {
+                    setDedupeOpen(false)
+                    setDedupeResult(null)
+                    dedupeAnalyzeMut.reset()
+                    dedupeApplyMut.reset()
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         <footer className="mt-16 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-zinc-800/60 pt-6 text-[11px] text-zinc-600">
           <span>Atelier · Builder workspace</span>
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono">
@@ -938,6 +1095,106 @@ export function WorkOrdersPage(): ReactElement {
           </span>
         </footer>
       </div>
+    </div>
+  )
+}
+
+function DedupeGroupCard(props: {
+  group: WorkOrderDedupeGroup
+  titleById: Map<string, string>
+  applyPending: boolean
+  onApply: (args: {
+    keepId: string
+    group: { work_order_ids: string[] }
+    merged: {
+      title: string
+      description: string
+      implementation_guide: string
+      acceptance_criteria: string
+    }
+  }) => void
+}): ReactElement {
+  const { group, titleById, applyPending, onApply } = props
+  const [keepId, setKeepId] = useState(group.work_order_ids[0] ?? '')
+  const [title, setTitle] = useState(group.suggested_combined.title)
+  const [description, setDescription] = useState(group.suggested_combined.description)
+  const [impl, setImpl] = useState(group.suggested_combined.implementation_guide ?? '')
+  const [accept, setAccept] = useState(group.suggested_combined.acceptance_criteria ?? '')
+
+  return (
+    <div className="mt-6 rounded-lg border border-zinc-700 bg-zinc-950/40 p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+        Suggested duplicate group
+      </p>
+      <p className="mt-2 text-sm text-zinc-300">{group.rationale}</p>
+      <ul className="mt-3 space-y-1 text-sm text-zinc-400">
+        {group.work_order_ids.map((id) => (
+          <li key={id}>
+            <span className="font-mono text-xs text-zinc-500">{id}</span>{' '}
+            — {titleById.get(id) ?? '(unknown title)'}
+          </li>
+        ))}
+      </ul>
+      <label className="mt-4 block text-xs text-zinc-500">Keep work order</label>
+      <select
+        className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+        value={keepId}
+        onChange={(e) => setKeepId(e.target.value)}
+      >
+        {group.work_order_ids.map((id) => (
+          <option key={id} value={id}>
+            {titleById.get(id) ?? id}
+          </option>
+        ))}
+      </select>
+      <label className="mt-3 block text-xs text-zinc-500">Merged title</label>
+      <input
+        className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+      />
+      <label className="mt-3 block text-xs text-zinc-500">Merged description</label>
+      <textarea
+        className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+        rows={4}
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+      />
+      <label className="mt-3 block text-xs text-zinc-500">Implementation guide</label>
+      <textarea
+        className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+        rows={2}
+        value={impl}
+        onChange={(e) => setImpl(e.target.value)}
+      />
+      <label className="mt-3 block text-xs text-zinc-500">Acceptance criteria</label>
+      <textarea
+        className="mt-1 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+        rows={2}
+        value={accept}
+        onChange={(e) => setAccept(e.target.value)}
+      />
+      <button
+        type="button"
+        className="mt-4 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        disabled={
+          applyPending || !title.trim() || !description.trim() || !keepId
+        }
+        onClick={() =>
+          onApply({
+            keepId,
+            group,
+            merged: {
+              title,
+              description,
+              implementation_guide: impl,
+              acceptance_criteria: accept,
+            },
+          })
+        }
+      >
+        {applyPending ? 'Applying…' : 'Apply merge'}
+      </button>
     </div>
   )
 }

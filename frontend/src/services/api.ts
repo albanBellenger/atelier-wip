@@ -595,6 +595,53 @@ export async function getAdminConsoleOverview(): Promise<AdminConsoleOverview> {
   return request<AdminConsoleOverview>('GET', '/admin/console/overview')
 }
 
+export interface AdminUserDirectoryRow {
+  user_id: string
+  email: string
+  display_name: string
+  is_platform_admin: boolean
+  created_at: string
+  studio_memberships: { studio_id: string; studio_name: string; role: string }[]
+}
+
+export interface AdminUserPublic {
+  id: string
+  email: string
+  display_name: string
+  is_platform_admin: boolean
+}
+
+export async function getAdminUsers(params?: {
+  limit?: number
+  offset?: number
+}): Promise<AdminUserDirectoryRow[]> {
+  const sp = new URLSearchParams()
+  if (params?.limit != null) sp.set('limit', String(params.limit))
+  if (params?.offset != null) sp.set('offset', String(params.offset))
+  const q = sp.toString()
+  return request<AdminUserDirectoryRow[]>(
+    'GET',
+    `/admin/users${q ? `?${q}` : ''}`,
+  )
+}
+
+export async function postAdminCreateUser(
+  body: RegisterRequestBody,
+): Promise<AdminUserPublic> {
+  return request<AdminUserPublic>('POST', '/admin/users', body)
+}
+
+export async function putAdminUserPlatformAdminStatus(
+  userId: string,
+  body: { is_platform_admin: boolean },
+): Promise<AdminUserPublic> {
+  return request<AdminUserPublic>(
+    'PUT',
+    `/admin/users/${encodeURIComponent(userId)}/admin-status`,
+    body,
+  )
+}
+
 export async function listAdminStudios(): Promise<StudioOverviewRow[]> {
   return request<StudioOverviewRow[]>('GET', '/admin/studios')
 }
@@ -2256,6 +2303,34 @@ export interface WorkOrderListFilters {
   section_id?: string
 }
 
+export interface WorkOrderDedupeSuggestedCombined {
+  title: string
+  description: string
+  implementation_guide: string | null
+  acceptance_criteria: string | null
+}
+
+export interface WorkOrderDedupeGroup {
+  work_order_ids: string[]
+  rationale: string
+  suggested_combined: WorkOrderDedupeSuggestedCombined
+}
+
+export interface WorkOrderDedupeAnalyzeResult {
+  groups: WorkOrderDedupeGroup[]
+}
+
+export interface WorkOrderDedupeApplyBody {
+  keep_work_order_id: string
+  archive_work_order_ids: string[]
+  merged_fields: {
+    title: string
+    description: string
+    implementation_guide?: string | null
+    acceptance_criteria?: string | null
+  }
+}
+
 function workOrdersQueryString(f?: WorkOrderListFilters): string {
   if (!f) {
     return ''
@@ -2336,6 +2411,26 @@ export async function generateWorkOrders(
   return request<WorkOrder[]>(
     'POST',
     `/projects/${projectId}/work-orders/generate`,
+    body,
+  )
+}
+
+export async function analyzeWorkOrderDedupe(
+  projectId: string,
+): Promise<WorkOrderDedupeAnalyzeResult> {
+  return request<WorkOrderDedupeAnalyzeResult>(
+    'POST',
+    `/projects/${projectId}/work-orders/dedupe/analyze`,
+  )
+}
+
+export async function applyWorkOrderDedupe(
+  projectId: string,
+  body: WorkOrderDedupeApplyBody,
+): Promise<WorkOrder> {
+  return request<WorkOrder>(
+    'POST',
+    `/projects/${projectId}/work-orders/dedupe/apply`,
     body,
   )
 }

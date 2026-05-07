@@ -102,3 +102,33 @@ class WorkOrderResponse(BaseModel):
 
 class WorkOrderDetailResponse(WorkOrderResponse):
     notes: list[WorkOrderNoteResponse] = Field(default_factory=list)
+
+
+class WorkOrderDedupeSuggestedCombined(BaseModel):
+    title: str = Field(..., min_length=1, max_length=512)
+    description: str = Field(..., min_length=1)
+    implementation_guide: str | None = None
+    acceptance_criteria: str | None = None
+
+
+class WorkOrderDedupeGroup(BaseModel):
+    work_order_ids: list[UUID] = Field(..., min_length=2)
+    rationale: str = Field(..., min_length=1)
+    suggested_combined: WorkOrderDedupeSuggestedCombined
+
+
+class WorkOrderDedupeAnalyzeResponse(BaseModel):
+    groups: list[WorkOrderDedupeGroup] = Field(default_factory=list)
+
+
+class WorkOrderDedupeApplyMergedFields(BaseModel):
+    title: str = Field(..., min_length=1, max_length=512)
+    description: str = Field(..., min_length=1)
+    implementation_guide: str | None = None
+    acceptance_criteria: str | None = None
+
+
+class WorkOrderDedupeApplyBody(BaseModel):
+    keep_work_order_id: UUID
+    archive_work_order_ids: list[UUID] = Field(..., min_length=1)
+    merged_fields: WorkOrderDedupeApplyMergedFields

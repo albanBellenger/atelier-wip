@@ -28,7 +28,7 @@ from app.services.budget_month_status import studio_overage_soft_allow
 def use_case_for_call_type(call_type: str) -> str:
     """Map token_usage call_type to a routing use_case key."""
     ct = (call_type or "chat").lower()
-    if ct in ("work_order_gen", "work_order", "mcp", "mcp_wo"):
+    if ct in ("work_order_gen", "work_order_dedupe", "work_order", "mcp", "mcp_wo"):
         return "code_gen"
     if ct in ("drift", "section_drift"):
         return "classification"

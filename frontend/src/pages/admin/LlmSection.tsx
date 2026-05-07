@@ -33,6 +33,12 @@ import {
   putAdminLlmRouting,
   putAdminStudioLlmPolicy,
 } from '../../services/api'
+import {
+  ROUTING_AGENT_GROUP_OPTIONS,
+  ROUTING_SORT_ORDER,
+  routingBucketAgentsSummary,
+  routingBucketTitle,
+} from '../../lib/llmRoutingBuckets'
 
 const EMPTY_LLM_PROVIDERS: LlmProviderRegistryRow[] = []
 
@@ -97,27 +103,16 @@ function formatProviderMutationErr(err: unknown): string {
   return err instanceof Error ? err.message : 'Request failed'
 }
 
-const ROUTING_USE_CASE_OPTIONS: { value: string; label: string }[] = [
-  { value: 'chat', label: 'Chat' },
-  { value: 'code_gen', label: 'Code / work order generation' },
-  { value: 'classification', label: 'Classification / drift' },
-  { value: 'embeddings', label: 'Embeddings' },
-]
-
 function sortRoutingRules(rules: LlmRoutingRuleRow[]): LlmRoutingRuleRow[] {
-  const order = ['chat', 'code_gen', 'classification', 'embeddings']
+  const order = [...ROUTING_SORT_ORDER]
   return [...rules].sort((a, b) => {
-    const ia = order.indexOf(a.use_case)
-    const ib = order.indexOf(b.use_case)
+    const ia = order.indexOf(a.use_case as (typeof ROUTING_SORT_ORDER)[number])
+    const ib = order.indexOf(b.use_case as (typeof ROUTING_SORT_ORDER)[number])
     if (ia !== -1 && ib !== -1) return ia - ib
     if (ia !== -1) return -1
     if (ib !== -1) return 1
     return a.use_case.localeCompare(b.use_case)
   })
-}
-
-function routingUseCaseLabel(useCase: string): string {
-  return ROUTING_USE_CASE_OPTIONS.find((o) => o.value === useCase)?.label ?? useCase
 }
 
 function AddRoutingModal({
@@ -137,7 +132,7 @@ function AddRoutingModal({
   const existingKeys = blockedUseCasesCsv
     ? blockedUseCasesCsv.split(',').filter((s) => s.length > 0)
     : []
-  const options = ROUTING_USE_CASE_OPTIONS.filter((o) => !existingKeys.includes(o.value))
+  const options = ROUTING_AGENT_GROUP_OPTIONS.filter((o) => !existingKeys.includes(o.value))
   const [useCase, setUseCase] = useState('')
   const [primary, setPrimary] = useState('')
   const [fallback, setFallback] = useState('')
@@ -147,7 +142,7 @@ function AddRoutingModal({
     const keys = blockedUseCasesCsv
       ? blockedUseCasesCsv.split(',').filter((s) => s.length > 0)
       : []
-    const opts = ROUTING_USE_CASE_OPTIONS.filter((o) => !keys.includes(o.value))
+    const opts = ROUTING_AGENT_GROUP_OPTIONS.filter((o) => !keys.includes(o.value))
     setUseCase(opts[0]?.value ?? '')
     setPrimary('')
     setFallback('')
@@ -187,9 +182,9 @@ function AddRoutingModal({
           Add routing rule
         </h2>
         <p className="mt-1 text-[12px] text-zinc-500">
-          Maps a call type to a primary model and optional fallback. Models must appear on a
-          connected registry provider to take effect for studios with policy configured. For LiteLLM,
-          use short ids in lists when the provider row has a{' '}
+          Maps an agent group (routing bucket) to a primary model and optional fallback. Models must
+          appear on a connected registry provider to take effect for studios with policy configured.
+          For LiteLLM, use short ids in lists when the provider row has a{' '}
           <span className="font-mono text-zinc-400">LiteLLM provider slug</span>, or enter{' '}
           <span className="font-mono text-zinc-400">provider/model</span> here.{' '}
           <a
@@ -205,16 +200,16 @@ function AddRoutingModal({
         <div className="mt-4 space-y-3">
           {options.length === 0 ? (
             <p className="text-[13px] text-amber-300/90">
-              All built-in use cases already have a row. Remove a row below, save, then add again.
+              All agent groups already have a row. Remove a row below, save, then add again.
             </p>
           ) : (
             <>
               <div>
                 <StatLabel>
-                  <label htmlFor="llm-add-routing-use-case">Use case</label>
+                  <label htmlFor="llm-add-routing-agent">Agent group</label>
                 </StatLabel>
                 <select
-                  id="llm-add-routing-use-case"
+                  id="llm-add-routing-agent"
                   value={useCase}
                   onChange={(e) => setUseCase(e.target.value)}
                   className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-[13px] text-zinc-100 outline-none focus:border-zinc-600"
@@ -225,10 +220,15 @@ function AddRoutingModal({
                     </option>
                   ))}
                 </select>
+                {useCase ? (
+                  <p className="mt-1.5 text-[11px] leading-snug text-zinc-500">
+                    Includes: {routingBucketAgentsSummary(useCase)}
+                  </p>
+                ) : null}
               </div>
               <div>
                 <StatLabel>
-                  <label htmlFor="llm-add-routing-primary">Primary model ID</label>
+                  <label htmlFor="llm-add-routing-primary">Primary model</label>
                 </StatLabel>
                 <LlmModelSuggestInput
                   id="llm-add-routing-primary"
@@ -245,7 +245,7 @@ function AddRoutingModal({
               </div>
               <div>
                 <StatLabel>
-                  <label htmlFor="llm-add-routing-fallback">Fallback model ID (optional)</label>
+                  <label htmlFor="llm-add-routing-fallback">Fallback model (optional)</label>
                 </StatLabel>
                 <LlmModelSuggestInput
                   id="llm-add-routing-fallback"
@@ -1344,8 +1344,8 @@ export function LlmSection(): ReactElement {
       >
         <div className="space-y-4 px-5 py-4">
           <p className="text-[12px] leading-relaxed text-zinc-500">
-            Primary and fallback model IDs are resolved against the routing registry and studio
-            policy. Empty fallback means only the primary is considered for that use case. Use{' '}
+            Primary and fallback model ids are resolved against the routing registry and studio
+            policy. Empty fallback means only the primary is considered for that agent group. Use{' '}
             <span className="font-mono text-zinc-400">provider/model</span> when LiteLLM cannot infer
             the host; otherwise configure a slug on the provider row for short ids.{' '}
             <a
@@ -1384,8 +1384,13 @@ export function LlmSection(): ReactElement {
                   className="grid grid-cols-1 gap-3 rounded-md border border-zinc-800 bg-zinc-950/40 p-4 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end"
                 >
                   <div>
-                    <StatLabel>Use case</StatLabel>
-                    <div className="mt-1.5 text-[13px] text-zinc-200">{routingUseCaseLabel(r.use_case)}</div>
+                    <StatLabel>Agent group</StatLabel>
+                    <div className="mt-1.5 text-[13px] text-zinc-200">
+                      {routingBucketTitle(r.use_case)}
+                    </div>
+                    <p className="mt-1 text-[11px] leading-snug text-zinc-500">
+                      {routingBucketAgentsSummary(r.use_case)}
+                    </p>
                     <div className="mt-0.5 font-mono text-[10.5px] text-zinc-500">{r.use_case}</div>
                   </div>
                   <div>
@@ -1442,7 +1447,7 @@ export function LlmSection(): ReactElement {
               {routingDraft.length === 0 ? (
                 <p className="text-[13px] text-zinc-500">
                   No routing rules yet. Use <span className="font-medium text-zinc-400">+ Add routing</span>{' '}
-                  to map a use case to a primary model (and optional fallback), then save.
+                  to map an agent group to a primary model (and optional fallback), then save.
                 </p>
               ) : null}
               {saveRouting.isError ? (

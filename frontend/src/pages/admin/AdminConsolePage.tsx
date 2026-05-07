@@ -13,7 +13,9 @@ const NAV: { id: AdminConsoleSection; label: string; hint: string }[] = [
   { id: 'overview', label: 'Overview', hint: 'At-a-glance' },
   { id: 'studios', label: 'Studios', hint: 'Directory (read-only)' },
   { id: 'llm', label: 'LLM connectivity', hint: 'Providers & routing' },
+  { id: 'budgets', label: 'Budgets', hint: 'Caps & overage' },
   { id: 'embeddings', label: 'Embeddings', hint: 'Indexes & models' },
+  { id: 'users', label: 'Users', hint: 'Directory & roles' },
 ]
 
 function AdminHeader(): ReactElement {

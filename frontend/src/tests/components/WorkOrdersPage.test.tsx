@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -29,6 +30,31 @@ function makeArchivedWo(): WorkOrder {
     created_at: t,
     updated_at: t,
     section_ids: [],
+  }
+}
+
+function makeBacklogWo(id: string, title: string): WorkOrder {
+  const t = new Date().toISOString()
+  return {
+    id,
+    project_id: 'p1',
+    title,
+    description: 'Description',
+    implementation_guide: null,
+    acceptance_criteria: null,
+    status: 'backlog',
+    phase: null,
+    phase_order: null,
+    assignee_id: null,
+    assignee_display_name: null,
+    is_stale: false,
+    stale_reason: null,
+    created_by: null,
+    updated_by_id: null,
+    updated_by_display_name: null,
+    created_at: t,
+    updated_at: t,
+    section_ids: ['sec-1'],
   }
 }
 
@@ -198,6 +224,7 @@ describe('WorkOrdersPage archived', () => {
     expect(
       screen.queryByRole('button', { name: /generate/i }),
     ).toBeNull()
+    expect(screen.queryByRole('button', { name: 'De-duping' })).toBeNull()
   })
 
   it('shows Work orders in header breadcrumb after project name', async () => {
@@ -246,5 +273,65 @@ describe('WorkOrdersPage archived', () => {
         'Work orders',
       )
     })
+  })
+
+  it('editor opens De-duping modal and runs analyze backlog', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(api, 'analyzeWorkOrderDedupe').mockResolvedValue({
+      groups: [
+        {
+          work_order_ids: ['w-a', 'w-b'],
+          rationale: 'Overlapping backlog items.',
+          suggested_combined: {
+            title: 'Merged title',
+            description: 'Merged description',
+            implementation_guide: null,
+            acceptance_criteria: null,
+          },
+        },
+      ],
+    })
+    vi.spyOn(api, 'me').mockResolvedValue({
+      user: {
+        id: 'u1',
+        email: 'm@b.com',
+        display_name: 'M',
+        is_platform_admin: false,
+      },
+      studios: [
+        { studio_id: 's1', studio_name: 'S', role: 'studio_member' },
+      ],
+    })
+    vi.spyOn(api, 'listWorkOrders').mockResolvedValue([
+      makeBacklogWo('w-a', 'Task A'),
+      makeBacklogWo('w-b', 'Task B'),
+    ])
+
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    render(
+      <MemoryRouter
+        initialEntries={[
+          '/studios/s1/software/sw1/projects/p1/work-orders',
+        ]}
+      >
+        <QueryClientProvider client={qc}>
+          <Routes>
+            <Route
+              path="/studios/:studioId/software/:softwareId/projects/:projectId/work-orders"
+              element={<WorkOrdersPage />}
+            />
+          </Routes>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await screen.findByText('Task A', {}, { timeout: 5000 })
+    await user.click(screen.getByRole('button', { name: 'De-duping' }))
+    await user.click(screen.getByRole('button', { name: /analyze backlog/i }))
+    expect(await screen.findByText('Overlapping backlog items.')).toBeInTheDocument()
+    expect(api.analyzeWorkOrderDedupe).toHaveBeenCalledWith('p1')
   })
 })

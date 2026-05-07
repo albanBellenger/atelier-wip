@@ -7,12 +7,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
-from app.models import AdminConfig, LlmProviderRegistry
+from app.models import AdminConfig, LlmProviderRegistry, User
 from app.schemas.auth import (
     AdminConnectivityResult,
     AdminLlmProbeBody,
     EmbeddingAdminConfigResponse,
     EmbeddingAdminConfigUpdate,
+    UserPublic,
 )
 from app.security.field_encryption import (
     admin_secret_suffix_hint,
@@ -87,6 +88,30 @@ class AdminService:
         ):
             background_tasks.add_task(enqueue_sections_missing_embeddings_after_config)
         return await self.get_embedding_public()
+
+    async def set_platform_admin_status(
+        self,
+        target_user_id: UUID,
+        is_platform_admin: bool,
+        requesting_user: User,
+    ) -> UserPublic:
+        if target_user_id == requesting_user.id and is_platform_admin is False:
+            raise ApiError(
+                status_code=400,
+                code="SELF_REVOCATION_BLOCKED",
+                message="A platform admin cannot revoke their own platform admin status.",
+            )
+        target_user = await self.db.get(User, target_user_id)
+        if target_user is None:
+            raise ApiError(
+                status_code=404,
+                code="NOT_FOUND",
+                message="User not found.",
+            )
+        target_user.is_platform_admin = is_platform_admin
+        self.db.add(target_user)
+        await self.db.flush()
+        return UserPublic.model_validate(target_user)
 
     async def test_llm(self, body: AdminLlmProbeBody | None = None) -> AdminConnectivityResult:
         b = body or AdminLlmProbeBody()

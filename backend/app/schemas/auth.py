@@ -51,6 +51,12 @@ class UserPublicWithAdmin(UserPublic):
     pass  # already has is_platform_admin
 
 
+class AdminStatusUpdate(BaseModel):
+    """PUT ``/admin/users/{user_id}/admin-status``."""
+
+    is_platform_admin: bool
+
+
 class StudioMembershipPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

@@ -130,23 +130,55 @@ async def test_admin_put_llm_provider_api_key_encrypted_at_rest(
 
 
 @pytest.mark.asyncio
-async def test_removed_admin_user_provisioning_and_token_usage_routes_return_404(
-    client: AsyncClient,
-) -> None:
-    """User provisioning and platform token usage were removed; endpoints are gone (404)."""
+async def test_admin_token_usage_route_still_removed(client: AsyncClient) -> None:
+    """GET /admin/token-usage was removed; returns 404."""
     sfx = uuid.uuid4().hex[:8]
-    email = f"pa-404-{sfx}@example.com"
+    email = f"pa-tok-{sfx}@example.com"
     reg = await client.post(
         "/auth/register",
         json={
             "email": email,
             "password": "securepass123",
-            "display_name": "Platform Admin",
+            "display_name": "User",
         },
     )
     assert reg.status_code == 200
     client.cookies.set("atelier_token", reg.cookies.get("atelier_token"))
-    assert (await client.get("/admin/users")).status_code == 404
+    assert (await client.get("/admin/token-usage")).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_admin_users_routes_forbidden_for_non_platform_admin(
+    client: AsyncClient,
+) -> None:
+    """Member users cannot list, create, or change platform admin via /admin/users."""
+    sfx = uuid.uuid4().hex[:8]
+    a = f"adm-a-{sfx}@example.com"
+    b = f"adm-b-{sfx}@example.com"
+    await client.post(
+        "/auth/register",
+        json={
+            "email": a,
+            "password": "securepass123",
+            "display_name": "First",
+        },
+    )
+    await client.post(
+        "/auth/register",
+        json={
+            "email": b,
+            "password": "securepass123",
+            "display_name": "Second",
+        },
+    )
+    r_login = await client.post(
+        "/auth/login",
+        json={"email": b, "password": "securepass123"},
+    )
+    assert r_login.status_code == 200
+    client.cookies.set("atelier_token", r_login.cookies.get("atelier_token"))
+
+    assert (await client.get("/admin/users")).status_code == 403
     create = await client.post(
         "/admin/users",
         json={
@@ -155,7 +187,7 @@ async def test_removed_admin_user_provisioning_and_token_usage_routes_return_404
             "display_name": "New",
         },
     )
-    assert create.status_code == 404
+    assert create.status_code == 403
     me = await client.get("/auth/me")
     assert me.status_code == 200
     uid = me.json()["user"]["id"]
@@ -163,5 +195,4 @@ async def test_removed_admin_user_provisioning_and_token_usage_routes_return_404
         f"/admin/users/{uid}/admin-status",
         json={"is_platform_admin": False},
     )
-    assert put.status_code == 404
-    assert (await client.get("/admin/token-usage")).status_code == 404
+    assert put.status_code == 403

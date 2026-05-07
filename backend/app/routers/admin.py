@@ -3,7 +3,7 @@
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, Query, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,13 +14,17 @@ from app.models import Studio, User
 from app.schemas.auth import (
     AdminConnectivityResult,
     AdminLlmProbeBody,
+    AdminStatusUpdate,
     EmbeddingAdminConfigResponse,
     EmbeddingAdminConfigUpdate,
+    UserCreate,
+    UserPublic,
 )
 from app.schemas.admin_console import (
     AdminConsoleOverviewResponse,
     AdminEmbeddingLibraryStudioResponse,
     AdminStudioDetailResponse,
+    AdminUserDirectoryRowResponse,
     EmbeddingModelRegistryResponse,
     EmbeddingModelRegistryUpdate,
     EmbeddingReindexPolicyResponse,
@@ -40,6 +44,8 @@ from app.schemas.studio import StudioCreate, StudioResponse
 from app.services.admin_overview_service import AdminOverviewService
 from app.services.admin_service import AdminService
 from app.services.admin_studio_console_service import AdminStudioConsoleService
+from app.services.admin_user_directory_service import AdminUserDirectoryService
+from app.services.auth_service import AuthService
 from app.services.embedding_admin_service import EmbeddingAdminService
 from app.services.llm_connectivity_service import LlmConnectivityService
 from app.services.llm_model_suggestions_service import LlmModelSuggestionsService
@@ -90,6 +96,37 @@ async def admin_config_put_removed(_: User = Depends(require_platform_admin)) ->
             "PUT /admin/config was removed; use PUT /admin/embedding-config for embeddings "
             "or Admin Console → LLM for provider registry."
         ),
+    )
+
+
+@router.get("/users", response_model=list[AdminUserDirectoryRowResponse])
+async def admin_list_users(
+    session: AsyncSession = Depends(get_db),
+    _: User = Depends(require_platform_admin),
+    limit: int = Query(200, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+) -> list[AdminUserDirectoryRowResponse]:
+    return await AdminUserDirectoryService(session).list_users(limit=limit, offset=offset)
+
+
+@router.post("/users", response_model=UserPublic, status_code=status.HTTP_201_CREATED)
+async def admin_create_user(
+    body: UserCreate,
+    session: AsyncSession = Depends(get_db),
+    _: User = Depends(require_platform_admin),
+) -> UserPublic:
+    return await AuthService(session).create_user_by_admin(body)
+
+
+@router.put("/users/{user_id}/admin-status", response_model=UserPublic)
+async def set_user_platform_admin_status(
+    user_id: UUID,
+    body: AdminStatusUpdate,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_platform_admin),
+) -> UserPublic:
+    return await AdminService(session).set_platform_admin_status(
+        user_id, body.is_platform_admin, current_user
     )
 
 
