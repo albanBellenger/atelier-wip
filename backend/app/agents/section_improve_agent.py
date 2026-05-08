@@ -6,7 +6,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.token_context import TokenContext
+from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.llm_service import LLMService
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
@@ -48,7 +48,7 @@ class SectionImproveAgent:
 
     async def improve_markdown(
         self,
-        ctx: TokenContext,
+        ctx: TokenUsageScope,
         *,
         rag_text: str,
         title: str,
@@ -68,6 +68,6 @@ class SectionImproveAgent:
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             json_schema=SECTION_IMPROVE_SCHEMA,
-            context=ctx,
+            usage_scope=ctx,
             call_type="section_improve",
         )

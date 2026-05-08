@@ -6,7 +6,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.token_context import TokenContext
+from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.llm_service import LLMService
 
 # Shared JSON-schema envelope for work-order batch generation (Slice 7).
@@ -74,7 +74,7 @@ class WorkOrderAgent:
 
     async def generate_work_order_batch(
         self,
-        ctx: TokenContext,
+        ctx: TokenUsageScope,
         *,
         sw_name: str,
         def_block: str,
@@ -86,6 +86,6 @@ class WorkOrderAgent:
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             json_schema=WORK_ORDER_BATCH_JSON_SCHEMA,
-            context=ctx,
+            usage_scope=ctx,
             call_type="work_order_gen",
         )

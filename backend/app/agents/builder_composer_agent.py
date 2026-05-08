@@ -6,7 +6,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.token_context import TokenContext
+from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.llm_service import LLMService
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
@@ -51,13 +51,13 @@ class BuilderComposerAgent:
 
     async def hint_for_software(
         self,
-        ctx: TokenContext,
+        ctx: TokenUsageScope,
         user_prompt: str,
     ) -> dict[str, Any]:
         return await self.llm.chat_structured(
             system_prompt=SYSTEM_PROMPT,
             user_prompt=user_prompt,
             json_schema=BUILDER_COMPOSER_HINT_JSON_SCHEMA,
-            context=ctx,
+            usage_scope=ctx,
             call_type="builder_composer_hint",
         )

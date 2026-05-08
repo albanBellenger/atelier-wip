@@ -12,11 +12,12 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.exceptions import ApiError
 from app.models import LlmProviderRegistry
 from app.openai_compat_urls import openai_v1_base
 from app.schemas.auth import AdminConnectivityResult
-from app.schemas.token_context import TokenContext
+from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.chat_history_window import (
     DEFAULT_CHAT_HISTORY_MAX_TOKENS,
     trim_openai_chat_messages,
@@ -36,6 +37,75 @@ from app.services.llm_policy_service import LlmPolicyService
 from app.services.token_tracker import record_usage
 
 log = structlog.get_logger("atelier.llm_service")
+
+# When ATELIER_LOG_LLM_PROMPTS is true, each message body is capped to this many
+# characters in logs to avoid runaway log volume from pathological prompts.
+_MAX_LLM_LOG_MESSAGE_CHARS = 100_000
+
+
+def _stringify_message_content(msg: dict[str, Any]) -> str:
+    raw = msg.get("content")
+    if raw is None:
+        return ""
+    if isinstance(raw, str):
+        return raw
+    return str(raw)
+
+
+def _log_outbound_chat_request(
+    *,
+    messages: list[dict[str, Any]],
+    model: str,
+    call_type: str,
+    usage_scope: TokenUsageScope | None,
+    stream: bool,
+    json_schema_name: str | None = None,
+) -> None:
+    """Log outbound LiteLLM chat payloads: safe metadata always; full messages only if configured."""
+    roles = [str(m.get("role", "")) for m in messages]
+    char_lens = [len(_stringify_message_content(m)) for m in messages]
+    if usage_scope is not None:
+        scope_payload = {
+            "studio_id": str(usage_scope.studio_id),
+            "software_id": str(usage_scope.software_id)
+            if usage_scope.software_id is not None
+            else None,
+            "project_id": str(usage_scope.project_id)
+            if usage_scope.project_id is not None
+            else None,
+            "work_order_id": str(usage_scope.work_order_id)
+            if usage_scope.work_order_id is not None
+            else None,
+            "user_id": str(usage_scope.user_id) if usage_scope.user_id is not None else None,
+        }
+    else:
+        scope_payload = {
+            "studio_id": None,
+            "software_id": None,
+            "project_id": None,
+            "work_order_id": None,
+            "user_id": None,
+        }
+    payload: dict[str, Any] = {
+        "call_type": call_type,
+        "model": model,
+        "stream": stream,
+        "message_roles": roles,
+        "message_char_lens": char_lens,
+        **scope_payload,
+    }
+    if json_schema_name is not None:
+        payload["json_schema_name"] = json_schema_name
+    if get_settings().log_llm_prompts:
+        out_msgs: list[dict[str, str]] = []
+        for m in messages:
+            role = str(m.get("role", "user"))
+            text = _stringify_message_content(m)
+            if len(text) > _MAX_LLM_LOG_MESSAGE_CHARS:
+                text = f"{text[:_MAX_LLM_LOG_MESSAGE_CHARS]}…[truncated]"
+            out_msgs.append({"role": role, "content": text})
+        payload["messages"] = out_msgs
+    log.info("llm_outbound_request", **payload)
 
 
 def _validate_json_schema(json_schema: dict[str, Any]) -> None:
@@ -114,24 +184,24 @@ class LLMService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    async def _require_openai_config_for_context(
+    async def _require_openai_config_for_usage_scope(
         self,
         *,
-        context: TokenContext,
+        usage_scope: TokenUsageScope,
         call_type: str,
         preferred_model: str | None = None,
     ) -> tuple[str, str, str]:
         policy = LlmPolicyService(self.db)
-        await policy.assert_studio_budget(context.studio_id)
-        await policy.assert_builder_budget(context.studio_id, context.user_id)
+        await policy.assert_studio_budget(usage_scope.studio_id)
+        await policy.assert_builder_budget(usage_scope.studio_id, usage_scope.user_id)
         eff_choice: str | None = None
         if preferred_model and call_type in ("chat", "private_thread"):
             eff_choice = await policy.resolve_preferred_chat_model(
-                studio_id=context.studio_id,
+                studio_id=usage_scope.studio_id,
                 preferred_model=preferred_model,
             )
         route_model, route_pk = await policy.resolve_effective_llm_route(
-            studio_id=context.studio_id,
+            studio_id=usage_scope.studio_id,
             call_type=call_type,
         )
         eff = (route_model or "").strip()
@@ -168,14 +238,14 @@ class LLMService:
         self,
         messages: list[dict[str, Any]],
         *,
-        context: TokenContext,
+        usage_scope: TokenUsageScope,
         call_type: str,
         preferred_model: str | None = None,
         max_history_tokens: int = DEFAULT_CHAT_HISTORY_MAX_TOKENS,
     ) -> tuple[list[dict[str, Any]], bool]:
         """Trim ``messages`` (no system) to fit token budget; returns ``(msgs, trimmed)``."""
-        model, _, _ = await self._require_openai_config_for_context(
-            context=context,
+        model, _, _ = await self._require_openai_config_for_usage_scope(
+            usage_scope=usage_scope,
             call_type=call_type,
             preferred_model=preferred_model,
         )
@@ -186,7 +256,7 @@ class LLMService:
     async def ensure_openai_llm_ready(
         self,
         *,
-        context: TokenContext | None = None,
+        usage_scope: TokenUsageScope | None = None,
         call_type: str = "chat",
         preferred_model: str | None = None,
     ) -> None:
@@ -197,14 +267,14 @@ class LLMService:
         runs, so :class:`ApiError` raised inside the stream iterator cannot be turned
         into JSON and causes ``RuntimeError: response already started``.
         """
-        if context is None:
+        if usage_scope is None:
             raise ApiError(
                 status_code=500,
-                code="LLM_CONTEXT_REQUIRED",
-                message="LLM readiness check requires an authenticated token context.",
+                code="LLM_USAGE_SCOPE_REQUIRED",
+                message="LLM readiness check requires an authenticated usage scope.",
             )
-        await self._require_openai_config_for_context(
-            context=context,
+        await self._require_openai_config_for_usage_scope(
+            usage_scope=usage_scope,
             call_type=call_type,
             preferred_model=preferred_model,
         )
@@ -215,25 +285,33 @@ class LLMService:
         system_prompt: str,
         user_prompt: str,
         json_schema: dict[str, Any],
-        context: TokenContext,
+        usage_scope: TokenUsageScope,
         call_type: str,
     ) -> dict[str, Any]:
         """Returns parsed assistant JSON object (never raw string)."""
         _validate_json_schema(json_schema)
-        model, api_key, api_base = await self._require_openai_config_for_context(
-            context=context,
+        model, api_key, api_base = await self._require_openai_config_for_usage_scope(
+            usage_scope=usage_scope,
             call_type=call_type,
             preferred_model=None,
         )
         log.info(
             "llm_chat_structured_start",
             call_type=call_type,
-            project_id=str(context.project_id),
+            project_id=str(usage_scope.project_id),
         )
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
+        _log_outbound_chat_request(
+            messages=messages,
+            model=model,
+            call_type=call_type,
+            usage_scope=usage_scope,
+            stream=False,
+            json_schema_name=str(json_schema.get("name") or "").strip() or None,
+        )
         try:
             response = await litellm.acompletion(
                 model=model,
@@ -263,7 +341,7 @@ class LLMService:
         if input_tokens or output_tokens:
             await record_usage(
                 self.db,
-                context,
+                usage_scope,
                 call_type=call_type,
                 model=model,
                 input_tokens=input_tokens,
@@ -302,17 +380,24 @@ class LLMService:
         *,
         system_prompt: str,
         messages: list[dict[str, Any]],
-        context: TokenContext,
+        usage_scope: TokenUsageScope,
         call_type: str,
         preferred_model: str | None = None,
     ) -> AsyncIterator[str]:
         """Yield assistant token deltas (streaming). Records tokens when usage is returned."""
-        model, api_key, api_base = await self._require_openai_config_for_context(
-            context=context,
+        model, api_key, api_base = await self._require_openai_config_for_usage_scope(
+            usage_scope=usage_scope,
             call_type=call_type,
             preferred_model=preferred_model,
         )
         full_messages = [{"role": "system", "content": system_prompt}, *messages]
+        _log_outbound_chat_request(
+            messages=full_messages,
+            model=model,
+            call_type=call_type,
+            usage_scope=usage_scope,
+            stream=True,
+        )
         assistant_parts: list[str] = []
         usage_final: dict[str, int] | None = None
 
@@ -353,7 +438,7 @@ class LLMService:
                 cost_override = None
             await record_usage(
                 self.db,
-                context,
+                usage_scope,
                 call_type=call_type,
                 model=model,
                 input_tokens=usage_final["prompt_tokens"],
@@ -365,7 +450,7 @@ class LLMService:
             est_in = max(1, sum(len(str(m.get("content", ""))) for m in full_messages) // 4)
             await record_usage(
                 self.db,
-                context,
+                usage_scope,
                 call_type=call_type,
                 model=model,
                 input_tokens=est_in,
@@ -425,12 +510,20 @@ class LLMService:
             )
         if api_base_url_override is not None and str(api_base_url_override).strip():
             api_base = openai_v1_base(api_base_url_override)
+        probe_messages: list[dict[str, Any]] = [
+            {"role": "user", "content": 'Reply with exactly the word "OK".'}
+        ]
+        _log_outbound_chat_request(
+            messages=probe_messages,
+            model=model_litellm,
+            call_type="admin_connectivity_probe",
+            usage_scope=None,
+            stream=False,
+        )
         try:
             response = await litellm.acompletion(
                 model=model_litellm,
-                messages=[
-                    {"role": "user", "content": 'Reply with exactly the word "OK".'}
-                ],
+                messages=probe_messages,
                 max_tokens=32,
                 api_key=key,
                 api_base=api_base,

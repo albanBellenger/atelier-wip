@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.schemas.token_context import TokenContext
+from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.token_tracker import record_usage
 
 
@@ -16,7 +16,7 @@ async def test_record_usage_openai_provider_adds_row_and_flushes() -> None:
     session.flush = AsyncMock()
     uid = uuid.uuid4()
     sid = uuid.uuid4()
-    ctx = TokenContext(
+    ctx = TokenUsageScope(
         studio_id=sid,
         software_id=None,
         project_id=None,
@@ -54,7 +54,7 @@ async def test_record_usage_openai_provider_adds_row_and_flushes() -> None:
 async def test_record_usage_non_openai_provider_still_estimates() -> None:
     session = MagicMock()
     session.flush = AsyncMock()
-    ctx = TokenContext(studio_id=uuid.uuid4(), user_id=uuid.uuid4())
+    ctx = TokenUsageScope(studio_id=uuid.uuid4(), user_id=uuid.uuid4())
     with patch(
         "app.services.token_tracker.estimate_cost_usd_openai",
         return_value=Decimal("0.01"),
@@ -76,7 +76,7 @@ async def test_record_usage_non_openai_provider_still_estimates() -> None:
 async def test_record_usage_truncates_call_type_and_model() -> None:
     session = MagicMock()
     session.flush = AsyncMock()
-    ctx = TokenContext(studio_id=uuid.uuid4(), user_id=uuid.uuid4())
+    ctx = TokenUsageScope(studio_id=uuid.uuid4(), user_id=uuid.uuid4())
     long_type = "x" * 64
     long_model = "m" * 300
     with patch(

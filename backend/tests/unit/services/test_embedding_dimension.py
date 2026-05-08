@@ -31,7 +31,7 @@ async def test_embed_batch_stores_then_validates_dimension(
         api_base: str,
         inputs: list[str],
         *,
-        context: object | None,
+        usage_scope: object | None,
     ) -> list[list[float]]:
         cfg = await self._get_config()
         dim = 3
@@ -53,7 +53,7 @@ async def test_embed_batch_stores_then_validates_dimension(
         api_base: str,
         inputs: list[str],
         *,
-        context: object | None,
+        usage_scope: object | None,
     ) -> list[list[float]]:
         cfg = await self._get_config()
         emb = [0.0] * 5

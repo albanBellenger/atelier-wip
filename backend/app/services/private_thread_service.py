@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.exceptions import ApiError
 from app.models import PrivateThread, Project, Section, Software, ThreadMessage
 from app.schemas.private_thread import PrivateThreadStreamBody
-from app.schemas.token_context import TokenContext
+from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.chat_history_window import HISTORY_TRIM_NOTICE
 from app.services.llm_service import LLMService
 from app.services.private_thread_selection import (
@@ -187,7 +187,7 @@ async def _stream_main_reply(
     *,
     system_prompt: str,
     openai_msgs: list[dict[str, Any]],
-    ctx: TokenContext,
+    ctx: TokenUsageScope,
     stream_state: dict[str, Any],
     preferred_model: str | None = None,
 ) -> AsyncIterator[str]:
@@ -196,7 +196,7 @@ async def _stream_main_reply(
         async for piece in llm.chat_stream(
             system_prompt=system_prompt,
             messages=openai_msgs,
-            context=ctx,
+            usage_scope=ctx,
             call_type="private_thread",
             preferred_model=preferred_model,
         ):
@@ -211,7 +211,7 @@ async def _scan_for_findings(
     *,
     user_message: str,
     full_text: str,
-    ctx: TokenContext,
+    ctx: TokenUsageScope,
 ) -> list[ThreadFinding]:
     if not full_text.strip():
         return []
@@ -229,7 +229,7 @@ async def _scan_for_findings(
                 "contradictions and \"gap\" for missing or unclear coverage."
             ),
             json_schema=THREAD_FINDINGS_JSON_SCHEMA,
-            context=ctx,
+            usage_scope=ctx,
             call_type="thread_conflict_scan",
         )
     except ApiError:
@@ -257,7 +257,7 @@ async def _build_patch_proposal(
     content: str,
     full: str,
     selection_triple: tuple[int, int, str] | None,
-    ctx: TokenContext,
+    ctx: TokenUsageScope,
 ) -> dict[str, Any] | None:
     patch_prompt = (
         f"Current section markdown (full):\n{effective_snap}\n\n"
@@ -277,7 +277,7 @@ async def _build_patch_proposal(
                 ),
                 user_prompt=patch_prompt,
                 json_schema=THREAD_PATCH_APPEND_SCHEMA,
-                context=ctx,
+                usage_scope=ctx,
                 call_type="thread_patch_append",
             )
             return _normalize_patch_proposal(
@@ -294,7 +294,7 @@ async def _build_patch_proposal(
                 ),
                 user_prompt=patch_prompt,
                 json_schema=THREAD_PATCH_REPLACE_SCHEMA,
-                context=ctx,
+                usage_scope=ctx,
                 call_type="thread_patch_replace",
             )
             return _normalize_patch_proposal(
@@ -310,7 +310,7 @@ async def _build_patch_proposal(
             ),
             user_prompt=patch_prompt,
             json_schema=THREAD_PATCH_EDIT_SCHEMA,
-            context=ctx,
+            usage_scope=ctx,
             call_type="thread_patch_edit",
         )
         return _normalize_patch_proposal(
@@ -452,7 +452,7 @@ class PrivateThreadService:
         software = await self.db.get(Software, project.software_id)
         assert software is not None
 
-        ctx = TokenContext(
+        ctx = TokenUsageScope(
             studio_id=software.studio_id,
             software_id=software.id,
             project_id=project_id,
@@ -499,7 +499,7 @@ class PrivateThreadService:
         llm = LLMService(self.db)
         openai_msgs, history_trimmed = await llm.trim_chat_messages_for_stream(
             openai_msgs,
-            context=ctx,
+            usage_scope=ctx,
             call_type="chat",
             preferred_model=preferred_model,
         )

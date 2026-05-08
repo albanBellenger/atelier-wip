@@ -84,7 +84,7 @@ async def test_software_chat_websocket_persists_messages() -> None:
                 self: object,
                 messages: list,
                 *,
-                context: object,
+                usage_scope: object,
                 call_type: str,
                 preferred_model: str | None = None,
                 max_history_tokens: int = 12_000,

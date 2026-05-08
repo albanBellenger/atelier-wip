@@ -22,7 +22,7 @@ from sqlalchemy import delete
 from app.exceptions import ApiError
 from app.models import LlmProviderRegistry, LlmRoutingRule
 from app.schemas.auth import AdminConnectivityResult
-from app.schemas.token_context import TokenContext
+from app.schemas.token_usage_scope import TokenUsageScope
 from app.security.field_encryption import encode_admin_stored_secret
 from app.services.llm_service import LLMService
 
@@ -58,8 +58,8 @@ def _resp(status: int) -> httpx.Response:
     return httpx.Response(status, request=_REQ)
 
 
-def _token_ctx() -> TokenContext:
-    return TokenContext(
+def _usage_scope() -> TokenUsageScope:
+    return TokenUsageScope(
         studio_id=uuid.uuid4(),
         software_id=uuid.uuid4(),
         project_id=uuid.uuid4(),
@@ -85,7 +85,7 @@ async def test_chat_structured_read_timeout_maps_to_api_error(
             system_prompt="s",
             user_prompt="u",
             json_schema={"name": "x", "strict": True, "schema": {"type": "object"}},
-            context=_token_ctx(),
+            usage_scope=_usage_scope(),
             call_type="test",
         )
     assert exc_info.value.status_code == 504
@@ -110,7 +110,7 @@ async def test_chat_structured_connect_error_maps_to_transport_api_error(
             system_prompt="s",
             user_prompt="u",
             json_schema={"name": "x", "strict": True, "schema": {"type": "object"}},
-            context=_token_ctx(),
+            usage_scope=_usage_scope(),
             call_type="test",
         )
     assert exc_info.value.status_code == 502
@@ -133,7 +133,7 @@ async def test_chat_stream_connect_error_maps_to_transport_api_error(
     gen = llm.chat_stream(
         system_prompt="s",
         messages=[{"role": "user", "content": "hi"}],
-        context=_token_ctx(),
+        usage_scope=_usage_scope(),
         call_type="test",
     )
     with pytest.raises(ApiError) as exc_info:
@@ -269,7 +269,7 @@ async def test_chat_structured_upstream_http_error_maps_to_api_error(
             system_prompt="s",
             user_prompt="u",
             json_schema={"name": "x", "strict": True, "schema": {"type": "object"}},
-            context=_token_ctx(),
+            usage_scope=_usage_scope(),
             call_type="test",
         )
     assert exc_info.value.status_code == 502
@@ -317,7 +317,7 @@ async def test_chat_structured_posts_openai_json_schema_request_body(
         system_prompt="sys",
         user_prompt="user",
         json_schema=schema,
-        context=_token_ctx(),
+        usage_scope=_usage_scope(),
         call_type="test",
     )
     assert out == {"captured": True}
@@ -344,7 +344,7 @@ async def test_chat_structured_rejects_json_schema_not_dict(db_session: Any) -> 
             system_prompt="s",
             user_prompt="u",
             json_schema=bad_schema,
-            context=_token_ctx(),
+            usage_scope=_usage_scope(),
             call_type="test",
         )
     assert exc_info.value.error_code == "LLM_SCHEMA_INVALID"
@@ -359,7 +359,7 @@ async def test_chat_structured_rejects_json_schema_empty_name(db_session: Any) -
             system_prompt="s",
             user_prompt="u",
             json_schema={"name": "  ", "strict": True, "schema": {"type": "object"}},
-            context=_token_ctx(),
+            usage_scope=_usage_scope(),
             call_type="test",
         )
     assert exc_info.value.error_code == "LLM_SCHEMA_INVALID"
@@ -373,7 +373,7 @@ async def test_chat_structured_rejects_json_schema_strict_not_true(db_session: A
             system_prompt="s",
             user_prompt="u",
             json_schema={"name": "n", "strict": False, "schema": {"type": "object"}},
-            context=_token_ctx(),
+            usage_scope=_usage_scope(),
             call_type="test",
         )
     assert exc_info.value.error_code == "LLM_SCHEMA_INVALID"
@@ -391,7 +391,7 @@ async def test_chat_structured_rejects_json_schema_inner_not_object(db_session: 
                 "strict": True,
                 "schema": {"type": "array", "items": {"type": "string"}},
             },
-            context=_token_ctx(),
+            usage_scope=_usage_scope(),
             call_type="test",
         )
     assert exc_info.value.error_code == "LLM_SCHEMA_INVALID"
@@ -429,7 +429,7 @@ async def test_chat_structured_upstream_error_log_omits_raw_body(
             system_prompt="s",
             user_prompt="u",
             json_schema=_MIN_SCHEMA,
-            context=_token_ctx(),
+            usage_scope=_usage_scope(),
             call_type="test",
         )
     blob = str(captured)
@@ -458,7 +458,7 @@ async def test_chat_structured_empty_choices_maps_to_api_error(
             system_prompt="s",
             user_prompt="u",
             json_schema={"name": "x", "strict": True, "schema": {"type": "object"}},
-            context=_token_ctx(),
+            usage_scope=_usage_scope(),
             call_type="test",
         )
     assert exc_info.value.error_code == "LLM_EMPTY_RESPONSE"
@@ -490,7 +490,7 @@ async def test_chat_structured_invalid_content_json_maps_to_api_error(
             system_prompt="s",
             user_prompt="u",
             json_schema={"name": "x", "strict": True, "schema": {"type": "object"}},
-            context=_token_ctx(),
+            usage_scope=_usage_scope(),
             call_type="test",
         )
     assert exc_info.value.error_code == "LLM_INVALID_JSON"
@@ -517,7 +517,7 @@ async def test_chat_stream_read_timeout_maps_to_api_error(
     gen = llm.chat_stream(
         system_prompt="s",
         messages=[{"role": "user", "content": "hi"}],
-        context=_token_ctx(),
+        usage_scope=_usage_scope(),
         call_type="test",
     )
     with pytest.raises(ApiError) as exc_info:
@@ -547,7 +547,7 @@ async def test_chat_stream_upstream_rate_limit_maps_to_api_error(
     gen = llm.chat_stream(
         system_prompt="s",
         messages=[{"role": "user", "content": "hi"}],
-        context=_token_ctx(),
+        usage_scope=_usage_scope(),
         call_type="test",
     )
     with pytest.raises(ApiError) as exc_info:
@@ -590,7 +590,7 @@ async def test_chat_stream_upstream_error_log_omits_raw_body(
     gen = llm.chat_stream(
         system_prompt="s",
         messages=[{"role": "user", "content": "hi"}],
-        context=_token_ctx(),
+        usage_scope=_usage_scope(),
         call_type="test",
     )
     with pytest.raises(ApiError):
@@ -614,7 +614,7 @@ async def test_trim_chat_messages_for_stream_uses_model_from_config(
         llm = LLMService(db_session)
         out, trimmed = await llm.trim_chat_messages_for_stream(
             [{"role": "user", "content": "hello"}],
-            context=_token_ctx(),
+            usage_scope=_usage_scope(),
             call_type="chat",
         )
     assert trimmed is True
@@ -622,3 +622,171 @@ async def test_trim_chat_messages_for_stream_uses_model_from_config(
     mock_trim.assert_called_once()
     _args, kwargs = mock_trim.call_args
     assert kwargs["model"] == "openai/gpt-test"
+
+
+def _settings_mock(*, log_prompts: bool) -> MagicMock:
+    s = MagicMock()
+    s.log_llm_prompts = log_prompts
+    return s
+
+
+@pytest.mark.asyncio
+async def test_llm_outbound_request_includes_full_messages_when_log_prompts_enabled(
+    db_session: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _seed_openai_default_llm(db_session, model="gpt-test")
+    monkeypatch.setattr(
+        "app.services.llm_service.get_settings",
+        lambda: _settings_mock(log_prompts=True),
+    )
+    mock_info = MagicMock()
+    monkeypatch.setattr("app.services.llm_service.log.info", mock_info)
+    monkeypatch.setattr(
+        "app.services.llm_service.litellm.acompletion",
+        AsyncMock(return_value=_structured_ok_response()),
+    )
+    scope = _usage_scope()
+    llm = LLMService(db_session)
+    await llm.chat_structured(
+        system_prompt="sys-body",
+        user_prompt="user-body",
+        json_schema={"name": "wo_schema", "strict": True, "schema": {"type": "object"}},
+        usage_scope=scope,
+        call_type="work_order",
+    )
+    outbound = [
+        c
+        for c in mock_info.call_args_list
+        if c.args and c.args[0] == "llm_outbound_request"
+    ]
+    assert len(outbound) == 1
+    payload = outbound[0].kwargs
+    assert payload["messages"] == [
+        {"role": "system", "content": "sys-body"},
+        {"role": "user", "content": "user-body"},
+    ]
+    assert payload["json_schema_name"] == "wo_schema"
+    assert payload["call_type"] == "work_order"
+    assert payload["stream"] is False
+    assert payload["message_roles"] == ["system", "user"]
+    assert payload["message_char_lens"] == [8, 9]
+    assert payload["studio_id"] == str(scope.studio_id)
+
+
+@pytest.mark.asyncio
+async def test_llm_outbound_request_omits_message_bodies_when_log_prompts_disabled(
+    db_session: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _seed_openai_default_llm(db_session, model="gpt-test")
+    monkeypatch.setattr(
+        "app.services.llm_service.get_settings",
+        lambda: _settings_mock(log_prompts=False),
+    )
+    captured: list[str] = []
+
+    def capture_info(*args: Any, **kwargs: Any) -> None:
+        captured.append(f"{args!r}{kwargs!r}")
+
+    monkeypatch.setattr("app.services.llm_service.log.info", capture_info)
+    monkeypatch.setattr(
+        "app.services.llm_service.litellm.acompletion",
+        AsyncMock(return_value=_structured_ok_response()),
+    )
+    secret = "NEVER_LOG_THIS_SECRET_TOKEN_XYZ"
+    llm = LLMService(db_session)
+    await llm.chat_structured(
+        system_prompt="s",
+        user_prompt=secret,
+        json_schema=_MIN_SCHEMA,
+        usage_scope=_usage_scope(),
+        call_type="test",
+    )
+    blob = "\n".join(captured)
+    assert secret not in blob
+    assert any("llm_outbound_request" in line for line in captured)
+    for line in captured:
+        if "llm_outbound_request" in line:
+            assert "NEVER_LOG" not in line
+            assert "'messages'" not in line
+
+
+@pytest.mark.asyncio
+async def test_llm_outbound_request_stream_includes_messages_when_enabled(
+    db_session: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _seed_openai_default_llm(db_session, model="gpt-test")
+    monkeypatch.setattr(
+        "app.services.llm_service.get_settings",
+        lambda: _settings_mock(log_prompts=True),
+    )
+    mock_info = MagicMock()
+    monkeypatch.setattr("app.services.llm_service.log.info", mock_info)
+
+    async def _one_chunk() -> Any:
+        yield MagicMock(choices=[MagicMock(delta=MagicMock(content="x"))])
+
+    monkeypatch.setattr(
+        "app.services.llm_service.litellm.acompletion",
+        AsyncMock(return_value=_one_chunk()),
+    )
+    monkeypatch.setattr(
+        "app.services.llm_service.record_usage",
+        AsyncMock(),
+    )
+    llm = LLMService(db_session)
+    gen = llm.chat_stream(
+        system_prompt="sys2",
+        messages=[{"role": "user", "content": "uh"}],
+        usage_scope=_usage_scope(),
+        call_type="chat",
+    )
+    async for _ in gen:
+        pass
+    outbound = [
+        c
+        for c in mock_info.call_args_list
+        if c.args and c.args[0] == "llm_outbound_request"
+    ]
+    assert len(outbound) == 1
+    assert outbound[0].kwargs["stream"] is True
+    assert outbound[0].kwargs["messages"] == [
+        {"role": "system", "content": "sys2"},
+        {"role": "user", "content": "uh"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_llm_outbound_request_truncates_long_message_when_log_prompts_enabled(
+    db_session: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _seed_openai_default_llm(db_session, model="gpt-test")
+    monkeypatch.setattr(
+        "app.services.llm_service.get_settings",
+        lambda: _settings_mock(log_prompts=True),
+    )
+    monkeypatch.setattr("app.services.llm_service._MAX_LLM_LOG_MESSAGE_CHARS", 5)
+    mock_info = MagicMock()
+    monkeypatch.setattr("app.services.llm_service.log.info", mock_info)
+    monkeypatch.setattr(
+        "app.services.llm_service.litellm.acompletion",
+        AsyncMock(return_value=_structured_ok_response()),
+    )
+    llm = LLMService(db_session)
+    await llm.chat_structured(
+        system_prompt="s",
+        user_prompt="123456789",
+        json_schema=_MIN_SCHEMA,
+        usage_scope=_usage_scope(),
+        call_type="test",
+    )
+    outbound = [
+        c
+        for c in mock_info.call_args_list
+        if c.args and c.args[0] == "llm_outbound_request"
+    ]
+    msgs = outbound[0].kwargs["messages"]
+    assert msgs[1]["content"] == "12345…[truncated]"

@@ -16,10 +16,10 @@ from app.models import Artifact, ArtifactChunk, Project, Section, SectionChunk, 
 from app.models.work_order import WorkOrder
 from app.schemas.context_preview import ContextBlockOut, ContextPreviewOut
 from app.schemas.section_context_preferences import SectionContextPrefsOut
-from app.schemas.token_context import TokenContext
+from app.schemas.token_usage_scope import TokenUsageScope
 from app.security.field_encryption import decrypt_secret, fernet_configured
 from app.services.embedding_service import EmbeddingService
-from app.services.embedding_token_context import token_context_for_project
+from app.services.embedding_token_usage_scope import usage_scope_for_project
 from app.services import git_service as gitlab_history
 from app.services.llm_service import LLMService
 
@@ -114,7 +114,7 @@ class RAGService:
     async def _definition_block_for_rag(
         self,
         software: Software,
-        ctx: TokenContext,
+        ctx: TokenUsageScope,
     ) -> str:
         raw = (software.definition or "").strip()
         soft_def_char_cap = SOFT_DEF_TOKEN_CAP * 4
@@ -134,7 +134,7 @@ class RAGService:
                 ),
                 user_prompt=raw,
                 json_schema=SOFTWARE_DEF_SUMMARY_SCHEMA,
-                context=ctx,
+                usage_scope=ctx,
                 call_type="rag_software_definition_summary",
             )
         except ApiError as e:
@@ -243,7 +243,7 @@ class RAGService:
             current_body = override if override else (cur.content or "")
             section_for_embed = cur
 
-        ctx = TokenContext(
+        ctx = TokenUsageScope(
             studio_id=software.studio_id,
             software_id=software.id,
             project_id=project_id,
@@ -306,8 +306,8 @@ class RAGService:
         if query_for_embedding:
             try:
                 emb = EmbeddingService(self.db)
-                emb_ctx = await token_context_for_project(self.db, project_id)
-                qvec = (await emb.embed_batch([query_for_embedding], context=emb_ctx))[0]
+                emb_ctx = await usage_scope_for_project(self.db, project_id)
+                qvec = (await emb.embed_batch([query_for_embedding], usage_scope=emb_ctx))[0]
             except ApiError as e:
                 log.warning("rag_embed_skip", reason=str(e))
 

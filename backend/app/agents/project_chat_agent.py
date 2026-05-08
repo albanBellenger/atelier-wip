@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
 from app.models import ChatMessage, Project, Software
-from app.schemas.token_context import TokenContext
+from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.llm_service import LLMService
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
@@ -44,7 +44,7 @@ class ProjectChatAgent:
         chat_messages: list[dict[str, str]] | None = None,
         preferred_model: str | None = None,
         rag_text: str,
-    ) -> AsyncIterator[tuple[str, TokenContext]]:
+    ) -> AsyncIterator[tuple[str, TokenUsageScope]]:
         """Yield LLM token strings; caller persists assistant message after iteration."""
         project = await self.db.get(Project, project_id)
         if project is None:
@@ -61,7 +61,7 @@ class ProjectChatAgent:
                 message="Software not found.",
             )
 
-        ctx = TokenContext(
+        ctx = TokenUsageScope(
             studio_id=software.studio_id,
             software_id=software.id,
             project_id=project_id,
@@ -80,7 +80,7 @@ class ProjectChatAgent:
             async for piece in self.llm.chat_stream(
                 system_prompt=system_prompt,
                 messages=openai_msgs,
-                context=ctx,
+                usage_scope=ctx,
                 call_type="chat",
                 preferred_model=preferred_model,
             ):

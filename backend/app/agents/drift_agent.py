@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 from app.exceptions import ApiError
 from app.models import Project, Section, Software, WorkOrder
 from app.models.work_order import WorkOrderNote, WorkOrderSection
-from app.schemas.token_context import TokenContext
+from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.llm_service import LLMService
 
 log = structlog.get_logger("atelier.drift")
@@ -90,7 +90,7 @@ class DriftAgent:
         if software is None:
             return
 
-        ctx = TokenContext(
+        ctx = TokenUsageScope(
             studio_id=software.studio_id,
             software_id=software.id,
             project_id=project.id,
@@ -120,7 +120,7 @@ class DriftAgent:
             return
 
         try:
-            await self.llm.ensure_openai_llm_ready(context=ctx, call_type="section_drift")
+            await self.llm.ensure_openai_llm_ready(usage_scope=ctx, call_type="section_drift")
         except ApiError as e:
             log.warning(
                 "drift_skipped_llm_unavailable",
@@ -134,7 +134,7 @@ class DriftAgent:
 
     async def _check_one_work_order(
         self,
-        ctx: TokenContext,
+        ctx: TokenUsageScope,
         wo: WorkOrder,
     ) -> None:
         sections = list(wo.sections or [])
@@ -160,7 +160,7 @@ class DriftAgent:
                 system_prompt=SYSTEM_PROMPT,
                 user_prompt=user_prompt,
                 json_schema=DRIFT_CHECK_JSON_SCHEMA,
-                context=ctx,
+                usage_scope=ctx,
                 call_type="drift",
             )
         except ApiError:

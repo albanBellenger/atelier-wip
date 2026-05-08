@@ -23,7 +23,7 @@ from app.models import (
     WorkOrderNote,
 )
 from app.models.work_order import WorkOrderSection
-from app.schemas.token_context import TokenContext
+from app.schemas.token_usage_scope import TokenUsageScope
 from app.schemas.work_order import (
     GenerateWorkOrdersBody,
     WorkOrderCreate,
@@ -514,7 +514,7 @@ class WorkOrderService:
             )
         sections_blob = "\n\n".join(section_lines)
 
-        ctx = TokenContext(
+        ctx = TokenUsageScope(
             studio_id=studio_id,
             software_id=software_id,
             project_id=project_id,
@@ -722,7 +722,7 @@ class WorkOrderService:
         def_block = (software.definition or "").strip() or "(No software definition.)"
         sw_name = software.name
 
-        ctx = TokenContext(
+        ctx = TokenUsageScope(
             studio_id=studio_id,
             software_id=software_id,
             project_id=project_id,

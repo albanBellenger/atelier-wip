@@ -121,7 +121,7 @@ async def test_rag_empty_user_query_embeds_section_title_and_body(
     async def ready(_self: object) -> tuple[str, str, str, str]:
         return ("text-embedding-3-small", "sk-fake", "openai", "http://embed.example")
 
-    async def batch(_self: object, texts: list[str], *, context: object | None = None) -> list[list[float]]:
+    async def batch(_self: object, texts: list[str], *, usage_scope: object | None = None) -> list[list[float]]:
         captured.extend(texts)
         return [[0.02] * 1536 for _ in texts]
 
@@ -180,7 +180,7 @@ async def test_rag_includes_software_library_artifact_chunks(
     async def ready(_self: object) -> tuple[str, str, str, str]:
         return ("text-embedding-3-small", "sk-fake", "openai", "http://embed.example")
 
-    async def batch(_self: object, texts: list[str], *, context: object | None = None) -> list[list[float]]:
+    async def batch(_self: object, texts: list[str], *, usage_scope: object | None = None) -> list[list[float]]:
         return [[0.03] * 1536 for _ in texts]
 
     monkeypatch.setattr(EmbeddingService, "require_embedding_ready", ready)
@@ -236,7 +236,7 @@ async def test_build_context_with_blocks_debug_raw_matches_build_context(
     async def ready(_self: object) -> tuple[str, str, str, str]:
         return ("text-embedding-3-small", "sk-fake", "openai", "http://embed.example")
 
-    async def batch(_self: object, texts: list[str], *, context: object | None = None) -> list[list[float]]:
+    async def batch(_self: object, texts: list[str], *, usage_scope: object | None = None) -> list[list[float]]:
         return [[0.04] * 1536 for _ in texts]
 
     monkeypatch.setattr(EmbeddingService, "require_embedding_ready", ready)

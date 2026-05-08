@@ -96,7 +96,7 @@ async def test_project_chat_websocket_persists_messages() -> None:
                 self: object,
                 messages: list,
                 *,
-                context: object,
+                usage_scope: object,
                 call_type: str,
                 preferred_model: str | None = None,
                 max_history_tokens: int = 12_000,
@@ -180,8 +180,8 @@ async def test_project_chat_ws_rejects_disallowed_preferred_model() -> None:
             assert pr.status_code == 200
             local_pid = pr.json()["id"]
 
-            async def ensure_reject(self, *, context=None, call_type="chat", preferred_model=None):
-                _ = (self, context, call_type)
+            async def ensure_reject(self, *, usage_scope=None, call_type="chat", preferred_model=None):
+                _ = (self, usage_scope, call_type)
                 if preferred_model == "gpt-4o":
                     raise ApiError(
                         status_code=400,
@@ -193,7 +193,7 @@ async def test_project_chat_ws_rejects_disallowed_preferred_model() -> None:
                 self: object,
                 messages: list,
                 *,
-                context: object,
+                usage_scope: object,
                 call_type: str,
                 preferred_model: str | None = None,
                 max_history_tokens: int = 12_000,

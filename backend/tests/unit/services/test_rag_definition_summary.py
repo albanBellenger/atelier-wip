@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.schemas.token_context import TokenContext
+from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.rag_service import RAGService, SOFT_DEF_TOKEN_CAP
 
 
@@ -27,7 +27,7 @@ async def test_large_definition_summarised_and_cached(monkeypatch: pytest.Monkey
     sw = MagicMock()
     sw.id = uuid.uuid4()
     sw.definition = "W" * (SOFT_DEF_TOKEN_CAP * 4 + 50)
-    ctx = TokenContext(
+    ctx = TokenUsageScope(
         studio_id=uuid.uuid4(),
         software_id=sw.id,
         project_id=uuid.uuid4(),

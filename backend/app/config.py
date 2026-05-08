@@ -16,6 +16,11 @@ class Settings(BaseSettings):
         default=False,
         validation_alias="ATELIER_EXPOSE_INTERNAL_ERRORS",
     )
+    log_llm_prompts: bool = Field(
+        default=False,
+        validation_alias="ATELIER_LOG_LLM_PROMPTS",
+        description="When True, include full chat messages in llm_outbound_request logs (PII risk).",
+    )
     database_url: str = "postgresql+asyncpg://atelier:atelier@localhost:5432/atelier"
     jwt_secret: str = "changeme-use-a-long-random-string"
     jwt_expire_minutes: int = 10080

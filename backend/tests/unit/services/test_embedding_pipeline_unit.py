@@ -93,7 +93,7 @@ async def test_run_artifact_embedding_inserts_chunks_md() -> None:
 
     storage.get_bytes.assert_called_once_with("p")
     assert mock_session.add.call_count == 2
-    mock_emb.embed_batch.assert_awaited_once_with(["a", "b"], context=None)
+    mock_emb.embed_batch.assert_awaited_once_with(["a", "b"], usage_scope=None)
 
 
 @pytest.mark.asyncio
@@ -152,5 +152,5 @@ async def test_run_section_embedding_with_chunks() -> None:
         with patch.object(ep, "chunk_text", return_value=["only"]):
             await ep.run_section_embedding(mock_session, sid)
 
-    mock_emb.embed_batch.assert_awaited_once_with(["only"], context=None)
+    mock_emb.embed_batch.assert_awaited_once_with(["only"], usage_scope=None)
     mock_session.add.assert_called_once()

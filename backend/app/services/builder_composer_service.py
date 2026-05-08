@@ -10,7 +10,7 @@ from app.agents.builder_composer_agent import BuilderComposerAgent
 from app.exceptions import ApiError
 from app.models import Project, Software, User
 from app.schemas.builder_composer import BuilderComposerHintResponse
-from app.schemas.token_context import TokenContext
+from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.llm_service import LLMService
 
 
@@ -52,7 +52,7 @@ class BuilderComposerService:
             "input_placeholder: a single question or invitation to type in the composer "
             "(like a chat placeholder), not repeating the headline verbatim."
         )
-        ctx = TokenContext(
+        ctx = TokenUsageScope(
             studio_id=software.studio_id,
             software_id=software.id,
             project_id=project.id if project else None,

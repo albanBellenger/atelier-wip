@@ -29,7 +29,7 @@ from app.schemas.section_context_preferences import (
 from app.schemas.section_health import SectionHealthOut
 from app.schemas.section_improve import SectionImproveBody, SectionImproveOut
 from app.services.citation_health_service import CitationHealthService
-from app.schemas.token_context import TokenContext
+from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.llm_service import LLMService
 from app.services.rag_service import RAGService
 from app.services.section_context_preferences_service import (
@@ -206,13 +206,13 @@ async def post_section_improve(
     pa: ProjectAccess = Depends(require_project_member),
 ) -> SectionImproveOut:
     _ensure_project(pa, project_id)
-    ctx = TokenContext(
+    ctx = TokenUsageScope(
         studio_id=pa.studio_access.studio_id,
         software_id=pa.software.id,
         project_id=project_id,
         user_id=pa.studio_access.user.id,
     )
-    await LLMService(session).ensure_openai_llm_ready(context=ctx, call_type="chat")
+    await LLMService(session).ensure_openai_llm_ready(usage_scope=ctx, call_type="chat")
     text = await SectionService(session).improve_section_markdown(
         project_id,
         section_id,

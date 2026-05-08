@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 from app.exceptions import ApiError
 from app.models import GraphEdge, Project, Section, Software, WorkOrder
 from app.models.work_order import WorkOrderSection
-from app.schemas.token_context import TokenContext
+from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.rag_service import RAGService
 from app.services.token_tracker import record_usage
 
@@ -87,7 +87,7 @@ class McpWorkOrderService:
                     sw_id = pr_only.software_id
                     proj_for_ctx = project_id
 
-        ctx = TokenContext(
+        ctx = TokenUsageScope(
             studio_id=studio_id,
             software_id=sw_id,
             project_id=proj_for_ctx,
@@ -128,7 +128,7 @@ class McpWorkOrderService:
                 status_code=404, code="NOT_FOUND", message="Software not found"
             )
 
-        ctx = TokenContext(
+        ctx = TokenUsageScope(
             studio_id=studio_id,
             software_id=sw.id,
             project_id=pr.id,

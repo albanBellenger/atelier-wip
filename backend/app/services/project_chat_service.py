@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.project_chat_agent import ProjectChatAgent
 from app.exceptions import ApiError
 from app.models import ChatMessage, Project, Software
-from app.schemas.token_context import TokenContext
+from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.llm_service import LLMService
 from app.services.rag_service import RAGService
 
@@ -98,7 +98,7 @@ class ProjectChatService:
         user_content: str,
         chat_messages: list[dict[str, str]] | None = None,
         preferred_model: str | None = None,
-    ) -> AsyncIterator[tuple[str, TokenContext]]:
+    ) -> AsyncIterator[tuple[str, TokenUsageScope]]:
         """Yield LLM token strings; caller persists assistant message after iteration."""
         project = await self.db.get(Project, project_id)
         if project is None:

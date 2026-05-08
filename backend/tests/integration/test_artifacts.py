@@ -106,7 +106,7 @@ def fake_embed(monkeypatch: pytest.MonkeyPatch) -> None:
     async def ready(_self: object) -> tuple[str, str, str, str]:
         return ("text-embedding-3-small", "sk-fake", "openai", OPENAI_EMBEDDING_API_BASE)
 
-    async def batch(_self: object, texts: list[str], *, context: object | None = None) -> list[list[float]]:
+    async def batch(_self: object, texts: list[str], *, usage_scope: object | None = None) -> list[list[float]]:
         return [[0.0] * 1536 for _ in texts]
 
     from app.services.embedding_service import EmbeddingService

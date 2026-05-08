@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.exceptions import ApiError
 from app.models import AdminConfig, EmbeddingModelRegistry
 from app.openai_compat_urls import embeddings_url, openai_v1_base
-from app.schemas.token_context import TokenContext
+from app.schemas.token_usage_scope import TokenUsageScope
 from app.security.field_encryption import decode_admin_stored_secret
 from app.services.litellm_exception_mapping import map_litellm_exception
 from app.services.litellm_model_id import normalize_litellm_embedding_model
@@ -91,7 +91,7 @@ class EmbeddingService:
         self,
         texts: list[str],
         *,
-        context: TokenContext | None = None,
+        usage_scope: TokenUsageScope | None = None,
     ) -> list[list[float]]:
         if not texts:
             return []
@@ -100,7 +100,7 @@ class EmbeddingService:
         for start in range(0, len(texts), EMBED_BATCH):
             batch = texts[start : start + EMBED_BATCH]
             vectors = await self._litellm_embed_batch(
-                model, api_key, api_base, batch, context=context
+                model, api_key, api_base, batch, usage_scope=usage_scope
             )
             out.extend(vectors)
         return out
@@ -112,7 +112,7 @@ class EmbeddingService:
         api_base: str,
         inputs: list[str],
         *,
-        context: TokenContext | None,
+        usage_scope: TokenUsageScope | None,
     ) -> list[list[float]]:
         try:
             response = await litellm.aembedding(
@@ -168,7 +168,7 @@ class EmbeddingService:
                 message="Embedding provider returned wrong number of vectors.",
             )
 
-        if context is not None:
+        if usage_scope is not None:
             u = getattr(response, "usage", None)
             ud: dict[str, Any]
             if u is not None and hasattr(u, "model_dump"):
@@ -191,7 +191,7 @@ class EmbeddingService:
             if inp_tok > 0:
                 await record_usage(
                     self.db,
-                    context,
+                    usage_scope,
                     call_type="embedding",
                     model=model,
                     input_tokens=inp_tok,

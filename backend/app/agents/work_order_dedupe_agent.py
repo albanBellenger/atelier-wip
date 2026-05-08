@@ -6,7 +6,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.token_context import TokenContext
+from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.llm_service import LLMService
 
 # Structured backlog duplicate analysis for Work Orders (builder dedupe).
@@ -82,7 +82,7 @@ class WorkOrderDedupeAgent:
 
     async def analyze(
         self,
-        ctx: TokenContext,
+        ctx: TokenUsageScope,
         *,
         sw_name: str,
         def_block: str,
@@ -96,6 +96,6 @@ class WorkOrderDedupeAgent:
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             json_schema=WORK_ORDER_DEDUPE_JSON_SCHEMA,
-            context=ctx,
+            usage_scope=ctx,
             call_type="work_order_dedupe",
         )

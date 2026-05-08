@@ -44,6 +44,9 @@ services:
       MINIO_ROOT_USER: atelier
       MINIO_ROOT_PASSWORD: atelierdev
       MINIO_BUCKET: atelier-artifacts
+      # Forward from project `.env` so optional flags (e.g. prompt logging) reach the process;
+      # only keys listed here are set inside the container.
+      ATELIER_LOG_LLM_PROMPTS: ${ATELIER_LOG_LLM_PROMPTS:-false}
     depends_on:
       db:
         condition: service_healthy

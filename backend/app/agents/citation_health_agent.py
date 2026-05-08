@@ -6,7 +6,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.token_context import TokenContext
+from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.llm_service import LLMService
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
@@ -63,15 +63,15 @@ class CitationHealthAgent:
 
     async def analyze_section_text(
         self,
-        ctx: TokenContext,
+        ctx: TokenUsageScope,
         section_text: str,
     ) -> dict[str, Any]:
-        await self.llm.ensure_openai_llm_ready(context=ctx, call_type="citation_health")
+        await self.llm.ensure_openai_llm_ready(usage_scope=ctx, call_type="citation_health")
         user_prompt = USER_PROMPT + section_text
         return await self.llm.chat_structured(
             system_prompt=SYSTEM_PROMPT,
             user_prompt=user_prompt,
             json_schema=CITATION_HEALTH_SCHEMA,
-            context=ctx,
+            usage_scope=ctx,
             call_type="citation_health",
         )

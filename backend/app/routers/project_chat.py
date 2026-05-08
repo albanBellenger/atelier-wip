@@ -16,7 +16,7 @@ from app.schemas.project_chat import ChatHistoryResponse, ChatMessageOut
 from app.services.auth_service import AuthService
 from app.services.chat_history_window import HISTORY_TRIM_NOTICE
 from app.services.chat_room_registry import broadcast_json, register, unregister
-from app.schemas.token_context import TokenContext
+from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.llm_service import LLMService
 from app.services.project_chat_service import ProjectChatService
 
@@ -137,14 +137,14 @@ async def project_chat_websocket(
             trimmed_for_stream: list[dict[str, str]] = []
             try:
                 async with async_session_factory() as session:
-                    probe_ctx = TokenContext(
+                    probe_ctx = TokenUsageScope(
                         studio_id=studio_id_scope,
                         software_id=software_id_scope,
                         project_id=project_id,
                         user_id=user_id,
                     )
                     await LLMService(session).ensure_openai_llm_ready(
-                        context=probe_ctx,
+                        usage_scope=probe_ctx,
                         call_type="chat",
                         preferred_model=preferred_model,
                     )
@@ -159,7 +159,7 @@ async def project_chat_websocket(
                     llm_trim = LLMService(session)
                     trimmed_for_stream, trimmed = await llm_trim.trim_chat_messages_for_stream(
                         hist,
-                        context=probe_ctx,
+                        usage_scope=probe_ctx,
                         call_type="chat",
                         preferred_model=preferred_model,
                     )

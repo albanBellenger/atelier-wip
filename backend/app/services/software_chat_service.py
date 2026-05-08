@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.software_chat_agent import SoftwareChatAgent
 from app.exceptions import ApiError
 from app.models import Software, SoftwareChatMessage
-from app.schemas.token_context import TokenContext
+from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.llm_service import LLMService
 
 
@@ -103,7 +103,7 @@ class SoftwareChatService:
         user_content: str,
         preferred_model: str | None = None,
         chat_messages: list[dict[str, str]] | None = None,
-    ) -> AsyncIterator[tuple[str, TokenContext]]:
+    ) -> AsyncIterator[tuple[str, TokenUsageScope]]:
         """Yield LLM token strings; caller persists assistant message after iteration."""
         llm = LLMService(self.db)
         agent = SoftwareChatAgent(self.db, llm)

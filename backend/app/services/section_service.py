@@ -15,7 +15,7 @@ from app.exceptions import ApiError
 from app.models import Issue, Project, Section, Software, WorkOrder, WorkOrderSection
 from app.schemas.section import SectionCreate, SectionResponse, SectionUpdate
 from app.schemas.section_outline_health import SectionOutlineHealthLite
-from app.schemas.token_context import TokenContext
+from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.llm_service import LLMService
 from app.services.notification_dispatch_service import NotificationDispatchService
 from app.services.rag_service import RAGService
@@ -467,7 +467,7 @@ class SectionService:
             if current_section_plaintext is not None
             else effective_section_plaintext(s.content, s.yjs_state)
         )
-        ctx = TokenContext(
+        ctx = TokenUsageScope(
             studio_id=sw.studio_id,
             software_id=sw.id,
             project_id=project_id,

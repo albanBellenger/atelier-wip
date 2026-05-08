@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
 from app.models import Issue, Section
-from app.schemas.token_context import TokenContext
+from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.graph_service import GraphService
 from app.services.llm_service import LLMService
 
@@ -134,7 +134,7 @@ class ConflictAgent:
             )
         catalog = "\n".join(blocks)
 
-        ctx = TokenContext(
+        ctx = TokenUsageScope(
             studio_id=studio_id,
             software_id=software_id,
             project_id=project_id,
@@ -145,7 +145,7 @@ class ConflictAgent:
                 system_prompt=SYSTEM_PROMPT,
                 user_prompt=USER_PROMPT.format(catalog=catalog),
                 json_schema=CONFLICT_ANALYSIS_SCHEMA,
-                context=ctx,
+                usage_scope=ctx,
                 call_type="conflict",
             )
         except ApiError as e:

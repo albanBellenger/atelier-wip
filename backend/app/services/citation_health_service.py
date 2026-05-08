@@ -11,7 +11,7 @@ from app.exceptions import ApiError
 from app.models import Software
 from app.models.project import Project, Section
 from app.schemas.citation_health import CitationHealthOut, CitationMissingItemOut
-from app.schemas.token_context import TokenContext
+from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.llm_service import LLMService
 from app.services.section_service import effective_section_plaintext
 
@@ -49,7 +49,7 @@ class CitationHealthService:
         if software is None:
             raise ApiError(status_code=404, code="NOT_FOUND", message="Software not found")
 
-        ctx = TokenContext(
+        ctx = TokenUsageScope(
             studio_id=software.studio_id,
             software_id=software.id,
             project_id=project_id,

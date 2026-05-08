@@ -1,4 +1,4 @@
-"""Build :class:`TokenContext` for embedding ``record_usage`` from domain rows."""
+"""Build :class:`TokenUsageScope` for embedding ``record_usage`` from domain rows."""
 
 from __future__ import annotations
 
@@ -7,12 +7,12 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Artifact, Project, Section, Software
-from app.schemas.token_context import TokenContext
+from app.schemas.token_usage_scope import TokenUsageScope
 
 
-async def token_context_for_artifact(
+async def usage_scope_for_artifact(
     session: AsyncSession, artifact_id: uuid.UUID
-) -> TokenContext | None:
+) -> TokenUsageScope | None:
     art = await session.get(Artifact, artifact_id)
     if art is None:
         return None
@@ -24,7 +24,7 @@ async def token_context_for_artifact(
         sw = await session.get(Software, proj.software_id)
         if sw is None:
             return None
-        return TokenContext(
+        return TokenUsageScope(
             studio_id=sw.studio_id,
             software_id=sw.id,
             project_id=proj.id,
@@ -35,7 +35,7 @@ async def token_context_for_artifact(
         sw = await session.get(Software, lib_sw)
         if sw is None:
             return None
-        return TokenContext(
+        return TokenUsageScope(
             studio_id=sw.studio_id,
             software_id=sw.id,
             project_id=None,
@@ -43,7 +43,7 @@ async def token_context_for_artifact(
         )
     lib_st = getattr(art, "library_studio_id", None)
     if lib_st is not None:
-        return TokenContext(
+        return TokenUsageScope(
             studio_id=lib_st,
             software_id=None,
             project_id=None,
@@ -52,9 +52,9 @@ async def token_context_for_artifact(
     return None
 
 
-async def token_context_for_section(
+async def usage_scope_for_section(
     session: AsyncSession, section_id: uuid.UUID
-) -> TokenContext | None:
+) -> TokenUsageScope | None:
     sec = await session.get(Section, section_id)
     if sec is None:
         return None
@@ -67,7 +67,7 @@ async def token_context_for_section(
     sw = await session.get(Software, proj.software_id)
     if sw is None:
         return None
-    return TokenContext(
+    return TokenUsageScope(
         studio_id=sw.studio_id,
         software_id=sw.id,
         project_id=proj.id,
@@ -75,16 +75,16 @@ async def token_context_for_section(
     )
 
 
-async def token_context_for_project(
+async def usage_scope_for_project(
     session: AsyncSession, project_id: uuid.UUID
-) -> TokenContext | None:
+) -> TokenUsageScope | None:
     proj = await session.get(Project, project_id)
     if proj is None:
         return None
     sw = await session.get(Software, proj.software_id)
     if sw is None:
         return None
-    return TokenContext(
+    return TokenUsageScope(
         studio_id=sw.studio_id,
         software_id=sw.id,
         project_id=proj.id,

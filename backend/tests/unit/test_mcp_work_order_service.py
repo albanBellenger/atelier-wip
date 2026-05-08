@@ -97,7 +97,7 @@ async def test_ensure_wo_software_missing() -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_for_studio_empty_with_project_id_sets_token_context() -> None:
+async def test_list_for_studio_empty_with_project_id_sets_usage_scope() -> None:
     studio_id = uuid.uuid4()
     project_id = uuid.uuid4()
     swid = uuid.uuid4()

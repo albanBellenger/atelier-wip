@@ -13,7 +13,7 @@ import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import TokenUsage
-from app.schemas.token_context import TokenContext
+from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.llm_pricing import estimate_cost_usd_openai
 
 log = structlog.get_logger("atelier.token_tracker")
@@ -21,7 +21,7 @@ log = structlog.get_logger("atelier.token_tracker")
 
 async def record_usage(
     session: AsyncSession,
-    ctx: TokenContext,
+    usage_scope: TokenUsageScope,
     *,
     call_type: str,
     model: str,
@@ -38,11 +38,11 @@ async def record_usage(
         est = estimate_cost_usd_openai(model, input_tokens, output_tokens)
 
     row = TokenUsage(
-        studio_id=ctx.studio_id,
-        software_id=ctx.software_id,
-        project_id=ctx.project_id,
-        work_order_id=ctx.work_order_id,
-        user_id=ctx.user_id,
+        studio_id=usage_scope.studio_id,
+        software_id=usage_scope.software_id,
+        project_id=usage_scope.project_id,
+        work_order_id=usage_scope.work_order_id,
+        user_id=usage_scope.user_id,
         call_type=call_type[:32],
         model=model[:256],
         input_tokens=input_tokens,
