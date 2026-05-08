@@ -8,8 +8,7 @@ from collections.abc import AsyncIterator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.exceptions import ApiError
-from app.models import ChatMessage, Project, Software
+from app.models import ChatMessage
 from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.llm_service import LLMService
 
@@ -39,35 +38,16 @@ class ProjectChatAgent:
         self,
         *,
         project_id: uuid.UUID,
-        user_id: uuid.UUID,
         user_content: str,
+        usage_scope: TokenUsageScope,
         chat_messages: list[dict[str, str]] | None = None,
         preferred_model: str | None = None,
         rag_text: str,
     ) -> AsyncIterator[tuple[str, TokenUsageScope]]:
-        """Yield LLM token strings; caller persists assistant message after iteration."""
-        project = await self.db.get(Project, project_id)
-        if project is None:
-            raise ApiError(
-                status_code=404,
-                code="NOT_FOUND",
-                message="Project not found.",
-            )
-        software = await self.db.get(Software, project.software_id)
-        if software is None:
-            raise ApiError(
-                status_code=404,
-                code="NOT_FOUND",
-                message="Software not found.",
-            )
+        """Yield LLM token strings; caller persists assistant message after iteration.
 
-        ctx = TokenUsageScope(
-            studio_id=software.studio_id,
-            software_id=software.id,
-            project_id=project_id,
-            user_id=user_id,
-        )
-
+        Caller must load project/software, enforce access, and build ``usage_scope``.
+        """
         openai_msgs = (
             chat_messages
             if chat_messages is not None
@@ -80,13 +60,13 @@ class ProjectChatAgent:
             async for piece in self.llm.chat_stream(
                 system_prompt=system_prompt,
                 messages=openai_msgs,
-                usage_scope=ctx,
-                call_type="chat",
+                usage_scope=usage_scope,
+                call_source="chat",
                 preferred_model=preferred_model,
             ):
-                yield piece, ctx
+                yield piece, usage_scope
         except Exception:
-            yield "[error: LLM call failed]", ctx
+            yield "[error: LLM call failed]", usage_scope
 
     async def _openai_messages_for_project(
         self, project_id: uuid.UUID, max_messages: int = 40

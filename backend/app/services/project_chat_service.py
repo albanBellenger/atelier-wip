@@ -115,6 +115,13 @@ class ProjectChatService:
                 message="Software not found.",
             )
 
+        usage_scope = TokenUsageScope(
+            studio_id=software.studio_id,
+            software_id=software.id,
+            project_id=project_id,
+            user_id=user_id,
+        )
+
         rag = await RAGService(self.db).build_context(
             query=user_content,
             project_id=project_id,
@@ -125,8 +132,8 @@ class ProjectChatService:
         agent = ProjectChatAgent(self.db, llm)
         async for piece, ctx in agent.stream_assistant_tokens(
             project_id=project_id,
-            user_id=user_id,
             user_content=user_content,
+            usage_scope=usage_scope,
             chat_messages=chat_messages,
             preferred_model=preferred_model,
             rag_text=rag.text,
