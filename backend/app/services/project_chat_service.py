@@ -12,6 +12,10 @@ from app.agents.project_chat_agent import ProjectChatAgent
 from app.exceptions import ApiError
 from app.models import ChatMessage, Project, Software
 from app.schemas.token_usage_scope import TokenUsageScope
+from app.services.chat_openai_history import (
+    DEFAULT_OPENAI_CHAT_HISTORY_LIMIT,
+    fetch_openai_messages_for_project,
+)
 from app.services.llm_service import LLMService
 from app.services.rag_service import RAGService
 
@@ -79,16 +83,13 @@ class ProjectChatService:
         return msg
 
     async def openai_messages_for_project(
-        self, project_id: uuid.UUID, max_messages: int = 40
+        self,
+        project_id: uuid.UUID,
+        max_messages: int = DEFAULT_OPENAI_CHAT_HISTORY_LIMIT,
     ) -> list[dict[str, str]]:
-        stmt = (
-            select(ChatMessage)
-            .where(ChatMessage.project_id == project_id)
-            .order_by(ChatMessage.created_at.desc())
-            .limit(max_messages)
+        return await fetch_openai_messages_for_project(
+            self.db, project_id, max_messages=max_messages
         )
-        rows = list(reversed((await self.db.execute(stmt)).scalars().all()))
-        return [{"role": m.role, "content": m.content} for m in rows]
 
     async def stream_assistant_tokens(
         self,
@@ -132,7 +133,6 @@ class ProjectChatService:
         agent = ProjectChatAgent(self.db, llm)
         async for piece, ctx in agent.stream_assistant_tokens(
             project_id=project_id,
-            user_content=user_content,
             usage_scope=usage_scope,
             chat_messages=chat_messages,
             preferred_model=preferred_model,

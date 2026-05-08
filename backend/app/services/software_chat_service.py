@@ -13,6 +13,10 @@ from app.agents.software_chat_agent import SoftwareChatAgent
 from app.exceptions import ApiError
 from app.models import Software, SoftwareChatMessage
 from app.schemas.token_usage_scope import TokenUsageScope
+from app.services.chat_openai_history import (
+    DEFAULT_OPENAI_CHAT_HISTORY_LIMIT,
+    fetch_openai_messages_for_software,
+)
 from app.services.llm_service import LLMService
 
 
@@ -81,16 +85,13 @@ class SoftwareChatService:
         return msg
 
     async def openai_messages_for_software(
-        self, software_id: uuid.UUID, max_messages: int = 40
+        self,
+        software_id: uuid.UUID,
+        max_messages: int = DEFAULT_OPENAI_CHAT_HISTORY_LIMIT,
     ) -> list[dict[str, str]]:
-        stmt = (
-            select(SoftwareChatMessage)
-            .where(SoftwareChatMessage.software_id == software_id)
-            .order_by(SoftwareChatMessage.created_at.desc())
-            .limit(max_messages)
+        return await fetch_openai_messages_for_software(
+            self.db, software_id, max_messages=max_messages
         )
-        rows = list(reversed((await self.db.execute(stmt)).scalars().all()))
-        return [{"role": m.role, "content": m.content} for m in rows]
 
     async def build_software_system_prompt(self, software_id: uuid.UUID) -> str:
         llm = LLMService(self.db)
@@ -103,7 +104,6 @@ class SoftwareChatService:
         *,
         software_id: uuid.UUID,
         user_id: uuid.UUID,
-        user_content: str,
         preferred_model: str | None = None,
         chat_messages: list[dict[str, str]] | None = None,
     ) -> AsyncIterator[tuple[str, TokenUsageScope]]:
@@ -113,7 +113,6 @@ class SoftwareChatService:
         async for piece, ctx in agent.stream_assistant_tokens(
             software_id=software_id,
             user_id=user_id,
-            user_content=user_content,
             preferred_model=preferred_model,
             chat_messages=chat_messages,
         ):

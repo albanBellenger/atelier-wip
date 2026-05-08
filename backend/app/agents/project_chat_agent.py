@@ -5,11 +5,10 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import ChatMessage
 from app.schemas.token_usage_scope import TokenUsageScope
+from app.services.chat_openai_history import fetch_openai_messages_for_project
 from app.services.llm_service import LLMService
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
@@ -38,7 +37,6 @@ class ProjectChatAgent:
         self,
         *,
         project_id: uuid.UUID,
-        user_content: str,
         usage_scope: TokenUsageScope,
         chat_messages: list[dict[str, str]] | None = None,
         preferred_model: str | None = None,
@@ -51,31 +49,15 @@ class ProjectChatAgent:
         openai_msgs = (
             chat_messages
             if chat_messages is not None
-            else await self._openai_messages_for_project(project_id)
+            else await fetch_openai_messages_for_project(self.db, project_id)
         )
-        _ = user_content
         system_prompt = self.build_system_prompt(rag_text)
 
-        try:
-            async for piece in self.llm.chat_stream(
-                system_prompt=system_prompt,
-                messages=openai_msgs,
-                usage_scope=usage_scope,
-                call_source="chat",
-                preferred_model=preferred_model,
-            ):
-                yield piece, usage_scope
-        except Exception:
-            yield "[error: LLM call failed]", usage_scope
-
-    async def _openai_messages_for_project(
-        self, project_id: uuid.UUID, max_messages: int = 40
-    ) -> list[dict[str, str]]:
-        stmt = (
-            select(ChatMessage)
-            .where(ChatMessage.project_id == project_id)
-            .order_by(ChatMessage.created_at.desc())
-            .limit(max_messages)
-        )
-        rows = list(reversed((await self.db.execute(stmt)).scalars().all()))
-        return [{"role": m.role, "content": m.content} for m in rows]
+        async for piece in self.llm.chat_stream(
+            system_prompt=system_prompt,
+            messages=openai_msgs,
+            usage_scope=usage_scope,
+            call_source="chat",
+            preferred_model=preferred_model,
+        ):
+            yield piece, usage_scope

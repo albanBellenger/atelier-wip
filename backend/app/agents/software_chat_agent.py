@@ -9,8 +9,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
-from app.models import Project, Software, SoftwareChatMessage
+from app.models import Project, Software
 from app.schemas.token_usage_scope import TokenUsageScope
+from app.services.chat_openai_history import fetch_openai_messages_for_software
 from app.services.llm_service import LLMService
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
@@ -79,12 +80,10 @@ class SoftwareChatAgent:
         *,
         software_id: uuid.UUID,
         user_id: uuid.UUID,
-        user_content: str,
         preferred_model: str | None = None,
         chat_messages: list[dict[str, str]] | None = None,
     ) -> AsyncIterator[tuple[str, TokenUsageScope]]:
         """Yield LLM token strings; caller persists assistant message after iteration."""
-        _ = user_content  # retained for API parity; history includes latest user turn
         software = await self.db.get(Software, software_id)
         if software is None:
             raise ApiError(
@@ -103,30 +102,15 @@ class SoftwareChatAgent:
         openai_msgs = (
             chat_messages
             if chat_messages is not None
-            else await self._openai_messages_for_software(software_id)
+            else await fetch_openai_messages_for_software(self.db, software_id)
         )
         system_prompt = await self.build_software_system_prompt(software_id)
 
-        try:
-            async for piece in self.llm.chat_stream(
-                system_prompt=system_prompt,
-                messages=openai_msgs,
-                usage_scope=ctx,
-                call_type="chat",
-                preferred_model=preferred_model,
-            ):
-                yield piece, ctx
-        except Exception:
-            yield "[error: LLM call failed]", ctx
-
-    async def _openai_messages_for_software(
-        self, software_id: uuid.UUID, max_messages: int = 40
-    ) -> list[dict[str, str]]:
-        stmt = (
-            select(SoftwareChatMessage)
-            .where(SoftwareChatMessage.software_id == software_id)
-            .order_by(SoftwareChatMessage.created_at.desc())
-            .limit(max_messages)
-        )
-        rows = list(reversed((await self.db.execute(stmt)).scalars().all()))
-        return [{"role": m.role, "content": m.content} for m in rows]
+        async for piece in self.llm.chat_stream(
+            system_prompt=system_prompt,
+            messages=openai_msgs,
+            usage_scope=ctx,
+            call_source="chat",
+            preferred_model=preferred_model,
+        ):
+            yield piece, ctx
