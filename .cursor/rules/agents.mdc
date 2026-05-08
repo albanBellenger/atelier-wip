@@ -36,6 +36,18 @@ SYSTEM_PROMPT = """..."""
 
 USER_PROMPT = """..."""
 
+# ── Schemas ─────────────────────────────────────────────────────────────────────
+# (Include this section only when the agent uses LLMService.chat_structured.)
+THING_JSON_SCHEMA: dict[str, Any] = {
+    "name": "thing",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        ...
+    },
+}
+
+
 # ── Agent ─────────────────────────────────────────────────────────────────────
 
 class XxxAgent:
@@ -51,7 +63,7 @@ Rules:
 - Prompts must be written in English only.
 - For `chat_stream`-only agents, `USER_PROMPT` may be an empty string (user turns are in `messages`).
 - Structured agents may use `USER_PROMPT` as a format template (e.g. contains `{placeholder}`) when the final string is built with `.format(...)`.
-
+- **Structured JSON (`chat_structured`):** The OpenAI-style envelope passed as `json_schema` (`name`, `strict: True`, inner `schema` object) must be a module-level constant in **this same file**, under `# ── Schemas ──`, placed **after** the prompts block and **before** the agent class. Name it clearly (e.g. `WORK_ORDER_BATCH_JSON_SCHEMA`, `CONFLICT_ANALYSIS_SCHEMA`). Do **not** define response schemas in `llm_service.py` or in orchestrating services — only `LLMService.chat_structured()` validates and forwards what the agent supplies.
 ---
 
 ## Naming
@@ -75,7 +87,7 @@ Rules:
 - Always use `LLMService.chat_stream()` for streaming user-facing responses.
 - Never call an LLM provider SDK directly.
 - Always pass `call_type` so TokenTracker records it correctly.
-
+- Always use `LLMService.chat_structured()` for structured output (JSON schema required); the schema dict lives in this agent file (see **File structure** and structured-json rule under Prompts).
 ---
 
 ## Prompt content

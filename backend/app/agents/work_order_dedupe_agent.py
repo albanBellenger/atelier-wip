@@ -7,7 +7,55 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.token_context import TokenContext
-from app.services.llm_service import LLMService, WORK_ORDER_DEDUPE_JSON_SCHEMA
+from app.services.llm_service import LLMService
+
+# Structured backlog duplicate analysis for Work Orders (builder dedupe).
+WORK_ORDER_DEDUPE_JSON_SCHEMA: dict[str, Any] = {
+    "name": "work_order_dedupe",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "groups": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "work_order_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "rationale": {"type": "string"},
+                        "suggested_combined": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "title": {"type": "string"},
+                                "description": {"type": "string"},
+                                "implementation_guide": {"type": "string"},
+                                "acceptance_criteria": {"type": "string"},
+                            },
+                            "required": [
+                                "title",
+                                "description",
+                                "implementation_guide",
+                                "acceptance_criteria",
+                            ],
+                        },
+                    },
+                    "required": [
+                        "work_order_ids",
+                        "rationale",
+                        "suggested_combined",
+                    ],
+                },
+            },
+        },
+        "required": ["groups"],
+    },
+}
 
 SYSTEM_PROMPT_TEMPLATE = (
     "You are a technical project lead. Software: {sw_name}.\n\n"
