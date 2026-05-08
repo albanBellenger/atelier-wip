@@ -40,6 +40,56 @@ describe('SoftwareChatRoom', () => {
     vi.unstubAllEnvs()
   })
 
+  it('shows poster display name on user messages when API provides it', async () => {
+    useEmptyStudioChatModels()
+    mswServer.use(
+      http.get('http://api.test/software/sw1/chat', () =>
+        HttpResponse.json({
+          messages: [
+            {
+              id: 'm1',
+              software_id: 'sw1',
+              user_id: 'u1',
+              role: 'user',
+              content: 'Hello team',
+              created_at: '2026-01-01T00:00:00Z',
+              user_display_name: 'Jordan Lee',
+            },
+          ],
+          next_before: null,
+        }),
+      ),
+    )
+    const fakeWs = {
+      readyState: 1,
+      send: vi.fn(),
+      close: vi.fn(),
+      onopen: null as (() => void) | null,
+      onmessage: null as ((ev: { data: string }) => void) | null,
+      onclose: null as (() => void) | null,
+    }
+    vi.spyOn(ws, 'openSoftwareChatWebSocket').mockImplementation(() => {
+      queueMicrotask(() => fakeWs.onopen?.())
+      return fakeWs as unknown as WebSocket
+    })
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <Routes>
+            <Route
+              path="/"
+              element={<SoftwareChatRoom softwareId="sw1" studioId={STUDIO_ID} />}
+            />
+          </Routes>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    expect(await screen.findByText('Jordan Lee')).toBeInTheDocument()
+    expect(screen.getByText('Hello team')).toBeInTheDocument()
+  })
+
   it('loads empty history from API', async () => {
     useEmptyStudioChatModels()
     mswServer.use(

@@ -126,5 +126,8 @@ async def test_software_chat_websocket_persists_messages() -> None:
             messages = hist.json()["messages"]
             roles = [m["role"] for m in messages]
             assert "user" in roles and roles.count("assistant") >= 1
+            user_rows = [m for m in messages if m["role"] == "user"]
+            assert user_rows
+            assert user_rows[0].get("user_display_name") == "wsuser"
     finally:
         await engine.dispose()

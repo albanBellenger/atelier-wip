@@ -220,7 +220,9 @@ export function SoftwareChatRoom({
             }`}
           >
             <div className="mb-1 text-[10px] uppercase tracking-wide text-zinc-500">
-              {m.role === 'user' ? 'Member' : 'Assistant'}
+              {m.role === 'user'
+                ? (m.user_display_name?.trim() || 'Member')
+                : 'Assistant'}
             </div>
             <div className="whitespace-pre-wrap">{m.content}</div>
           </div>

@@ -60,7 +60,7 @@ async def get_software_chat_history(
         limit=limit,
     )
     return SoftwareChatHistoryResponse(
-        messages=[SoftwareChatMessageOut.model_validate(m) for m in rows],
+        messages=[SoftwareChatMessageOut.from_message(m) for m in rows],
         next_before=next_before,
     )
 

@@ -1324,6 +1324,8 @@ export interface SoftwareChatMessageRow {
   role: string
   content: string
   created_at: string
+  /** Present for user turns when the API loaded the poster's profile. */
+  user_display_name?: string | null
 }
 
 export interface SoftwareChatHistoryResponse {

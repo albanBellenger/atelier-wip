@@ -89,6 +89,7 @@ class SoftwareChatMessage(Base):
     )
 
     software = relationship("Software", back_populates="software_chat_messages")
+    user = relationship("User", foreign_keys=[user_id])
 
 
 class Issue(Base):

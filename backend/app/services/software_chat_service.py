@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.agents.software_chat_agent import SoftwareChatAgent
 from app.exceptions import ApiError
@@ -30,6 +31,7 @@ class SoftwareChatService:
         lim = max(1, min(limit, 100))
         stmt = (
             select(SoftwareChatMessage)
+            .options(selectinload(SoftwareChatMessage.user))
             .where(SoftwareChatMessage.software_id == software_id)
             .order_by(SoftwareChatMessage.created_at.desc())
             .limit(lim + 1)
@@ -44,6 +46,7 @@ class SoftwareChatService:
                 )
             stmt = (
                 select(SoftwareChatMessage)
+                .options(selectinload(SoftwareChatMessage.user))
                 .where(
                     SoftwareChatMessage.software_id == software_id,
                     SoftwareChatMessage.created_at < pivot.created_at,
