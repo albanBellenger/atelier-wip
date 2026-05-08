@@ -53,9 +53,18 @@ async def test_chat_history_empty(client: AsyncClient) -> None:
 async def test_project_chat_websocket_persists_messages() -> None:
     sfx = uuid.uuid4().hex[:8]
 
-    async def fake_stream(self, **kwargs):
-        yield "Hello"
-        yield " world"
+    async def fake_agent_stream(
+        self,
+        *,
+        project_id,
+        usage_scope,
+        chat_messages=None,
+        preferred_model=None,
+        rag_text: str = "",
+        debug_prompt_payload=None,
+    ):
+        yield "Hello", usage_scope
+        yield " world", usage_scope
 
     # TestClient runs the ASGI app on a worker thread with its own event loop. Other
     # integration tests use httpx.AsyncClient on pytest's loop; background tasks
@@ -105,8 +114,8 @@ async def test_project_chat_websocket_persists_messages() -> None:
 
             with (
                 patch(
-                    "app.services.llm_service.LLMService.chat_stream",
-                    fake_stream,
+                    "app.agents.project_chat_agent.ProjectChatAgent.stream_assistant_tokens",
+                    fake_agent_stream,
                 ),
                 patch(
                     "app.services.llm_service.LLMService.ensure_openai_llm_ready",
@@ -147,9 +156,32 @@ async def test_project_chat_websocket_persists_messages() -> None:
 async def test_project_chat_websocket_assistant_done_includes_llm_outbound_when_log_prompts() -> None:
     sfx = uuid.uuid4().hex[:8]
 
-    async def fake_stream(self, **kwargs):
-        yield "Hello"
-        yield " world"
+    async def fake_agent_stream_log(
+        self,
+        *,
+        project_id,
+        usage_scope,
+        chat_messages=None,
+        preferred_model=None,
+        rag_text: str,
+        debug_prompt_payload=None,
+    ):
+        from app.config import get_settings
+        from app.services.llm_service import serialize_outbound_chat_messages_for_debug
+
+        yield "Hello", usage_scope
+        yield " world", usage_scope
+        if debug_prompt_payload is not None and get_settings().log_llm_prompts:
+            openai_msgs = chat_messages or []
+            full_messages: list = [
+                {"role": "system", "content": "sys"},
+                *[dict(m) for m in openai_msgs],
+            ]
+            debug_prompt_payload["llm_outbound_messages"] = (
+                serialize_outbound_chat_messages_for_debug(
+                    full_messages, model="openai/gpt-4o-mini"
+                )
+            )
 
     await engine.dispose()
 
@@ -199,8 +231,8 @@ async def test_project_chat_websocket_assistant_done_includes_llm_outbound_when_
 
             with (
                 patch(
-                    "app.services.llm_service.LLMService.chat_stream",
-                    fake_stream,
+                    "app.agents.project_chat_agent.ProjectChatAgent.stream_assistant_tokens",
+                    fake_agent_stream_log,
                 ),
                 patch(
                     "app.services.llm_service.LLMService.ensure_openai_llm_ready",
@@ -209,11 +241,6 @@ async def test_project_chat_websocket_assistant_done_includes_llm_outbound_when_
                 patch(
                     "app.services.llm_service.LLMService.trim_chat_messages_for_stream",
                     _trim_skip_llm_config,
-                ),
-                patch(
-                    "app.services.llm_service.LLMService.resolved_chat_model_for_scope",
-                    new_callable=AsyncMock,
-                    return_value="openai/gpt-4o-mini",
                 ),
                 patch(
                     "app.routers.project_chat.get_settings",
@@ -254,9 +281,6 @@ async def test_project_chat_websocket_assistant_done_includes_llm_outbound_when_
 async def test_project_chat_ws_rejects_disallowed_preferred_model() -> None:
     """WS passes optional model into LLM readiness; invalid choice yields error frame."""
     sfx = uuid.uuid4().hex[:8]
-
-    async def fake_stream(self, **kwargs):
-        yield "x"
 
     await engine.dispose()
 
@@ -310,10 +334,6 @@ async def test_project_chat_ws_rejects_disallowed_preferred_model() -> None:
 
             with (
                 patch(
-                    "app.services.llm_service.LLMService.chat_stream",
-                    fake_stream,
-                ),
-                patch(
                     "app.services.llm_service.LLMService.ensure_openai_llm_ready",
                     ensure_reject,
                 ),
@@ -350,8 +370,17 @@ async def test_project_chat_ws_stream_failure_emits_error_no_assistant_row() -> 
     """Mid-stream ApiError yields structured error frame; no assistant_done or DB assistant."""
     sfx = uuid.uuid4().hex[:8]
 
-    async def fake_stream_fail(self, **kwargs):
-        yield "partial"
+    async def fake_agent_stream_fail(
+        self,
+        *,
+        project_id,
+        usage_scope,
+        chat_messages=None,
+        preferred_model=None,
+        rag_text: str = "",
+        debug_prompt_payload=None,
+    ):
+        yield "partial", usage_scope
         raise ApiError(
             status_code=502,
             code="LLM_UPSTREAM_TEST",
@@ -401,8 +430,8 @@ async def test_project_chat_ws_stream_failure_emits_error_no_assistant_row() -> 
 
             with (
                 patch(
-                    "app.services.llm_service.LLMService.chat_stream",
-                    fake_stream_fail,
+                    "app.agents.project_chat_agent.ProjectChatAgent.stream_assistant_tokens",
+                    fake_agent_stream_fail,
                 ),
                 patch(
                     "app.services.llm_service.LLMService.ensure_openai_llm_ready",

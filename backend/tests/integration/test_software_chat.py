@@ -53,9 +53,28 @@ async def test_software_chat_history_empty(client: AsyncClient) -> None:
 async def test_software_chat_websocket_persists_messages() -> None:
     sfx = uuid.uuid4().hex[:8]
 
-    async def fake_stream(self, **kwargs):
-        yield "Hi"
-        yield " team"
+    async def fake_agent_stream(
+        self,
+        *,
+        software_id,
+        user_id,
+        preferred_model=None,
+        chat_messages=None,
+        debug_prompt_payload=None,
+    ):
+        from app.models import Software
+        from app.schemas.token_usage_scope import TokenUsageScope
+
+        software = await self.db.get(Software, software_id)
+        assert software is not None
+        ctx = TokenUsageScope(
+            studio_id=software.studio_id,
+            software_id=software.id,
+            project_id=None,
+            user_id=user_id,
+        )
+        yield "Hi", ctx
+        yield " team", ctx
 
     await engine.dispose()
 
@@ -94,8 +113,8 @@ async def test_software_chat_websocket_persists_messages() -> None:
 
             with (
                 patch(
-                    "app.services.llm_service.LLMService.chat_stream",
-                    fake_stream,
+                    "app.agents.software_chat_agent.SoftwareChatAgent.stream_assistant_tokens",
+                    fake_agent_stream,
                 ),
                 patch(
                     "app.services.llm_service.LLMService.ensure_openai_llm_ready",
@@ -139,9 +158,41 @@ async def test_software_chat_websocket_persists_messages() -> None:
 async def test_software_chat_websocket_assistant_done_includes_llm_outbound_when_log_prompts() -> None:
     sfx = uuid.uuid4().hex[:8]
 
-    async def fake_stream(self, **kwargs):
-        yield "Hi"
-        yield " team"
+    async def fake_agent_stream_log(
+        self,
+        *,
+        software_id,
+        user_id,
+        preferred_model=None,
+        chat_messages=None,
+        debug_prompt_payload=None,
+    ):
+        from app.config import get_settings
+        from app.models import Software
+        from app.schemas.token_usage_scope import TokenUsageScope
+        from app.services.llm_service import serialize_outbound_chat_messages_for_debug
+
+        software = await self.db.get(Software, software_id)
+        assert software is not None
+        ctx = TokenUsageScope(
+            studio_id=software.studio_id,
+            software_id=software.id,
+            project_id=None,
+            user_id=user_id,
+        )
+        yield "Hi", ctx
+        yield " team", ctx
+        if debug_prompt_payload is not None and get_settings().log_llm_prompts:
+            openai_msgs = chat_messages or []
+            full_messages: list = [
+                {"role": "system", "content": "sys"},
+                *[dict(m) for m in openai_msgs],
+            ]
+            debug_prompt_payload["llm_outbound_messages"] = (
+                serialize_outbound_chat_messages_for_debug(
+                    full_messages, model="openai/gpt-4o-mini"
+                )
+            )
 
     await engine.dispose()
 
@@ -185,8 +236,8 @@ async def test_software_chat_websocket_assistant_done_includes_llm_outbound_when
 
             with (
                 patch(
-                    "app.services.llm_service.LLMService.chat_stream",
-                    fake_stream,
+                    "app.agents.software_chat_agent.SoftwareChatAgent.stream_assistant_tokens",
+                    fake_agent_stream_log,
                 ),
                 patch(
                     "app.services.llm_service.LLMService.ensure_openai_llm_ready",
@@ -195,11 +246,6 @@ async def test_software_chat_websocket_assistant_done_includes_llm_outbound_when
                 patch(
                     "app.services.llm_service.LLMService.trim_chat_messages_for_stream",
                     _trim_skip_llm_config,
-                ),
-                patch(
-                    "app.services.llm_service.LLMService.resolved_chat_model_for_scope",
-                    new_callable=AsyncMock,
-                    return_value="openai/gpt-4o-mini",
                 ),
                 patch(
                     "app.routers.software_chat.get_settings",
@@ -241,8 +287,27 @@ async def test_software_chat_ws_stream_failure_emits_error_no_assistant_row() ->
     """Mid-stream ApiError yields structured error frame; no assistant_done or DB assistant."""
     sfx = uuid.uuid4().hex[:8]
 
-    async def fake_stream_fail(self, **kwargs):
-        yield "partial"
+    async def fake_agent_stream_fail(
+        self,
+        *,
+        software_id,
+        user_id,
+        preferred_model=None,
+        chat_messages=None,
+        debug_prompt_payload=None,
+    ):
+        from app.models import Software
+        from app.schemas.token_usage_scope import TokenUsageScope
+
+        software = await self.db.get(Software, software_id)
+        assert software is not None
+        ctx = TokenUsageScope(
+            studio_id=software.studio_id,
+            software_id=software.id,
+            project_id=None,
+            user_id=user_id,
+        )
+        yield "partial", ctx
         raise ApiError(
             status_code=502,
             code="LLM_UPSTREAM_TEST_SW",
@@ -286,8 +351,8 @@ async def test_software_chat_ws_stream_failure_emits_error_no_assistant_row() ->
 
             with (
                 patch(
-                    "app.services.llm_service.LLMService.chat_stream",
-                    fake_stream_fail,
+                    "app.agents.software_chat_agent.SoftwareChatAgent.stream_assistant_tokens",
+                    fake_agent_stream_fail,
                 ),
                 patch(
                     "app.services.llm_service.LLMService.ensure_openai_llm_ready",

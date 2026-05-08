@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import * as api from '../services/api'
+import * as ws from '../services/ws'
 import { SoftwarePage } from './SoftwarePage'
 
 afterEach(() => {
@@ -550,5 +551,94 @@ describe('SoftwarePage', () => {
     })
     const row = screen.getByText('Handbook').closest('li')
     expect(row?.innerHTML).toContain('border-violet-500/40')
+  })
+
+  it('keeps software chat when URL has tab=chat (studio editor, after capabilities load)', async () => {
+    vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
+      items: [],
+      next_cursor: null,
+    })
+    vi.spyOn(api, 'listSoftwareArtifacts').mockResolvedValue([])
+    vi.spyOn(api, 'listStudioArtifacts').mockResolvedValue([])
+    vi.spyOn(api, 'me').mockResolvedValue(memberMe)
+    vi.spyOn(api, 'getSoftware').mockResolvedValue({
+      id: 'sw1',
+      studio_id: 's1',
+      name: 'My SW',
+      description: 'Desc',
+      definition: '# Context\nYou are assisting.',
+      git_provider: 'gitlab',
+      git_repo_url: 'https://gitlab.example.com/g/r',
+      git_branch: 'main',
+      git_token_set: true,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+    })
+    vi.spyOn(api, 'listProjects').mockResolvedValue([
+      {
+        id: 'p1',
+        software_id: 'sw1',
+        name: 'P1',
+        description: null,
+        publish_folder_slug: 'p1',
+        archived: false,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+        sections: null,
+        work_orders_done: 0,
+        work_orders_total: 0,
+        sections_count: 0,
+        last_edited_at: null,
+      },
+    ])
+    vi.spyOn(api, 'getSoftwareAttention').mockResolvedValue({
+      studio_id: 's1',
+      software_id: 'sw1',
+      counts: { all: 0, conflict: 0, drift: 0, gap: 0, update: 0 },
+      items: [],
+    })
+    vi.spyOn(api, 'getSoftwareActivity').mockResolvedValue({ items: [] })
+    vi.spyOn(api, 'getMeTokenUsage').mockResolvedValue({
+      rows: [],
+      totals: {
+        input_tokens: 1000,
+        output_tokens: 500,
+        estimated_cost_usd: '0.01',
+      },
+    })
+    vi.spyOn(api, 'getSoftwareGitHistory').mockResolvedValue({ commits: [] })
+    vi.spyOn(api, 'listMembers').mockResolvedValue([])
+    vi.spyOn(api, 'listSoftware').mockResolvedValue([
+      mockSoftwareRow('sw1', 'My SW'),
+    ])
+    vi.spyOn(api, 'getSoftwareChat').mockResolvedValue({
+      messages: [],
+      next_before: null,
+    })
+    vi.spyOn(api, 'getStudioChatLlmModels').mockResolvedValue({
+      effective_model: 'gpt-4o-mini',
+      workspace_default_model: 'gpt-4o-mini',
+      allowed_models: ['gpt-4o-mini'],
+    })
+    const fakeWs = {
+      readyState: 1,
+      send: vi.fn(),
+      close: vi.fn(),
+      onopen: null as (() => void) | null,
+      onmessage: null as ((ev: { data: string }) => void) | null,
+      onclose: null as (() => void) | null,
+    }
+    vi.spyOn(ws, 'openSoftwareChatWebSocket').mockImplementation(() => {
+      queueMicrotask(() => fakeWs.onopen?.())
+      return fakeWs as unknown as WebSocket
+    })
+
+    renderSoftware('/studios/s1/software/sw1?tab=chat')
+
+    await waitFor(() => {
+      expect(
+        screen.getByPlaceholderText(/Message the software team/i),
+      ).toBeInTheDocument()
+    })
   })
 })

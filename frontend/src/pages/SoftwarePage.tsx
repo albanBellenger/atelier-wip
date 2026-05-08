@@ -82,6 +82,7 @@ export function SoftwarePage(): ReactElement {
   }, [profileError, navigate])
 
   const access = useStudioAccess(profile, sid, sfid)
+  const { isLoadingCapabilities } = access
 
   const swQ = useQuery({
     queryKey: ['softwareOne', sid, sfid],
@@ -133,6 +134,11 @@ export function SoftwarePage(): ReactElement {
     if (profilePending || !profile) {
       return
     }
+    // While capabilities load, `isStudioEditor` is false — do not strip `tab=chat`
+    // or Builders deep-linking from home land on Overview instead of chat.
+    if (isLoadingCapabilities) {
+      return
+    }
     if (tabRaw === 'chat' && !access.isStudioEditor) {
       const next = new URLSearchParams(searchParams)
       next.delete('tab')
@@ -143,6 +149,7 @@ export function SoftwarePage(): ReactElement {
     profile,
     tabRaw,
     access.isStudioEditor,
+    isLoadingCapabilities,
     searchParams,
     setSearchParams,
   ])
