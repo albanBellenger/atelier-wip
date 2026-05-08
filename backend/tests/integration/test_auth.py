@@ -88,8 +88,24 @@ async def test_auth_register_admin_member_rbac_and_login_errors(
 async def test_admin_put_llm_provider_api_key_encrypted_at_rest(
     client: AsyncClient,
     db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Fernet at rest for registry LLM key; row stores ciphertext, not raw secret."""
+    monkeypatch.setattr(
+        "app.services.llm_connectivity_service.enrich_model_entries_from_litellm",
+        lambda entries, draft_registry_row: list(entries),
+    )
+
+    async def _probe_ok(self: object, **_kwargs: object):
+        from app.schemas.auth import AdminConnectivityResult
+
+        return AdminConnectivityResult(ok=True, message="ok", detail=None)
+
+    monkeypatch.setattr(
+        "app.services.llm_connectivity_service.LLMService.admin_connectivity_probe",
+        _probe_ok,
+    )
+
     sfx = uuid.uuid4().hex[:8]
     email = f"adm-{sfx}@example.com"
     reg = await client.post(

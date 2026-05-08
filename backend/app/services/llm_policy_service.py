@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from datetime import date, datetime, time, timezone
 from decimal import Decimal
 from uuid import UUID
@@ -21,13 +20,17 @@ from app.models import (
 )
 from app.schemas.studio_budget_overage import StudioBudgetOverageAction
 from app.schemas.studio_llm_public import StudioChatLlmModelsOut
-from app.services.llm_registry_credentials import first_registry_model, get_default_llm_registry_row
+from app.services.llm_registry_credentials import (
+    first_registry_model,
+    get_default_llm_registry_row,
+)
+from app.services.registry_models_json import model_ids_from_json, parse_models_json
 from app.services.budget_month_status import studio_overage_soft_allow
 
 
-def use_case_for_call_type(call_type: str) -> str:
-    """Map token_usage call_type to a routing use_case key."""
-    ct = (call_type or "chat").lower()
+def use_case_for_call_source(call_source: str) -> str:
+    """Map token_usage.call_source to a routing use_case key."""
+    ct = (call_source or "chat").lower()
     if ct in ("work_order_gen", "work_order_dedupe", "work_order", "mcp", "mcp_wo"):
         return "code_gen"
     if ct in ("drift", "section_drift"):
@@ -42,13 +45,23 @@ def _registry_connected(pr: LlmProviderRegistry) -> bool:
 
 
 def _models_from_registry_row(pr: LlmProviderRegistry) -> list[str]:
-    try:
-        raw = json.loads(pr.models_json or "[]")
-    except json.JSONDecodeError:
-        return []
-    if not isinstance(raw, list):
-        return []
-    return [str(m) for m in raw if isinstance(m, str) and m.strip()]
+    return model_ids_from_json(pr.models_json)
+
+
+def _max_context_tokens_for_model_id(
+    providers_all: list[LlmProviderRegistry],
+    model_id: str,
+) -> int | None:
+    want = (model_id or "").strip()
+    if not want:
+        return None
+    for pr in providers_all:
+        if not _registry_connected(pr):
+            continue
+        for entry in parse_models_json(pr.models_json):
+            if entry.id == want:
+                return entry.max_context_tokens
+    return None
 
 
 class LlmPolicyService:
@@ -59,10 +72,10 @@ class LlmPolicyService:
         self,
         *,
         studio_id: UUID,
-        call_type: str,
+        call_source: str,
     ) -> tuple[str | None, str | None]:
         """Return (effective_model_override, provider_key) or (None, None) for registry defaults."""
-        use_case = use_case_for_call_type(call_type)
+        use_case = use_case_for_call_source(call_source)
         reg_count = await self.db.scalar(
             select(func.count()).select_from(LlmProviderRegistry)
         )
@@ -135,12 +148,12 @@ class LlmPolicyService:
         self,
         *,
         studio_id: UUID,
-        call_type: str,
+        call_source: str,
     ) -> str | None:
         """Return override model id or None to use default registry model."""
         m, _pk = await self.resolve_effective_llm_route(
             studio_id=studio_id,
-            call_type=call_type,
+            call_source=call_source,
         )
         return m
 
@@ -148,7 +161,7 @@ class LlmPolicyService:
         """Models allowed for chat in this studio (connected registry + policy / routing)."""
         effective = await self.resolve_effective_model(
             studio_id=studio_id,
-            call_type="chat",
+            call_source="chat",
         )
         default_row = await get_default_llm_registry_row(self.db)
         workspace_default = first_registry_model(default_row)
@@ -218,10 +231,27 @@ class LlmPolicyService:
                             add_allowed(cand)
                             break
 
+        ref_list: list[str] = []
+
+        def add_ref(mid: str | None) -> None:
+            t = (mid or "").strip()
+            if not t or t in ref_list:
+                return
+            ref_list.append(t)
+
+        add_ref(effective)
+        add_ref(workspace_default)
+        for m in allowed:
+            add_ref(m)
+        ctx_map = {
+            mid: _max_context_tokens_for_model_id(providers_all, mid) for mid in ref_list
+        }
+
         return StudioChatLlmModelsOut(
             effective_model=effective,
             workspace_default_model=workspace_default,
             allowed_models=allowed,
+            model_max_context_tokens=ctx_map,
         )
 
     async def resolve_preferred_chat_model(

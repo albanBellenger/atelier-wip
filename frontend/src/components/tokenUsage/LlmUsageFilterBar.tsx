@@ -9,7 +9,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 
-import { KNOWN_LLM_CALL_TYPES, llmCallTypeLabel } from '../../lib/llmCallTypeLabels'
+import { KNOWN_LLM_CALL_SOURCES, llmCallSourceLabel } from '../../lib/llmCallSourceLabels'
 import type { MeResponse } from '../../services/api'
 
 export type LlmUsageFilters = {
@@ -18,7 +18,7 @@ export type LlmUsageFilters = {
   projectIds: string[]
   workOrderIds: string[]
   userIds: string[]
-  callTypes: string[]
+  callSources: string[]
   dateFrom: string
   dateTo: string
   limit: number
@@ -30,7 +30,7 @@ export type FilterPopoverKey =
   | 'software'
   | 'project'
   | 'workOrder'
-  | 'callType'
+  | 'callSource'
   | 'user'
   | 'date'
 
@@ -144,11 +144,11 @@ export function LlmUsageFilterBar(props: {
     )
   }, [workOrders, listSearch])
 
-  const callTypeFiltered = useMemo(() => {
+  const callSourceFiltered = useMemo(() => {
     const q = listSearch.trim().toLowerCase()
-    if (!q) return KNOWN_LLM_CALL_TYPES
-    return KNOWN_LLM_CALL_TYPES.filter((ct) => {
-      const label = llmCallTypeLabel(ct).toLowerCase()
+    if (!q) return KNOWN_LLM_CALL_SOURCES
+    return KNOWN_LLM_CALL_SOURCES.filter((ct) => {
+      const label = llmCallSourceLabel(ct).toLowerCase()
       return label.includes(q) || ct.toLowerCase().includes(q)
     })
   }, [listSearch])
@@ -487,14 +487,14 @@ export function LlmUsageFilterBar(props: {
             </div>
           </>
         )
-      case 'callType':
+      case 'callSource':
         return (
           <>
             <div className="mb-2 flex items-center justify-between gap-2">
               <button
                 type="button"
                 className="text-xs text-violet-400 hover:text-violet-300"
-                onClick={() => updateFilters({ callTypes: [] })}
+                onClick={() => updateFilters({ callSources: [] })}
               >
                 Clear
               </button>
@@ -508,8 +508,8 @@ export function LlmUsageFilterBar(props: {
               onChange={(e) => setListSearch(e.target.value)}
             />
             <div className="max-h-52 space-y-1 overflow-y-auto">
-              {callTypeFiltered.map((ct) => {
-                const checked = filters.callTypes.includes(ct)
+              {callSourceFiltered.map((ct) => {
+                const checked = filters.callSources.includes(ct)
                 return (
                   <label
                     key={ct}
@@ -521,15 +521,15 @@ export function LlmUsageFilterBar(props: {
                       checked={checked}
                       onChange={(e) => {
                         const next = e.target.checked
-                          ? [...filters.callTypes, ct].filter(
+                          ? [...filters.callSources, ct].filter(
                               (x, i, a) => a.indexOf(x) === i,
                             )
-                          : filters.callTypes.filter((x) => x !== ct)
-                        updateFilters({ callTypes: next })
+                          : filters.callSources.filter((x) => x !== ct)
+                        updateFilters({ callSources: next })
                       }}
                     />
                     <span className="min-w-0 break-words">
-                      {llmCallTypeLabel(ct)}
+                      {llmCallSourceLabel(ct)}
                     </span>
                   </label>
                 )
@@ -687,13 +687,13 @@ export function LlmUsageFilterBar(props: {
       </button>
       <button
         type="button"
-        ref={assignPillRef('callType')}
-        data-testid="filter-pill-call-type"
-        aria-expanded={openPopover === 'callType'}
-        className={pillBtnClass(filters.callTypes.length > 0)}
-        onClick={() => togglePopover('callType')}
+        ref={assignPillRef('callSource')}
+        data-testid="filter-pill-call-source"
+        aria-expanded={openPopover === 'callSource'}
+        className={pillBtnClass(filters.callSources.length > 0)}
+        onClick={() => togglePopover('callSource')}
       >
-        {pillLabel('Call type', filters.callTypes.length)}
+        {pillLabel('Source', filters.callSources.length)}
       </button>
       {showUserFilter ? (
         <button
@@ -772,7 +772,7 @@ export function LlmUsageFilterBar(props: {
                 filters.softwareIds.length +
                 filters.projectIds.length +
                 filters.workOrderIds.length +
-                filters.callTypes.length +
+                filters.callSources.length +
                 filters.userIds.length +
                 dateRangeSelectionCount(filters.dateFrom, filters.dateTo)
               return n > 0 ? (

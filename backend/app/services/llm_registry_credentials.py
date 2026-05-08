@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,16 +10,11 @@ from app.models import LlmProviderRegistry
 from app.openai_compat_urls import openai_v1_base
 from app.security.field_encryption import decode_admin_stored_secret
 from app.services.litellm_model_id import normalize_litellm_chat_model
+from app.services.registry_models_json import first_model_id_from_json, model_ids_from_json
 
 
 def _models_from_registry_row(pr: LlmProviderRegistry) -> list[str]:
-    try:
-        raw = json.loads(pr.models_json or "[]")
-    except json.JSONDecodeError:
-        return []
-    if not isinstance(raw, list):
-        return []
-    return [str(m) for m in raw if isinstance(m, str) and m.strip()]
+    return model_ids_from_json(pr.models_json)
 
 
 def _registry_connected(pr: LlmProviderRegistry) -> bool:
@@ -31,8 +24,7 @@ def _registry_connected(pr: LlmProviderRegistry) -> bool:
 def first_registry_model(row: LlmProviderRegistry | None) -> str | None:
     if row is None:
         return None
-    models = _models_from_registry_row(row)
-    return models[0] if models else None
+    return first_model_id_from_json(row.models_json)
 
 
 async def load_ordered_registry_providers(
@@ -89,11 +81,12 @@ async def resolve_openai_compatible_llm_credentials(
     *,
     effective_model: str,
     route_provider_key: str | None,
-) -> tuple[str, str, str]:
-    """Return ``(model_id, bearer_token, api_base)`` — ``api_base`` is OpenAI v1 root for LiteLLM.
+) -> tuple[str, str, str, LlmProviderRegistry]:
+    """Return ``(model_id, bearer_token, api_base, registry_row)``.
 
-    Credentials always come from ``llm_provider_registry`` (explicit ``route_provider_key``
-    row, or the default row when ``route_provider_key`` is unset).
+    ``api_base`` is OpenAI v1 root for LiteLLM. Credentials always come from
+    ``llm_provider_registry`` (explicit ``route_provider_key`` row, or the default row
+    when ``route_provider_key`` is unset).
     """
     model = (effective_model or "").strip()
     if not model:
@@ -132,4 +125,9 @@ async def resolve_openai_compatible_llm_credentials(
             message="Tool Admin must configure LLM model and API key.",
         )
     api_base = _api_base_for_registry_row(reg_row)
-    return normalize_litellm_chat_model(model, registry_row=reg_row), key, api_base
+    return (
+        normalize_litellm_chat_model(model, registry_row=reg_row),
+        key,
+        api_base,
+        reg_row,
+    )

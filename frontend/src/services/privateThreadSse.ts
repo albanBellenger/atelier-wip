@@ -1,5 +1,7 @@
 /** SSE parsing for private thread POST (JSON lines: token | meta, then [DONE]). */
 
+import type { LlmOutboundPromptMessage } from '../lib/llmOutboundPrompt'
+
 export interface PrivateThreadStreamMeta {
   findings?: { finding_type: string; description: string }[]
   conflicts?: { description: string }[]
@@ -8,6 +10,36 @@ export interface PrivateThreadStreamMeta {
   history_trimmed?: boolean
   trim_notice?: string
   trim_notice_message_id?: string
+  assistant_message_id?: string
+  llm_outbound_messages?: LlmOutboundPromptMessage[]
+}
+
+function normalizeLlmOutboundMessages(
+  raw: unknown,
+): LlmOutboundPromptMessage[] | undefined {
+  if (!Array.isArray(raw)) {
+    return undefined
+  }
+  const out: LlmOutboundPromptMessage[] = []
+  for (const item of raw) {
+    if (
+      item != null &&
+      typeof item === 'object' &&
+      typeof (item as { role?: unknown }).role === 'string' &&
+      typeof (item as { content?: unknown }).content === 'string'
+    ) {
+      const row: LlmOutboundPromptMessage = {
+        role: (item as { role: string }).role,
+        content: (item as { content: string }).content,
+      }
+      const tok = (item as { tokens?: unknown }).tokens
+      if (typeof tok === 'number' && Number.isFinite(tok)) {
+        row.tokens = tok
+      }
+      out.push(row)
+    }
+  }
+  return out.length > 0 ? out : undefined
 }
 
 export async function consumePrivateThreadSseBody(
@@ -47,6 +79,8 @@ export async function consumePrivateThreadSseBody(
             history_trimmed?: boolean
             trim_notice?: string
             trim_notice_message_id?: string
+            assistant_message_id?: string
+            llm_outbound_messages?: unknown
           }
           if (j.type === 'token' && j.text) {
             handlers.onToken(j.text)
@@ -76,6 +110,13 @@ export async function consumePrivateThreadSseBody(
             }
             if (typeof j.trim_notice_message_id === 'string') {
               meta.trim_notice_message_id = j.trim_notice_message_id
+            }
+            if (typeof j.assistant_message_id === 'string') {
+              meta.assistant_message_id = j.assistant_message_id
+            }
+            const outbound = normalizeLlmOutboundMessages(j.llm_outbound_messages)
+            if (outbound != null) {
+              meta.llm_outbound_messages = outbound
             }
             handlers.onMeta(meta)
           }

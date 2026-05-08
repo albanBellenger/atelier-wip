@@ -9,6 +9,7 @@ from typing import Any
 
 import litellm
 import structlog
+from litellm import token_counter as litellm_token_counter
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,7 +20,7 @@ from app.openai_compat_urls import openai_v1_base
 from app.schemas.auth import AdminConnectivityResult
 from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.chat_history_window import (
-    DEFAULT_CHAT_HISTORY_MAX_TOKENS,
+    history_trim_budget_tokens,
     trim_openai_chat_messages,
 )
 from app.services.embedding_service import EmbeddingService
@@ -34,6 +35,10 @@ from app.services.llm_registry_credentials import (
     resolve_provider_key_for_model,
 )
 from app.services.llm_policy_service import LlmPolicyService
+from app.services.registry_models_json import (
+    entry_for_litellm_model,
+    parse_models_json,
+)
 from app.services.token_tracker import record_usage
 
 log = structlog.get_logger("atelier.llm_service")
@@ -52,11 +57,61 @@ def _stringify_message_content(msg: dict[str, Any]) -> str:
     return str(raw)
 
 
+def _per_message_token_counts(
+    model: str | None, messages: list[dict[str, Any]]
+) -> list[int] | None:
+    """Per-message prompt token deltas (prefix cumulative) via LiteLLM; None if counting fails."""
+    if not model or not model.strip() or not messages:
+        return None
+    prev = 0
+    counts: list[int] = []
+    try:
+        for i in range(len(messages)):
+            prefix = messages[: i + 1]
+            cur = int(litellm_token_counter(model=model, messages=prefix))
+            delta = cur - prev
+            if delta < 0:
+                delta = 0
+            counts.append(delta)
+            prev = cur
+    except Exception:
+        log.warning(
+            "llm_outbound_token_count_failed",
+            model=model,
+            message_count=len(messages),
+        )
+        return None
+    return counts
+
+
+def serialize_outbound_chat_messages_for_debug(
+    messages: list[dict[str, Any]],
+    *,
+    model: str | None = None,
+) -> list[dict[str, Any]]:
+    """OpenAI-style role/content pairs with per-body cap (logs and client debug payloads).
+
+    When ``model`` is set, each row may include ``tokens`` (LiteLLM ``token_counter`` deltas).
+    """
+    token_counts = _per_message_token_counts(model, messages)
+    out: list[dict[str, Any]] = []
+    for idx, m in enumerate(messages):
+        role = str(m.get("role", "user"))
+        text = _stringify_message_content(m)
+        if len(text) > _MAX_LLM_LOG_MESSAGE_CHARS:
+            text = f"{text[:_MAX_LLM_LOG_MESSAGE_CHARS]}…[truncated]"
+        row: dict[str, Any] = {"role": role, "content": text}
+        if token_counts is not None and idx < len(token_counts):
+            row["tokens"] = token_counts[idx]
+        out.append(row)
+    return out
+
+
 def _log_outbound_chat_request(
     *,
     messages: list[dict[str, Any]],
     model: str,
-    call_type: str,
+    call_source: str,
     usage_scope: TokenUsageScope | None,
     stream: bool,
     json_schema_name: str | None = None,
@@ -87,7 +142,7 @@ def _log_outbound_chat_request(
             "user_id": None,
         }
     payload: dict[str, Any] = {
-        "call_type": call_type,
+        "call_source": call_source,
         "model": model,
         "stream": stream,
         "message_roles": roles,
@@ -97,14 +152,9 @@ def _log_outbound_chat_request(
     if json_schema_name is not None:
         payload["json_schema_name"] = json_schema_name
     if get_settings().log_llm_prompts:
-        out_msgs: list[dict[str, str]] = []
-        for m in messages:
-            role = str(m.get("role", "user"))
-            text = _stringify_message_content(m)
-            if len(text) > _MAX_LLM_LOG_MESSAGE_CHARS:
-                text = f"{text[:_MAX_LLM_LOG_MESSAGE_CHARS]}…[truncated]"
-            out_msgs.append({"role": role, "content": text})
-        payload["messages"] = out_msgs
+        payload["messages"] = serialize_outbound_chat_messages_for_debug(
+            messages, model=model
+        )
     log.info("llm_outbound_request", **payload)
 
 
@@ -188,21 +238,21 @@ class LLMService:
         self,
         *,
         usage_scope: TokenUsageScope,
-        call_type: str,
+        call_source: str,
         preferred_model: str | None = None,
-    ) -> tuple[str, str, str]:
+    ) -> tuple[str, str, str, LlmProviderRegistry]:
         policy = LlmPolicyService(self.db)
         await policy.assert_studio_budget(usage_scope.studio_id)
         await policy.assert_builder_budget(usage_scope.studio_id, usage_scope.user_id)
         eff_choice: str | None = None
-        if preferred_model and call_type in ("chat", "private_thread"):
+        if preferred_model and call_source in ("chat", "private_thread"):
             eff_choice = await policy.resolve_preferred_chat_model(
                 studio_id=usage_scope.studio_id,
                 preferred_model=preferred_model,
             )
         route_model, route_pk = await policy.resolve_effective_llm_route(
             studio_id=usage_scope.studio_id,
-            call_type=call_type,
+            call_source=call_source,
         )
         eff = (route_model or "").strip()
         if eff_choice:
@@ -220,7 +270,7 @@ class LLMService:
         if not route_pk and eff:
             route_pk = await resolve_provider_key_for_model(self.db, eff)
         try:
-            model, key, api_base = await resolve_openai_compatible_llm_credentials(
+            model, key, api_base, reg_row = await resolve_openai_compatible_llm_credentials(
                 self.db,
                 effective_model=eff,
                 route_provider_key=route_pk,
@@ -232,32 +282,54 @@ class LLMService:
                 detail=str(e.detail),
             )
             raise
-        return model, key, api_base
+        return model, key, api_base, reg_row
+
+    async def resolved_chat_model_for_scope(
+        self,
+        *,
+        usage_scope: TokenUsageScope,
+        call_source: str,
+        preferred_model: str | None = None,
+    ) -> str:
+        """Resolved LiteLLM model id for the same route as :meth:`chat_stream`."""
+        model, _, _, _ = await self._require_openai_config_for_usage_scope(
+            usage_scope=usage_scope,
+            call_source=call_source,
+            preferred_model=preferred_model,
+        )
+        return model
 
     async def trim_chat_messages_for_stream(
         self,
         messages: list[dict[str, Any]],
         *,
         usage_scope: TokenUsageScope,
-        call_type: str,
+        call_source: str,
         preferred_model: str | None = None,
-        max_history_tokens: int = DEFAULT_CHAT_HISTORY_MAX_TOKENS,
+        max_history_tokens: int | None = None,
     ) -> tuple[list[dict[str, Any]], bool]:
         """Trim ``messages`` (no system) to fit token budget; returns ``(msgs, trimmed)``."""
-        model, _, _ = await self._require_openai_config_for_usage_scope(
+        model, _, _, reg_row = await self._require_openai_config_for_usage_scope(
             usage_scope=usage_scope,
-            call_type=call_type,
+            call_source=call_source,
             preferred_model=preferred_model,
         )
-        return trim_openai_chat_messages(
-            messages, model=model, max_tokens=max_history_tokens
-        )
+        budget = max_history_tokens
+        if budget is None:
+            entries = parse_models_json(reg_row.models_json)
+            matched = entry_for_litellm_model(
+                entries=entries, litellm_model=model, registry_row=reg_row
+            )
+            budget = history_trim_budget_tokens(
+                matched.max_context_tokens if matched is not None else None
+            )
+        return trim_openai_chat_messages(messages, model=model, max_tokens=budget)
 
     async def ensure_openai_llm_ready(
         self,
         *,
         usage_scope: TokenUsageScope | None = None,
-        call_type: str = "chat",
+        call_source: str = "chat",
         preferred_model: str | None = None,
     ) -> None:
         """Validate Tool Admin LLM config before returning a StreamingResponse.
@@ -275,7 +347,7 @@ class LLMService:
             )
         await self._require_openai_config_for_usage_scope(
             usage_scope=usage_scope,
-            call_type=call_type,
+            call_source=call_source,
             preferred_model=preferred_model,
         )
 
@@ -286,18 +358,18 @@ class LLMService:
         user_prompt: str,
         json_schema: dict[str, Any],
         usage_scope: TokenUsageScope,
-        call_type: str,
+        call_source: str,
     ) -> dict[str, Any]:
         """Returns parsed assistant JSON object (never raw string)."""
         _validate_json_schema(json_schema)
-        model, api_key, api_base = await self._require_openai_config_for_usage_scope(
+        model, api_key, api_base, _ = await self._require_openai_config_for_usage_scope(
             usage_scope=usage_scope,
-            call_type=call_type,
+            call_source=call_source,
             preferred_model=None,
         )
         log.info(
             "llm_chat_structured_start",
-            call_type=call_type,
+            call_source=call_source,
             project_id=str(usage_scope.project_id),
         )
         messages = [
@@ -307,7 +379,7 @@ class LLMService:
         _log_outbound_chat_request(
             messages=messages,
             model=model,
-            call_type=call_type,
+            call_source=call_source,
             usage_scope=usage_scope,
             stream=False,
             json_schema_name=str(json_schema.get("name") or "").strip() or None,
@@ -342,7 +414,7 @@ class LLMService:
             await record_usage(
                 self.db,
                 usage_scope,
-                call_type=call_type,
+                call_source=call_source,
                 model=model,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
@@ -381,20 +453,20 @@ class LLMService:
         system_prompt: str,
         messages: list[dict[str, Any]],
         usage_scope: TokenUsageScope,
-        call_type: str,
+        call_source: str,
         preferred_model: str | None = None,
     ) -> AsyncIterator[str]:
         """Yield assistant token deltas (streaming). Records tokens when usage is returned."""
-        model, api_key, api_base = await self._require_openai_config_for_usage_scope(
+        model, api_key, api_base, _ = await self._require_openai_config_for_usage_scope(
             usage_scope=usage_scope,
-            call_type=call_type,
+            call_source=call_source,
             preferred_model=preferred_model,
         )
         full_messages = [{"role": "system", "content": system_prompt}, *messages]
         _log_outbound_chat_request(
             messages=full_messages,
             model=model,
-            call_type=call_type,
+            call_source=call_source,
             usage_scope=usage_scope,
             stream=True,
         )
@@ -439,7 +511,7 @@ class LLMService:
             await record_usage(
                 self.db,
                 usage_scope,
-                call_type=call_type,
+                call_source=call_source,
                 model=model,
                 input_tokens=usage_final["prompt_tokens"],
                 output_tokens=usage_final["completion_tokens"],
@@ -451,7 +523,7 @@ class LLMService:
             await record_usage(
                 self.db,
                 usage_scope,
-                call_type=call_type,
+                call_source=call_source,
                 model=model,
                 input_tokens=est_in,
                 output_tokens=est_out,
@@ -496,7 +568,7 @@ class LLMService:
         if not pk_resolved and model:
             pk_resolved = await resolve_provider_key_for_model(self.db, model)
         try:
-            model_litellm, key, api_base = await resolve_openai_compatible_llm_credentials(
+            model_litellm, key, api_base, _ = await resolve_openai_compatible_llm_credentials(
                 self.db,
                 effective_model=model,
                 route_provider_key=pk_resolved,
@@ -516,7 +588,7 @@ class LLMService:
         _log_outbound_chat_request(
             messages=probe_messages,
             model=model_litellm,
-            call_type="admin_connectivity_probe",
+            call_source="admin_connectivity_probe",
             usage_scope=None,
             stream=False,
         )

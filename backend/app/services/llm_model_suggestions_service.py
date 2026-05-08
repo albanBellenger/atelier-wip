@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any, Literal
 
 import httpx
@@ -16,6 +15,7 @@ from app.services.llm_registry_credentials import (
     get_default_llm_registry_row,
     resolve_openai_compatible_llm_credentials,
 )
+from app.services.registry_models_json import first_model_id_from_json
 
 LITELLM_MODEL_CATALOG_URL = "https://api.litellm.ai/model_catalog"
 
@@ -88,19 +88,6 @@ def parse_catalog_body(body: object) -> list[LlmModelSuggestionItem]:
     return out
 
 
-def _first_models_json_id(models_json: str) -> str | None:
-    try:
-        raw = json.loads(models_json or "[]")
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(raw, list):
-        return None
-    for m in raw:
-        if isinstance(m, str) and m.strip():
-            return m.strip()
-    return None
-
-
 class LlmModelSuggestionsService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
@@ -133,11 +120,11 @@ class LlmModelSuggestionsService:
 
         effective_model = ""
         if reg_row is not None:
-            effective_model = _first_models_json_id(reg_row.models_json) or ""
+            effective_model = first_model_id_from_json(reg_row.models_json) or ""
         if not effective_model:
             def_row = await get_default_llm_registry_row(self.db)
             if def_row is not None:
-                effective_model = _first_models_json_id(def_row.models_json) or ""
+                effective_model = first_model_id_from_json(def_row.models_json) or ""
         if not effective_model:
             effective_model = "gpt-4o-mini"
 
@@ -148,7 +135,7 @@ class LlmModelSuggestionsService:
 
         if want_upstream:
             try:
-                _norm_model, key, api_base = await resolve_openai_compatible_llm_credentials(
+                _norm_model, key, api_base, _ = await resolve_openai_compatible_llm_credentials(
                     self.db,
                     effective_model=effective_model,
                     route_provider_key=pk,

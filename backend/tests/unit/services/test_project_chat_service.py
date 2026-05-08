@@ -51,11 +51,11 @@ async def test_stream_assistant_tokens_passes_usage_scope_from_loaded_software()
         _self: Any,
         *,
         project_id: uuid.UUID,
-        user_content: str,
         usage_scope: TokenUsageScope,
         chat_messages: list[dict[str, str]] | None,
         preferred_model: str | None,
         rag_text: str,
+        debug_prompt_payload: dict[str, Any] | None = None,
     ) -> AsyncIterator[tuple[str, TokenUsageScope]]:
         captured["usage_scope"] = usage_scope
         captured["rag_text"] = rag_text

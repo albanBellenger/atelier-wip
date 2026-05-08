@@ -75,7 +75,7 @@ async def test_token_usage_scope_member_studio_admin_tool_admin_csv(
                 software_id=None,
                 project_id=None,
                 user_id=uuid.UUID(uid_m),
-                call_type="chat",
+                call_source="chat",
                 model="gpt-test",
                 input_tokens=10,
                 output_tokens=20,
@@ -86,7 +86,7 @@ async def test_token_usage_scope_member_studio_admin_tool_admin_csv(
                 software_id=None,
                 project_id=None,
                 user_id=uuid.UUID(uid_sa),
-                call_type="thread",
+                call_source="thread",
                 model="gpt-test",
                 input_tokens=5,
                 output_tokens=5,
@@ -117,7 +117,7 @@ async def test_token_usage_scope_member_studio_admin_tool_admin_csv(
     assert csv_studio.status_code == 200
     disp = csv_studio.headers.get("content-disposition") or ""
     assert "attachment" in disp.lower()
-    assert "call_type" in csv_studio.text
+    assert "call_source" in csv_studio.text
 
     token_out = await _register(client, sfx, "outsider")
     client.cookies.set("atelier_token", token_out)
@@ -171,13 +171,13 @@ async def test_token_usage_scope_member_studio_admin_tool_admin_csv(
         headers={"Accept": "text/csv"},
     )
     assert csv_me.status_code == 200
-    assert "call_type" in csv_me.text
+    assert "call_source" in csv_me.text
     assert "work_order_id" in csv_me.text.split("\n")[0]
 
     client.cookies.set("atelier_token", token_m)
     me_ct = await client.get(
         "/me/token-usage",
-        params=[("call_type", "chat"), ("call_type", "thread")],
+        params=[("call_source", "chat"), ("call_source", "thread")],
     )
     assert me_ct.status_code == 200
     assert len(me_ct.json()["rows"]) == 1
@@ -250,7 +250,7 @@ async def test_me_token_usage_project_and_work_order_filters_and_404s(
                 project_id=uuid.UUID(project_id),
                 work_order_id=None,
                 user_id=uuid.UUID(uid),
-                call_type="chat",
+                call_source="chat",
                 model="gpt-test",
                 input_tokens=7,
                 output_tokens=8,
@@ -262,7 +262,7 @@ async def test_me_token_usage_project_and_work_order_filters_and_404s(
                 project_id=uuid.UUID(project_id),
                 work_order_id=uuid.UUID(work_order_id),
                 user_id=uuid.UUID(uid),
-                call_type="thread",
+                call_source="thread",
                 model="gpt-test",
                 input_tokens=3,
                 output_tokens=4,
@@ -285,7 +285,7 @@ async def test_me_token_usage_project_and_work_order_filters_and_404s(
     )
     assert by_wo.status_code == 200
     assert len(by_wo.json()["rows"]) == 1
-    assert by_wo.json()["rows"][0]["call_type"] == "thread"
+    assert by_wo.json()["rows"][0]["call_source"] == "thread"
 
     nf_proj = await client.get(
         "/me/token-usage",
@@ -348,7 +348,7 @@ async def test_me_token_usage_budget_studio_id_cap_and_spend(
             software_id=None,
             project_id=None,
             user_id=uuid.UUID(uid_m),
-            call_type="chat",
+            call_source="chat",
             model="gpt-test",
             input_tokens=10,
             output_tokens=20,

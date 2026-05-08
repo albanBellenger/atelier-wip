@@ -1,6 +1,8 @@
 import type { ReactElement } from 'react'
 import { useEffect, useState } from 'react'
 
+import { PencilIcon } from '../../icons/PencilIcon'
+
 export type TopBarRenamePatch = {
   title?: string
   slug?: string | null
@@ -82,7 +84,7 @@ export function TopBar(props: {
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         {!editing ? (
           <>
-            <div className="flex min-w-0 items-start gap-2">
+            <div className="flex min-w-0 items-center gap-1.5">
               <h1 className="min-w-0 flex-1 truncate font-display text-lg font-medium tracking-tight text-zinc-100">
                 {title}
               </h1>
@@ -90,10 +92,12 @@ export function TopBar(props: {
                 <button
                   type="button"
                   data-testid="topbar-rename-open"
-                  className="shrink-0 rounded px-2 py-0.5 text-[11px] text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+                  aria-label="Rename section"
+                  title="Rename section"
+                  className="shrink-0 rounded p-0.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
                   onClick={openEdit}
                 >
-                  Rename
+                  <PencilIcon />
                 </button>
               ) : null}
             </div>

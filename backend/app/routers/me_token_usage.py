@@ -172,7 +172,7 @@ async def me_token_usage(
     software_id: list[UUID] | None = Query(None),
     project_id: list[UUID] | None = Query(None),
     work_order_id: list[UUID] | None = Query(None),
-    call_type: list[str] | None = Query(None),
+    call_source: list[str] | None = Query(None),
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
     budget_studio_id: UUID | None = Query(
@@ -191,9 +191,9 @@ async def me_token_usage(
     software_ids = _dedupe_ids(software_id)
     project_ids = _dedupe_ids(project_id)
     work_order_ids = _dedupe_ids(work_order_id)
-    call_types_raw = call_type or []
-    call_types_param = [
-        c.strip() for c in call_types_raw if c and str(c).strip()
+    call_sources_raw = call_source or []
+    call_sources_param = [
+        c.strip() for c in call_sources_raw if c and str(c).strip()
     ] or None
 
     await _validate_studio_filters(session, user, studio_ids)
@@ -213,7 +213,7 @@ async def me_token_usage(
         software_ids=software_ids,
         project_ids=project_ids,
         user_ids=None,
-        call_types=call_types_param,
+        call_sources=call_sources_param,
         work_order_ids=work_order_ids,
         date_from=date_from,
         date_to=date_to,

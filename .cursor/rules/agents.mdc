@@ -86,7 +86,7 @@ Rules:
 - Always use `LLMService.chat_structured()` for structured output (JSON schema required).
 - Always use `LLMService.chat_stream()` for streaming user-facing responses.
 - Never call an LLM provider SDK directly.
-- Always pass `call_type` so TokenTracker records it correctly.
+- Always pass `call_source` so TokenTracker records it correctly.
 - Always use `LLMService.chat_structured()` for structured output (JSON schema required); the schema dict lives in this agent file (see **File structure** and structured-json rule under Prompts).
 ---
 

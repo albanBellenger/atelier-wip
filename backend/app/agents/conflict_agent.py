@@ -146,7 +146,7 @@ class ConflictAgent:
                 user_prompt=USER_PROMPT.format(catalog=catalog),
                 json_schema=CONFLICT_ANALYSIS_SCHEMA,
                 usage_scope=ctx,
-                call_type="conflict",
+                call_source="conflict",
             )
         except ApiError as e:
             log.warning("conflict_llm_failed", code=e.error_code)

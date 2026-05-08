@@ -30,7 +30,7 @@ async def test_record_usage_openai_provider_adds_row_and_flushes() -> None:
         await record_usage(
             session,
             ctx,
-            call_type="chat",
+            call_source="chat",
             model="gpt-4o-mini",
             input_tokens=100,
             output_tokens=50,
@@ -42,7 +42,7 @@ async def test_record_usage_openai_provider_adds_row_and_flushes() -> None:
     added = session.add.call_args[0][0]
     assert added.studio_id == sid
     assert added.user_id == uid
-    assert added.call_type == "chat"
+    assert added.call_source == "chat"
     assert added.model == "gpt-4o-mini"
     assert added.input_tokens == 100
     assert added.output_tokens == 50
@@ -62,7 +62,7 @@ async def test_record_usage_non_openai_provider_still_estimates() -> None:
         await record_usage(
             session,
             ctx,
-            call_type="thread",
+            call_source="thread",
             model="some-model",
             input_tokens=1,
             output_tokens=2,
@@ -73,7 +73,7 @@ async def test_record_usage_non_openai_provider_still_estimates() -> None:
 
 
 @pytest.mark.asyncio
-async def test_record_usage_truncates_call_type_and_model() -> None:
+async def test_record_usage_truncates_call_source_and_model() -> None:
     session = MagicMock()
     session.flush = AsyncMock()
     ctx = TokenUsageScope(studio_id=uuid.uuid4(), user_id=uuid.uuid4())
@@ -86,11 +86,11 @@ async def test_record_usage_truncates_call_type_and_model() -> None:
         await record_usage(
             session,
             ctx,
-            call_type=long_type,
+            call_source=long_type,
             model=long_model,
             input_tokens=0,
             output_tokens=0,
         )
     row = session.add.call_args[0][0]
-    assert len(row.call_type) == 32
+    assert len(row.call_source) == 32
     assert len(row.model) == 256

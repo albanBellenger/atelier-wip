@@ -43,6 +43,7 @@ describe('StudioChatModelPicker', () => {
           effective_model: 'a',
           workspace_default_model: 'a',
           allowed_models: ['a', 'b'],
+          model_max_context_tokens: { a: 12_000, b: null },
         }),
       ),
     )
@@ -55,7 +56,9 @@ describe('StudioChatModelPicker', () => {
     )
     const sel = await screen.findByLabelText('Test model picker')
     expect(sel).toHaveValue('a')
+    expect(screen.getByRole('status', { name: /context window for a/i })).toHaveTextContent('12k')
     await user.selectOptions(sel, 'b')
     expect(sel).toHaveValue('b')
+    expect(screen.getByRole('status', { name: /context window for b/i })).toHaveTextContent('—')
   })
 })

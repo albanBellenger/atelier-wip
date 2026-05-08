@@ -114,7 +114,23 @@ async def test_admin_overview_and_activity_ok(
 async def test_admin_put_llm_provider_optional_api_base_url(
     client: AsyncClient,
     db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(
+        "app.services.llm_connectivity_service.enrich_model_entries_from_litellm",
+        lambda entries, draft_registry_row: list(entries),
+    )
+
+    async def _probe_ok(self: object, **_kwargs: object):
+        from app.schemas.auth import AdminConnectivityResult
+
+        return AdminConnectivityResult(ok=True, message="ok", detail=None)
+
+    monkeypatch.setattr(
+        "app.services.llm_connectivity_service.LLMService.admin_connectivity_probe",
+        _probe_ok,
+    )
+
     sfx = uuid.uuid4().hex[:8]
     admin_email = f"llmprov-{sfx}@example.com"
     r = await client.post(
@@ -148,7 +164,7 @@ async def test_admin_put_llm_provider_optional_api_base_url(
         "/admin/llm/providers/custom_eu",
         json={
             "display_name": "Custom EU",
-            "models": ["gpt-4o-mini"],
+            "models": [{"id": "gpt-4o-mini", "context_metadata_source": "unknown"}],
             "api_base_url": "https://eu.example.com/v1",
             "status": "connected",
             "litellm_provider_slug": "openai",
@@ -157,6 +173,8 @@ async def test_admin_put_llm_provider_optional_api_base_url(
     assert put.status_code == 200
     body = put.json()
     assert body["provider_key"] == "custom_eu"
+    assert isinstance(body["models"], list)
+    assert body["models"][0]["id"] == "gpt-4o-mini"
     assert body["litellm_provider_slug"] == "openai"
     assert body["api_base_url"] == "https://eu.example.com/v1"
     assert body.get("logo_url") is not None

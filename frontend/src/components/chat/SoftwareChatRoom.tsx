@@ -11,9 +11,16 @@ import {
   type SoftwareComposerLocationState,
 } from '../../lib/softwareComposerNav'
 import { useStudioChatModelPicker } from '../../hooks/useStudioChatModelPicker'
+import {
+  formatOutboundPromptTokenCount,
+  sumOutboundPromptTokens,
+  type LlmOutboundPromptMessage,
+} from '../../lib/llmOutboundPrompt'
 import type { SoftwareChatMessageRow } from '../../services/api'
 import { getSoftwareChat } from '../../services/api'
 import { openSoftwareChatWebSocket } from '../../services/ws'
+import { LlmOutboundPromptOverlay } from '../debug/LlmOutboundPromptOverlay'
+import { DocumentTextIcon } from '../icons/DocumentTextIcon'
 import { StudioChatModelPicker } from './StudioChatModelPicker'
 
 type WsPayload =
@@ -26,8 +33,13 @@ type WsPayload =
       created_at: string
     }
   | { type: 'assistant_token'; text: string }
-  | { type: 'assistant_done'; message_id: string; content: string }
-  | { type: 'error'; message: string }
+  | {
+      type: 'assistant_done'
+      message_id: string
+      content: string
+      llm_outbound_messages?: LlmOutboundPromptMessage[]
+    }
+  | { type: 'error'; message: string; code?: string }
 
 export interface SoftwareChatRoomProps {
   softwareId: string
@@ -50,6 +62,12 @@ export function SoftwareChatRoom({
   )
   const [streamBuf, setStreamBuf] = useState('')
   const [wsError, setWsError] = useState<string | null>(null)
+  const [llmPromptByMessageId, setLlmPromptByMessageId] = useState<
+    Record<string, LlmOutboundPromptMessage[]>
+  >({})
+  const [llmPromptOverlayMessageId, setLlmPromptOverlayMessageId] = useState<
+    string | null
+  >(null)
   const wsRef = useRef<WebSocket | null>(null)
   const pendingAutoRef = useRef<string | null>(null)
   const autoSentRef = useRef(false)
@@ -134,11 +152,21 @@ export function SoftwareChatRoom({
         return
       }
       if (msg.type === 'assistant_done') {
+        if (
+          Array.isArray(msg.llm_outbound_messages) &&
+          msg.llm_outbound_messages.length > 0
+        ) {
+          setLlmPromptByMessageId((prev) => ({
+            ...prev,
+            [msg.message_id]: msg.llm_outbound_messages ?? [],
+          }))
+        }
         setStreamBuf('')
         void qc.invalidateQueries({ queryKey: ['softwareChat', softwareId] })
         return
       }
       if (msg.type === 'error') {
+        setStreamBuf('')
         setWsError(msg.message)
         return
       }
@@ -210,7 +238,11 @@ export function SoftwareChatRoom({
         {historyQ.isError && (
           <p className="text-sm text-red-400">Could not load chat history.</p>
         )}
-        {chronological.map((m) => (
+        {chronological.map((m) => {
+          const outboundTotal = sumOutboundPromptTokens(
+            llmPromptByMessageId[m.id],
+          )
+          return (
           <div
             key={m.id}
             className={`rounded-lg px-3 py-2 text-sm ${
@@ -219,14 +251,38 @@ export function SoftwareChatRoom({
                 : 'mr-8 bg-zinc-800/80 text-zinc-200'
             }`}
           >
-            <div className="mb-1 text-[10px] uppercase tracking-wide text-zinc-500">
-              {m.role === 'user'
-                ? (m.user_display_name?.trim() || 'Member')
-                : 'Assistant'}
+            <div className="mb-1 flex items-center justify-between gap-2 text-[10px] uppercase tracking-wide text-zinc-500">
+              <span>
+                {m.role === 'user'
+                  ? (m.user_display_name?.trim() || 'Member')
+                  : 'Assistant'}
+              </span>
+              {m.role === 'assistant' &&
+              (llmPromptByMessageId[m.id]?.length ?? 0) > 0 ? (
+                <div className="flex shrink-0 items-center gap-1.5">
+                  {outboundTotal != null ? (
+                    <span
+                      className="normal-case font-mono tracking-normal text-zinc-500"
+                      title={`${outboundTotal} prompt tokens (LiteLLM)`}
+                    >
+                      {formatOutboundPromptTokenCount(outboundTotal)} tok
+                    </span>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="inline-flex shrink-0 items-center justify-center rounded border border-transparent p-0.5 text-zinc-500 hover:border-zinc-600 hover:bg-zinc-900/80 hover:text-zinc-300"
+                    aria-label="View LLM prompt"
+                    onClick={() => setLlmPromptOverlayMessageId(m.id)}
+                  >
+                    <DocumentTextIcon />
+                  </button>
+                </div>
+              ) : null}
             </div>
             <div className="whitespace-pre-wrap">{m.content}</div>
           </div>
-        ))}
+          )
+        })}
         {streamBuf ? (
           <div className="mr-8 rounded-lg bg-zinc-800/80 px-3 py-2 text-sm text-zinc-200">
             <div className="mb-1 text-[10px] uppercase tracking-wide text-zinc-500">
@@ -242,6 +298,15 @@ export function SoftwareChatRoom({
         ) : null}
         <div ref={bottomRef} />
       </div>
+      <LlmOutboundPromptOverlay
+        open={llmPromptOverlayMessageId != null}
+        onClose={() => setLlmPromptOverlayMessageId(null)}
+        messages={
+          llmPromptOverlayMessageId != null
+            ? llmPromptByMessageId[llmPromptOverlayMessageId] ?? []
+            : []
+        }
+      />
       <div className="flex flex-col gap-2 border-t border-zinc-800 p-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="shrink-0 text-[10px] uppercase tracking-wide text-zinc-500">

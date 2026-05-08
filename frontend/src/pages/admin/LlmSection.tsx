@@ -22,12 +22,14 @@ import {
   type AdminLlmProbeBody,
   type LlmProviderRegistryRow,
   type LlmProviderUpsertBody,
+  type LlmRegistryModelEntry,
   type LlmRoutingRuleRow,
   type StudioLlmPolicyRow,
   getAdminLlmDeployment,
   getAdminLlmRouting,
   getAdminStudioLlmPolicy,
   listStudios,
+  modelIdsFromEntries,
   postAdminTestLlm,
   putAdminLlmProvider,
   putAdminLlmRouting,
@@ -80,6 +82,39 @@ function parseModelIds(text: string): string[] {
     .split(/[,\n]+/)
     .map((s) => s.trim())
     .filter(Boolean)
+}
+
+function formatContextTokensCsv(models: LlmRegistryModelEntry[]): string {
+  return models.map((m) => (m.max_context_tokens != null ? String(m.max_context_tokens) : '')).join(', ')
+}
+
+function buildModelEntriesFromForm(
+  modelsText: string,
+  contextTokensText: string,
+): LlmRegistryModelEntry[] {
+  const ids = parseModelIds(modelsText)
+  const tokenParts = contextTokensText.split(/[,\n]+/).map((s) => s.trim())
+  while (tokenParts.length < ids.length) {
+    tokenParts.push('')
+  }
+  return ids.map((id, i) => {
+    const raw = tokenParts[i]
+    if (!raw) {
+      return { id, context_metadata_source: 'unknown' as const }
+    }
+    const n = parseInt(raw, 10)
+    if (!Number.isFinite(n) || n < 1) {
+      return { id, context_metadata_source: 'unknown' as const }
+    }
+    return { id, max_context_tokens: n, context_metadata_source: 'manual' as const }
+  })
+}
+
+function formatModelSummary(m: LlmRegistryModelEntry): string {
+  if (m.max_context_tokens != null) {
+    return `${m.id} (${m.max_context_tokens.toLocaleString()} tok)`
+  }
+  return m.id
 }
 
 function appendUniqueModelId(currentText: string, id: string): string {
@@ -298,6 +333,7 @@ function AddProviderModal({
   const [providerKey, setProviderKey] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [modelsText, setModelsText] = useState('')
+  const [contextTokensText, setContextTokensText] = useState('')
   const [apiBaseUrl, setApiBaseUrl] = useState('')
   const [llmApiKey, setLlmApiKey] = useState('')
   const [status, setStatus] = useState<'connected' | 'disabled' | 'needs-key'>('needs-key')
@@ -310,6 +346,7 @@ function AddProviderModal({
     setProviderKey('')
     setDisplayName('')
     setModelsText('')
+    setContextTokensText('')
     setApiBaseUrl('')
     setLlmApiKey('')
     setStatus('needs-key')
@@ -324,7 +361,7 @@ function AddProviderModal({
 
   const submit = (): void => {
     const pk = normalizeProviderKey(providerKey)
-    const models = parseModelIds(modelsText)
+    const models = buildModelEntriesFromForm(modelsText, contextTokensText)
     const name = displayName.trim()
     if (!pk || !name || models.length === 0) {
       return
@@ -456,6 +493,24 @@ function AddProviderModal({
           </div>
           <div>
             <StatLabel>
+              <label htmlFor="llm-add-context-tokens">Max context tokens (optional)</label>
+            </StatLabel>
+            <textarea
+              id="llm-add-context-tokens"
+              value={contextTokensText}
+              onChange={(e) => setContextTokensText(e.target.value)}
+              rows={2}
+              spellCheck={false}
+              placeholder="Comma-aligned with model list; leave blank to let LiteLLM fill on save"
+              className="mt-1.5 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
+            />
+            <p className="mt-1 text-[11px] text-zinc-600">
+              Non-empty values mark that position as a manual override (skips LiteLLM lookup for that
+              model&apos;s context size).
+            </p>
+          </div>
+          <div>
+            <StatLabel>
               <label htmlFor="llm-add-provider-litellm-slug">LiteLLM provider slug (optional)</label>
             </StatLabel>
             <input
@@ -571,13 +626,15 @@ function buildPolicyRows(
   const map = new Map(existing?.map((r) => [r.provider_key, r]) ?? [])
   return providers.map((p) => {
     const prev = map.get(p.provider_key)
-    const defaultModel = p.models[0] ?? null
+    const ids = modelIdsFromEntries(p.models)
+    const defaultModel = ids[0] ?? null
     return {
       provider_key: p.provider_key,
       enabled: prev?.enabled ?? false,
-      selected_model: prev?.selected_model && p.models.includes(prev.selected_model)
-        ? prev.selected_model
-        : defaultModel,
+      selected_model:
+        prev?.selected_model && ids.includes(prev.selected_model)
+          ? prev.selected_model
+          : defaultModel,
     }
   })
 }
@@ -597,6 +654,7 @@ function EditProviderModal({
 }): ReactElement | null {
   const [displayName, setDisplayName] = useState('')
   const [modelsText, setModelsText] = useState('')
+  const [contextTokensText, setContextTokensText] = useState('')
   const [apiBaseUrl, setApiBaseUrl] = useState('')
   const [llmApiKey, setLlmApiKey] = useState('')
   const [clearLlmKey, setClearLlmKey] = useState(false)
@@ -608,7 +666,8 @@ function EditProviderModal({
   useEffect(() => {
     if (!provider) return
     setDisplayName(provider.display_name)
-    setModelsText(provider.models.join(', '))
+    setModelsText(modelIdsFromEntries(provider.models).join(', '))
+    setContextTokensText(formatContextTokensCsv(provider.models))
     setApiBaseUrl(provider.api_base_url ?? '')
     setLlmApiKey('')
     setClearLlmKey(false)
@@ -627,7 +686,7 @@ function EditProviderModal({
   }
 
   const submit = (): void => {
-    const models = parseModelIds(modelsText)
+    const models = buildModelEntriesFromForm(modelsText, contextTokensText)
     const name = displayName.trim()
     if (!name || models.length === 0) {
       return
@@ -751,6 +810,24 @@ function EditProviderModal({
                 Append
               </Btn>
             </div>
+          </div>
+          <div>
+            <StatLabel>
+              <label htmlFor="llm-edit-context-tokens">Max context tokens (optional)</label>
+            </StatLabel>
+            <textarea
+              id="llm-edit-context-tokens"
+              value={contextTokensText}
+              onChange={(e) => setContextTokensText(e.target.value)}
+              rows={2}
+              spellCheck={false}
+              placeholder="Comma-aligned with model list; leave blank to let LiteLLM fill on save"
+              className="mt-1.5 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
+            />
+            <p className="mt-1 text-[11px] text-zinc-600">
+              Non-empty values mark that position as a manual override (skips LiteLLM lookup for that
+              model&apos;s context size).
+            </p>
           </div>
           <div>
             <StatLabel>
@@ -881,6 +958,7 @@ export function LlmSection(): ReactElement {
   const [studioId, setStudioId] = useState('')
   const [addOpen, setAddOpen] = useState(false)
   const [editingProvider, setEditingProvider] = useState<LlmProviderRegistryRow | null>(null)
+  const [registrySaveWarnings, setRegistrySaveWarnings] = useState<string | null>(null)
 
   const studiosQ = useQuery({
     queryKey: ['studios'],
@@ -979,8 +1057,11 @@ export function LlmSection(): ReactElement {
   const addProvider = useMutation({
     mutationFn: (args: { providerKey: string; body: LlmProviderUpsertBody }) =>
       putAdminLlmProvider(args.providerKey, args.body),
-    onSuccess: async () => {
+    onSuccess: async (data) => {
       setAddOpen(false)
+      setRegistrySaveWarnings(
+        data.save_warnings?.length ? data.save_warnings.join(' ') : null,
+      )
       await qc.invalidateQueries({ queryKey: ['admin', 'llm', 'deployment'] })
     },
   })
@@ -990,8 +1071,11 @@ export function LlmSection(): ReactElement {
   const updateRegistry = useMutation({
     mutationFn: ({ key, body }: { key: string; body: LlmProviderUpsertBody }) =>
       putAdminLlmProvider(key, body),
-    onSuccess: async () => {
+    onSuccess: async (data) => {
       setEditingProvider(null)
+      setRegistrySaveWarnings(
+        data.save_warnings?.length ? data.save_warnings.join(' ') : null,
+      )
       await qc.invalidateQueries({ queryKey: ['admin', 'llm', 'deployment'] })
     },
   })
@@ -1031,6 +1115,12 @@ export function LlmSection(): ReactElement {
 
       {policyQ.isError ? (
         <p className="text-[12px] text-rose-300">Could not load studio LLM policy.</p>
+      ) : null}
+
+      {registrySaveWarnings ? (
+        <p className="rounded-md border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-[12px] text-amber-200/90">
+          {registrySaveWarnings}
+        </p>
       ) : null}
 
       <Card
@@ -1149,9 +1239,9 @@ export function LlmSection(): ReactElement {
                           <div className="min-w-0">
                             <p
                               className="font-mono text-[10.5px] leading-snug text-zinc-300 line-clamp-3 break-words"
-                              title={p.models.join(', ')}
+                              title={p.models.map(formatModelSummary).join(', ')}
                             >
-                              {p.models.length ? p.models.join(', ') : '—'}
+                              {p.models.length ? p.models.map(formatModelSummary).join(', ') : '—'}
                             </p>
                           </div>
                           <span
@@ -1196,7 +1286,7 @@ export function LlmSection(): ReactElement {
                               size="sm"
                               disabled={testLlmMut.isPending || savingThis}
                               onClick={() => {
-                                const model = p.models[0]
+                                const model = p.models[0]?.id
                                 const trimmedBase = p.api_base_url?.trim()
                                 const body: AdminLlmProbeBody = {
                                   provider_key: p.provider_key,
@@ -1283,10 +1373,11 @@ export function LlmSection(): ReactElement {
               const row = rowsForStudio.find((r) => r.provider_key === p.provider_key)
               const enabled = Boolean(row?.enabled)
               const blocked = p.status !== 'connected'
+              const modelIds = modelIdsFromEntries(p.models)
               const modelVal =
-                row?.selected_model && p.models.includes(row.selected_model)
+                row?.selected_model && modelIds.includes(row.selected_model)
                   ? row.selected_model
-                  : (p.models[0] ?? '')
+                  : (modelIds[0] ?? '')
               return (
                 <li
                   key={p.provider_key}
@@ -1299,7 +1390,7 @@ export function LlmSection(): ReactElement {
                       {blocked ? <Pill tone="amber">{p.status}</Pill> : null}
                     </div>
                     <div className="mt-0.5 truncate font-mono text-[11px] text-zinc-500">
-                      {p.models.join(' · ')}
+                      {p.models.map(formatModelSummary).join(' · ')}
                     </div>
                   </div>
                   <select
@@ -1311,8 +1402,8 @@ export function LlmSection(): ReactElement {
                     }
                   >
                     {p.models.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
+                      <option key={m.id} value={m.id}>
+                        {formatModelSummary(m)}
                       </option>
                     ))}
                   </select>

@@ -1,8 +1,7 @@
 """Record token_usage rows after LLM calls.
 
-Dashboard totals aggregate these rows. Embedding workloads (EmbeddingService /
-embedding_pipeline) currently do not call ``record_usage``; embedding spend may be
-absent from reports until wired similarly.
+Dashboard totals aggregate these rows. Embedding workloads call ``record_usage``
+with ``call_source="embedding"`` when a usage scope is present.
 """
 
 from __future__ import annotations
@@ -23,7 +22,7 @@ async def record_usage(
     session: AsyncSession,
     usage_scope: TokenUsageScope,
     *,
-    call_type: str,
+    call_source: str,
     model: str,
     input_tokens: int,
     output_tokens: int,
@@ -43,7 +42,7 @@ async def record_usage(
         project_id=usage_scope.project_id,
         work_order_id=usage_scope.work_order_id,
         user_id=usage_scope.user_id,
-        call_type=call_type[:32],
+        call_source=call_source[:32],
         model=model[:256],
         input_tokens=input_tokens,
         output_tokens=output_tokens,
@@ -53,7 +52,7 @@ async def record_usage(
     await session.flush()
     log.debug(
         "token_usage_recorded",
-        call_type=call_type,
+        call_source=call_source,
         model=model,
         input_tokens=input_tokens,
         output_tokens=output_tokens,

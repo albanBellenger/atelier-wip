@@ -94,7 +94,7 @@ async def stream_private_thread_reply(
     )
     await LLMService(session).ensure_openai_llm_ready(
         usage_scope=ctx,
-        call_type="chat",
+        call_source="chat",
         preferred_model=body.preferred_model,
     )
     svc = PrivateThreadService(session)

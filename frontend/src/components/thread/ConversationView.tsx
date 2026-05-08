@@ -5,8 +5,14 @@ import remarkGfm from 'remark-gfm'
 import { toast } from 'sonner'
 
 import type { PatchProposalMeta } from '../../lib/sectionPatchApply'
+import {
+  formatOutboundPromptTokenCount,
+  sumOutboundPromptTokens,
+  type LlmOutboundPromptMessage,
+} from '../../lib/llmOutboundPrompt'
 import type { PrivateThreadMessage } from '../../services/api'
 import { AssistantProposalCard } from './AssistantProposalCard'
+import { DocumentTextIcon } from '../icons/DocumentTextIcon'
 
 async function copyMarkdownToClipboard(text: string): Promise<void> {
   try {
@@ -50,6 +56,8 @@ export function ConversationView(props: {
   findings: { finding_type: string; description: string }[]
   err: string | null
   bottomRef: RefObject<HTMLDivElement | null>
+  llmPromptByMessageId?: Record<string, LlmOutboundPromptMessage[]>
+  onOpenLlmPrompt?: (messageId: string) => void
   onApplyPatch: () => void
   onDismissPatch: () => void
   onViewPatchDiff: () => void
@@ -69,6 +77,8 @@ export function ConversationView(props: {
     findings,
     err,
     bottomRef,
+    llmPromptByMessageId = {},
+    onOpenLlmPrompt,
     onApplyPatch,
     onDismissPatch,
     onViewPatchDiff,
@@ -157,7 +167,11 @@ export function ConversationView(props: {
           /append, /replace, or /edit.
         </div>
       ) : null}
-      {messages.map((m: PrivateThreadMessage, i: number) => (
+      {messages.map((m: PrivateThreadMessage, i: number) => {
+        const outboundPromptTotal = sumOutboundPromptTokens(
+          llmPromptByMessageId[m.id],
+        )
+        return (
         <div
           key={m.id}
           className={`flex w-full min-w-0 flex-col ${
@@ -203,7 +217,31 @@ export function ConversationView(props: {
                 >
                   {assistantLabel}
                 </p>
-                <CopyMarkdownButton markdown={m.content} />
+                <div className="flex shrink-0 items-center gap-1">
+                  {(llmPromptByMessageId[m.id]?.length ?? 0) > 0 &&
+                  onOpenLlmPrompt != null ? (
+                    <>
+                      {outboundPromptTotal != null ? (
+                        <span
+                          className="font-mono text-[10px] text-zinc-500"
+                          title={`${outboundPromptTotal} prompt tokens (LiteLLM)`}
+                        >
+                          {formatOutboundPromptTokenCount(outboundPromptTotal)}{' '}
+                          tok
+                        </span>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => onOpenLlmPrompt(m.id)}
+                        className="inline-flex items-center justify-center rounded-md border border-transparent p-0.5 text-zinc-500 hover:border-zinc-700 hover:bg-zinc-900/80 hover:text-zinc-300"
+                        aria-label="View LLM prompt"
+                      >
+                        <DocumentTextIcon />
+                      </button>
+                    </>
+                  ) : null}
+                  <CopyMarkdownButton markdown={m.content} />
+                </div>
               </div>
               <div
                 className={
@@ -233,7 +271,8 @@ export function ConversationView(props: {
               </div>
             )}
         </div>
-      ))}
+      );
+      })}
       {liveTrimNotice ? (
         <div className="flex min-w-0 flex-col items-start">
           <p className="mb-1 text-xs font-medium text-zinc-500">{assistantLabel}</p>

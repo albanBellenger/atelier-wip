@@ -21,6 +21,7 @@ import {
   getAdminStudio,
   getAdminStudioLlmPolicy,
   listAdminStudios,
+  modelIdsFromEntries,
   postAdminStudio,
   putAdminStudioLlmPolicy,
 } from '../../services/api'
@@ -51,12 +52,13 @@ function buildPolicyRows(
   const map = new Map(existing?.map((r) => [r.provider_key, r]) ?? [])
   return providers.map((p) => {
     const prev = map.get(p.provider_key)
-    const defaultModel = p.models[0] ?? null
+    const ids = modelIdsFromEntries(p.models)
+    const defaultModel = ids[0] ?? null
     return {
       provider_key: p.provider_key,
       enabled: prev?.enabled ?? false,
       selected_model:
-        prev?.selected_model && p.models.includes(prev.selected_model)
+        prev?.selected_model && ids.includes(prev.selected_model)
           ? prev.selected_model
           : defaultModel,
     }

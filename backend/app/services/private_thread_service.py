@@ -11,12 +11,13 @@ from typing import Any, Literal, cast
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.exceptions import ApiError
 from app.models import PrivateThread, Project, Section, Software, ThreadMessage
 from app.schemas.private_thread import PrivateThreadStreamBody
 from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.chat_history_window import HISTORY_TRIM_NOTICE
-from app.services.llm_service import LLMService
+from app.services.llm_service import LLMService, serialize_outbound_chat_messages_for_debug
 from app.services.private_thread_selection import (
     excerpt_block_for_rag,
     validate_selection_against_snapshot,
@@ -197,7 +198,7 @@ async def _stream_main_reply(
             system_prompt=system_prompt,
             messages=openai_msgs,
             usage_scope=ctx,
-            call_type="private_thread",
+            call_source="private_thread",
             preferred_model=preferred_model,
         ):
             yield piece
@@ -230,7 +231,7 @@ async def _scan_for_findings(
             ),
             json_schema=THREAD_FINDINGS_JSON_SCHEMA,
             usage_scope=ctx,
-            call_type="thread_conflict_scan",
+            call_source="thread_conflict_scan",
         )
     except ApiError:
         return []
@@ -278,7 +279,7 @@ async def _build_patch_proposal(
                 user_prompt=patch_prompt,
                 json_schema=THREAD_PATCH_APPEND_SCHEMA,
                 usage_scope=ctx,
-                call_type="thread_patch_append",
+                call_source="thread_patch_append",
             )
             return _normalize_patch_proposal(
                 "append",
@@ -295,7 +296,7 @@ async def _build_patch_proposal(
                 user_prompt=patch_prompt,
                 json_schema=THREAD_PATCH_REPLACE_SCHEMA,
                 usage_scope=ctx,
-                call_type="thread_patch_replace",
+                call_source="thread_patch_replace",
             )
             return _normalize_patch_proposal(
                 "replace_selection",
@@ -311,7 +312,7 @@ async def _build_patch_proposal(
             user_prompt=patch_prompt,
             json_schema=THREAD_PATCH_EDIT_SCHEMA,
             usage_scope=ctx,
-            call_type="thread_patch_edit",
+            call_source="thread_patch_edit",
         )
         return _normalize_patch_proposal(
             "edit", raw_patch, snapshot=effective_snap, selection=selection_triple
@@ -500,7 +501,7 @@ class PrivateThreadService:
         openai_msgs, history_trimmed = await llm.trim_chat_messages_for_stream(
             openai_msgs,
             usage_scope=ctx,
-            call_type="chat",
+            call_source="chat",
             preferred_model=preferred_model,
         )
         if history_trimmed:
@@ -564,6 +565,11 @@ class PrivateThreadService:
             )
         system_prompt = persona + rag_text + excerpt_extra
 
+        full_messages_for_debug: list[dict[str, Any]] = [
+            {"role": "system", "content": system_prompt},
+            *[dict(m) for m in openai_msgs],
+        ]
+
         stream_state: dict[str, Any] = {}
         buf: list[str] = []
         async for piece in _stream_main_reply(
@@ -595,21 +601,24 @@ class PrivateThreadService:
         findings_list: list[ThreadFinding] = []
         appendix = ""
         full_final = full
+        last_main_assistant_id: uuid.UUID | None = None
 
         skip_conflict_scan = command == "improve"
 
         if not stream_failed and full.strip():
             if skip_conflict_scan:
                 full_final = full
+                main_asst_id = uuid.uuid4()
                 self.db.add(
                     ThreadMessage(
-                        id=uuid.uuid4(),
+                        id=main_asst_id,
                         thread_id=thread.id,
                         role="assistant",
                         content=full_final,
                     )
                 )
                 await self.db.flush()
+                last_main_assistant_id = main_asst_id
             else:
                 findings_list = await _scan_for_findings(
                     llm,
@@ -620,15 +629,17 @@ class PrivateThreadService:
                 appendix = _findings_appendix(findings_list)
                 full_final = f"{full}\n\n{appendix}" if appendix else full
 
+                main_asst_id = uuid.uuid4()
                 self.db.add(
                     ThreadMessage(
-                        id=uuid.uuid4(),
+                        id=main_asst_id,
                         thread_id=thread.id,
                         role="assistant",
                         content=full_final,
                     )
                 )
                 await self.db.flush()
+                last_main_assistant_id = main_asst_id
 
                 if appendix:
                     for piece in _chunk_text_for_sse(appendix):
@@ -654,16 +665,31 @@ class PrivateThreadService:
             )
 
         if not stream_failed:
-            meta = json.dumps(
-                {
-                    "type": "meta",
-                    "findings": [f.as_dict() for f in findings_list],
-                    "conflicts": conflicts_out,
-                    "context_truncated": context_truncated,
-                    "history_trimmed": history_trimmed,
-                    "patch_proposal": patch_proposal,
-                }
-            )
+            meta_body: dict[str, Any] = {
+                "type": "meta",
+                "findings": [f.as_dict() for f in findings_list],
+                "conflicts": conflicts_out,
+                "context_truncated": context_truncated,
+                "history_trimmed": history_trimmed,
+                "patch_proposal": patch_proposal,
+            }
+            if last_main_assistant_id is not None:
+                meta_body["assistant_message_id"] = str(last_main_assistant_id)
+            if (
+                get_settings().log_llm_prompts
+                and last_main_assistant_id is not None
+            ):
+                resolved_model = await llm.resolved_chat_model_for_scope(
+                    usage_scope=ctx,
+                    call_source="private_thread",
+                    preferred_model=preferred_model,
+                )
+                meta_body["llm_outbound_messages"] = (
+                    serialize_outbound_chat_messages_for_debug(
+                        full_messages_for_debug, model=resolved_model
+                    )
+                )
+            meta = json.dumps(meta_body)
             yield f"data: {meta}\n\n".encode()
         else:
             meta = json.dumps(

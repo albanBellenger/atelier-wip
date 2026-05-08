@@ -48,7 +48,7 @@ describe('LlmUsagePage', () => {
     ).toBeInTheDocument()
     expect(
       screen.getByRole('button', {
-        name: 'Filter usage by studio, software, project, work order, call type, and dates.',
+        name: 'Filter usage by studio, software, project, work order, LLM source, and dates.',
       }),
     ).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /back to home/i })).not.toBeInTheDocument()

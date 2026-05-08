@@ -17,7 +17,7 @@ import {
   YAxis,
 } from 'recharts'
 
-import { llmCallTypeLabel } from '../../lib/llmCallTypeLabels'
+import { llmCallSourceLabel } from '../../lib/llmCallSourceLabels'
 import { deriveLlmUsageReportMode } from '../../lib/llmUsageReportMode'
 import {
   type FilterPopoverKey,
@@ -87,7 +87,7 @@ function filtersToSearchParams(f: {
   projectIds: string[]
   workOrderIds: string[]
   userIds: string[]
-  callTypes: string[]
+  callSources: string[]
   dateFrom: string
   dateTo: string
   limit: number
@@ -99,7 +99,7 @@ function filtersToSearchParams(f: {
   for (const id of f.projectIds) sp.append('project_id', id)
   for (const id of f.workOrderIds) sp.append('work_order_id', id)
   for (const id of f.userIds) sp.append('user_id', id)
-  for (const c of f.callTypes) sp.append('call_type', c)
+  for (const c of f.callSources) sp.append('call_source', c)
   if (f.dateFrom.trim()) sp.set('date_from', f.dateFrom.trim())
   if (f.dateTo.trim()) sp.set('date_to', f.dateTo.trim())
   sp.set('limit', String(f.limit))
@@ -114,7 +114,7 @@ function parseFiltersFromSearch(sp: URLSearchParams): {
   projectIds: string[]
   workOrderIds: string[]
   userIds: string[]
-  callTypes: string[]
+  callSources: string[]
   dateFrom: string
   dateTo: string
   limit: number
@@ -126,7 +126,7 @@ function parseFiltersFromSearch(sp: URLSearchParams): {
     projectIds: readMultiParam(sp, 'project_id'),
     workOrderIds: readMultiParam(sp, 'work_order_id'),
     userIds: readMultiParam(sp, 'user_id'),
-    callTypes: readMultiParam(sp, 'call_type'),
+    callSources: readMultiParam(sp, 'call_source'),
     dateFrom: sp.get('date_from')?.trim() ?? '',
     dateTo: sp.get('date_to')?.trim() ?? '',
     limit: Math.min(5000, Math.max(1, Number(sp.get('limit')) || 100)),
@@ -140,7 +140,7 @@ function buildApiParams(f: {
   projectIds: string[]
   workOrderIds: string[]
   userIds: string[]
-  callTypes: string[]
+  callSources: string[]
   dateFrom: string
   dateTo: string
   limit: number
@@ -152,7 +152,7 @@ function buildApiParams(f: {
   if (f.projectIds.length) p.project_id = f.projectIds
   if (f.workOrderIds.length) p.work_order_id = f.workOrderIds
   if (f.userIds.length) p.user_id = f.userIds
-  if (f.callTypes.length) p.call_type = f.callTypes
+  if (f.callSources.length) p.call_source = f.callSources
   if (f.dateFrom.trim()) p.date_from = f.dateFrom.trim()
   if (f.dateTo.trim()) p.date_to = f.dateTo.trim()
   return p
@@ -504,7 +504,7 @@ export function LlmUsageReportPanel(props: {
               <thead className="border-b border-zinc-800 bg-zinc-900/60 text-[10px] uppercase text-zinc-500">
                 <tr>
                   <th className="p-2">When</th>
-                  <th className="p-2">Call</th>
+                  <th className="p-2">Source</th>
                   <th className="p-2">Model</th>
                   <th className="p-2">In</th>
                   <th className="p-2">Out</th>
@@ -522,8 +522,8 @@ export function LlmUsageReportPanel(props: {
                     <td className="whitespace-nowrap p-2 text-zinc-500">
                       {new Date(r.created_at).toLocaleString()}
                     </td>
-                    <td className="p-2" title={r.call_type}>
-                      {llmCallTypeLabel(r.call_type)}
+                    <td className="p-2" title={r.call_source}>
+                      {llmCallSourceLabel(r.call_source)}
                     </td>
                     <td className="max-w-[140px] truncate p-2">{r.model}</td>
                     <td className="p-2">{r.input_tokens}</td>

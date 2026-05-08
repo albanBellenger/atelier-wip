@@ -17,7 +17,7 @@ class TokenUsageRowOut(BaseModel):
     project_id: UUID | None
     work_order_id: UUID | None
     user_id: UUID | None
-    call_type: str
+    call_source: str
     model: str
     input_tokens: int
     output_tokens: int

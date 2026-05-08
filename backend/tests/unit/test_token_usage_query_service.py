@@ -29,7 +29,7 @@ async def test_totals_for_filtered_empty_db_cost_is_zero_decimal() -> None:
         software_ids=None,
         project_ids=None,
         user_ids=None,
-        call_types=["mcp"],
+        call_sources=["mcp"],
         work_order_ids=None,
         date_from=None,
         date_to=None,
@@ -60,7 +60,7 @@ async def test_totals_for_filtered_preserves_non_none_cost() -> None:
         software_ids=None,
         project_ids=None,
         user_ids=None,
-        call_types=None,
+        call_sources=None,
         work_order_ids=None,
         date_from=None,
         date_to=None,
@@ -85,7 +85,7 @@ async def test_totals_for_filtered_scope_self_and_dates() -> None:
         software_ids=[uuid.uuid4()],
         project_ids=[uuid.uuid4()],
         user_ids=[uuid.uuid4()],
-        call_types=["chat", "thread"],
+        call_sources=["chat", "thread"],
         work_order_ids=[uuid.uuid4()],
         date_from=date(2026, 1, 1),
         date_to=date(2026, 1, 31),
@@ -94,7 +94,7 @@ async def test_totals_for_filtered_scope_self_and_dates() -> None:
 
 
 @pytest.mark.asyncio
-async def test_totals_for_filtered_single_call_type_branch() -> None:
+async def test_totals_for_filtered_single_call_source_branch() -> None:
     session = MagicMock()
     exec_result = MagicMock()
     exec_result.one.return_value = (0, 0, None)
@@ -109,7 +109,7 @@ async def test_totals_for_filtered_single_call_type_branch() -> None:
         software_ids=None,
         project_ids=None,
         user_ids=None,
-        call_types=["  chat  "],
+        call_sources=["  chat  "],
         work_order_ids=None,
         date_from=None,
         date_to=None,
@@ -118,7 +118,7 @@ async def test_totals_for_filtered_single_call_type_branch() -> None:
 
 
 @pytest.mark.asyncio
-async def test_totals_for_filtered_empty_call_types_list_no_filter() -> None:
+async def test_totals_for_filtered_empty_call_sources_list_no_filter() -> None:
     session = MagicMock()
     exec_result = MagicMock()
     exec_result.one.return_value = (0, 0, None)
@@ -133,7 +133,7 @@ async def test_totals_for_filtered_empty_call_types_list_no_filter() -> None:
         software_ids=None,
         project_ids=None,
         user_ids=None,
-        call_types=[],
+        call_sources=[],
         work_order_ids=None,
         date_from=None,
         date_to=None,
@@ -162,7 +162,7 @@ async def test_list_rows_returns_rows_and_totals() -> None:
         software_ids=None,
         project_ids=None,
         user_ids=None,
-        call_types=None,
+        call_sources=None,
         work_order_ids=None,
         date_from=None,
         date_to=None,
@@ -183,7 +183,7 @@ def test_rows_to_csv_with_null_optionals_and_naive_created_at() -> None:
         project_id=None,
         work_order_id=None,
         user_id=None,
-        call_type="x",
+        call_source="x",
         model="m",
         input_tokens=1,
         output_tokens=2,
@@ -195,7 +195,7 @@ def test_rows_to_csv_with_null_optionals_and_naive_created_at() -> None:
     assert str(vid) in csv_out
     assert csv_out.count(",") >= 10
     lines = csv_out.strip().split("\n")
-    assert "work_order_id" in lines[0]
+    assert "call_source" in lines[0]
 
 
 def test_rows_to_csv_with_timezone_aware_created_at() -> None:
@@ -209,7 +209,7 @@ def test_rows_to_csv_with_timezone_aware_created_at() -> None:
         project_id=None,
         work_order_id=None,
         user_id=uid,
-        call_type="chat",
+        call_source="chat",
         model="gpt-test",
         input_tokens=3,
         output_tokens=4,

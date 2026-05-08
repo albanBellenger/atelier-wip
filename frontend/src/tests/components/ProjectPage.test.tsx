@@ -6,6 +6,7 @@ import { Toaster } from 'sonner'
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 
 import * as api from '../../services/api'
+import * as ws from '../../services/ws'
 import { ProjectPage } from '../../pages/ProjectPage'
 
 function mockProjectLandingApis(): void {
@@ -325,6 +326,84 @@ describe('ProjectPage landing layout', () => {
     expect(within(header).getByText('SW')).toBeInTheDocument()
     expect(within(header).getByText('v2.0 Redesign')).toBeInTheDocument()
     expect(screen.getByText('Ship the new portal.')).toBeInTheDocument()
+  })
+
+  it('keeps project chat when URL has tab=chat (studio editor, after capabilities load)', async () => {
+    vi.spyOn(api, 'me').mockResolvedValue({
+      user: {
+        id: 'u1',
+        email: 'a@b.com',
+        display_name: 'A',
+        is_platform_admin: false,
+      },
+      studios: [
+        { studio_id: 's1', studio_name: 'S', role: 'studio_member' },
+      ],
+      cross_studio_grants: [],
+    })
+    vi.spyOn(api, 'getProject').mockResolvedValue({
+      id: 'p1',
+      software_id: 'sw1',
+      name: 'Proj',
+      description: null,
+      publish_folder_slug: 'proj',
+      archived: false,
+      created_at: '',
+      updated_at: '',
+      work_orders_done: 0,
+      work_orders_total: 0,
+      sections_count: 0,
+      last_edited_at: null,
+      sections: [],
+    })
+    vi.spyOn(api, 'getProjectChat').mockResolvedValue({
+      messages: [],
+      next_before: null,
+    })
+    vi.spyOn(api, 'getStudioChatLlmModels').mockResolvedValue({
+      effective_model: 'gpt-4o-mini',
+      workspace_default_model: 'gpt-4o-mini',
+      allowed_models: ['gpt-4o-mini'],
+    })
+    const fakeWs = {
+      readyState: 1,
+      send: vi.fn(),
+      close: vi.fn(),
+      onopen: null as (() => void) | null,
+      onmessage: null as ((ev: { data: string }) => void) | null,
+      onclose: null as (() => void) | null,
+    }
+    vi.spyOn(ws, 'openProjectChatWebSocket').mockImplementation(() => {
+      queueMicrotask(() => fakeWs.onopen?.())
+      return fakeWs as unknown as WebSocket
+    })
+
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    render(
+      <MemoryRouter
+        initialEntries={[
+          '/studios/s1/software/sw1/projects/p1?tab=chat',
+        ]}
+      >
+        <QueryClientProvider client={qc}>
+          <Routes>
+            <Route
+              path="/studios/:studioId/software/:softwareId/projects/:projectId"
+              element={<ProjectPage />}
+            />
+          </Routes>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(
+        screen.getByPlaceholderText('Message the project…'),
+      ).toBeInTheDocument()
+    })
   })
 
   it('does not show publish for studio viewers', async () => {

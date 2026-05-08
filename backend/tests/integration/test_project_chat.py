@@ -2,7 +2,7 @@
 
 import json
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -97,7 +97,7 @@ async def test_project_chat_websocket_persists_messages() -> None:
                 messages: list,
                 *,
                 usage_scope: object,
-                call_type: str,
+                call_source: str,
                 preferred_model: str | None = None,
                 max_history_tokens: int = 12_000,
             ) -> tuple[list, bool]:
@@ -130,6 +130,7 @@ async def test_project_chat_websocket_persists_messages() -> None:
                         if msg.get("type") == "assistant_done":
                             seen_done = True
                             assert "Hello world" in (msg.get("content") or "")
+                            assert "llm_outbound_messages" not in msg
                             break
                     assert seen_done
 
@@ -138,6 +139,113 @@ async def test_project_chat_websocket_persists_messages() -> None:
             messages = hist.json()["messages"]
             roles = [m["role"] for m in messages]
             assert "user" in roles and roles.count("assistant") >= 1
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_project_chat_websocket_assistant_done_includes_llm_outbound_when_log_prompts() -> None:
+    sfx = uuid.uuid4().hex[:8]
+
+    async def fake_stream(self, **kwargs):
+        yield "Hello"
+        yield " world"
+
+    await engine.dispose()
+
+    try:
+        with TestClient(app) as tc:
+            tc.post(
+                "/auth/register",
+                json={
+                    "email": f"ws-log-{sfx}@example.com",
+                    "password": "securepass123",
+                    "display_name": "wsuser",
+                },
+            )
+            tok = tc.cookies.get("atelier_token")
+            assert tok
+            cr = tc.post("/studios", json={"name": f"WsLog{sfx}", "description": "d"})
+            assert cr.status_code == 200
+            studio_id = cr.json()["id"]
+            sw = tc.post(
+                f"/studios/{studio_id}/software",
+                json={"name": "SW", "description": None},
+            )
+            assert sw.status_code == 200
+            software_id = sw.json()["id"]
+            pr = tc.post(
+                f"/software/{software_id}/projects",
+                json={"name": "PchatLog", "description": None},
+            )
+            assert pr.status_code == 200
+            local_pid = pr.json()["id"]
+
+            async def _trim_skip_llm_config(
+                self: object,
+                messages: list,
+                *,
+                usage_scope: object,
+                call_source: str,
+                preferred_model: str | None = None,
+                max_history_tokens: int = 12_000,
+            ) -> tuple[list, bool]:
+                return (list(messages), False)
+
+            def _log_prompts_on() -> MagicMock:
+                m = MagicMock()
+                m.log_llm_prompts = True
+                return m
+
+            with (
+                patch(
+                    "app.services.llm_service.LLMService.chat_stream",
+                    fake_stream,
+                ),
+                patch(
+                    "app.services.llm_service.LLMService.ensure_openai_llm_ready",
+                    new_callable=AsyncMock,
+                ),
+                patch(
+                    "app.services.llm_service.LLMService.trim_chat_messages_for_stream",
+                    _trim_skip_llm_config,
+                ),
+                patch(
+                    "app.services.llm_service.LLMService.resolved_chat_model_for_scope",
+                    new_callable=AsyncMock,
+                    return_value="openai/gpt-4o-mini",
+                ),
+                patch(
+                    "app.routers.project_chat.get_settings",
+                    _log_prompts_on,
+                ),
+                patch(
+                    "app.agents.project_chat_agent.get_settings",
+                    _log_prompts_on,
+                ),
+            ):
+                with tc.websocket_connect(
+                    f"/ws/projects/{local_pid}/chat?token={tok}"
+                ) as ws:
+                    ws.send_json({"type": "user_message", "content": "Say hi"})
+                    seen_done = False
+                    for _ in range(50):
+                        raw = ws.receive_text()
+                        msg = json.loads(raw)
+                        if msg.get("type") == "error":
+                            pytest.fail(f"websocket error: {msg}")
+                        if msg.get("type") == "assistant_done":
+                            seen_done = True
+                            outbound = msg.get("llm_outbound_messages")
+                            assert isinstance(outbound, list)
+                            roles = [m.get("role") for m in outbound]
+                            assert "system" in roles
+                            assert "user" in roles
+                            for row in outbound:
+                                assert "tokens" in row
+                                assert isinstance(row["tokens"], int)
+                            break
+                    assert seen_done
     finally:
         await engine.dispose()
 
@@ -180,8 +288,8 @@ async def test_project_chat_ws_rejects_disallowed_preferred_model() -> None:
             assert pr.status_code == 200
             local_pid = pr.json()["id"]
 
-            async def ensure_reject(self, *, usage_scope=None, call_type="chat", preferred_model=None):
-                _ = (self, usage_scope, call_type)
+            async def ensure_reject(self, *, usage_scope=None, call_source="chat", preferred_model=None):
+                _ = (self, usage_scope, call_source)
                 if preferred_model == "gpt-4o":
                     raise ApiError(
                         status_code=400,
@@ -194,7 +302,7 @@ async def test_project_chat_ws_rejects_disallowed_preferred_model() -> None:
                 messages: list,
                 *,
                 usage_scope: object,
-                call_type: str,
+                call_source: str,
                 preferred_model: str | None = None,
                 max_history_tokens: int = 12_000,
             ) -> tuple[list, bool]:
@@ -233,5 +341,105 @@ async def test_project_chat_ws_rejects_disallowed_preferred_model() -> None:
                             assert "not allowed" in (msg.get("message") or "").lower()
                             break
                     assert saw_error
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_project_chat_ws_stream_failure_emits_error_no_assistant_row() -> None:
+    """Mid-stream ApiError yields structured error frame; no assistant_done or DB assistant."""
+    sfx = uuid.uuid4().hex[:8]
+
+    async def fake_stream_fail(self, **kwargs):
+        yield "partial"
+        raise ApiError(
+            status_code=502,
+            code="LLM_UPSTREAM_TEST",
+            message="Simulated upstream failure.",
+        )
+
+    await engine.dispose()
+
+    try:
+        with TestClient(app) as tc:
+            tc.post(
+                "/auth/register",
+                json={
+                    "email": f"pc-fail-{sfx}@example.com",
+                    "password": "securepass123",
+                    "display_name": "wsuser",
+                },
+            )
+            tok = tc.cookies.get("atelier_token")
+            assert tok
+            cr = tc.post("/studios", json={"name": f"PcFail{sfx}", "description": "d"})
+            assert cr.status_code == 200
+            studio_id = cr.json()["id"]
+            sw = tc.post(
+                f"/studios/{studio_id}/software",
+                json={"name": "SWSF", "description": None},
+            )
+            assert sw.status_code == 200
+            software_id = sw.json()["id"]
+            pr = tc.post(
+                f"/software/{software_id}/projects",
+                json={"name": "Pfail", "description": None},
+            )
+            assert pr.status_code == 200
+            local_pid = pr.json()["id"]
+
+            async def _trim_skip_llm_config(
+                self: object,
+                messages: list,
+                *,
+                usage_scope: object,
+                call_source: str,
+                preferred_model: str | None = None,
+                max_history_tokens: int = 12_000,
+            ) -> tuple[list, bool]:
+                return (list(messages), False)
+
+            with (
+                patch(
+                    "app.services.llm_service.LLMService.chat_stream",
+                    fake_stream_fail,
+                ),
+                patch(
+                    "app.services.llm_service.LLMService.ensure_openai_llm_ready",
+                    new_callable=AsyncMock,
+                ),
+                patch(
+                    "app.services.llm_service.LLMService.trim_chat_messages_for_stream",
+                    _trim_skip_llm_config,
+                ),
+            ):
+                with tc.websocket_connect(
+                    f"/ws/projects/{local_pid}/chat?token={tok}"
+                ) as ws:
+                    ws.send_json({"type": "user_message", "content": "Trigger fail"})
+                    saw_token = False
+                    saw_error = False
+                    saw_done = False
+                    for _ in range(50):
+                        raw = ws.receive_text()
+                        msg = json.loads(raw)
+                        if msg.get("type") == "assistant_token":
+                            if (msg.get("text") or "") == "partial":
+                                saw_token = True
+                        if msg.get("type") == "error":
+                            saw_error = True
+                            assert msg.get("code") == "LLM_UPSTREAM_TEST"
+                            assert "Simulated" in (msg.get("message") or "")
+                            break
+                        if msg.get("type") == "assistant_done":
+                            saw_done = True
+                    assert saw_token and saw_error and not saw_done
+
+            hist = tc.get(f"/projects/{local_pid}/chat")
+            assert hist.status_code == 200
+            messages = hist.json()["messages"]
+            roles = [m["role"] for m in messages]
+            assert roles.count("user") == 1
+            assert roles.count("assistant") == 0
     finally:
         await engine.dispose()

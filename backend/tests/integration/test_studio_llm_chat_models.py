@@ -99,3 +99,5 @@ async def test_studio_llm_chat_models_member_ok_outsider_403(
     assert body["effective_model"] == "gpt-4o-mini"
     assert body["allowed_models"] == ["gpt-4o-mini"]
     assert body["workspace_default_model"] == "gpt-4o-mini"
+    assert "model_max_context_tokens" in body
+    assert body["model_max_context_tokens"].get("gpt-4o-mini") is None

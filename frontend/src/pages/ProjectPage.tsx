@@ -145,6 +145,7 @@ export function ProjectPage(): ReactElement {
   }, [profileError, navigate])
 
   const access = useStudioAccess(profile, sid, sfid)
+  const { isLoadingCapabilities } = access
 
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -255,6 +256,11 @@ export function ProjectPage(): ReactElement {
     if (profilePending || !profile) {
       return
     }
+    // While capabilities load, `isStudioEditor` is false — do not strip `tab=chat`
+    // or editors deep-linking from home land on Outline instead of chat.
+    if (isLoadingCapabilities) {
+      return
+    }
     if (tabRaw === 'chat' && !access.isStudioEditor) {
       const next = new URLSearchParams(searchParams)
       next.delete('tab')
@@ -265,6 +271,7 @@ export function ProjectPage(): ReactElement {
     profile,
     tabRaw,
     access.isStudioEditor,
+    isLoadingCapabilities,
     searchParams,
     setSearchParams,
   ])

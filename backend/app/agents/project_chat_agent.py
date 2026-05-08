@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.chat_openai_history import fetch_openai_messages_for_project
-from app.services.llm_service import LLMService
+from app.services.llm_service import LLMService, serialize_outbound_chat_messages_for_debug
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
 
@@ -41,6 +43,7 @@ class ProjectChatAgent:
         chat_messages: list[dict[str, str]] | None = None,
         preferred_model: str | None = None,
         rag_text: str,
+        debug_prompt_payload: dict[str, Any] | None = None,
     ) -> AsyncIterator[tuple[str, TokenUsageScope]]:
         """Yield LLM token strings; caller persists assistant message after iteration.
 
@@ -61,3 +64,19 @@ class ProjectChatAgent:
             preferred_model=preferred_model,
         ):
             yield piece, usage_scope
+
+        if debug_prompt_payload is not None and get_settings().log_llm_prompts:
+            full_messages: list[dict[str, Any]] = [
+                {"role": "system", "content": system_prompt},
+                *[dict(m) for m in openai_msgs],
+            ]
+            resolved_model = await self.llm.resolved_chat_model_for_scope(
+                usage_scope=usage_scope,
+                call_source="chat",
+                preferred_model=preferred_model,
+            )
+            debug_prompt_payload["llm_outbound_messages"] = (
+                serialize_outbound_chat_messages_for_debug(
+                    full_messages, model=resolved_model
+                )
+            )

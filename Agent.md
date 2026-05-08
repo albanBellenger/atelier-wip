@@ -150,14 +150,14 @@ async def require_studio_member(
 ### LLM calls — always through LLMService
 ```python
 # For conversational (streaming) calls:
-async for token in await llm_service.chat_stream(messages, system_prompt, call_type, ctx):
+async for token in await llm_service.chat_stream(messages, system_prompt, call_source, ctx):
     yield token
 
 # For structured generation (Work Orders, conflict, drift):
 result = await llm_service.chat_structured(
     messages=messages,
     system_prompt=system_prompt,
-    call_type="work_order_gen",
+    call_source="work_order_gen",
     context=ctx,
     output_schema=WORK_ORDER_SCHEMA   # always provide — never parse free text
 )

@@ -10,7 +10,7 @@ import {
 import type { TokenUsageRow } from '../services/api'
 
 function row(
-  partial: Partial<TokenUsageRow> & Pick<TokenUsageRow, 'call_type' | 'created_at'>,
+  partial: Partial<TokenUsageRow> & Pick<TokenUsageRow, 'call_source' | 'created_at'>,
 ): TokenUsageRow {
   return {
     id: '1',
@@ -29,7 +29,7 @@ function row(
 
 describe('tokenUsageHomeLayout', () => {
   it('rowTokenTotal sums in+out', () => {
-    expect(rowTokenTotal(row({ call_type: 'chat', created_at: 'x', input_tokens: 3, output_tokens: 7 }))).toBe(10)
+    expect(rowTokenTotal(row({ call_source: 'chat', created_at: 'x', input_tokens: 3, output_tokens: 7 }))).toBe(10)
   })
 
   it('bucketKeyForCallType groups thread patches', () => {
@@ -43,9 +43,9 @@ describe('tokenUsageHomeLayout', () => {
 
   it('categoryBreakdownFromRows aggregates fixed categories', () => {
     const rows: TokenUsageRow[] = [
-      row({ call_type: 'private_thread', created_at: '2026-05-01T10:00:00Z', input_tokens: 10, output_tokens: 0 }),
-      row({ call_type: 'chat', created_at: '2026-05-01T10:00:00Z', input_tokens: 5, output_tokens: 5 }),
-      row({ call_type: 'unknown', created_at: '2026-05-01T10:00:00Z', input_tokens: 2, output_tokens: 0 }),
+      row({ call_source: 'private_thread', created_at: '2026-05-01T10:00:00Z', input_tokens: 10, output_tokens: 0 }),
+      row({ call_source: 'chat', created_at: '2026-05-01T10:00:00Z', input_tokens: 5, output_tokens: 5 }),
+      row({ call_source: 'unknown', created_at: '2026-05-01T10:00:00Z', input_tokens: 2, output_tokens: 0 }),
     ]
     const b = categoryBreakdownFromRows(rows)
     expect(b.find((x) => x.key === 'private_threads')?.tokens).toBe(10)
@@ -60,13 +60,13 @@ describe('tokenUsageHomeLayout', () => {
     const dYest = new Date(2026, 4, 9, 10, 0, 0)
     const rows = [
       row({
-        call_type: 'chat',
+        call_source: 'chat',
         created_at: dToday.toISOString(),
         input_tokens: 100,
         output_tokens: 0,
       }),
       row({
-        call_type: 'chat',
+        call_source: 'chat',
         created_at: dYest.toISOString(),
         input_tokens: 50,
         output_tokens: 0,
@@ -83,13 +83,13 @@ describe('tokenUsageHomeLayout', () => {
     const dYest = new Date(2026, 4, 9, 10, 0, 0)
     const rows = [
       row({
-        call_type: 'chat',
+        call_source: 'chat',
         created_at: dToday.toISOString(),
         input_tokens: 40,
         output_tokens: 0,
       }),
       row({
-        call_type: 'chat',
+        call_source: 'chat',
         created_at: dYest.toISOString(),
         input_tokens: 60,
         output_tokens: 0,

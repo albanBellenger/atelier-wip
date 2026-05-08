@@ -38,6 +38,7 @@ import {
   safeAwarenessStates,
 } from '../../lib/copilotAwareness'
 import { parseThreadComposerInput } from '../../lib/threadSlashCommand'
+import type { LlmOutboundPromptMessage } from '../../lib/llmOutboundPrompt'
 import {
   getContextPreview,
   getLlmRuntimeInfo,
@@ -53,6 +54,7 @@ import { StudioChatModelPicker } from '../chat/StudioChatModelPicker'
 import { ContextTab } from './ContextTab'
 import { ContextTruncationBanner } from './ContextTruncationBanner'
 import { CopilotComposer } from './CopilotComposer'
+import { LlmOutboundPromptOverlay } from '../debug/LlmOutboundPromptOverlay'
 import { CopilotHeader } from './CopilotHeader'
 import type { CopilotSideTab } from './CopilotStatusStrip'
 import { CopilotStatusStrip } from './CopilotStatusStrip'
@@ -187,6 +189,12 @@ export function CopilotPanel(props: {
   const collabRef = useRef<YjsCollab | null>(null)
   const [docBump, setDocBump] = useState(0)
   const [recentAccordionOpen, setRecentAccordionOpen] = useState(false)
+  const [llmPromptByMessageId, setLlmPromptByMessageId] = useState<
+    Record<string, LlmOutboundPromptMessage[]>
+  >({})
+  const [llmPromptOverlayMessageId, setLlmPromptOverlayMessageId] = useState<
+    string | null
+  >(null)
 
   useEffect(() => {
     onDraftEmptyChange?.(!draft.trim())
@@ -482,6 +490,17 @@ export function CopilotPanel(props: {
             } else {
               setPatchPreviewLines([])
             }
+          }
+          if (
+            typeof meta.assistant_message_id === 'string' &&
+            meta.assistant_message_id !== '' &&
+            meta.llm_outbound_messages != null &&
+            meta.llm_outbound_messages.length > 0
+          ) {
+            setLlmPromptByMessageId((prev) => ({
+              ...prev,
+              [meta.assistant_message_id]: meta.llm_outbound_messages,
+            }))
           }
         },
       })
@@ -940,6 +959,8 @@ export function CopilotPanel(props: {
                 findings={findings}
                 err={err}
                 bottomRef={bottomRef}
+                llmPromptByMessageId={llmPromptByMessageId}
+                onOpenLlmPrompt={(id) => setLlmPromptOverlayMessageId(id)}
                 onApplyPatch={() => onApplyPatch()}
                 onDismissPatch={() => onDismissPatch()}
                 onViewPatchDiff={() => onViewPatchDiff()}
@@ -1026,64 +1047,82 @@ export function CopilotPanel(props: {
       />
     );
 
+  const llmPromptOverlay = (
+    <LlmOutboundPromptOverlay
+      open={llmPromptOverlayMessageId != null}
+      onClose={() => setLlmPromptOverlayMessageId(null)}
+      messages={
+        llmPromptOverlayMessageId != null
+          ? llmPromptByMessageId[llmPromptOverlayMessageId] ?? []
+          : []
+      }
+    />
+  )
+
   if (isFocusLayout) {
     return (
-      <section className="mx-auto flex h-full min-h-0 w-full max-w-[840px] flex-col overflow-hidden rounded-2xl border border-zinc-800/70 bg-zinc-900/40">
-        <div className="flex shrink-0 items-stretch border-b border-zinc-800/80">
-          <CopilotTabs
-            sideTab={sideTab}
-            onSelectTab={(tab) => setSideTab(tab)}
-            critiqueBadge={critiqueBadge}
-            diffBadge={diffBadge}
-            sourcesBadge={
-              healthSummary != null && healthSummary.citations_missing > 0
-                ? healthSummary.citations_missing
-                : null
-            }
-            variant="inline-overflow"
-          />
-          <CopilotStatusStrip
-            driftCount={stripDrift}
-            gapCount={stripGap}
-            tokenUsed={stripTokUsed}
-            tokenBudget={stripTokBudget}
-            sourcesCount={stripSourcesCount}
-            onSelectTab={(tab) => setSideTab(tab)}
-            variant="inline"
-          />
-        </div>
-        {tabPanel}
-      </section>
+      <>
+        <section className="mx-auto flex h-full min-h-0 w-full max-w-[840px] flex-col overflow-hidden rounded-2xl border border-zinc-800/70 bg-zinc-900/40">
+          <div className="flex shrink-0 items-stretch border-b border-zinc-800/80">
+            <CopilotTabs
+              sideTab={sideTab}
+              onSelectTab={(tab) => setSideTab(tab)}
+              critiqueBadge={critiqueBadge}
+              diffBadge={diffBadge}
+              sourcesBadge={
+                healthSummary != null && healthSummary.citations_missing > 0
+                  ? healthSummary.citations_missing
+                  : null
+              }
+              variant="inline-overflow"
+            />
+            <CopilotStatusStrip
+              driftCount={stripDrift}
+              gapCount={stripGap}
+              tokenUsed={stripTokUsed}
+              tokenBudget={stripTokBudget}
+              sourcesCount={stripSourcesCount}
+              onSelectTab={(tab) => setSideTab(tab)}
+              variant="inline"
+            />
+          </div>
+          {tabPanel}
+        </section>
+        {llmPromptOverlay}
+      </>
     )
   }
 
   return (
-    <aside className="flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-zinc-900/60">
-      <CopilotHeader
-        collaboratorCount={collaboratorCount}
-        newThreadPending={resetMut.isPending}
-        onNewThread={() => resetMut.mutate()}
-      />
-      <CopilotStatusStrip
-        driftCount={stripDrift}
-        gapCount={stripGap}
-        tokenUsed={stripTokUsed}
-        tokenBudget={stripTokBudget}
-        sourcesCount={stripSourcesCount}
-        onSelectTab={(tab) => setSideTab(tab)}
-      />
-      <CopilotTabs
-        sideTab={sideTab}
-        onSelectTab={(tab) => setSideTab(tab)}
-        critiqueBadge={critiqueBadge}
-        diffBadge={diffBadge}
-        sourcesBadge={
-          healthSummary != null && healthSummary.citations_missing > 0
-            ? healthSummary.citations_missing
-            : null
-        }
-      />
-      {tabPanel}
-    </aside>
+    <>
+      <aside className="flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-zinc-900/60">
+        <CopilotHeader
+          collaboratorCount={collaboratorCount}
+          newThreadPending={resetMut.isPending}
+          onNewThread={() => resetMut.mutate()}
+        />
+        <CopilotStatusStrip
+          driftCount={stripDrift}
+          gapCount={stripGap}
+          tokenUsed={stripTokUsed}
+          tokenBudget={stripTokBudget}
+          sourcesCount={stripSourcesCount}
+          onSelectTab={(tab) => setSideTab(tab)}
+        />
+        <CopilotTabs
+          sideTab={sideTab}
+          onSelectTab={(tab) => setSideTab(tab)}
+          critiqueBadge={critiqueBadge}
+          diffBadge={diffBadge}
+          sourcesBadge={
+            healthSummary != null && healthSummary.citations_missing > 0
+              ? healthSummary.citations_missing
+              : null
+          }
+        />
+        {tabPanel}
+      </aside>
+      {llmPromptOverlay}
+    </>
   )
 }

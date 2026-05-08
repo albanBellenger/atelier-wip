@@ -212,7 +212,7 @@ async def post_section_improve(
         project_id=project_id,
         user_id=pa.studio_access.user.id,
     )
-    await LLMService(session).ensure_openai_llm_ready(usage_scope=ctx, call_type="chat")
+    await LLMService(session).ensure_openai_llm_ready(usage_scope=ctx, call_source="chat")
     text = await SectionService(session).improve_section_markdown(
         project_id,
         section_id,

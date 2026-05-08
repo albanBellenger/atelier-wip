@@ -131,6 +131,26 @@ describe('consumePrivateThreadSseBody', () => {
     expect(tokens).toEqual([])
   })
 
+  it('normalises llm_outbound_messages with optional tokens', async () => {
+    let meta: PrivateThreadStreamMeta | null = null
+    await consumePrivateThreadSseBody(
+      makeReader([
+        'data: {"type":"meta","llm_outbound_messages":[{"role":"system","content":"a","tokens":5},{"role":"user","content":"b"}]}\n\n',
+        'data: [DONE]\n\n',
+      ]),
+      {
+        onToken: () => undefined,
+        onMeta: (m) => {
+          meta = m
+        },
+      },
+    )
+    expect(meta?.llm_outbound_messages).toEqual([
+      { role: 'system', content: 'a', tokens: 5 },
+      { role: 'user', content: 'b' },
+    ])
+  })
+
   it('handles a stream with only [DONE]', async () => {
     const tokens: string[] = []
     let metaCalls = 0

@@ -18,7 +18,7 @@ function makeRowsOverDays(days: number): api.TokenUsageRow[] {
       project_id: null,
       work_order_id: null,
       user_id: null,
-      call_type: 'test',
+      call_source: 'test',
       model: 'm',
       input_tokens: 50,
       output_tokens: 50,

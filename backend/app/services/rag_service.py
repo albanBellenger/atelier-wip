@@ -135,7 +135,7 @@ class RAGService:
                 user_prompt=raw,
                 json_schema=SOFTWARE_DEF_SUMMARY_SCHEMA,
                 usage_scope=ctx,
-                call_type="rag_software_definition_summary",
+                call_source="rag_software_definition_summary",
             )
         except ApiError as e:
             log.warning("rag_def_summary_llm_failed", code=e.error_code)

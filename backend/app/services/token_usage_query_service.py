@@ -37,7 +37,7 @@ class TokenUsageQueryService:
         software_ids: list[UUID] | None,
         project_ids: list[UUID] | None,
         user_ids: list[UUID] | None,
-        call_types: list[str] | None,
+        call_sources: list[str] | None,
         work_order_ids: list[UUID] | None,
         date_from: date | None,
         date_to: date | None,
@@ -59,11 +59,11 @@ class TokenUsageQueryService:
         uid = _non_empty(user_ids)
         if uid is not None:
             conds.append(TokenUsage.user_id.in_(uid))
-        ct_list = [str(c).strip() for c in (call_types or []) if str(c).strip()]
+        ct_list = [str(c).strip() for c in (call_sources or []) if str(c).strip()]
         if len(ct_list) == 1:
-            conds.append(TokenUsage.call_type == ct_list[0][:32])
+            conds.append(TokenUsage.call_source == ct_list[0][:32])
         elif len(ct_list) > 1:
-            conds.append(TokenUsage.call_type.in_([c[:32] for c in ct_list]))
+            conds.append(TokenUsage.call_source.in_([c[:32] for c in ct_list]))
         wo = _non_empty(work_order_ids)
         if wo is not None:
             conds.append(TokenUsage.work_order_id.in_(wo))
@@ -85,7 +85,7 @@ class TokenUsageQueryService:
         software_ids: list[UUID] | None,
         project_ids: list[UUID] | None,
         user_ids: list[UUID] | None,
-        call_types: list[str] | None,
+        call_sources: list[str] | None,
         work_order_ids: list[UUID] | None,
         date_from: date | None,
         date_to: date | None,
@@ -98,7 +98,7 @@ class TokenUsageQueryService:
             software_ids=software_ids,
             project_ids=project_ids,
             user_ids=user_ids,
-            call_types=call_types,
+            call_sources=call_sources,
             work_order_ids=work_order_ids,
             date_from=date_from,
             date_to=date_to,
@@ -131,7 +131,7 @@ class TokenUsageQueryService:
         software_ids: list[UUID] | None,
         project_ids: list[UUID] | None,
         user_ids: list[UUID] | None,
-        call_types: list[str] | None,
+        call_sources: list[str] | None,
         work_order_ids: list[UUID] | None,
         date_from: date | None,
         date_to: date | None,
@@ -146,7 +146,7 @@ class TokenUsageQueryService:
             software_ids=software_ids,
             project_ids=project_ids,
             user_ids=user_ids,
-            call_types=call_types,
+            call_sources=call_sources,
             work_order_ids=work_order_ids,
             date_from=date_from,
             date_to=date_to,
@@ -164,7 +164,7 @@ class TokenUsageQueryService:
             software_ids=software_ids,
             project_ids=project_ids,
             user_ids=user_ids,
-            call_types=call_types,
+            call_sources=call_sources,
             work_order_ids=work_order_ids,
             date_from=date_from,
             date_to=date_to,
@@ -182,7 +182,7 @@ class TokenUsageQueryService:
                 "project_id",
                 "work_order_id",
                 "user_id",
-                "call_type",
+                "call_source",
                 "model",
                 "input_tokens",
                 "output_tokens",
@@ -199,7 +199,7 @@ class TokenUsageQueryService:
                     str(r.project_id) if r.project_id else "",
                     str(r.work_order_id) if r.work_order_id else "",
                     str(r.user_id) if r.user_id else "",
-                    r.call_type,
+                    r.call_source,
                     r.model,
                     r.input_tokens,
                     r.output_tokens,

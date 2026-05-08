@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { HttpResponse, http } from 'msw'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -298,5 +298,141 @@ describe('SoftwareChatRoom', () => {
         model: 'gpt-4o',
       }),
     )
+  })
+
+  it('clears streaming buffer and shows alert when server sends error after tokens', async () => {
+    useEmptyStudioChatModels()
+    mswServer.use(
+      http.get('http://api.test/software/sw1/chat', () =>
+        HttpResponse.json({ messages: [], next_before: null }),
+      ),
+    )
+    const fakeWs = {
+      readyState: 1,
+      send: vi.fn(),
+      close: vi.fn(),
+      onopen: null as (() => void) | null,
+      onmessage: null as ((ev: { data: string }) => void) | null,
+      onclose: null as (() => void) | null,
+    }
+    vi.spyOn(ws, 'openSoftwareChatWebSocket').mockImplementation(() => {
+      queueMicrotask(() => fakeWs.onopen?.())
+      return fakeWs as unknown as WebSocket
+    })
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <Routes>
+            <Route
+              path="/"
+              element={<SoftwareChatRoom softwareId="sw1" studioId={STUDIO_ID} />}
+            />
+          </Routes>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    await screen.findByPlaceholderText(/software team/)
+    await act(async () => {
+      fakeWs.onmessage?.({
+        data: JSON.stringify({ type: 'assistant_token', text: 'partial' }),
+      })
+    })
+    expect(await screen.findByText('partial')).toBeInTheDocument()
+    await act(async () => {
+      fakeWs.onmessage?.({
+        data: JSON.stringify({
+          type: 'error',
+          message: 'LLM unavailable',
+          code: 'LLM_UPSTREAM_TEST_SW',
+        }),
+      })
+    })
+    await waitFor(() => {
+      expect(screen.queryByText('partial')).not.toBeInTheDocument()
+    })
+    expect(screen.getByRole('alert')).toHaveTextContent('LLM unavailable')
+  })
+
+  it('opens LLM outbound prompt overlay when assistant_done includes llm_outbound_messages', async () => {
+    let chatFetch = 0
+    mswServer.use(
+      http.get(`http://api.test/studios/${STUDIO_ID}/llm-chat-models`, () =>
+        HttpResponse.json({
+          effective_model: 'gpt-4o-mini',
+          workspace_default_model: 'gpt-4o-mini',
+          allowed_models: ['gpt-4o-mini'],
+        }),
+      ),
+      http.get('http://api.test/software/sw1/chat', () => {
+        chatFetch += 1
+        if (chatFetch === 1) {
+          return HttpResponse.json({ messages: [], next_before: null })
+        }
+        return HttpResponse.json({
+          messages: [
+            {
+              id: 'sw-asst-1',
+              software_id: 'sw1',
+              user_id: null,
+              role: 'assistant',
+              content: 'Software reply',
+              created_at: '2026-01-15T12:00:00Z',
+            },
+          ],
+          next_before: null,
+        })
+      }),
+    )
+    const fakeWs = {
+      readyState: 1,
+      send: vi.fn(),
+      close: vi.fn(),
+      onopen: null as (() => void) | null,
+      onmessage: null as ((ev: { data: string }) => void) | null,
+      onclose: null as (() => void) | null,
+    }
+    vi.spyOn(ws, 'openSoftwareChatWebSocket').mockImplementation(() => {
+      queueMicrotask(() => fakeWs.onopen?.())
+      return fakeWs as unknown as WebSocket
+    })
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <Routes>
+            <Route
+              path="/"
+              element={<SoftwareChatRoom softwareId="sw1" studioId={STUDIO_ID} />}
+            />
+          </Routes>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    await screen.findByPlaceholderText(/software team/)
+    await act(async () => {
+      fakeWs.onmessage?.({
+        data: JSON.stringify({
+          type: 'assistant_done',
+          message_id: 'sw-asst-1',
+          content: 'Software reply',
+          llm_outbound_messages: [
+            { role: 'system', content: 'SW-SYS-UNIQUE', tokens: 3 },
+            { role: 'user', content: 'SW-USER-UNIQUE', tokens: 7 },
+          ],
+        }),
+      })
+    })
+    expect(await screen.findByText('10 tok')).toBeInTheDocument()
+    await user.click(
+      await screen.findByRole('button', { name: 'View LLM prompt' }),
+    )
+    expect(screen.getByText('SW-SYS-UNIQUE')).toBeInTheDocument()
+    expect(screen.getByText('· 3 tok')).toBeInTheDocument()
+    expect(screen.getByText('· 7 tok')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Close prompt overlay' }))
   })
 })

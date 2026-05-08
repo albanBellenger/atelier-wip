@@ -297,13 +297,13 @@ describe('getMeTokenUsage query params', () => {
     )
     const params: TokenUsageQueryParams = {
       studio_id: 's1',
-      call_type: ['chat', 'structured'],
+      call_source: ['chat', 'structured'],
       date_from: '2024-01-01',
       offset: 5,
     }
     await api.getMeTokenUsage(params)
     const sp = new URL(url).searchParams
-    expect(sp.getAll('call_type')).toEqual(['chat', 'structured'])
+    expect(sp.getAll('call_source')).toEqual(['chat', 'structured'])
     expect(sp.get('studio_id')).toBe('s1')
     expect(sp.get('date_from')).toBe('2024-01-01')
     expect(sp.get('offset')).toBe('5')

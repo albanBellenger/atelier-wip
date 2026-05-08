@@ -6,8 +6,9 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.schemas.llm_registry_model import LlmRegistryModelEntry
 from app.schemas.studio_budget_overage import StudioBudgetOverageAction
 from app.schemas.token_usage_report import BudgetMonthStatusOut
 
@@ -50,7 +51,7 @@ class LlmProviderRegistryResponse(BaseModel):
     id: UUID
     provider_key: str
     display_name: str
-    models: list[str]
+    models: list[LlmRegistryModelEntry]
     api_base_url: str | None
     logo_url: str | None = None
     status: str
@@ -59,17 +60,32 @@ class LlmProviderRegistryResponse(BaseModel):
     llm_api_key_set: bool = False
     llm_api_key_hint: str | None = None
     litellm_provider_slug: str | None = None
+    save_warnings: list[str] = Field(default_factory=list)
 
 
 class LlmProviderRegistryUpdate(BaseModel):
     display_name: str = Field(min_length=1, max_length=255)
-    models: list[str] = Field(min_length=1)
+    models: list[LlmRegistryModelEntry] = Field(min_length=1)
     api_base_url: str | None = Field(default=None, max_length=512)
     status: str = "connected"
     is_default: bool = False
     sort_order: int = 0
     llm_api_key: str | None = None
     litellm_provider_slug: str | None = Field(default=None, max_length=64)
+
+    @field_validator("models", mode="before")
+    @classmethod
+    def _legacy_models_string_list(cls, v: object) -> object:
+        """Accept legacy JSON ``["gpt-4o-mini"]`` as well as rich model entries."""
+        if not isinstance(v, list):
+            return v
+        out: list[object] = []
+        for item in v:
+            if isinstance(item, str) and item.strip():
+                out.append({"id": item.strip(), "context_metadata_source": "unknown"})
+            else:
+                out.append(item)
+        return out
 
 
 class LlmDeploymentResponse(BaseModel):

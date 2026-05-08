@@ -97,5 +97,5 @@ class WorkOrderDedupeAgent:
             user_prompt=user_prompt,
             json_schema=WORK_ORDER_DEDUPE_JSON_SCHEMA,
             usage_scope=ctx,
-            call_type="work_order_dedupe",
+            call_source="work_order_dedupe",
         )

@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import json
 from uuid import UUID, uuid4
-from typing import Any
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,8 +16,15 @@ from app.schemas.admin_console import (
     StudioLlmPolicyUpdate,
     StudioLlmPolicyRowResponse,
 )
-from app.security.field_encryption import admin_secret_suffix_hint, encode_admin_stored_secret
+from app.security.field_encryption import admin_secret_suffix_hint, decode_admin_stored_secret, encode_admin_stored_secret
+from app.services.litellm_model_context import enrich_model_entries_from_litellm
 from app.services.llm_provider_logo_service import resolve_llm_provider_logo_url
+from app.services.llm_service import LLMService
+from app.services.registry_models_json import (
+    first_model_id_from_json,
+    parse_models_json,
+    serialize_models_json,
+)
 
 
 def _mask_secret(s: str | None) -> bool:
@@ -30,16 +35,18 @@ class LlmConnectivityService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    def _row_to_out(self, row: LlmProviderRegistry) -> LlmProviderRegistryResponse:
-        try:
-            models = json.loads(row.models_json or "[]")
-        except json.JSONDecodeError:
-            models = []
+    def _row_to_out(
+        self,
+        row: LlmProviderRegistry,
+        *,
+        save_warnings: list[str] | None = None,
+    ) -> LlmProviderRegistryResponse:
+        models = parse_models_json(row.models_json)
         return LlmProviderRegistryResponse(
             id=row.id,
             provider_key=row.provider_key,
             display_name=row.display_name,
-            models=models if isinstance(models, list) else [],
+            models=models,
             api_base_url=row.api_base_url,
             logo_url=row.logo_url,
             status=row.status,
@@ -48,6 +55,7 @@ class LlmConnectivityService:
             llm_api_key_set=_mask_secret(row.api_key),
             llm_api_key_hint=admin_secret_suffix_hint(row.api_key),
             litellm_provider_slug=row.litellm_provider_slug,
+            save_warnings=list(save_warnings) if save_warnings else [],
         )
 
     async def list_providers(self) -> list[LlmProviderRegistryResponse]:
@@ -73,10 +81,11 @@ class LlmConnectivityService:
         row = await self.db.scalar(
             select(LlmProviderRegistry).where(LlmProviderRegistry.provider_key == pk)
         )
-        payload = json.dumps(body.models)
+        save_warnings: list[str] = []
+        reg: LlmProviderRegistry
+
         if row:
             row.display_name = body.display_name
-            row.models_json = payload
             api_raw = body.api_base_url.strip() if body.api_base_url else ""
             row.api_base_url = api_raw or None
             row.status = body.status
@@ -102,38 +111,63 @@ class LlmConnectivityService:
                 api_base_url=row.api_base_url,
             )
             await self.db.flush()
-            return self._row_to_out(row)
-        api_raw = body.api_base_url.strip() if body.api_base_url else ""
-        api_key_val: str | None = None
-        if "llm_api_key" in body.model_fields_set and body.llm_api_key is not None:
-            if str(body.llm_api_key).strip() == "":
-                api_key_val = None
-            else:
-                api_key_val = encode_admin_stored_secret(str(body.llm_api_key).strip())
-        slug_val: str | None = None
-        if "litellm_provider_slug" in body.model_fields_set:
-            raw_slug = body.litellm_provider_slug
-            slug_val = None if raw_slug is None else (str(raw_slug).strip() or None)
-        ent = LlmProviderRegistry(
-            id=uuid4(),
-            provider_key=pk,
-            display_name=body.display_name,
-            models_json=payload,
-            api_base_url=api_raw or None,
-            api_key=api_key_val,
-            status=body.status,
-            is_default=body.is_default,
-            sort_order=body.sort_order,
-            litellm_provider_slug=slug_val,
-        )
-        self.db.add(ent)
-        await self.db.flush()
-        ent.logo_url = resolve_llm_provider_logo_url(
-            provider_key=pk,
-            api_base_url=ent.api_base_url,
-        )
-        await self.db.flush()
-        return self._row_to_out(ent)
+            enriched = enrich_model_entries_from_litellm(
+                list(body.models), draft_registry_row=row
+            )
+            row.models_json = serialize_models_json(enriched)
+            await self.db.flush()
+            reg = row
+        else:
+            api_raw = body.api_base_url.strip() if body.api_base_url else ""
+            api_key_val: str | None = None
+            if "llm_api_key" in body.model_fields_set and body.llm_api_key is not None:
+                if str(body.llm_api_key).strip() == "":
+                    api_key_val = None
+                else:
+                    api_key_val = encode_admin_stored_secret(str(body.llm_api_key).strip())
+            slug_val: str | None = None
+            if "litellm_provider_slug" in body.model_fields_set:
+                raw_slug = body.litellm_provider_slug
+                slug_val = None if raw_slug is None else (str(raw_slug).strip() or None)
+            ent = LlmProviderRegistry(
+                id=uuid4(),
+                provider_key=pk,
+                display_name=body.display_name,
+                models_json=serialize_models_json(list(body.models)),
+                api_base_url=api_raw or None,
+                api_key=api_key_val,
+                status=body.status,
+                is_default=body.is_default,
+                sort_order=body.sort_order,
+                litellm_provider_slug=slug_val,
+            )
+            self.db.add(ent)
+            await self.db.flush()
+            ent.logo_url = resolve_llm_provider_logo_url(
+                provider_key=pk,
+                api_base_url=ent.api_base_url,
+            )
+            await self.db.flush()
+            enriched = enrich_model_entries_from_litellm(
+                list(body.models), draft_registry_row=ent
+            )
+            ent.models_json = serialize_models_json(enriched)
+            await self.db.flush()
+            reg = ent
+
+        probe_id = first_model_id_from_json(reg.models_json)
+        if probe_id and (decode_admin_stored_secret(reg.api_key) or "").strip():
+            probe = await LLMService(self.db).admin_connectivity_probe(
+                provider_key=pk,
+                model_override=probe_id,
+            )
+            if not probe.ok:
+                detail = probe.detail if isinstance(probe.detail, str) else str(probe.detail or "")
+                save_warnings.append(
+                    f"{probe.message}{f' ({detail})' if detail.strip() else ''}"
+                )
+
+        return self._row_to_out(reg, save_warnings=save_warnings)
 
     async def delete_provider(self, provider_key: str) -> None:
         await self.db.execute(

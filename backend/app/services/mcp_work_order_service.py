@@ -96,7 +96,7 @@ class McpWorkOrderService:
         await record_usage(
             self.db,
             ctx,
-            call_type="mcp",
+            call_source="mcp",
             model="mcp_list_work_orders",
             input_tokens=0,
             output_tokens=0,
@@ -138,7 +138,7 @@ class McpWorkOrderService:
         await record_usage(
             self.db,
             ctx,
-            call_type="mcp",
+            call_source="mcp",
             model="mcp_context_pull",
             input_tokens=0,
             output_tokens=0,

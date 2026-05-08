@@ -29,7 +29,7 @@ async def test_resolve_falls_back_when_registry_empty(db_session: AsyncSession) 
     )
     await db_session.flush()
     pol = LlmPolicyService(db_session)
-    assert await pol.resolve_effective_model(studio_id=sid, call_type="chat") is None
+    assert await pol.resolve_effective_model(studio_id=sid, call_source="chat") is None
 
 
 @pytest.mark.asyncio
@@ -67,7 +67,7 @@ async def test_resolve_matches_routing_and_studio_policy(db_session: AsyncSessio
     )
     await db_session.flush()
     pol = LlmPolicyService(db_session)
-    m = await pol.resolve_effective_model(studio_id=sid, call_type="chat")
+    m = await pol.resolve_effective_model(studio_id=sid, call_source="chat")
     assert m == "gpt-4o-mini"
 
 
@@ -99,7 +99,7 @@ async def test_resolve_skips_disconnected_registry_provider(
     )
     await db_session.flush()
     pol = LlmPolicyService(db_session)
-    assert await pol.resolve_effective_model(studio_id=sid, call_type="chat") is None
+    assert await pol.resolve_effective_model(studio_id=sid, call_source="chat") is None
 
 
 @pytest.mark.asyncio
@@ -143,6 +143,60 @@ async def test_studio_chat_llm_models_lists_connected_policy_models_only(
     assert out.effective_model == "gpt-4o-mini"
     assert out.allowed_models == ["gpt-4o-mini"]
     assert out.workspace_default_model == "gpt-4o-mini"
+    assert out.model_max_context_tokens.get("gpt-4o-mini") is None
+
+
+@pytest.mark.asyncio
+async def test_studio_chat_llm_models_includes_context_from_registry_entries(
+    db_session: AsyncSession,
+) -> None:
+    from app.schemas.llm_registry_model import LlmRegistryModelEntry
+    from app.services.registry_models_json import serialize_models_json
+
+    sid = uuid.uuid4()
+    db_session.add(
+        Studio(id=sid, name="S", budget_overage_action="pause_generations")
+    )
+    await db_session.flush()
+    payload = serialize_models_json(
+        [
+            LlmRegistryModelEntry(
+                id="gpt-4o-mini",
+                max_context_tokens=128_000,
+                context_metadata_source="litellm",
+            )
+        ]
+    )
+    db_session.add(
+        LlmProviderRegistry(
+            id=uuid.uuid4(),
+            provider_key="openai",
+            display_name="OpenAI",
+            models_json=payload,
+            status="connected",
+            is_default=True,
+            sort_order=0,
+        )
+    )
+    db_session.add(
+        LlmRoutingRule(
+            use_case="chat",
+            primary_model="gpt-4o-mini",
+            fallback_model=None,
+        )
+    )
+    db_session.add(
+        StudioLlmProviderPolicy(
+            studio_id=sid,
+            provider_key="openai",
+            enabled=True,
+            selected_model="gpt-4o-mini",
+        )
+    )
+    await db_session.flush()
+    pol = LlmPolicyService(db_session)
+    out = await pol.studio_chat_llm_models(sid)
+    assert out.model_max_context_tokens.get("gpt-4o-mini") == 128_000
 
 
 @pytest.mark.asyncio
@@ -171,7 +225,7 @@ async def test_assert_builder_budget_allows_when_under_cap(db_session: AsyncSess
             id=uuid.uuid4(),
             studio_id=studio.id,
             user_id=user.id,
-            call_type="chat",
+            call_source="chat",
             model="m",
             input_tokens=1,
             output_tokens=1,
@@ -195,7 +249,7 @@ async def test_assert_builder_budget_blocks_when_over_cap(db_session: AsyncSessi
             id=uuid.uuid4(),
             studio_id=studio.id,
             user_id=user.id,
-            call_type="chat",
+            call_source="chat",
             model="m",
             input_tokens=1,
             output_tokens=1,
@@ -238,7 +292,7 @@ async def test_assert_studio_budget_soft_action_allows_over_cap(
             id=uuid.uuid4(),
             studio_id=studio.id,
             user_id=None,
-            call_type="chat",
+            call_source="chat",
             model="m",
             input_tokens=1,
             output_tokens=1,
@@ -261,7 +315,7 @@ async def test_assert_studio_budget_pause_blocks_over_cap(db_session: AsyncSessi
             id=uuid.uuid4(),
             studio_id=studio.id,
             user_id=None,
-            call_type="chat",
+            call_source="chat",
             model="m",
             input_tokens=1,
             output_tokens=1,

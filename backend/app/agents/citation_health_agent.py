@@ -66,12 +66,12 @@ class CitationHealthAgent:
         ctx: TokenUsageScope,
         section_text: str,
     ) -> dict[str, Any]:
-        await self.llm.ensure_openai_llm_ready(usage_scope=ctx, call_type="citation_health")
+        await self.llm.ensure_openai_llm_ready(usage_scope=ctx, call_source="citation_health")
         user_prompt = USER_PROMPT + section_text
         return await self.llm.chat_structured(
             system_prompt=SYSTEM_PROMPT,
             user_prompt=user_prompt,
             json_schema=CITATION_HEALTH_SCHEMA,
             usage_scope=ctx,
-            call_type="citation_health",
+            call_source="citation_health",
         )

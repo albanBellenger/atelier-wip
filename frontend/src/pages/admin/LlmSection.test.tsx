@@ -36,7 +36,7 @@ describe('LlmSection', () => {
       id: 'new-id',
       provider_key: 'acme',
       display_name: 'Acme AI',
-      models: ['model-a'],
+      models: [{ id: 'model-a', context_metadata_source: 'unknown' }],
       api_base_url: null,
       logo_url: null,
       status: 'needs-key',
@@ -45,6 +45,7 @@ describe('LlmSection', () => {
       llm_api_key_set: false,
       llm_api_key_hint: null,
       litellm_provider_slug: null,
+      save_warnings: [],
     })
 
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -79,7 +80,10 @@ describe('LlmSection', () => {
         'acme',
         expect.objectContaining({
           display_name: 'Acme AI',
-          models: ['model-a', 'model-b'],
+          models: [
+            { id: 'model-a', context_metadata_source: 'unknown' },
+            { id: 'model-b', context_metadata_source: 'unknown' },
+          ],
           api_base_url: 'https://api.example.com/v1',
           status: 'needs-key',
         }),
@@ -101,7 +105,7 @@ describe('LlmSection', () => {
           id: 'prov-1',
           provider_key: 'moonshot',
           display_name: 'M2 Moonshot',
-          models: ['old-model'],
+          models: [{ id: 'old-model', context_metadata_source: 'unknown' }],
           api_base_url: 'https://api.moonshot.example/v1',
           logo_url: 'https://icons.duckduckgo.com/ip3/api.moonshot.example.ico',
           status: 'connected',
@@ -157,6 +161,7 @@ describe('LlmSection', () => {
           body.litellm_provider_slug !== undefined
             ? body.litellm_provider_slug
             : row?.litellm_provider_slug ?? null,
+        save_warnings: [],
       }
     })
     const probeSpy = vi.spyOn(api, 'postAdminTestLlm').mockResolvedValue({
@@ -190,7 +195,10 @@ describe('LlmSection', () => {
         'moonshot',
         expect.objectContaining({
           display_name: 'M2 Moonshot',
-          models: ['alpha', 'beta'],
+          models: [
+            { id: 'alpha', context_metadata_source: 'unknown' },
+            { id: 'beta', context_metadata_source: 'unknown' },
+          ],
           api_base_url: 'https://api.moonshot.example/v1',
           status: 'connected',
           litellm_provider_slug: null,

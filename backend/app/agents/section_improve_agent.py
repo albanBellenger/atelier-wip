@@ -69,5 +69,5 @@ class SectionImproveAgent:
             user_prompt=user_prompt,
             json_schema=SECTION_IMPROVE_SCHEMA,
             usage_scope=ctx,
-            call_type="section_improve",
+            call_source="section_improve",
         )

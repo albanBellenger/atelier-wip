@@ -1,5 +1,6 @@
 import { createRef } from 'react'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
 import type { PatchProposalMeta } from '../../lib/sectionPatchApply'
@@ -220,5 +221,43 @@ describe('ConversationView', () => {
       applyPatchEnabled: false,
     })
     expect(screen.getByRole('button', { name: 'Apply to editor' })).toBeDisabled()
+  })
+
+  it('does not show LLM prompt button without outbound payload', () => {
+    const messages: PrivateThreadMessage[] = [
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'Hi',
+        created_at: new Date().toISOString(),
+      },
+    ]
+    renderConversation({ messages })
+    expect(
+      screen.queryByRole('button', { name: 'View LLM prompt' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('calls onOpenLlmPrompt when outbound prompt button is clicked', async () => {
+    const onOpen = vi.fn()
+    const user = userEvent.setup()
+    const messages: PrivateThreadMessage[] = [
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'Hi',
+        created_at: new Date().toISOString(),
+      },
+    ]
+    renderConversation({
+      messages,
+      llmPromptByMessageId: {
+        a1: [{ role: 'system', content: 's', tokens: 42 }],
+      },
+      onOpenLlmPrompt: onOpen,
+    })
+    expect(screen.getByText('42 tok')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'View LLM prompt' }))
+    expect(onOpen).toHaveBeenCalledWith('a1')
   })
 })

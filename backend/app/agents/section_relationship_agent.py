@@ -105,7 +105,7 @@ class SectionRelationshipAgent:
                 user_prompt=USER_PROMPT.format(catalog=catalog),
                 json_schema=SECTION_REFS_JSON_SCHEMA,
                 usage_scope=ctx,
-                call_type="graph",
+                call_source="graph",
             )
         except ApiError:
             return

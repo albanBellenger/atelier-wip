@@ -14,7 +14,7 @@ import { APP_VERSION } from '../version'
 import { logout as logoutApi, me } from '../services/api'
 
 const LLM_USAGE_FILTERS_HELP =
-  'Filter usage by studio, software, project, work order, call type, and dates.'
+  'Filter usage by studio, software, project, work order, LLM source, and dates.'
 
 export function LlmUsagePage(): ReactElement {
   const navigate = useNavigate()

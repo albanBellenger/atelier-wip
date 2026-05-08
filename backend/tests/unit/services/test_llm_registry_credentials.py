@@ -81,7 +81,7 @@ async def test_resolve_credentials_uses_registry_row_key_when_present(
     )
     db.scalar = AsyncMock(return_value=reg)
 
-    model, key, api_base = await resolve_openai_compatible_llm_credentials(
+    model, key, api_base, out_reg = await resolve_openai_compatible_llm_credentials(
         db,
         effective_model="m1",
         route_provider_key="acme",
@@ -89,6 +89,7 @@ async def test_resolve_credentials_uses_registry_row_key_when_present(
     assert model == "acme/m1"
     assert key == "from-registry"
     assert "acme.example" in api_base
+    assert out_reg is reg
 
 
 @pytest.mark.asyncio
@@ -180,13 +181,14 @@ async def test_resolve_uses_default_row_when_route_provider_key_none(
         fake_default,
     )
 
-    model, key, _base = await resolve_openai_compatible_llm_credentials(
+    model, key, _base, out_reg = await resolve_openai_compatible_llm_credentials(
         db,
         effective_model="gpt-4o-mini",
         route_provider_key=None,
     )
     assert key == "default-key"
     assert "gpt-4o-mini" in model or model == "gpt-4o-mini"
+    assert out_reg is default_row
 
 
 @pytest.mark.asyncio

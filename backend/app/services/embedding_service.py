@@ -192,7 +192,7 @@ class EmbeddingService:
                 await record_usage(
                     self.db,
                     usage_scope,
-                    call_type="embedding",
+                    call_source="embedding",
                     model=model,
                     input_tokens=inp_tok,
                     output_tokens=0,

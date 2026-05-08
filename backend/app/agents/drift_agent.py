@@ -120,7 +120,7 @@ class DriftAgent:
             return
 
         try:
-            await self.llm.ensure_openai_llm_ready(usage_scope=ctx, call_type="section_drift")
+            await self.llm.ensure_openai_llm_ready(usage_scope=ctx, call_source="section_drift")
         except ApiError as e:
             log.warning(
                 "drift_skipped_llm_unavailable",
@@ -161,7 +161,7 @@ class DriftAgent:
                 user_prompt=user_prompt,
                 json_schema=DRIFT_CHECK_JSON_SCHEMA,
                 usage_scope=ctx,
-                call_type="drift",
+                call_source="drift",
             )
         except ApiError:
             log.exception(

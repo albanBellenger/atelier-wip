@@ -3,6 +3,7 @@
 import json
 import uuid
 from collections.abc import AsyncIterator
+from unittest.mock import MagicMock
 
 import pytest
 from httpx import AsyncClient
@@ -79,6 +80,25 @@ def _last_nonempty_line(text: str) -> str:
     return ""
 
 
+@pytest.fixture(autouse=True)
+def _mock_llm_registry_litellm_hydration(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Avoid outbound LiteLLM catalog + probe when tests seed ``/admin/llm/providers``."""
+    monkeypatch.setattr(
+        "app.services.llm_connectivity_service.enrich_model_entries_from_litellm",
+        lambda entries, draft_registry_row: list(entries),
+    )
+
+    async def _probe_ok(self: object, **_kwargs: object):
+        from app.schemas.auth import AdminConnectivityResult
+
+        return AdminConnectivityResult(ok=True, message="ok", detail=None)
+
+    monkeypatch.setattr(
+        "app.services.llm_connectivity_service.LLMService.admin_connectivity_probe",
+        _probe_ok,
+    )
+
+
 @pytest.mark.asyncio
 async def test_stream_sse_envelope_format(
     client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
@@ -141,6 +161,78 @@ async def test_stream_sse_envelope_format(
     assert meta[0].get("context_truncated") is False
     assert meta[0].get("patch_proposal") is None
     assert _last_nonempty_line(body) == "data: [DONE]"
+
+
+@pytest.mark.asyncio
+async def test_stream_meta_includes_llm_outbound_when_log_prompts(
+    client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _sid, pid, section_id, email = await _project_section(client, sfx)
+    await _promote_tool_admin(db_session, email)
+    client.cookies.set("atelier_token", token)
+    await client.put(
+        "/admin/llm/providers/openai",
+        json={
+            "display_name": "OpenAI",
+            "models": ["gpt-4o-mini"],
+            "status": "connected",
+            "is_default": True,
+            "sort_order": 0,
+            "llm_api_key": "sk-test",
+        },
+    )
+
+    async def fake_rag(self, *a, **k):
+        return RAGContext(text="ctx", truncated=False)
+
+    async def fake_stream(
+        self, *a, **k
+    ) -> AsyncIterator[str]:
+        yield "Hello"
+        yield " world"
+
+    async def fake_structured(self, *a, **k):
+        return {"findings": []}
+
+    monkeypatch.setattr("app.services.rag_service.RAGService.build_context", fake_rag)
+    monkeypatch.setattr("app.services.llm_service.LLMService.chat_stream", fake_stream)
+    monkeypatch.setattr(
+        "app.services.llm_service.LLMService.chat_structured", fake_structured
+    )
+    monkeypatch.setattr(
+        "app.services.private_thread_service.get_settings",
+        lambda: MagicMock(log_llm_prompts=True),
+    )
+
+    r = await client.post(
+        f"/projects/{pid}/sections/{section_id}/thread/messages",
+        json={"content": "hello"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.text
+    parsed = []
+    for line in body.splitlines():
+        if line.startswith("data: "):
+            p = line[6:].strip()
+            if p and p != "[DONE]":
+                try:
+                    parsed.append(json.loads(p))
+                except json.JSONDecodeError:
+                    pass
+    meta = [x for x in parsed if x.get("type") == "meta"]
+    assert len(meta) == 1
+    m0 = meta[0]
+    assert isinstance(m0.get("assistant_message_id"), str)
+    assert uuid.UUID(m0["assistant_message_id"])
+    outbound = m0.get("llm_outbound_messages")
+    assert isinstance(outbound, list)
+    roles = [x.get("role") for x in outbound]
+    assert "system" in roles
+    assert "user" in roles
+    for row in outbound:
+        assert "tokens" in row
+        assert isinstance(row["tokens"], int)
 
 
 @pytest.mark.asyncio
@@ -741,7 +833,7 @@ async def test_stream_meta_patch_proposal_append(
         yield "done"
 
     async def fake_structured(self, *a, **k) -> dict[str, object]:
-        ct = k.get("call_type")
+        ct = k.get("call_source")
         if ct == "thread_conflict_scan":
             return {"findings": []}
         if ct == "thread_patch_append":

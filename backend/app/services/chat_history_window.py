@@ -14,6 +14,18 @@ HISTORY_TRIM_NOTICE = "Earlier messages were trimmed to fit the model context."
 DEFAULT_CHAT_HISTORY_MAX_TOKENS = 12_000
 
 
+def history_trim_budget_tokens(max_context_tokens: int | None) -> int:
+    """Map stored context size to a ``trim_messages`` budget for chat history only.
+
+    When ``max_context_tokens`` is unknown, returns :data:`DEFAULT_CHAT_HISTORY_MAX_TOKENS`.
+    """
+    if max_context_tokens is None or max_context_tokens <= 0:
+        return DEFAULT_CHAT_HISTORY_MAX_TOKENS
+    reserve = max(8192, int(max_context_tokens * 0.22))
+    budget = max_context_tokens - reserve
+    return max(4096, budget)
+
+
 def trim_openai_chat_messages(
     messages: list[dict[str, Any]],
     *,

@@ -309,7 +309,7 @@ studio_id    UUID REFERENCES studios(id),
 software_id  UUID REFERENCES software(id),
 project_id   UUID REFERENCES projects(id),
 user_id      UUID REFERENCES users(id),
-call_type    TEXT NOT NULL,   -- thread | chat | work_order_gen | conflict | drift | graph
+call_source TEXT NOT NULL,   -- thread | chat | work_order_gen | conflict | drift | graph
 model        TEXT NOT NULL,
 input_tokens INTEGER NOT NULL,
 output_tokens INTEGER NOT NULL,
@@ -483,7 +483,7 @@ Internal methods:
 
 ### TokenTracker (internal middleware)
 - Wraps every LLM call in `LLMService`
-- After each call: insert row into `token_usage` with studio, software, project, user, call type, model, token counts, estimated cost
+- After each call: insert row into `token_usage` with studio, software, project, user, call source, model, token counts, estimated cost
 - Estimated cost calculated from a static pricing table keyed by `(provider, model)` — updateable by Tool Admin
 
 ### LLMService (internal)
@@ -491,7 +491,7 @@ Internal methods:
 async def chat_stream(
     messages: list[dict],
     system_prompt: str,
-    call_type: str,
+    call_source: str,
     context: TokenContext,          # studio_id, software_id, project_id, user_id
     structured_output: dict | None = None   # optional JSON schema for structured calls
 ) -> AsyncIterator[str]: ...
@@ -499,7 +499,7 @@ async def chat_stream(
 async def chat_structured(
     messages: list[dict],
     system_prompt: str,
-    call_type: str,
+    call_source: str,
     context: TokenContext,
     output_schema: dict             # required — JSON schema defining expected output shape
 ) -> dict: ...                      # returns parsed dict, never raw string
@@ -599,7 +599,7 @@ Work order pull payload:
 - On connect: validate JWT, register in project room
 - On user message:
   1. Broadcast user message immediately to all connected clients
-  2. Build context via RAGService (call_type = `chat`)
+  2. Build context via RAGService (call_source = `chat`)
   3. Stream LLM tokens, broadcasting each token to all clients
   4. On complete: persist to `chat_messages`, insert `token_usage`
 - On disconnect: unregister from room
@@ -810,7 +810,7 @@ Sections:
 - Response parsed as JSON, each item inserted into `work_orders`
 - `work_order_sections` entries created for each `linked_section_slug`
 - `graph_edges` entries created: `section → work_order` (type: `generates`)
-- Token usage recorded with `call_type = "work_order_gen"`
+- Token usage recorded with `call_source = "work_order_gen"`
 
 ---
 
@@ -840,7 +840,7 @@ async def check_work_order_drift(work_order_id: UUID):
 
     if response.startswith("YES"):
         update work_orders SET is_stale=true, stale_reason=explanation
-        insert token_usage(call_type="drift")
+        insert token_usage(call_source="drift")
 ```
 
 - Debounced: fires 5 seconds after the last section save

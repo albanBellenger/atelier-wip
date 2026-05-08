@@ -6,24 +6,24 @@ export function rowTokenTotal(row: TokenUsageRow): number {
   return row.input_tokens + row.output_tokens
 }
 
-/** Map backend ``call_type`` to wireframe-style categories (fixed order). */
-export function bucketKeyForCallType(callType: string): string {
+/** Map backend ``call_source`` to wireframe-style categories (fixed order). */
+export function bucketKeyForCallType(callSource: string): string {
   if (
-    callType === 'private_thread' ||
-    callType.startsWith('thread_patch_')
+    callSource === 'private_thread' ||
+    callSource.startsWith('thread_patch_')
   ) {
     return 'private_threads'
   }
-  if (callType === 'chat') return 'project_chat'
-  if (callType === 'work_order_gen') return 'work_order_gen'
+  if (callSource === 'chat') return 'project_chat'
+  if (callSource === 'work_order_gen') return 'work_order_gen'
   if (
-    callType === 'conflict' ||
-    callType === 'drift' ||
-    callType === 'thread_conflict_scan'
+    callSource === 'conflict' ||
+    callSource === 'drift' ||
+    callSource === 'thread_conflict_scan'
   ) {
     return 'conflict_drift'
   }
-  if (callType === 'graph') return 'knowledge_graph'
+  if (callSource === 'graph') return 'knowledge_graph'
   return 'other'
 }
 
@@ -50,7 +50,7 @@ export function categoryBreakdownFromRows(
   }
   sums.set('other', 0)
   for (const r of rows) {
-    const b = bucketKeyForCallType(r.call_type)
+    const b = bucketKeyForCallType(r.call_source)
     const t = rowTokenTotal(r)
     sums.set(b, (sums.get(b) ?? 0) + t)
   }

@@ -59,5 +59,5 @@ class BuilderComposerAgent:
             user_prompt=user_prompt,
             json_schema=BUILDER_COMPOSER_HINT_JSON_SCHEMA,
             usage_scope=ctx,
-            call_type="builder_composer_hint",
+            call_source="builder_composer_hint",
         )

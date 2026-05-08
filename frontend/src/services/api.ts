@@ -249,7 +249,7 @@ function appendTokenUsageParams(
   appendTokenUsageParamKey(sp, 'project_id', params.project_id)
   appendTokenUsageParamKey(sp, 'work_order_id', params.work_order_id)
   appendTokenUsageParamKey(sp, 'user_id', params.user_id)
-  appendTokenUsageParamKey(sp, 'call_type', params.call_type)
+  appendTokenUsageParamKey(sp, 'call_source', params.call_source)
   appendTokenUsageParamKey(sp, 'date_from', params.date_from)
   appendTokenUsageParamKey(sp, 'date_to', params.date_to)
   appendTokenUsageParamKey(sp, 'budget_studio_id', params.budget_studio_id)
@@ -297,7 +297,7 @@ export interface TokenUsageQueryParams {
   project_id?: TokenUsageIdParam
   work_order_id?: TokenUsageIdParam
   user_id?: TokenUsageIdParam
-  call_type?: TokenUsageIdParam
+  call_source?: TokenUsageIdParam
   date_from?: string
   date_to?: string
   limit?: number
@@ -313,7 +313,7 @@ export interface TokenUsageRow {
   project_id: string | null
   work_order_id: string | null
   user_id: string | null
-  call_type: string
+  call_source: string
   model: string
   input_tokens: number
   output_tokens: number
@@ -655,11 +655,25 @@ export async function getAdminStudio(studioId: string): Promise<AdminStudioDetai
 
 // --- Admin LLM connectivity ---
 
+export type LlmContextMetadataSource = 'litellm' | 'manual' | 'unknown'
+
+export interface LlmRegistryModelEntry {
+  id: string
+  max_context_tokens?: number | null
+  context_metadata_source?: LlmContextMetadataSource
+  /** ISO-8601 when context metadata was last refreshed from LiteLLM. */
+  context_metadata_checked_at?: string | null
+}
+
+export function modelIdsFromEntries(models: LlmRegistryModelEntry[]): string[] {
+  return models.map((m) => m.id)
+}
+
 export interface LlmProviderRegistryRow {
   id: string
   provider_key: string
   display_name: string
-  models: string[]
+  models: LlmRegistryModelEntry[]
   api_base_url: string | null
   logo_url: string | null
   status: string
@@ -668,11 +682,12 @@ export interface LlmProviderRegistryRow {
   llm_api_key_set: boolean
   llm_api_key_hint: string | null
   litellm_provider_slug: string | null
+  save_warnings?: string[]
 }
 
 export type LlmProviderUpsertBody = {
   display_name: string
-  models: string[]
+  models: LlmRegistryModelEntry[]
   api_base_url?: string | null
   status?: string
   is_default?: boolean
@@ -961,6 +976,8 @@ export interface StudioChatLlmModels {
   effective_model: string | null
   workspace_default_model: string | null
   allowed_models: string[]
+  /** Model id → max context tokens from registry (null = unknown). */
+  model_max_context_tokens?: Record<string, number | null>
 }
 
 export async function listStudios(): Promise<Studio[]> {

@@ -494,7 +494,7 @@ async def studio_token_usage(
     project_id: list[UUID] | None = Query(None),
     work_order_id: list[UUID] | None = Query(None),
     user_id: list[UUID] | None = Query(None),
-    call_type: list[str] | None = Query(None),
+    call_source: list[str] | None = Query(None),
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
     limit: int = Query(100, ge=1, le=5000),
@@ -554,7 +554,7 @@ async def studio_token_usage(
     csv_mode = _studio_wants_csv(request)
     lim = 500_000 if csv_mode else limit
     off = 0 if csv_mode else offset
-    ct = [c.strip() for c in (call_type or []) if c and c.strip()]
+    ct = [c.strip() for c in (call_source or []) if c and c.strip()]
     rows, totals = await svc.list_rows(
         scope="studio",
         scope_studio_id=sid,
@@ -563,7 +563,7 @@ async def studio_token_usage(
         software_ids=software_id,
         project_ids=project_id,
         user_ids=user_id,
-        call_types=ct or None,
+        call_sources=ct or None,
         work_order_ids=work_order_id,
         date_from=date_from,
         date_to=date_to,

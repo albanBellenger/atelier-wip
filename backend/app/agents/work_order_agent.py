@@ -87,5 +87,5 @@ class WorkOrderAgent:
             user_prompt=user_prompt,
             json_schema=WORK_ORDER_BATCH_JSON_SCHEMA,
             usage_scope=ctx,
-            call_type="work_order_gen",
+            call_source="work_order_gen",
         )

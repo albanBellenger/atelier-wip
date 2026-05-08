@@ -71,7 +71,7 @@ export function TokenUsageReportPanel(props: {
   const [softwareId, setSoftwareId] = useState('')
   const [projectId, setProjectId] = useState('')
   const [studioFilterId, setStudioFilterId] = useState('')
-  const [callType, setCallType] = useState('')
+  const [callSource, setCallSource] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [limit, setLimit] = useState(100)
@@ -101,7 +101,7 @@ export function TokenUsageReportPanel(props: {
     if (softwareId.trim()) p.software_id = softwareId.trim()
     if (projectId.trim()) p.project_id = projectId.trim()
     if (mode === 'me' && studioFilterId.trim()) p.studio_id = studioFilterId.trim()
-    if (callType.trim()) p.call_type = callType.trim()
+    if (callSource.trim()) p.call_source = callSource.trim()
     if (dateFrom.trim()) p.date_from = dateFrom.trim()
     if (dateTo.trim()) p.date_to = dateTo.trim()
     return p
@@ -245,11 +245,11 @@ export function TokenUsageReportPanel(props: {
           </label>
         ) : null}
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-zinc-500">Call type</span>
+          <span className="text-xs text-zinc-500">Source</span>
           <input
             className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs"
-            value={callType}
-            onChange={(e) => setCallType(e.target.value)}
+            value={callSource}
+            onChange={(e) => setCallSource(e.target.value)}
           />
         </label>
         <label className="flex flex-col gap-1">
@@ -345,7 +345,7 @@ export function TokenUsageReportPanel(props: {
               <thead className="border-b border-zinc-800 bg-zinc-900/60 text-[10px] uppercase text-zinc-500">
                 <tr>
                   <th className="p-2">When</th>
-                  <th className="p-2">Call</th>
+                  <th className="p-2">Source</th>
                   <th className="p-2">Model</th>
                   <th className="p-2">In</th>
                   <th className="p-2">Out</th>
@@ -362,7 +362,7 @@ export function TokenUsageReportPanel(props: {
                     <td className="whitespace-nowrap p-2 text-zinc-500">
                       {new Date(r.created_at).toLocaleString()}
                     </td>
-                    <td className="p-2">{r.call_type}</td>
+                    <td className="p-2">{r.call_source}</td>
                     <td className="max-w-[140px] truncate p-2">{r.model}</td>
                     <td className="p-2">{r.input_tokens}</td>
                     <td className="p-2">{r.output_tokens}</td>

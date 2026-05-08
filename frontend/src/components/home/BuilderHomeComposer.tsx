@@ -213,7 +213,7 @@ export function BuilderHomeComposer({
               type="button"
               aria-label="Send to software chat"
               disabled={!canUseSoftwareChat || !draft.trim()}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-600/35 text-white shadow-sm transition hover:bg-violet-500/45 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-violet-600 text-white shadow-sm transition hover:bg-violet-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 disabled:cursor-not-allowed disabled:opacity-40"
               onClick={() => onSubmitIntent()}
             >
               <span className="text-base leading-none" aria-hidden>

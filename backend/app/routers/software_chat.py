@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, WebSocket
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.websockets import WebSocketDisconnect
 
+from app.config import get_settings
 from app.database import async_session_factory, get_db
 from app.deps import SoftwareAccess, fetch_software_access, get_software_access
 from app.exceptions import ApiError
@@ -148,7 +150,7 @@ async def software_chat_websocket(
                     )
                     await LLMService(session).ensure_openai_llm_ready(
                         usage_scope=probe_ctx,
-                        call_type="chat",
+                        call_source="chat",
                         preferred_model=preferred_model,
                     )
                     svc = SoftwareChatService(session)
@@ -163,7 +165,7 @@ async def software_chat_websocket(
                     trimmed_for_stream, trimmed = await llm_trim.trim_chat_messages_for_stream(
                         hist,
                         usage_scope=probe_ctx,
-                        call_type="chat",
+                        call_source="chat",
                         preferred_model=preferred_model,
                     )
                     if trimmed:
@@ -208,38 +210,64 @@ async def software_chat_websocket(
                 )
 
             buf: list[str] = []
+            stream_exc: ApiError | None = None
+            asst = None
+            full = ""
+            debug_prompt_payload: dict[str, Any] | None = (
+                {} if get_settings().log_llm_prompts else None
+            )
             async with async_session_factory() as session:
                 svc = SoftwareChatService(session)
-                async for piece, _ctx in svc.stream_assistant_tokens(
-                    software_id=software_id,
-                    user_id=user_id,
-                    user_content=content,
-                    preferred_model=preferred_model,
-                    chat_messages=trimmed_for_stream,
-                ):
-                    buf.append(piece)
-                    await broadcast_json(
-                        software_id,
-                        {"type": "assistant_token", "text": piece},
+                try:
+                    async for piece, _ctx in svc.stream_assistant_tokens(
+                        software_id=software_id,
+                        user_id=user_id,
+                        preferred_model=preferred_model,
+                        chat_messages=trimmed_for_stream,
+                        debug_prompt_payload=debug_prompt_payload,
+                    ):
+                        buf.append(piece)
+                        await broadcast_json(
+                            software_id,
+                            {"type": "assistant_token", "text": piece},
+                        )
+                    full = "".join(buf)
+                    if not full.strip():
+                        full = "[empty response]"
+                    asst = await svc.append_message(
+                        software_id=software_id,
+                        user_id=None,
+                        role="assistant",
+                        content=full,
                     )
-                full = "".join(buf)
-                if not full.strip():
-                    full = "[empty response]"
-                asst = await svc.append_message(
-                    software_id=software_id,
-                    user_id=None,
-                    role="assistant",
-                    content=full,
-                )
-                await session.commit()
+                    await session.commit()
+                except ApiError as e:
+                    await session.rollback()
+                    stream_exc = e
 
-            await broadcast_json(
-                software_id,
-                {
-                    "type": "assistant_done",
-                    "message_id": str(asst.id),
-                    "content": full,
-                },
-            )
+            if stream_exc is not None:
+                det = stream_exc.detail
+                # Machine-readable code for clients/metrics; message stays human-readable.
+                await broadcast_json(
+                    software_id,
+                    {
+                        "type": "error",
+                        "message": det if isinstance(det, str) else str(det),
+                        "code": stream_exc.error_code,
+                    },
+                )
+                continue
+
+            assert asst is not None
+            done_payload: dict[str, Any] = {
+                "type": "assistant_done",
+                "message_id": str(asst.id),
+                "content": full,
+            }
+            if debug_prompt_payload and "llm_outbound_messages" in debug_prompt_payload:
+                done_payload["llm_outbound_messages"] = debug_prompt_payload[
+                    "llm_outbound_messages"
+                ]
+            await broadcast_json(software_id, done_payload)
     finally:
         await unregister(software_id, websocket)

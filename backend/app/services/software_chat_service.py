@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -106,6 +107,7 @@ class SoftwareChatService:
         user_id: uuid.UUID,
         preferred_model: str | None = None,
         chat_messages: list[dict[str, str]] | None = None,
+        debug_prompt_payload: dict[str, Any] | None = None,
     ) -> AsyncIterator[tuple[str, TokenUsageScope]]:
         """Yield LLM token strings; caller persists assistant message after iteration."""
         llm = LLMService(self.db)
@@ -115,5 +117,6 @@ class SoftwareChatService:
             user_id=user_id,
             preferred_model=preferred_model,
             chat_messages=chat_messages,
+            debug_prompt_payload=debug_prompt_payload,
         ):
             yield piece, ctx
