@@ -1,4 +1,14 @@
-"""Periodic reminders for spec sections not pushed to GitLab for 5+ days."""
+"""Periodic in-app reminders (notification kind ``draft_unpublished``).
+
+Creates one notification per qualifying section for all project editors when a section
+has been updated at least ``STALE_DAYS`` ago but those edits are not covered by the
+project's latest GitLab publish (never published, or section ``updated_at`` is newer
+than ``Project.last_published_at``). Re-notifications are suppressed using
+``Section.last_stale_notified_at`` and ``DEDUPE_DAYS``.
+
+This is unrelated to rollback or unpublish of a previously published draft; see
+functional requirements §18.1.
+"""
 
 from __future__ import annotations
 
@@ -20,7 +30,7 @@ DEDUPE_DAYS = 7
 
 
 async def run_draft_unpublished_notifications(session: AsyncSession) -> int:
-    """Notify project editors about sections whose edits are not reflected in GitLab export."""
+    """Insert ``draft_unpublished`` rows for editors of sections matching the stale-unpublished criteria."""
     now = datetime.now(timezone.utc)
     stale_before = now - timedelta(days=STALE_DAYS)
     dedupe_before = now - timedelta(days=DEDUPE_DAYS)

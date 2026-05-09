@@ -24,7 +24,8 @@ from app.models.artifact_exclusion import (
     ProjectArtifactExclusion,
     SoftwareArtifactExclusion,
 )
-from app.models.project import Artifact, ArtifactChunk, Project, Section, SectionChunk
+from app.models.artifact import Artifact, ArtifactChunk
+from app.models.project import Project, Section, SectionChunk
 from app.models.section_context_preference import SectionContextPreference
 from app.models.software import Software
 from app.models.software_activity import SoftwareActivityEvent

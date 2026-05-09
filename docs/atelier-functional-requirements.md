@@ -611,10 +611,12 @@ Atelier maintains a per-user in-app notification inbox. Notifications are writte
 | `artifact_deleted` | An artifact was deleted | Editors of the artifact's owning scope |
 | `section_updated` | A spec section was edited | Editors of the project (excluding the actor) |
 | `publish_commit` | A successful publish completed | Editors of the project (excluding the actor) |
-| `draft_unpublished` | A previously published draft was rolled back / unpublished | Editors of the project |
+| `draft_unpublished` | Reminder: a spec section has had edits for at least five days that are not yet reflected in the GitLab publish (never published, or the section was updated after the project's last successful publish) | Editors of the project |
 | `work_order_status` | A Work Order's status changed | The Work Order's assignee and creator (excluding the actor) |
 
 The actor (the user who triggered the event) is never notified of their own action.
+
+For `draft_unpublished`, rows are written by an optional background job: set `ATELIER_STALE_DRAFT_NOTIFIER=1` to run a daily pass at application startup, or a platform administrator may run `POST /admin/jobs/stale-draft-notifications` on demand.
 
 ### 18.2 Inbox UI
 - A notification bell in the global header shows an unread count

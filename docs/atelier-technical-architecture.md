@@ -347,6 +347,18 @@ CREATE INDEX ON mcp_keys       (studio_id,  revoked_at);
 
 ## 4. Backend Services
 
+### In-app notifications (write path)
+
+Per-user inbox rows are inserted via `NotificationDispatchService` from:
+
+- **ArtifactService** — artifact embedding finished (`artifact_embedded`); artifact deleted (`artifact_deleted`)
+- **Collab WebSocket** — another editor updated spec content (`section_updated`)
+- **PublishService** — successful publish to GitLab (`publish_commit`)
+- **WorkOrderService** — work order status change (`work_order_status`)
+- **Stale-unpublished reminder job** — `draft_unpublished` when section edits are old relative to last publish (see functional requirements §18.1). Implemented in `draft_unpublished_notification_job`; uses `insert_many` rather than a dedicated dispatch helper. Runs only when `ATELIER_STALE_DRAFT_NOTIFIER=1` (daily loop in app lifespan), or when a platform administrator calls `POST /admin/jobs/stale-draft-notifications`.
+
+Listing and read/unread updates use `NotificationService` (e.g. `/me/notifications`).
+
 ### AuthService
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
