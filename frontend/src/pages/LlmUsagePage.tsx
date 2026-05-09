@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
+import { Tooltip } from '../components/ui/Tooltip'
 import { LlmUsageReportPanel } from '../components/tokenUsage/LlmUsageReportPanel'
 import { resolveLlmUsageHeaderStudioId } from '../lib/homeStudioPreference'
 import {
@@ -72,14 +73,20 @@ export function LlmUsagePage(): ReactElement {
             <h1 className="font-serif text-[24px] font-medium leading-tight text-zinc-100 md:text-[26px]">
               LLM usage
             </h1>
-            <button
-              type="button"
-              className="inline-flex shrink-0 cursor-help items-baseline justify-center rounded px-0.5 text-[13px] font-semibold leading-none text-zinc-500 transition hover:text-zinc-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
-              aria-label={LLM_USAGE_FILTERS_HELP}
-              title={LLM_USAGE_FILTERS_HELP}
+            <Tooltip
+              className="shrink-0"
+              side="top"
+              content={LLM_USAGE_FILTERS_HELP}
+              accessibleTrigger={false}
             >
-              <span aria-hidden="true">?</span>
-            </button>
+              <button
+                type="button"
+                className="inline-flex shrink-0 cursor-help items-baseline justify-center rounded px-0.5 text-[13px] font-semibold leading-none text-zinc-500 transition hover:text-zinc-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
+                aria-label={LLM_USAGE_FILTERS_HELP}
+              >
+                <span aria-hidden="true">?</span>
+              </button>
+            </Tooltip>
           </div>
           <div className="mt-3">
             <LlmUsageReportPanel profile={profile} />
@@ -98,12 +105,16 @@ export function LlmUsagePage(): ReactElement {
             <span className="select-none font-sans text-zinc-700" aria-hidden>
               ·
             </span>
-            <span
-              className="rounded border border-zinc-700/70 px-1.5 py-px text-[10px] font-sans font-normal uppercase tracking-wider text-zinc-500"
-              title={`Hosted environment: ${hostedEnvLabel}`}
+            <Tooltip
+              className="inline-flex shrink-0"
+              side="bottom"
+              content={`Hosted environment: ${hostedEnvLabel}`}
+              accessibleTrigger={false}
             >
-              {hostedEnvLabel}
-            </span>
+              <span className="cursor-default rounded border border-zinc-700/70 px-1.5 py-px text-[10px] font-sans font-normal uppercase tracking-wider text-zinc-500">
+                {hostedEnvLabel}
+              </span>
+            </Tooltip>
           </span>
         </footer>
       </div>

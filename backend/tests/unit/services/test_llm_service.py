@@ -17,7 +17,7 @@ from openai import (
     InternalServerError,
     RateLimitError,
 )
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 from app.exceptions import ApiError
 from app.models import LlmProviderRegistry, LlmRoutingRule
@@ -36,8 +36,7 @@ async def _seed_openai_default_llm(db_session: Any, *, model: str, api_key: str 
     db_session.add(
         LlmProviderRegistry(
             id=uuid.uuid4(),
-            provider_key="openai",
-            display_name="OpenAI",
+            provider_id="openai",
             models_json=json.dumps([model]),
             api_base_url=None,
             logo_url=None,
@@ -156,7 +155,7 @@ async def test_admin_connectivity_probe_missing_model_returns_result(db_session:
 
 
 @pytest.mark.asyncio
-async def test_admin_connectivity_probe_unknown_provider_key_returns_result(
+async def test_admin_connectivity_probe_unknown_provider_id_returns_result(
     db_session: Any,
 ) -> None:
     await _seed_openai_default_llm(db_session, model="gpt-test")
@@ -164,7 +163,7 @@ async def test_admin_connectivity_probe_unknown_provider_key_returns_result(
     llm = LLMService(db_session)
     out = await llm.admin_connectivity_probe(
         model_override="gpt-test",
-        provider_key="no-such-provider",
+        provider_id="no-such-provider",
     )
     assert out.ok is False
     assert "unknown" in (out.message or "").lower()
@@ -249,6 +248,58 @@ async def test_admin_connectivity_probe_acompletion_unexpected_error_returns_res
     out = await llm.admin_connectivity_probe()
     assert out.ok is False
     assert (out.message or "") != ""
+
+
+@pytest.mark.asyncio
+async def test_admin_connectivity_probe_persist_success_sets_connected(
+    db_session: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _seed_openai_default_llm(db_session, model="gpt-test")
+    row = (
+        await db_session.execute(
+            select(LlmProviderRegistry).where(LlmProviderRegistry.provider_id == "openai")
+        )
+    ).scalar_one()
+    row.status = "needs-key"
+    await db_session.flush()
+
+    monkeypatch.setattr(
+        "app.services.llm_service.litellm.acompletion",
+        AsyncMock(return_value=_probe_ok_response()),
+    )
+
+    llm = LLMService(db_session)
+    out = await llm.admin_connectivity_probe(persist_registry_status=True)
+    assert out.ok is True
+    await db_session.refresh(row)
+    assert row.status == "connected"
+
+
+@pytest.mark.asyncio
+async def test_admin_connectivity_probe_persist_failure_sets_needs_key(
+    db_session: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _seed_openai_default_llm(db_session, model="gpt-test")
+    row = (
+        await db_session.execute(
+            select(LlmProviderRegistry).where(LlmProviderRegistry.provider_id == "openai")
+        )
+    ).scalar_one()
+    row.status = "connected"
+    await db_session.flush()
+
+    monkeypatch.setattr(
+        "app.services.llm_service.litellm.acompletion",
+        AsyncMock(side_effect=ValueError("boom")),
+    )
+
+    llm = LLMService(db_session)
+    out = await llm.admin_connectivity_probe(persist_registry_status=True)
+    assert out.ok is False
+    await db_session.refresh(row)
+    assert row.status == "needs-key"
 
 
 @pytest.mark.asyncio
@@ -623,8 +674,7 @@ async def test_trim_chat_messages_for_stream_uses_stored_context_budget(
     db_session.add(
         LlmProviderRegistry(
             id=uuid.uuid4(),
-            provider_key="openai",
-            display_name="OpenAI",
+            provider_id="openai",
             models_json=payload,
             api_base_url=None,
             logo_url=None,

@@ -3,12 +3,11 @@
 import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.schemas.token_usage_report import TokenUsageTotalsOut
+from app.schemas.token_usage_report import TokenUsageRowOut, TokenUsageTotalsOut
 from app.services.token_usage_query_service import TokenUsageQueryService
 
 
@@ -176,7 +175,7 @@ async def test_list_rows_returns_rows_and_totals() -> None:
 
 def test_rows_to_csv_with_null_optionals_and_naive_created_at() -> None:
     vid = uuid.uuid4()
-    row = SimpleNamespace(
+    row = TokenUsageRowOut(
         id=vid,
         studio_id=None,
         software_id=None,
@@ -188,27 +187,33 @@ def test_rows_to_csv_with_null_optionals_and_naive_created_at() -> None:
         input_tokens=1,
         output_tokens=2,
         estimated_cost_usd=None,
-        created_at=datetime(2026, 3, 1, 12, 0, 0),
+        created_at=datetime(2026, 3, 1, 12, 0, 0, tzinfo=timezone.utc),
     )
     svc = TokenUsageQueryService(MagicMock())
     csv_out = svc.rows_to_csv([row])
     assert str(vid) in csv_out
-    assert csv_out.count(",") >= 10
+    assert csv_out.count(",") >= 15
     lines = csv_out.strip().split("\n")
-    assert "call_source" in lines[0]
+    assert "studio_name" in lines[0]
+    assert "user_display_name" in lines[0]
 
 
 def test_rows_to_csv_with_timezone_aware_created_at() -> None:
     vid = uuid.uuid4()
     uid = uuid.uuid4()
     sid = uuid.uuid4()
-    row = SimpleNamespace(
+    row = TokenUsageRowOut(
         id=vid,
         studio_id=sid,
+        studio_name="My Studio",
         software_id=None,
+        software_name=None,
         project_id=None,
+        project_name=None,
         work_order_id=None,
+        work_order_title=None,
         user_id=uid,
+        user_display_name="Pat",
         call_source="chat",
         model="gpt-test",
         input_tokens=3,
@@ -220,3 +225,5 @@ def test_rows_to_csv_with_timezone_aware_created_at() -> None:
     csv_out = svc.rows_to_csv([row])
     assert "2026-04-01" in csv_out
     assert "T" in csv_out.split("\n")[1]
+    assert "My Studio" in csv_out
+    assert "Pat" in csv_out

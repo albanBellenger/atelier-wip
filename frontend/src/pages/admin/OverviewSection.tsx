@@ -5,7 +5,6 @@ import {
   ADMIN_CONSOLE_ACCENT,
   Btn,
   Card,
-  Dot,
   KpiTile,
   MoneyBar,
   PageTitle,
@@ -13,12 +12,9 @@ import {
   THead,
   TRow,
 } from '../../components/admin/adminPrimitives'
-import { AUDIT_LOG, BUILDERS, EMBED_COLLECTIONS, STUDIOS } from '../../data/adminConsoleMock'
+import { BUILDERS, EMBED_COLLECTIONS, STUDIOS } from '../../data/adminConsoleMock'
 import { adminConsolePath, type AdminConsoleSection } from '../../lib/adminConsoleNav'
-import {
-  type DeploymentActivityRow,
-  getAdminConsoleOverview,
-} from '../../services/api'
+import { getAdminConsoleOverview } from '../../services/api'
 
 export function OverviewSection(): ReactElement {
   const navigate = useNavigate()
@@ -78,14 +74,11 @@ export function OverviewSection(): ReactElement {
     },
   ]
 
-  const activityRows =
-    live && live.recent_activity.length > 0 ? live.recent_activity : null
-
   return (
     <div className="space-y-6">
       <PageTitle
         title="Overview"
-        subtitle="At-a-glance health: studios, spend, embedding coverage, and recent events."
+        subtitle="At-a-glance health: studios, spend, and embedding coverage."
       />
 
       {overviewQ.isError ? (
@@ -103,96 +96,56 @@ export function OverviewSection(): ReactElement {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
-        <Card
-          title="Studios at a glance"
-          right={
-            <Btn type="button" onClick={() => go('studios')}>
-              Manage →
-            </Btn>
-          }
-        >
-          <Table>
-            <THead
-              cols={['Studio', 'Software', 'Members', 'Spend / Budget', '']}
-              grid="grid-cols-[1.8fr_0.7fr_0.7fr_1.5fr_0.4fr]"
-            />
-            {live
-              ? live.studios.map((s) => {
-                  const used = Number.parseFloat(s.mtd_spend_usd || '0')
-                  const capNum = s.budget_cap_monthly_usd
-                    ? Number.parseFloat(s.budget_cap_monthly_usd)
-                    : Math.max(used, 1)
-                  return (
-                    <TRow key={s.studio_id} grid="grid-cols-[1.8fr_0.7fr_0.7fr_1.5fr_0.4fr]">
-                      <span className="truncate text-[13px] text-zinc-100">{s.name}</span>
-                      <span className="font-mono text-[12px] tabular-nums text-zinc-300">
-                        {s.software_count}
-                      </span>
-                      <span className="font-mono text-[12px] tabular-nums text-zinc-300">
-                        {s.member_count}
-                      </span>
-                      <MoneyBar used={used} budget={capNum} accent={ADMIN_CONSOLE_ACCENT} />
-                      <Btn size="sm" type="button" onClick={() => go('studios')}>
-                        Open
-                      </Btn>
-                    </TRow>
-                  )
-                })
-              : STUDIOS.map((s) => (
-                  <TRow key={s.id} grid="grid-cols-[1.8fr_0.7fr_0.7fr_1.5fr_0.4fr]">
+      <Card
+        title="Studios at a glance"
+        right={
+          <Btn type="button" onClick={() => go('studios')}>
+            Manage →
+          </Btn>
+        }
+      >
+        <Table>
+          <THead
+            cols={['Studio', 'Software', 'Members', 'Spend / Budget', '']}
+            grid="grid-cols-[1.8fr_0.7fr_0.7fr_1.5fr_0.4fr]"
+          />
+          {live
+            ? live.studios.map((s) => {
+                const used = Number.parseFloat(s.mtd_spend_usd || '0')
+                const capNum = s.budget_cap_monthly_usd
+                  ? Number.parseFloat(s.budget_cap_monthly_usd)
+                  : Math.max(used, 1)
+                return (
+                  <TRow key={s.studio_id} grid="grid-cols-[1.8fr_0.7fr_0.7fr_1.5fr_0.4fr]">
                     <span className="truncate text-[13px] text-zinc-100">{s.name}</span>
                     <span className="font-mono text-[12px] tabular-nums text-zinc-300">
-                      {s.software}
+                      {s.software_count}
                     </span>
-                    <span className="font-mono text-[12px] tabular-nums text-zinc-300">{s.members}</span>
-                    <MoneyBar used={s.monthSpend} budget={s.budget} accent={ADMIN_CONSOLE_ACCENT} />
+                    <span className="font-mono text-[12px] tabular-nums text-zinc-300">
+                      {s.member_count}
+                    </span>
+                    <MoneyBar used={used} budget={capNum} accent={ADMIN_CONSOLE_ACCENT} />
                     <Btn size="sm" type="button" onClick={() => go('studios')}>
                       Open
                     </Btn>
                   </TRow>
-                ))}
-          </Table>
-        </Card>
-
-        <Card title="Recent activity">
-          <ul className="px-1 py-1">
-            {activityRows
-              ? activityRows.map((a: DeploymentActivityRow, i: number) => (
-                  <li
-                    key={a.id}
-                    className={`flex items-start gap-3 px-4 py-3 text-[12px] ${i > 0 ? 'border-t border-zinc-800/60' : ''}`}
-                  >
-                    <Dot tone={a.actor_user_id ? 'violet' : 'amber'} />
-                    <div className="min-w-0 flex-1">
-                      <span className="text-zinc-300">{a.action}</span>
-                      {a.summary ? (
-                        <>
-                          <span className="text-zinc-500"> · </span>
-                          <span className="text-zinc-200">{a.summary}</span>
-                        </>
-                      ) : null}
-                      <div className="text-[11px] text-zinc-500">{a.created_at}</div>
-                    </div>
-                  </li>
-                ))
-              : AUDIT_LOG.map((a, i) => (
-                  <li
-                    key={`${a.target}-${i}`}
-                    className={`flex items-start gap-3 px-4 py-3 text-[12px] ${i > 0 ? 'border-t border-zinc-800/60' : ''}`}
-                  >
-                    <Dot tone={a.who === 'System' ? 'amber' : 'violet'} />
-                    <div className="min-w-0 flex-1">
-                      <span className="text-zinc-300">{a.who}</span>
-                      <span className="text-zinc-500"> {a.what} </span>
-                      <span className="text-zinc-200">{a.target}</span>
-                      <div className="text-[11px] text-zinc-500">{a.when}</div>
-                    </div>
-                  </li>
-                ))}
-          </ul>
-        </Card>
-      </div>
+                )
+              })
+            : STUDIOS.map((s) => (
+                <TRow key={s.id} grid="grid-cols-[1.8fr_0.7fr_0.7fr_1.5fr_0.4fr]">
+                  <span className="truncate text-[13px] text-zinc-100">{s.name}</span>
+                  <span className="font-mono text-[12px] tabular-nums text-zinc-300">
+                    {s.software}
+                  </span>
+                  <span className="font-mono text-[12px] tabular-nums text-zinc-300">{s.members}</span>
+                  <MoneyBar used={s.monthSpend} budget={s.budget} accent={ADMIN_CONSOLE_ACCENT} />
+                  <Btn size="sm" type="button" onClick={() => go('studios')}>
+                    Open
+                  </Btn>
+                </TRow>
+              ))}
+        </Table>
+      </Card>
 
       <Card title="Quick actions">
         <div className="grid grid-cols-1 gap-2 p-4 sm:grid-cols-2 lg:grid-cols-3">

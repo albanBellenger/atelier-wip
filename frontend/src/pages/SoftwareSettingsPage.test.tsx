@@ -96,8 +96,15 @@ describe('SoftwareSettingsPage', () => {
     expect(
       screen.getByRole('heading', { name: /artifact visibility \(software scope\)/i }),
     ).toBeInTheDocument()
+    const help = screen.getByRole('button', {
+      name: /name, description, llm context, and gitlab connection for my sw/i,
+    })
+    expect(help).toBeInTheDocument()
+    const user = userEvent.setup()
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+    await user.hover(help)
     expect(
-      screen.getByRole('button', {
+      screen.getByRole('tooltip', {
         name: /name, description, llm context, and gitlab connection for my sw/i,
       }),
     ).toBeInTheDocument()

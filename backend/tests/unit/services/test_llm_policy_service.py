@@ -42,8 +42,7 @@ async def test_resolve_matches_routing_and_studio_policy(db_session: AsyncSessio
     db_session.add(
         LlmProviderRegistry(
             id=uuid.uuid4(),
-            provider_key="openai",
-            display_name="OpenAI",
+            provider_id="openai",
             models_json=json.dumps(["gpt-4o-mini", "gpt-4o"]),
             status="connected",
             is_default=True,
@@ -60,7 +59,7 @@ async def test_resolve_matches_routing_and_studio_policy(db_session: AsyncSessio
     db_session.add(
         StudioLlmProviderPolicy(
             studio_id=sid,
-            provider_key="openai",
+            provider_id="openai",
             enabled=True,
             selected_model="gpt-4o-mini",
         )
@@ -82,8 +81,7 @@ async def test_resolve_skips_disconnected_registry_provider(
     db_session.add(
         LlmProviderRegistry(
             id=uuid.uuid4(),
-            provider_key="openai",
-            display_name="OpenAI",
+            provider_id="openai",
             models_json=json.dumps(["gpt-4o-mini", "gpt-4o"]),
             status="disconnected",
             is_default=True,
@@ -114,8 +112,7 @@ async def test_studio_chat_llm_models_lists_connected_policy_models_only(
     db_session.add(
         LlmProviderRegistry(
             id=uuid.uuid4(),
-            provider_key="openai",
-            display_name="OpenAI",
+            provider_id="openai",
             models_json=json.dumps(["gpt-4o-mini", "gpt-4o"]),
             status="connected",
             is_default=True,
@@ -132,7 +129,7 @@ async def test_studio_chat_llm_models_lists_connected_policy_models_only(
     db_session.add(
         StudioLlmProviderPolicy(
             studio_id=sid,
-            provider_key="openai",
+            provider_id="openai",
             enabled=True,
             selected_model="gpt-4o-mini",
         )
@@ -170,8 +167,7 @@ async def test_studio_chat_llm_models_includes_context_from_registry_entries(
     db_session.add(
         LlmProviderRegistry(
             id=uuid.uuid4(),
-            provider_key="openai",
-            display_name="OpenAI",
+            provider_id="openai",
             models_json=payload,
             status="connected",
             is_default=True,
@@ -188,7 +184,7 @@ async def test_studio_chat_llm_models_includes_context_from_registry_entries(
     db_session.add(
         StudioLlmProviderPolicy(
             studio_id=sid,
-            provider_key="openai",
+            provider_id="openai",
             enabled=True,
             selected_model="gpt-4o-mini",
         )
@@ -343,8 +339,7 @@ async def test_resolve_embedding_route_platform_skips_studio_policies(
     db_session.add(
         LlmProviderRegistry(
             id=uuid.uuid4(),
-            provider_key="openai",
-            display_name="OpenAI",
+            provider_id="openai",
             models_json=json.dumps(["text-embedding-3-small"]),
             status="connected",
             is_default=True,
@@ -361,7 +356,7 @@ async def test_resolve_embedding_route_platform_skips_studio_policies(
     db_session.add(
         StudioLlmProviderPolicy(
             studio_id=sid,
-            provider_key="openai",
+            provider_id="openai",
             enabled=True,
             selected_model="gpt-4o-mini",
         )
@@ -385,8 +380,7 @@ async def test_resolve_embedding_route_studio_ignores_chat_selected_model(
     db_session.add(
         LlmProviderRegistry(
             id=uuid.uuid4(),
-            provider_key="openai",
-            display_name="OpenAI",
+            provider_id="openai",
             models_json=json.dumps(["gpt-4o-mini", "text-embedding-3-small"]),
             status="connected",
             is_default=True,
@@ -403,7 +397,7 @@ async def test_resolve_embedding_route_studio_ignores_chat_selected_model(
     db_session.add(
         StudioLlmProviderPolicy(
             studio_id=sid,
-            provider_key="openai",
+            provider_id="openai",
             enabled=True,
             selected_model="gpt-4o-mini",
         )
@@ -427,8 +421,7 @@ async def test_resolve_preferred_chat_model_accepts_allowed_and_rejects_other(
     db_session.add(
         LlmProviderRegistry(
             id=uuid.uuid4(),
-            provider_key="openai",
-            display_name="OpenAI",
+            provider_id="openai",
             models_json=json.dumps(["gpt-4o-mini", "gpt-4o"]),
             status="connected",
             is_default=True,
@@ -445,7 +438,7 @@ async def test_resolve_preferred_chat_model_accepts_allowed_and_rejects_other(
     db_session.add(
         StudioLlmProviderPolicy(
             studio_id=sid,
-            provider_key="openai",
+            provider_id="openai",
             enabled=True,
             selected_model="gpt-4o-mini",
         )

@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react'
+import type { ReactElement, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
@@ -7,7 +7,6 @@ import {
   Btn,
   Card,
   Dot,
-  Hairline,
   PageTitle,
   Pill,
   ProviderGlyph,
@@ -18,6 +17,7 @@ import {
   TRow,
 } from '../../components/admin/adminPrimitives'
 import { LlmModelSuggestInput } from '../../components/admin/LlmModelSuggestInput'
+import { Tooltip } from '../../components/ui/Tooltip'
 import {
   type AdminLlmProbeBody,
   type LlmProviderRegistryRow,
@@ -46,6 +46,118 @@ const EMPTY_LLM_PROVIDERS: LlmProviderRegistryRow[] = []
 
 const LITELLM_PROVIDERS_DOCS = 'https://docs.litellm.ai/docs/providers' as const
 
+const ADD_ROUTING_RULE_HELP =
+  'Binds an agent group to registry models (primary + optional fallback). Suggestions list deployment models only and follow Registry scope below; typed ids must match a provider row.'
+
+const ROUTING_REGISTRY_HELP = (
+  <>
+    Primary and fallback values must be model IDs configured on an LLM registry provider row above.
+    Suggestions list those deployment models only (optional scope filter). Empty fallback means only
+    the primary is considered for that agent group. Use{' '}
+    <span className="font-mono text-zinc-400">provider/model</span> when LiteLLM cannot infer the
+    host; otherwise configure a slug on the provider row for short ids.{' '}
+    <a
+      href={LITELLM_PROVIDERS_DOCS}
+      target="_blank"
+      rel="noreferrer"
+      className="font-medium text-violet-400 underline-offset-2 hover:underline"
+    >
+      LiteLLM providers
+    </a>
+  </>
+)
+
+const ADD_PROVIDER_MODEL_IDS_HELP = (
+  <>
+    Short ids are fine if LiteLLM can infer the provider; otherwise use{' '}
+    <span className="font-mono text-zinc-400">provider/model</span> or set the slug below.{' '}
+    <a
+      href={LITELLM_PROVIDERS_DOCS}
+      target="_blank"
+      rel="noreferrer"
+      className="font-medium text-violet-400 underline-offset-2 hover:underline"
+      onClick={(e) => e.stopPropagation()}
+    >
+      LiteLLM providers
+    </a>
+  </>
+)
+
+const ADD_PROVIDER_CONTEXT_TOKENS_HELP =
+  "Non-empty values mark that position as a manual override (skips LiteLLM lookup for that model's context size)."
+
+const ADD_PROVIDER_LITELLM_SLUG_HELP = (
+  <>
+    If empty, the provider ID is used as the LiteLLM prefix. Must match a{' '}
+    <a
+      href={LITELLM_PROVIDERS_DOCS}
+      target="_blank"
+      rel="noreferrer"
+      className="font-medium text-violet-400 underline-offset-2 hover:underline"
+      onClick={(e) => e.stopPropagation()}
+    >
+      documented
+    </a>{' '}
+    slug when the ID is only a local label.
+  </>
+)
+
+const MODEL_REGISTRY_HELP = (
+  <>
+    Registered providers and model IDs for routing and studio allow-lists. Keys are stored
+    encrypted when configured. Mark one row as <span className="text-zinc-300">default</span> for
+    fallbacks. For LiteLLM, inference uses{' '}
+    <span className="font-mono text-zinc-400">slug/model</span> when the model id has no slash: the
+    slug is the optional field below or else the provider ID.{' '}
+    <a
+      href={LITELLM_PROVIDERS_DOCS}
+      target="_blank"
+      rel="noreferrer"
+      className="font-medium text-violet-400 underline-offset-2 hover:underline"
+    >
+      Provider slugs
+    </a>
+  </>
+)
+
+function LlmFormFieldHint(props: { ariaLabel: string; content: ReactNode }): ReactElement {
+  const { ariaLabel, content } = props
+  return (
+    <Tooltip
+      className="shrink-0"
+      side="bottom"
+      interactive
+      accessibleTrigger={false}
+      content={content}
+    >
+      <button
+        type="button"
+        className="inline-flex cursor-help text-zinc-500 outline-none transition hover:text-zinc-300 focus-visible:ring-2 focus-visible:ring-violet-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 rounded-full"
+        aria-label={ariaLabel}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 14 14"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden
+        >
+          <circle cx="7" cy="7" r="5.75" stroke="currentColor" strokeWidth="1" />
+          <circle cx="7" cy="4.35" r="0.55" fill="currentColor" />
+          <path
+            d="M7 6.1v4.15"
+            stroke="currentColor"
+            strokeWidth="1.05"
+            strokeLinecap="round"
+          />
+        </svg>
+      </button>
+    </Tooltip>
+  )
+}
+
 function StudioSelect({
   value,
   onChange,
@@ -70,7 +182,7 @@ function StudioSelect({
   )
 }
 
-function normalizeProviderKey(raw: string): string {
+function normalizeProviderId(raw: string): string {
   return raw
     .toLowerCase()
     .replace(/[^a-z0-9_-]+/g, '')
@@ -154,14 +266,14 @@ function AddRoutingModal({
   open,
   onClose,
   blockedUseCasesCsv,
-  catalogSlug,
+  registryScopeSlug,
   onAdd,
 }: {
   open: boolean
   onClose: () => void
   blockedUseCasesCsv: string
-  /** LiteLLM catalog provider filter for suggestions (registry slug or provider key). */
-  catalogSlug: string
+  /** Registry row scope: match ``litellm_provider_slug`` or ``provider_id`` (lowercase). */
+  registryScopeSlug: string
   onAdd: (row: LlmRoutingRuleRow) => void
 }): ReactElement | null {
   const existingKeys = blockedUseCasesCsv
@@ -213,25 +325,36 @@ function AddRoutingModal({
         className="w-full max-w-lg rounded-xl border border-zinc-800 bg-zinc-950 p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 id="llm-add-routing-title" className="text-[15px] font-medium text-zinc-100">
-          Add routing rule
-        </h2>
-        <p className="mt-1 text-[12px] text-zinc-500">
-          Maps an agent group (routing bucket) to a primary model and optional fallback. Models must
-          appear on a connected registry provider to take effect for studios with policy configured.
-          For LiteLLM, use short ids in lists when the provider row has a{' '}
-          <span className="font-mono text-zinc-400">LiteLLM provider slug</span>, or enter{' '}
-          <span className="font-mono text-zinc-400">provider/model</span> here.{' '}
-          <a
-            href={LITELLM_PROVIDERS_DOCS}
-            target="_blank"
-            rel="noreferrer"
-            className="text-violet-400 hover:underline"
-            onClick={(e) => e.stopPropagation()}
-          >
-            Provider slugs (docs)
-          </a>
-        </p>
+        <div className="flex items-start gap-2">
+          <h2 id="llm-add-routing-title" className="min-w-0 flex-1 text-[15px] font-medium text-zinc-100">
+            Add routing rule
+          </h2>
+          <Tooltip side="bottom" interactive accessibleTrigger={false} content={ADD_ROUTING_RULE_HELP}>
+            <button
+              type="button"
+              className="inline-flex shrink-0 cursor-help text-zinc-500 outline-none transition hover:text-zinc-300 focus-visible:ring-2 focus-visible:ring-violet-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 rounded-full"
+              aria-label="About add routing rule"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 14 14"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden
+              >
+                <circle cx="7" cy="7" r="5.75" stroke="currentColor" strokeWidth="1" />
+                <circle cx="7" cy="4.35" r="0.55" fill="currentColor" />
+                <path
+                  d="M7 6.1v4.15"
+                  stroke="currentColor"
+                  strokeWidth="1.05"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+          </Tooltip>
+        </div>
         <div className="mt-4 space-y-3">
           {options.length === 0 ? (
             <p className="text-[13px] text-amber-300/90">
@@ -270,9 +393,10 @@ function AddRoutingModal({
                   listId="llm-add-routing-primary-dl"
                   value={primary}
                   onChange={setPrimary}
-                  litellmProvider={catalogSlug.trim() || undefined}
+                  litellmProvider={registryScopeSlug.trim() || undefined}
                   mode={catalogMode}
-                  placeholder="Catalog suggestions (opens with modal)"
+                  source="registry"
+                  placeholder="Deployment models"
                   minChars={0}
                   prefetch={open}
                   className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[12px] text-zinc-100 outline-none focus:border-zinc-600"
@@ -287,8 +411,9 @@ function AddRoutingModal({
                   listId="llm-add-routing-fallback-dl"
                   value={fallback}
                   onChange={setFallback}
-                  litellmProvider={catalogSlug.trim() || undefined}
+                  litellmProvider={registryScopeSlug.trim() || undefined}
                   mode={catalogMode}
+                  source="registry"
                   placeholder="Optional fallback"
                   minChars={0}
                   prefetch={open}
@@ -328,10 +453,9 @@ function AddProviderModal({
   onClose: () => void
   isPending: boolean
   error?: unknown
-  onRegister: (args: { providerKey: string; body: LlmProviderUpsertBody }) => void
+  onRegister: (args: { providerId: string; body: LlmProviderUpsertBody }) => void
 }): ReactElement | null {
-  const [providerKey, setProviderKey] = useState('')
-  const [displayName, setDisplayName] = useState('')
+  const [providerId, setProviderId] = useState('')
   const [modelsText, setModelsText] = useState('')
   const [contextTokensText, setContextTokensText] = useState('')
   const [apiBaseUrl, setApiBaseUrl] = useState('')
@@ -343,8 +467,7 @@ function AddProviderModal({
 
   useEffect(() => {
     if (!open) return
-    setProviderKey('')
-    setDisplayName('')
+    setProviderId('')
     setModelsText('')
     setContextTokensText('')
     setApiBaseUrl('')
@@ -360,14 +483,12 @@ function AddProviderModal({
   }
 
   const submit = (): void => {
-    const pk = normalizeProviderKey(providerKey)
+    const pk = normalizeProviderId(providerId)
     const models = buildModelEntriesFromForm(modelsText, contextTokensText)
-    const name = displayName.trim()
-    if (!pk || !name || models.length === 0) {
+    if (!pk || models.length === 0) {
       return
     }
     const body: LlmProviderUpsertBody = {
-      display_name: name,
       models,
       api_base_url: apiBaseUrl.trim() || null,
       status,
@@ -378,7 +499,7 @@ function AddProviderModal({
     if (llmApiKey.trim()) {
       body.llm_api_key = llmApiKey.trim()
     }
-    onRegister({ providerKey: pk, body })
+    onRegister({ providerId: pk, body })
   }
 
   const errText =
@@ -394,52 +515,51 @@ function AddProviderModal({
         role="dialog"
         aria-modal
         aria-labelledby="llm-add-provider-title"
-        className="w-full max-w-lg rounded-xl border border-zinc-800 bg-zinc-950 p-5 shadow-xl"
+        className="flex max-h-[min(90vh,calc(100dvh-2rem))] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 id="llm-add-provider-title" className="text-[15px] font-medium text-zinc-100">
-          Register LLM provider
-        </h2>
-        <p className="mt-1 text-[12px] text-zinc-500">
-          Adds a row to the routing registry (model allow-list for policy). Optional per-provider
-          OpenAI-compatible API key (encrypted at rest when{' '}
-          <span className="font-mono text-zinc-400">ENCRYPTION_KEY</span> is set). If omitted,
-          inference falls back to the key from{' '}
-          <Link className="text-violet-400 hover:underline" to="/admin/settings">
-            Platform settings · LLM keys
-          </Link>
-          .
-        </p>
-        <div className="mt-4 space-y-3">
+        <div className="shrink-0 px-5 pt-5">
+          <h2 id="llm-add-provider-title" className="text-[15px] font-medium text-zinc-100">
+            Register LLM provider
+          </h2>
+          <p className="mt-1 text-[12px] text-zinc-500">
+            Adds a row to the routing registry (model allow-list for policy). Optional per-provider
+            OpenAI-compatible API key (encrypted at rest when{' '}
+            <span className="font-mono text-zinc-400">ENCRYPTION_KEY</span> is set). If omitted,
+            inference falls back to the key from{' '}
+            <Link className="text-violet-400 hover:underline" to="/admin/settings">
+              Platform settings · LLM keys
+            </Link>
+            .
+          </p>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">
+          <div className="space-y-3">
           <div>
             <StatLabel>
-              <label htmlFor="llm-add-provider-key">Provider key</label>
+              <label htmlFor="llm-add-provider-id">Provider ID</label>
             </StatLabel>
             <input
-              id="llm-add-provider-key"
-              value={providerKey}
-              onChange={(e) => setProviderKey(normalizeProviderKey(e.target.value))}
+              id="llm-add-provider-id"
+              value={providerId}
+              onChange={(e) => setProviderId(normalizeProviderId(e.target.value))}
               autoComplete="off"
               placeholder="e.g. anthropic_eu"
               className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[12px] text-zinc-100 outline-none focus:border-zinc-600"
             />
           </div>
           <div>
-            <StatLabel>
-              <label htmlFor="llm-add-provider-name">Display name</label>
-            </StatLabel>
-            <input
-              id="llm-add-provider-name"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="Shown in admin UI"
-              className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-[13px] text-zinc-100 outline-none focus:border-zinc-600"
-            />
-          </div>
-          <div>
-            <StatLabel>
-              <label htmlFor="llm-add-provider-models">Model IDs</label>
-            </StatLabel>
+            <div className="flex items-center gap-1.5">
+              <div className="min-w-0 flex-1">
+                <StatLabel>
+                  <label htmlFor="llm-add-provider-models">Model IDs</label>
+                </StatLabel>
+              </div>
+              <LlmFormFieldHint
+                ariaLabel="Model ID format and LiteLLM catalog"
+                content={ADD_PROVIDER_MODEL_IDS_HELP}
+              />
+            </div>
             <textarea
               id="llm-add-provider-models"
               value={modelsText}
@@ -448,19 +568,6 @@ function AddProviderModal({
               placeholder="Comma-separated, e.g. claude-sonnet-4.5, claude-haiku-4.5"
               className="mt-1.5 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
             />
-            <p className="mt-1 text-[11px] text-zinc-600">
-              Short ids are fine if LiteLLM can infer the provider; otherwise use{' '}
-              <span className="font-mono text-zinc-500">provider/model</span> or set the slug below.{' '}
-              <a
-                href={LITELLM_PROVIDERS_DOCS}
-                target="_blank"
-                rel="noreferrer"
-                className="text-violet-400 hover:underline"
-                onClick={(e) => e.stopPropagation()}
-              >
-                LiteLLM providers
-              </a>
-            </p>
             <div className="mt-2 flex flex-wrap items-end gap-2">
               <div className="min-w-0 flex-1">
                 <StatLabel>
@@ -471,8 +578,10 @@ function AddProviderModal({
                   listId="llm-add-suggest-append-dl"
                   value={suggestAppend}
                   onChange={setSuggestAppend}
-                  providerKey={normalizeProviderKey(providerKey) || undefined}
-                  litellmProvider={litellmSlug.trim() || undefined}
+                  providerId={normalizeProviderId(providerId) || undefined}
+                  litellmProvider={
+                    litellmSlug.trim() || normalizeProviderId(providerId) || undefined
+                  }
                   prefetch={open}
                   minChars={0}
                   placeholder="Search models, then append"
@@ -492,9 +601,17 @@ function AddProviderModal({
             </div>
           </div>
           <div>
-            <StatLabel>
-              <label htmlFor="llm-add-context-tokens">Max context tokens (optional)</label>
-            </StatLabel>
+            <div className="flex items-center gap-1.5">
+              <div className="min-w-0 flex-1">
+                <StatLabel>
+                  <label htmlFor="llm-add-context-tokens">Max context tokens (optional)</label>
+                </StatLabel>
+              </div>
+              <LlmFormFieldHint
+                ariaLabel="Max context tokens manual override"
+                content={ADD_PROVIDER_CONTEXT_TOKENS_HELP}
+              />
+            </div>
             <textarea
               id="llm-add-context-tokens"
               value={contextTokensText}
@@ -504,15 +621,19 @@ function AddProviderModal({
               placeholder="Comma-aligned with model list; leave blank to let LiteLLM fill on save"
               className="mt-1.5 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
             />
-            <p className="mt-1 text-[11px] text-zinc-600">
-              Non-empty values mark that position as a manual override (skips LiteLLM lookup for that
-              model&apos;s context size).
-            </p>
           </div>
           <div>
-            <StatLabel>
-              <label htmlFor="llm-add-provider-litellm-slug">LiteLLM provider slug (optional)</label>
-            </StatLabel>
+            <div className="flex items-center gap-1.5">
+              <div className="min-w-0 flex-1">
+                <StatLabel>
+                  <label htmlFor="llm-add-provider-litellm-slug">LiteLLM provider slug (optional)</label>
+                </StatLabel>
+              </div>
+              <LlmFormFieldHint
+                ariaLabel="LiteLLM provider slug and prefix"
+                content={ADD_PROVIDER_LITELLM_SLUG_HELP}
+              />
+            </div>
             <input
               id="llm-add-provider-litellm-slug"
               value={litellmSlug}
@@ -521,19 +642,6 @@ function AddProviderModal({
               placeholder="e.g. moonshot (when model list uses short ids)"
               className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
             />
-            <p className="mt-1 text-[11px] text-zinc-600">
-              If empty, the provider key is used as the LiteLLM prefix. Must match a{' '}
-              <a
-                href={LITELLM_PROVIDERS_DOCS}
-                target="_blank"
-                rel="noreferrer"
-                className="text-violet-400 hover:underline"
-                onClick={(e) => e.stopPropagation()}
-              >
-                documented
-              </a>{' '}
-              slug when the key is only a local label.
-            </p>
           </div>
           <div>
             <StatLabel>
@@ -589,30 +697,32 @@ function AddProviderModal({
             />
             Mark as default provider for routing hints
           </label>
+          </div>
         </div>
-        {errText ? (
-          <p className="mt-3 text-[12px] text-rose-300" role="alert">
-            {errText}
-          </p>
-        ) : null}
-        <div className="mt-5 flex justify-end gap-2">
-          <Btn type="button" onClick={onClose} disabled={isPending}>
-            Cancel
-          </Btn>
-          <Btn
-            type="button"
-            tone="primary"
-            style={{ background: ADMIN_CONSOLE_ACCENT }}
-            disabled={
-              isPending ||
-              !normalizeProviderKey(providerKey) ||
-              !displayName.trim() ||
-              parseModelIds(modelsText).length === 0
-            }
-            onClick={submit}
-          >
-            {isPending ? 'Saving…' : 'Register provider'}
-          </Btn>
+        <div className="shrink-0 border-t border-zinc-800/80 px-5 pb-5 pt-4">
+          {errText ? (
+            <p className="mb-3 text-[12px] text-rose-300" role="alert">
+              {errText}
+            </p>
+          ) : null}
+          <div className="flex justify-end gap-2">
+            <Btn type="button" onClick={onClose} disabled={isPending}>
+              Cancel
+            </Btn>
+            <Btn
+              type="button"
+              tone="primary"
+              style={{ background: ADMIN_CONSOLE_ACCENT }}
+              disabled={
+                isPending ||
+                !normalizeProviderId(providerId) ||
+                parseModelIds(modelsText).length === 0
+              }
+              onClick={submit}
+            >
+              {isPending ? 'Saving…' : 'Register provider'}
+            </Btn>
+          </div>
         </div>
       </div>
     </div>
@@ -623,13 +733,13 @@ function buildPolicyRows(
   providers: LlmProviderRegistryRow[],
   existing: StudioLlmPolicyRow[] | undefined,
 ): StudioLlmPolicyRow[] {
-  const map = new Map(existing?.map((r) => [r.provider_key, r]) ?? [])
+  const map = new Map(existing?.map((r) => [r.provider_id, r]) ?? [])
   return providers.map((p) => {
-    const prev = map.get(p.provider_key)
+    const prev = map.get(p.provider_id)
     const ids = modelIdsFromEntries(p.models)
     const defaultModel = ids[0] ?? null
     return {
-      provider_key: p.provider_key,
+      provider_id: p.provider_id,
       enabled: prev?.enabled ?? false,
       selected_model:
         prev?.selected_model && ids.includes(prev.selected_model)
@@ -650,9 +760,8 @@ function EditProviderModal({
   onClose: () => void
   isPending: boolean
   error?: unknown
-  onSave: (args: { providerKey: string; body: LlmProviderUpsertBody }) => void
+  onSave: (args: { providerId: string; body: LlmProviderUpsertBody }) => void
 }): ReactElement | null {
-  const [displayName, setDisplayName] = useState('')
   const [modelsText, setModelsText] = useState('')
   const [contextTokensText, setContextTokensText] = useState('')
   const [apiBaseUrl, setApiBaseUrl] = useState('')
@@ -665,7 +774,6 @@ function EditProviderModal({
 
   useEffect(() => {
     if (!provider) return
-    setDisplayName(provider.display_name)
     setModelsText(modelIdsFromEntries(provider.models).join(', '))
     setContextTokensText(formatContextTokensCsv(provider.models))
     setApiBaseUrl(provider.api_base_url ?? '')
@@ -687,12 +795,10 @@ function EditProviderModal({
 
   const submit = (): void => {
     const models = buildModelEntriesFromForm(modelsText, contextTokensText)
-    const name = displayName.trim()
-    if (!name || models.length === 0) {
+    if (models.length === 0) {
       return
     }
     const body: LlmProviderUpsertBody = {
-      display_name: name,
       models,
       api_base_url: apiBaseUrl.trim() || null,
       status,
@@ -705,7 +811,7 @@ function EditProviderModal({
     } else if (llmApiKey.trim()) {
       body.llm_api_key = llmApiKey.trim()
     }
-    onSave({ providerKey: provider.provider_key, body })
+    onSave({ providerId: provider.provider_id, body })
   }
 
   const errText =
@@ -721,39 +827,31 @@ function EditProviderModal({
         role="dialog"
         aria-modal
         aria-labelledby="llm-edit-provider-title"
-        className="w-full max-w-lg rounded-xl border border-zinc-800 bg-zinc-950 p-5 shadow-xl"
+        className="flex max-h-[min(90vh,calc(100dvh-2rem))] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 id="llm-edit-provider-title" className="text-[15px] font-medium text-zinc-100">
-          Edit LLM provider
-        </h2>
-        <p className="mt-1 text-[12px] text-zinc-500">
-          Update registry metadata for{' '}
-          <span className="font-mono text-zinc-400">{provider.provider_key}</span>. Per-provider API
-          keys are optional; leave blank to keep the stored key, or use remove to fall back to{' '}
-          <Link className="text-violet-400 hover:underline" to="/admin/settings">
-            Platform settings · LLM keys
-          </Link>
-          .
-        </p>
-        <div className="mt-4 space-y-3">
+        <div className="shrink-0 px-5 pt-5">
+          <h2 id="llm-edit-provider-title" className="text-[15px] font-medium text-zinc-100">
+            Edit LLM provider
+          </h2>
+          <p className="mt-1 text-[12px] text-zinc-500">
+            Update registry metadata for{' '}
+            <span className="font-mono text-zinc-400">{provider.provider_id}</span>. Per-provider API
+            keys are optional; leave blank to keep the stored key, or use remove to fall back to{' '}
+            <Link className="text-violet-400 hover:underline" to="/admin/settings">
+              Platform settings · LLM keys
+            </Link>
+            .
+          </p>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">
+          <div className="space-y-3">
           <div>
-            <StatLabel>Provider key</StatLabel>
+            <StatLabel>Provider ID</StatLabel>
             <input
               readOnly
-              value={provider.provider_key}
+              value={provider.provider_id}
               className="mt-1.5 w-full cursor-not-allowed rounded-md border border-zinc-800 bg-zinc-900/50 px-3 py-2 font-mono text-[12px] text-zinc-400 outline-none"
-            />
-          </div>
-          <div>
-            <StatLabel>
-              <label htmlFor="llm-edit-provider-name">Display name</label>
-            </StatLabel>
-            <input
-              id="llm-edit-provider-name"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-[13px] text-zinc-100 outline-none focus:border-zinc-600"
             />
           </div>
           <div>
@@ -791,8 +889,10 @@ function EditProviderModal({
                   listId="llm-edit-suggest-append-dl"
                   value={suggestAppend}
                   onChange={setSuggestAppend}
-                  providerKey={provider.provider_key}
-                  litellmProvider={litellmSlug.trim() || undefined}
+                  providerId={provider.provider_id}
+                  litellmProvider={
+                    litellmSlug.trim() || provider.provider_id || undefined
+                  }
                   prefetch
                   minChars={0}
                   placeholder="Search models, then append"
@@ -924,29 +1024,31 @@ function EditProviderModal({
             />
             Mark as default provider for routing hints
           </label>
+          </div>
         </div>
-        {errText ? (
-          <p className="mt-3 text-[12px] text-rose-300" role="alert">
-            {errText}
-          </p>
-        ) : null}
-        <div className="mt-5 flex justify-end gap-2">
-          <Btn type="button" onClick={onClose} disabled={isPending}>
-            Cancel
-          </Btn>
-          <Btn
-            type="button"
-            tone="primary"
-            style={{ background: ADMIN_CONSOLE_ACCENT }}
-            disabled={
-              isPending ||
-              !displayName.trim() ||
-              parseModelIds(modelsText).length === 0
-            }
-            onClick={submit}
-          >
-            {isPending ? 'Saving…' : 'Save changes'}
-          </Btn>
+        <div className="shrink-0 border-t border-zinc-800/80 px-5 pb-5 pt-4">
+          {errText ? (
+            <p className="mb-3 text-[12px] text-rose-300" role="alert">
+              {errText}
+            </p>
+          ) : null}
+          <div className="flex justify-end gap-2">
+            <Btn type="button" onClick={onClose} disabled={isPending}>
+              Cancel
+            </Btn>
+            <Btn
+              type="button"
+              tone="primary"
+              style={{ background: ADMIN_CONSOLE_ACCENT }}
+              disabled={
+                isPending ||
+                parseModelIds(modelsText).length === 0
+              }
+              onClick={submit}
+            >
+              {isPending ? 'Saving…' : 'Save changes'}
+            </Btn>
+          </div>
         </div>
       </div>
     </div>
@@ -977,7 +1079,7 @@ export function LlmSection(): ReactElement {
 
   const [routingDraft, setRoutingDraft] = useState<LlmRoutingRuleRow[]>([])
   const [routingModalOpen, setRoutingModalOpen] = useState(false)
-  const [routingSuggestSlug, setRoutingSuggestSlug] = useState('')
+  const [routingRegistryScope, setRoutingRegistryScope] = useState('')
 
   useEffect(() => {
     if (routingQ.isSuccess && routingQ.data) {
@@ -990,11 +1092,11 @@ export function LlmSection(): ReactElement {
     [routingDraft],
   )
 
-  const routingCatalogSlugOptions = useMemo(() => {
+  const routingRegistryScopeOptions = useMemo(() => {
     const list = deploymentQ.data?.providers ?? EMPTY_LLM_PROVIDERS
     const s = new Set<string>()
     for (const p of list) {
-      const slug = (p.litellm_provider_slug ?? p.provider_key).trim().toLowerCase()
+      const slug = (p.litellm_provider_slug ?? p.provider_id).trim().toLowerCase()
       if (slug) s.add(slug)
     }
     return [...s].sort()
@@ -1055,8 +1157,8 @@ export function LlmSection(): ReactElement {
   })
 
   const addProvider = useMutation({
-    mutationFn: (args: { providerKey: string; body: LlmProviderUpsertBody }) =>
-      putAdminLlmProvider(args.providerKey, args.body),
+    mutationFn: (args: { providerId: string; body: LlmProviderUpsertBody }) =>
+      putAdminLlmProvider(args.providerId, args.body),
     onSuccess: async (data) => {
       setAddOpen(false)
       setRegistrySaveWarnings(
@@ -1094,9 +1196,9 @@ export function LlmSection(): ReactElement {
   )
 
   const updateRow = useCallback(
-    (providerKey: string, patch: Partial<Pick<StudioLlmPolicyRow, 'enabled' | 'selected_model'>>) => {
+    (providerId: string, patch: Partial<Pick<StudioLlmPolicyRow, 'enabled' | 'selected_model'>>) => {
       const next = rowsForStudio.map((r) =>
-        r.provider_key === providerKey ? { ...r, ...patch } : r,
+        r.provider_id === providerId ? { ...r, ...patch } : r,
       )
       persistRows(next)
     },
@@ -1154,22 +1256,15 @@ export function LlmSection(): ReactElement {
         {deploymentQ.data && !deploymentQ.isError ? (
           <>
             <div className="px-5 py-4">
-              <StatLabel>Model registry</StatLabel>
-              <p className="mt-2 text-[12px] text-zinc-500">
-                Registered providers and model IDs for routing and studio allow-lists. Keys are
-                stored encrypted when configured. Mark one row as{' '}
-                <span className="text-zinc-400">default</span> for fallbacks. For LiteLLM, inference
-                uses <span className="font-mono text-zinc-400">slug/model</span> when the model id has
-                no slash: the slug is the optional field below or else the provider key.{' '}
-                <a
-                  href={LITELLM_PROVIDERS_DOCS}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-violet-400 hover:underline"
-                >
-                  Provider slugs
-                </a>
-              </p>
+              <div className="flex items-center gap-1.5">
+                <div className="min-w-0 flex-1">
+                  <StatLabel>Model registry</StatLabel>
+                </div>
+                <LlmFormFieldHint
+                  ariaLabel="Model registry overview"
+                  content={MODEL_REGISTRY_HELP}
+                />
+              </div>
               {!deploymentQ.data.has_providers ? (
                 <p className="mt-3 rounded-md border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-[12px] text-amber-200/90">
                   No providers yet. Add a provider below, set models and API key, and mark one row
@@ -1213,25 +1308,25 @@ export function LlmSection(): ReactElement {
                     />
                     {providers.map((p) => {
                       const savingThis =
-                        updateRegistry.isPending && updateRegistry.variables?.key === p.provider_key
+                        updateRegistry.isPending && updateRegistry.variables?.key === p.provider_id
                       return (
                         <TRow
                           key={p.id}
                           grid="grid-cols-[1.05fr_1.5fr_1fr_0.55fr_0.65fr_0.9fr]"
                         >
                           <div className="flex min-w-0 items-start gap-2">
-                            <ProviderGlyph name={p.display_name} logoUrl={p.logo_url} />
+                            <ProviderGlyph name={p.provider_id} logoUrl={p.logo_url} />
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-2">
                                 <span className="truncate text-[13px] text-zinc-100">
-                                  {p.display_name}
+                                  {p.provider_id}
                                 </span>
                                 {p.is_default ? <Pill tone="violet">default</Pill> : null}
                               </div>
                               <div className="mt-0.5 font-mono text-[10px] text-zinc-500">
                                 LiteLLM prefix:{' '}
                                 <span className="text-zinc-400">
-                                  {(p.litellm_provider_slug ?? p.provider_key).trim() || '—'}
+                                  {(p.litellm_provider_slug ?? p.provider_id).trim() || '—'}
                                 </span>
                               </div>
                             </div>
@@ -1289,7 +1384,7 @@ export function LlmSection(): ReactElement {
                                 const model = p.models[0]?.id
                                 const trimmedBase = p.api_base_url?.trim()
                                 const body: AdminLlmProbeBody = {
-                                  provider_key: p.provider_key,
+                                  provider_id: p.provider_id,
                                 }
                                 if (model) body.model = model
                                 if (trimmedBase) body.api_base_url = trimmedBase
@@ -1370,7 +1465,7 @@ export function LlmSection(): ReactElement {
         ) : (
           <ul>
             {providers.map((p, i) => {
-              const row = rowsForStudio.find((r) => r.provider_key === p.provider_key)
+              const row = rowsForStudio.find((r) => r.provider_id === p.provider_id)
               const enabled = Boolean(row?.enabled)
               const blocked = p.status !== 'connected'
               const modelIds = modelIdsFromEntries(p.models)
@@ -1380,13 +1475,13 @@ export function LlmSection(): ReactElement {
                   : (modelIds[0] ?? '')
               return (
                 <li
-                  key={p.provider_key}
+                  key={p.provider_id}
                   className={`flex items-center gap-4 px-5 py-3.5 ${i > 0 ? 'border-t border-zinc-800/60' : ''}`}
                 >
-                  <ProviderGlyph name={p.display_name} logoUrl={p.logo_url} />
+                  <ProviderGlyph name={p.provider_id} logoUrl={p.logo_url} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-[13px] text-zinc-100">{p.display_name}</span>
+                      <span className="text-[13px] text-zinc-100">{p.provider_id}</span>
                       {blocked ? <Pill tone="amber">{p.status}</Pill> : null}
                     </div>
                     <div className="mt-0.5 truncate font-mono text-[11px] text-zinc-500">
@@ -1398,7 +1493,7 @@ export function LlmSection(): ReactElement {
                     disabled={!enabled || blocked || savePolicy.isPending}
                     value={modelVal}
                     onChange={(e) =>
-                      updateRow(p.provider_key, { selected_model: e.target.value })
+                      updateRow(p.provider_id, { selected_model: e.target.value })
                     }
                   >
                     {p.models.map((m) => (
@@ -1410,7 +1505,7 @@ export function LlmSection(): ReactElement {
                   <Toggle
                     checked={enabled}
                     disabled={blocked || savePolicy.isPending}
-                    onChange={(v) => updateRow(p.provider_key, { enabled: v })}
+                    onChange={(v) => updateRow(p.provider_id, { enabled: v })}
                   />
                 </li>
               )
@@ -1421,6 +1516,39 @@ export function LlmSection(): ReactElement {
 
       <Card
         title="Routing & fallback policy"
+        titleHint={
+          <Tooltip
+            className="shrink-0"
+            side="bottom"
+            interactive
+            accessibleTrigger={false}
+            content={ROUTING_REGISTRY_HELP}
+          >
+            <button
+              type="button"
+              className="inline-flex cursor-help text-zinc-500 outline-none transition hover:text-zinc-300 focus-visible:ring-2 focus-visible:ring-violet-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900/40 rounded-full"
+              aria-label="Routing and fallback policy details"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 14 14"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden
+              >
+                <circle cx="7" cy="7" r="5.75" stroke="currentColor" strokeWidth="1" />
+                <circle cx="7" cy="4.35" r="0.55" fill="currentColor" />
+                <path
+                  d="M7 6.1v4.15"
+                  stroke="currentColor"
+                  strokeWidth="1.05"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+          </Tooltip>
+        }
         right={
           <Btn
             type="button"
@@ -1434,29 +1562,15 @@ export function LlmSection(): ReactElement {
         }
       >
         <div className="space-y-4 px-5 py-4">
-          <p className="text-[12px] leading-relaxed text-zinc-500">
-            Primary and fallback model ids are resolved against the routing registry and studio
-            policy. Empty fallback means only the primary is considered for that agent group. Use{' '}
-            <span className="font-mono text-zinc-400">provider/model</span> when LiteLLM cannot infer
-            the host; otherwise configure a slug on the provider row for short ids.{' '}
-            <a
-              href={LITELLM_PROVIDERS_DOCS}
-              target="_blank"
-              rel="noreferrer"
-              className="text-violet-400 hover:underline"
-            >
-              LiteLLM providers
-            </a>
-          </p>
           <label className="flex flex-wrap items-center gap-2 text-[12px] text-zinc-400">
-            <span className="shrink-0">Catalog suggestions filter</span>
+            <span className="shrink-0">Registry scope</span>
             <select
-              value={routingSuggestSlug}
-              onChange={(e) => setRoutingSuggestSlug(e.target.value)}
+              value={routingRegistryScope}
+              onChange={(e) => setRoutingRegistryScope(e.target.value)}
               className="rounded-md border border-zinc-800 bg-zinc-950/60 px-2.5 py-1.5 font-mono text-[11px] text-zinc-200"
             >
-              <option value="">Default (Tool settings provider)</option>
-              {routingCatalogSlugOptions.map((slug) => (
+              <option value="">All providers</option>
+              {routingRegistryScopeOptions.map((slug) => (
                 <option key={slug} value={slug}>
                   {slug}
                 </option>
@@ -1495,10 +1609,12 @@ export function LlmSection(): ReactElement {
                       onChange={(v) =>
                         updateRoutingRow(r.use_case, { primary_model: v })
                       }
-                      litellmProvider={routingSuggestSlug.trim() || undefined}
+                      litellmProvider={routingRegistryScope.trim() || undefined}
                       mode={rowCatalogMode}
-                      minChars={2}
-                      placeholder="Type 2+ chars for suggestions"
+                      source="registry"
+                      minChars={0}
+                      prefetch
+                      placeholder="Deployment models"
                       className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
                     />
                   </div>
@@ -1515,9 +1631,11 @@ export function LlmSection(): ReactElement {
                           fallback_model: v.trim() ? v.trim() : null,
                         })
                       }
-                      litellmProvider={routingSuggestSlug.trim() || undefined}
+                      litellmProvider={routingRegistryScope.trim() || undefined}
                       mode={rowCatalogMode}
-                      minChars={2}
+                      source="registry"
+                      minChars={0}
+                      prefetch
                       placeholder="Optional"
                       className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
                     />
@@ -1568,7 +1686,7 @@ export function LlmSection(): ReactElement {
         open={routingModalOpen}
         onClose={() => setRoutingModalOpen(false)}
         blockedUseCasesCsv={blockedRoutingUseCasesCsv}
-        catalogSlug={routingSuggestSlug}
+        registryScopeSlug={routingRegistryScope}
         onAdd={(row) => {
           setRoutingDraft((prev) =>
             sortRoutingRules([...prev.filter((x) => x.use_case !== row.use_case), row]),
@@ -1593,16 +1711,16 @@ export function LlmSection(): ReactElement {
         }}
         isPending={
           updateRegistry.isPending &&
-          updateRegistry.variables?.key === editingProvider?.provider_key
+          updateRegistry.variables?.key === editingProvider?.provider_id
         }
         error={
           updateRegistry.isError &&
-          updateRegistry.variables?.key === editingProvider?.provider_key
+          updateRegistry.variables?.key === editingProvider?.provider_id
             ? updateRegistry.error
             : undefined
         }
-        onSave={({ providerKey, body }) =>
-          updateRegistry.mutate({ key: providerKey, body })
+        onSave={({ providerId, body }) =>
+          updateRegistry.mutate({ key: providerId, body })
         }
       />
     </div>

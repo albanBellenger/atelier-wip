@@ -31,7 +31,7 @@ from app.services.llm_registry_credentials import (
     first_registry_model,
     get_default_llm_registry_row,
     resolve_openai_compatible_llm_credentials,
-    resolve_provider_key_for_model,
+    resolve_provider_id_for_model,
 )
 from app.services.llm_policy_service import LlmPolicyService
 from app.services.registry_models_json import (
@@ -267,12 +267,12 @@ class LLMService:
                 message="Tool Admin must configure LLM provider, model, and API key.",
             )
         if not route_pk and eff:
-            route_pk = await resolve_provider_key_for_model(self.db, eff)
+            route_pk = await resolve_provider_id_for_model(self.db, eff)
         try:
             model, key, api_base, reg_row = await resolve_openai_compatible_llm_credentials(
                 self.db,
                 effective_model=eff,
-                route_provider_key=route_pk,
+                route_provider_id=route_pk,
             )
         except ApiError as e:
             log.warning(
@@ -533,20 +533,21 @@ class LLMService:
         *,
         model_override: str | None = None,
         api_base_url_override: str | None = None,
-        provider_key: str | None = None,
+        provider_id: str | None = None,
+        persist_registry_status: bool = False,
     ) -> AdminConnectivityResult:
         """Tool Admin UI: minimal non-streaming chat completion using registry credentials."""
-        pk = (provider_key or "").strip().lower() or None
+        pk = (provider_id or "").strip().lower() or None
         explicit_row: LlmProviderRegistry | None = None
         if pk:
             explicit_row = await self.db.scalar(
-                select(LlmProviderRegistry).where(LlmProviderRegistry.provider_key == pk)
+                select(LlmProviderRegistry).where(LlmProviderRegistry.provider_id == pk)
             )
             if explicit_row is None:
                 return AdminConnectivityResult(
                     ok=False,
-                    message="Unknown LLM provider_key.",
-                    detail=f"No registry row for provider_key «{pk}».",
+                    message="Unknown LLM provider ID.",
+                    detail=f"No registry row for provider ID «{pk}».",
                 )
         model = (model_override or "").strip()
         if not model:
@@ -565,15 +566,29 @@ class LLMService:
             )
         pk_resolved = pk
         if not pk_resolved and model:
-            pk_resolved = await resolve_provider_key_for_model(self.db, model)
+            pk_resolved = await resolve_provider_id_for_model(self.db, model)
+        reg_row: LlmProviderRegistry | None = None
         try:
-            model_litellm, key, api_base, _ = await resolve_openai_compatible_llm_credentials(
+            model_litellm, key, api_base, reg_row = await resolve_openai_compatible_llm_credentials(
                 self.db,
                 effective_model=model,
-                route_provider_key=pk_resolved,
+                route_provider_id=pk_resolved,
             )
         except ApiError as e:
             d = e.detail
+            if persist_registry_status:
+                fail_row = explicit_row
+                if fail_row is None and pk_resolved:
+                    fail_row = await self.db.scalar(
+                        select(LlmProviderRegistry).where(
+                            LlmProviderRegistry.provider_id == pk_resolved
+                        )
+                    )
+                if fail_row is None:
+                    fail_row = await get_default_llm_registry_row(self.db)
+                if fail_row is not None:
+                    fail_row.status = "needs-key"
+                    await self.db.flush()
             return AdminConnectivityResult(
                 ok=False,
                 message="Configure LLM model and API key before testing.",
@@ -602,6 +617,9 @@ class LLMService:
             )
         except Exception as e:
             msg, det = map_litellm_exception_to_probe_detail(e)
+            if persist_registry_status and reg_row is not None:
+                reg_row.status = "needs-key"
+                await self.db.flush()
             return AdminConnectivityResult(ok=False, message=msg, detail=det)
 
         choices = getattr(response, "choices", None) or []
@@ -610,6 +628,9 @@ class LLMService:
             msg = getattr(choices[0], "message", None)
             raw = getattr(msg, "content", None) if msg is not None else None
             preview = str(raw or "").strip()
+        if persist_registry_status and reg_row is not None:
+            reg_row.status = "connected"
+            await self.db.flush()
         return AdminConnectivityResult(
             ok=True,
             message="LLM connection succeeded.",

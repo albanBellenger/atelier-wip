@@ -11,6 +11,7 @@ function Harness(props: {
   litellmProvider?: string | null
   minChars?: number
   prefetch?: boolean
+  source?: 'auto' | 'catalog' | 'upstream' | 'registry'
 }): ReactElement {
   const [value, setValue] = useState('')
   return (
@@ -22,6 +23,7 @@ function Harness(props: {
       litellmProvider={props.litellmProvider}
       minChars={props.minChars}
       prefetch={props.prefetch}
+      source={props.source}
     />
   )
 }
@@ -69,9 +71,26 @@ describe('LlmModelSuggestInput', () => {
     const last = suggestSpy.mock.calls[suggestSpy.mock.calls.length - 1]?.[0] as {
       q?: string | null
       litellm_provider?: string | null
+      source?: string
     }
     expect(last.litellm_provider).toBe('moonshot')
+    expect(last.source).toBe('catalog')
     expect(String(last.q ?? '')).toContain('kc')
+  })
+
+  it('uses deployment registry source when configured', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={qc}>
+        <Harness litellmProvider="openai" minChars={0} prefetch source="registry" />
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => {
+      expect(suggestSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ source: 'registry', litellm_provider: 'openai' }),
+      )
+    })
   })
 
   it('allows free-text values not in the catalog (creatable)', async () => {

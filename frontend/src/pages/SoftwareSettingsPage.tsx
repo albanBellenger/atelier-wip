@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
 import { ArtifactExclusionPanel } from '../components/software/ArtifactExclusionPanel'
+import { Tooltip } from '../components/ui/Tooltip'
 import { useStudioAccess } from '../hooks/useStudioAccess'
 import {
   deleteSoftware,
@@ -245,14 +246,18 @@ export function SoftwareSettingsPage(): ReactElement {
               <h1 className="text-2xl font-semibold tracking-tight text-zinc-100">
                 Software settings
               </h1>
-              <button
-                type="button"
-                className="inline-flex shrink-0 cursor-help items-baseline justify-center rounded px-0.5 text-[13px] font-semibold leading-none text-zinc-500 transition hover:text-zinc-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
-                aria-label={softwareSettingsPageIntroHelp(swQ.data.name)}
-                title={softwareSettingsPageIntroHelp(swQ.data.name)}
+              <Tooltip
+                content={softwareSettingsPageIntroHelp(swQ.data.name)}
+                accessibleTrigger={false}
               >
-                <span aria-hidden="true">?</span>
-              </button>
+                <button
+                  type="button"
+                  className="inline-flex shrink-0 cursor-help items-baseline justify-center rounded px-0.5 text-[13px] font-semibold leading-none text-zinc-500 transition hover:text-zinc-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
+                  aria-label={softwareSettingsPageIntroHelp(swQ.data.name)}
+                >
+                  <span aria-hidden="true">?</span>
+                </button>
+              </Tooltip>
             </div>
 
             {msg ? <p className="mt-4 text-sm text-emerald-400">{msg}</p> : null}

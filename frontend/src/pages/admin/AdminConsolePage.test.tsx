@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -89,8 +90,12 @@ describe('AdminConsolePage', () => {
     await screen.findByRole('heading', { name: /^Overview$/ })
     const nav = screen.getByRole('navigation')
     expect(await within(nav).findByText('$1.00')).toBeInTheDocument()
+    const user = userEvent.setup()
+    await user.hover(within(nav).getByRole('button', { name: /month summary details/i }))
     expect(
-      within(nav).getByText(/Sum of listed studios \(no cross-studio aggregate\) · 1 studio · 12 active builders/i),
+      await screen.findByRole('tooltip', {
+        name: /Sum of listed studios \(no cross-studio aggregate\) · 1 studio · 12 active builders/i,
+      }),
     ).toBeInTheDocument()
   })
 })

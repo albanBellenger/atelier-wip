@@ -31,9 +31,8 @@ def test_extract_context_limit(info: dict, want: int | None) -> None:
 
 def test_fetch_litellm_context_handles_exception() -> None:
     row = LlmProviderRegistry(
-        provider_key="openai",
+        provider_id="openai",
         litellm_provider_slug="openai",
-        display_name="",
         models_json="[]",
         api_base_url=None,
         logo_url=None,
@@ -53,9 +52,8 @@ def test_fetch_litellm_context_handles_exception() -> None:
 
 def test_enrich_respects_manual_with_limit() -> None:
     row = LlmProviderRegistry(
-        provider_key="openai",
+        provider_id="openai",
         litellm_provider_slug="openai",
-        display_name="",
         models_json="[]",
         api_base_url=None,
         logo_url=None,

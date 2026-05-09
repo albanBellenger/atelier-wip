@@ -210,29 +210,29 @@ async def list_llm_providers(
     return await LlmConnectivityService(session).list_providers()
 
 
-@router.put("/llm/providers/{provider_key}", response_model=LlmProviderRegistryResponse)
+@router.put("/llm/providers/{provider_id}", response_model=LlmProviderRegistryResponse)
 async def upsert_llm_provider(
-    provider_key: str,
+    provider_id: str,
     body: LlmProviderRegistryUpdate,
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_platform_admin),
 ) -> LlmProviderRegistryResponse:
     was = await embedding_platform_resolvable(session)
-    out = await LlmConnectivityService(session).upsert_provider(provider_key, body)
+    out = await LlmConnectivityService(session).upsert_provider(provider_id, body)
     now = await embedding_platform_resolvable(session)
     if not was and now:
         background_tasks.add_task(enqueue_sections_missing_embeddings_after_config)
     return out
 
 
-@router.delete("/llm/providers/{provider_key}", status_code=204)
+@router.delete("/llm/providers/{provider_id}", status_code=204)
 async def delete_llm_provider(
-    provider_key: str,
+    provider_id: str,
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_platform_admin),
 ) -> Response:
-    await LlmConnectivityService(session).delete_provider(provider_key)
+    await LlmConnectivityService(session).delete_provider(provider_id)
     return Response(status_code=204)
 
 
@@ -240,14 +240,14 @@ async def delete_llm_provider(
 async def get_llm_model_suggestions(
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_platform_admin),
-    provider_key: str | None = Query(default=None),
+    provider_id: str | None = Query(default=None),
     litellm_provider: str | None = Query(default=None),
     q: str | None = Query(default=None),
     mode: Literal["chat", "embedding"] = Query(default="chat"),
-    source: Literal["auto", "catalog", "upstream"] = Query(default="auto"),
+    source: Literal["auto", "catalog", "upstream", "registry"] = Query(default="auto"),
 ) -> LlmModelSuggestionsResponse:
     return await LlmModelSuggestionsService(session).suggest(
-        provider_key=provider_key,
+        provider_id=provider_id,
         litellm_provider=litellm_provider,
         q=q,
         mode=mode,

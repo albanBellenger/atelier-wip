@@ -143,7 +143,7 @@ Tool Admins configure the baseline LLM and embedding provider for the entire too
 
 ### 5.3 LLM Routing Registry (per-studio overrides)
 On top of the baseline credentials, Tool Admins maintain a routing registry that allows the **effective model to differ per studio and per call type**:
-- A registry of providers and the model IDs each provider exposes (provider key, display name, list of model IDs, optional API base URL, status)
+- A registry of providers and the model IDs each provider exposes (provider ID, list of model IDs, optional API base URL, status)
 - Per-studio enablement: a Studio Owner sees only the providers their Studio has been allowed to use; the Tool Admin toggles enablement per studio
 - Optional routing rules allow the effective model to be overridden per studio and per call type (e.g. private thread, project chat, work order generation, conflict analysis, drift, knowledge graph)
 - When no routing rule applies, the baseline credentials and model from §5.2 are used as the fallback

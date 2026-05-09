@@ -59,8 +59,7 @@ async def test_studio_llm_chat_models_member_ok_outsider_403(
     db_session.add(
         LlmProviderRegistry(
             id=uuid.uuid4(),
-            provider_key=prov_key,
-            display_name="Test LLM",
+            provider_id=prov_key,
             models_json=json.dumps(["gpt-4o-mini", "gpt-4o"]),
             api_base_url=None,
             logo_url=None,
@@ -81,7 +80,7 @@ async def test_studio_llm_chat_models_member_ok_outsider_403(
     db_session.add(
         StudioLlmProviderPolicy(
             studio_id=sid,
-            provider_key=prov_key,
+            provider_id=prov_key,
             enabled=True,
             selected_model="gpt-4o-mini",
         )

@@ -49,13 +49,13 @@ function buildPolicyRows(
   providers: LlmProviderRegistryRow[],
   existing: StudioLlmPolicyRow[] | undefined,
 ): StudioLlmPolicyRow[] {
-  const map = new Map(existing?.map((r) => [r.provider_key, r]) ?? [])
+  const map = new Map(existing?.map((r) => [r.provider_id, r]) ?? [])
   return providers.map((p) => {
-    const prev = map.get(p.provider_key)
+    const prev = map.get(p.provider_id)
     const ids = modelIdsFromEntries(p.models)
     const defaultModel = ids[0] ?? null
     return {
-      provider_key: p.provider_key,
+      provider_id: p.provider_id,
       enabled: prev?.enabled ?? false,
       selected_model:
         prev?.selected_model && ids.includes(prev.selected_model)
@@ -159,9 +159,9 @@ export function StudiosSection(): ReactElement {
   )
 
   const updatePolicyRow = useCallback(
-    (providerKey: string, patch: Partial<Pick<StudioLlmPolicyRow, 'enabled' | 'selected_model'>>) => {
+    (providerId: string, patch: Partial<Pick<StudioLlmPolicyRow, 'enabled' | 'selected_model'>>) => {
       const next = rowsForStudio.map((r) =>
-        r.provider_key === providerKey ? { ...r, ...patch } : r,
+        r.provider_id === providerId ? { ...r, ...patch } : r,
       )
       persistRows(next)
     },
@@ -388,13 +388,13 @@ export function StudiosSection(): ReactElement {
                   <ul>
                     {providers.map((p, i) => (
                       <li
-                        key={p.provider_key}
+                        key={p.provider_id}
                         className={`flex items-center justify-between px-5 py-3 ${i > 0 ? 'border-t border-zinc-800/60' : ''}`}
                       >
                         <div className="flex items-center gap-3">
-                          <ProviderGlyph name={p.display_name} />
+                          <ProviderGlyph name={p.provider_id} />
                           <div>
-                            <div className="text-[13px] text-zinc-100">{p.display_name}</div>
+                            <div className="text-[13px] text-zinc-100">{p.provider_id}</div>
                             <div className="text-[11px] text-zinc-500">
                               {p.models.length} model{p.models.length === 1 ? '' : 's'}
                             </div>
@@ -402,13 +402,13 @@ export function StudiosSection(): ReactElement {
                         </div>
                         <Toggle
                           checked={
-                            rowsForStudio.find((r) => r.provider_key === p.provider_key)
+                            rowsForStudio.find((r) => r.provider_id === p.provider_id)
                               ?.enabled ?? false
                           }
                           onChange={() => {
-                            const row = rowsForStudio.find((r) => r.provider_key === p.provider_key)
+                            const row = rowsForStudio.find((r) => r.provider_id === p.provider_id)
                             if (!row) return
-                            updatePolicyRow(p.provider_key, { enabled: !row.enabled })
+                            updatePolicyRow(p.provider_id, { enabled: !row.enabled })
                           }}
                           disabled={p.status !== 'connected' || savePolicy.isPending}
                         />

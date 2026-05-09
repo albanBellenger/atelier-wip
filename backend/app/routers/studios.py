@@ -37,7 +37,6 @@ from app.schemas.cross_studio import (
 from app.schemas.mcp_keys import McpKeyCreateBody, McpKeyCreatedResponse, McpKeyPublic
 from app.schemas.token_usage_report import (
     TokenUsageReportOut,
-    TokenUsageRowOut,
     TokenUsageTotalsOut,
 )
 from app.schemas.project import StudioProjectListItemOut
@@ -571,7 +570,8 @@ async def studio_token_usage(
         offset=off,
     )
     if csv_mode:
-        body = svc.rows_to_csv(rows)
+        enriched = await svc.enrich_rows_for_report(rows)
+        body = svc.rows_to_csv(enriched)
         return Response(
             content=body.encode("utf-8"),
             media_type="text/csv",
@@ -581,7 +581,7 @@ async def studio_token_usage(
         )
     tin, tout, cost = totals
     return TokenUsageReportOut(
-        rows=[TokenUsageRowOut.model_validate(r) for r in rows],
+        rows=await svc.enrich_rows_for_report(rows),
         totals=TokenUsageTotalsOut(
             input_tokens=tin,
             output_tokens=tout,

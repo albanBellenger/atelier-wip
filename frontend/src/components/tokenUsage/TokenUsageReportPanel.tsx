@@ -12,6 +12,10 @@ import {
 } from 'recharts'
 
 import {
+  usageScopeLabel,
+  usageScopeTitle,
+} from '../../lib/tokenUsageScopeLabels'
+import {
   type TokenUsageQueryParams,
   type TokenUsageReport,
   type TokenUsageRow,
@@ -367,17 +371,29 @@ export function TokenUsageReportPanel(props: {
                     <td className="p-2">{r.input_tokens}</td>
                     <td className="p-2">{r.output_tokens}</td>
                     <td className="p-2">{r.estimated_cost_usd ?? '—'}</td>
-                    <td className="max-w-[100px] truncate p-2 font-mono text-[10px]">
-                      {r.studio_id ?? '—'}
+                    <td
+                      className="max-w-[140px] truncate p-2 text-[11px] text-zinc-300"
+                      title={usageScopeTitle(r.studio_name, r.studio_id)}
+                    >
+                      {usageScopeLabel(r.studio_name, r.studio_id)}
                     </td>
-                    <td className="max-w-[100px] truncate p-2 font-mono text-[10px]">
-                      {r.software_id ?? '—'}
+                    <td
+                      className="max-w-[140px] truncate p-2 text-[11px] text-zinc-300"
+                      title={usageScopeTitle(r.software_name, r.software_id)}
+                    >
+                      {usageScopeLabel(r.software_name, r.software_id)}
                     </td>
-                    <td className="max-w-[100px] truncate p-2 font-mono text-[10px]">
-                      {r.project_id ?? '—'}
+                    <td
+                      className="max-w-[140px] truncate p-2 text-[11px] text-zinc-300"
+                      title={usageScopeTitle(r.project_name, r.project_id)}
+                    >
+                      {usageScopeLabel(r.project_name, r.project_id)}
                     </td>
-                    <td className="max-w-[100px] truncate p-2 font-mono text-[10px]">
-                      {r.user_id ?? '—'}
+                    <td
+                      className="max-w-[140px] truncate p-2 text-[11px] text-zinc-300"
+                      title={usageScopeTitle(r.user_display_name, r.user_id)}
+                    >
+                      {usageScopeLabel(r.user_display_name, r.user_id)}
                     </td>
                   </tr>
                 ))}

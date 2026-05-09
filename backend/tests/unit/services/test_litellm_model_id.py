@@ -13,13 +13,12 @@ from app.services.litellm_model_id import (
 
 def _reg(
     *,
-    provider_key: str = "moonshot",
+    provider_id: str = "moonshot",
     litellm_provider_slug: str | None = None,
 ) -> LlmProviderRegistry:
     return LlmProviderRegistry(
         id=uuid.uuid4(),
-        provider_key=provider_key,
-        display_name="X",
+        provider_id=provider_id,
         models_json='["m"]',
         api_base_url=None,
         logo_url=None,
@@ -40,20 +39,20 @@ def test_chat_already_prefixed_unchanged() -> None:
     assert normalize_litellm_chat_model("moonshot/kimi-x", registry_row=r) == "moonshot/kimi-x"
 
 
-def test_chat_registry_prefixes_with_provider_key() -> None:
-    r = _reg(provider_key="moonshot")
+def test_chat_registry_prefixes_with_provider_id() -> None:
+    r = _reg(provider_id="moonshot")
     assert normalize_litellm_chat_model("kimi-k2-0905-preview", registry_row=r) == (
         "moonshot/kimi-k2-0905-preview"
     )
 
 
-def test_chat_slug_overrides_provider_key() -> None:
-    r = _reg(provider_key="my_kimi", litellm_provider_slug="moonshot")
+def test_chat_slug_overrides_provider_id() -> None:
+    r = _reg(provider_id="my_kimi", litellm_provider_slug="moonshot")
     assert normalize_litellm_chat_model("kimi-x", registry_row=r) == "moonshot/kimi-x"
 
 
 def test_chat_slug_whitespace_trimmed() -> None:
-    r = _reg(provider_key="p", litellm_provider_slug="  openai  ")
+    r = _reg(provider_id="p", litellm_provider_slug="  openai  ")
     assert normalize_litellm_chat_model("gpt-4o-mini", registry_row=r) == "openai/gpt-4o-mini"
 
 

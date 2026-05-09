@@ -163,19 +163,18 @@ async def test_admin_put_llm_provider_optional_api_base_url(
     put = await client.put(
         "/admin/llm/providers/custom_eu",
         json={
-            "display_name": "Custom EU",
             "models": [{"id": "gpt-4o-mini", "context_metadata_source": "unknown"}],
             "api_base_url": "https://eu.example.com/v1",
-            "status": "connected",
             "litellm_provider_slug": "openai",
         },
     )
     assert put.status_code == 200
     body = put.json()
-    assert body["provider_key"] == "custom_eu"
+    assert body["provider_id"] == "custom_eu"
     assert isinstance(body["models"], list)
     assert body["models"][0]["id"] == "gpt-4o-mini"
     assert body["litellm_provider_slug"] == "openai"
+    assert body["status"] == "needs-key"
     assert body["api_base_url"] == "https://eu.example.com/v1"
     assert body.get("logo_url") is not None
     assert "eu.example.com" in body["logo_url"]
@@ -183,7 +182,7 @@ async def test_admin_put_llm_provider_optional_api_base_url(
     listed = await client.get("/admin/llm/providers")
     assert listed.status_code == 200
     rows = listed.json()
-    match = next((x for x in rows if x["provider_key"] == "custom_eu"), None)
+    match = next((x for x in rows if x["provider_id"] == "custom_eu"), None)
     assert match is not None
     assert match["api_base_url"] == "https://eu.example.com/v1"
     assert match.get("logo_url") is not None
@@ -456,7 +455,7 @@ async def test_admin_post_test_llm_accepts_body(client: AsyncClient, db_session:
 
     r2 = await client.post(
         "/admin/test/llm",
-        json={"provider_key": "any", "model": "m1"},
+        json={"provider_id": "any", "model": "m1"},
     )
     assert r2.status_code == 200
     body2 = r2.json()
@@ -618,6 +617,156 @@ async def test_admin_llm_model_suggestions_catalog_mocked(
 
 
 @pytest.mark.asyncio
+async def test_admin_llm_model_suggestions_catalog_uses_provider_id_when_no_slug(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Add-provider flow: no registry row yet; catalog must not default to openai when key is set."""
+    sfx = uuid.uuid4().hex[:8]
+    admin_email = f"sugk-{sfx}@example.com"
+    await client.post(
+        "/auth/register",
+        json={
+            "email": admin_email,
+            "password": "securepass123",
+            "display_name": "TA",
+        },
+    )
+    from sqlalchemy import update
+
+    from app.models import User
+
+    await db_session.execute(
+        update(User).where(User.email == admin_email.lower()).values(is_platform_admin=True)
+    )
+    await db_session.flush()
+
+    catalog_calls: list[dict[str, object]] = []
+
+    class FakeResp:
+        status_code = 200
+
+        def json(self) -> dict:
+            return {
+                "object": "list",
+                "data": [
+                    {"id": "moonshot/x1", "provider": "moonshot", "mode": "chat"},
+                ],
+            }
+
+    class FakeClient:
+        def __init__(self, *a: object, **k: object) -> None:
+            pass
+
+        async def __aenter__(self) -> "FakeClient":
+            return self
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+        async def get(self, url: str, *a: object, **k: object) -> FakeResp:
+            if "api.litellm.ai" in url:
+                catalog_calls.append({"params": k.get("params")})
+            return FakeResp()
+
+    monkeypatch.setattr(
+        "app.services.llm_model_suggestions_service.httpx.AsyncClient",
+        lambda *a, **k: FakeClient(),
+    )
+
+    r_login = await client.post(
+        "/auth/login",
+        json={"email": admin_email, "password": "securepass123"},
+    )
+    assert r_login.status_code == 200
+    client.cookies.set("atelier_token", r_login.cookies.get("atelier_token"))
+
+    r = await client.get(
+        "/admin/llm/model-suggestions",
+        params={"source": "catalog", "provider_id": "moonshot"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["models"][0]["id"] == "moonshot/x1"
+    assert catalog_calls, "expected LiteLLM catalog request"
+    assert catalog_calls[0]["params"]["provider"] == "moonshot"
+
+
+@pytest.mark.asyncio
+async def test_admin_llm_model_suggestions_catalog_omits_provider_without_hint(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No provider key/slug: LiteLLM catalog must not filter to openai only."""
+    sfx = uuid.uuid4().hex[:8]
+    admin_email = f"sugx-{sfx}@example.com"
+    await client.post(
+        "/auth/register",
+        json={
+            "email": admin_email,
+            "password": "securepass123",
+            "display_name": "TA",
+        },
+    )
+    from sqlalchemy import update
+
+    from app.models import User
+
+    await db_session.execute(
+        update(User).where(User.email == admin_email.lower()).values(is_platform_admin=True)
+    )
+    await db_session.flush()
+
+    catalog_calls: list[dict[str, object]] = []
+
+    class FakeResp:
+        status_code = 200
+
+        def json(self) -> dict:
+            return {
+                "object": "list",
+                "data": [
+                    {"id": "bedrock/foo", "provider": "bedrock", "mode": "chat"},
+                    {"id": "gpt-4o-mini", "provider": "openai", "mode": "chat"},
+                ],
+            }
+
+    class FakeClient:
+        def __init__(self, *a: object, **k: object) -> None:
+            pass
+
+        async def __aenter__(self) -> "FakeClient":
+            return self
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+        async def get(self, url: str, *a: object, **k: object) -> FakeResp:
+            if "api.litellm.ai" in url:
+                catalog_calls.append({"params": k.get("params")})
+            return FakeResp()
+
+    monkeypatch.setattr(
+        "app.services.llm_model_suggestions_service.httpx.AsyncClient",
+        lambda *a, **k: FakeClient(),
+    )
+
+    r_login = await client.post(
+        "/auth/login",
+        json={"email": admin_email, "password": "securepass123"},
+    )
+    assert r_login.status_code == 200
+    client.cookies.set("atelier_token", r_login.cookies.get("atelier_token"))
+
+    r = await client.get("/admin/llm/model-suggestions", params={"source": "catalog"})
+    assert r.status_code == 200, r.text
+    assert catalog_calls, "expected LiteLLM catalog request"
+    params = catalog_calls[0]["params"]
+    assert "provider" not in params or params.get("provider") in (None, "")
+
+
+@pytest.mark.asyncio
 async def test_admin_llm_model_suggestions_auto_catalog_when_upstream_404(
     client: AsyncClient,
     db_session: AsyncSession,
@@ -645,8 +794,7 @@ async def test_admin_llm_model_suggestions_auto_catalog_when_upstream_404(
     db_session.add(
         LlmProviderRegistry(
             id=uuid.uuid4(),
-            provider_key="openai",
-            display_name="OpenAI",
+            provider_id="openai",
             models_json='["gpt-4o-mini"]',
             api_base_url=None,
             logo_url=None,
@@ -706,3 +854,66 @@ async def test_admin_llm_model_suggestions_auto_catalog_when_upstream_404(
     assert r.status_code == 200, r.text
     payload = r.json()
     assert any(m["id"] == "openai/z9" for m in payload["models"])
+
+
+@pytest.mark.asyncio
+async def test_admin_llm_model_suggestions_registry_from_deployment_rows(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    admin_email = f"sugr-{sfx}@example.com"
+    await client.post(
+        "/auth/register",
+        json={
+            "email": admin_email,
+            "password": "securepass123",
+            "display_name": "TA",
+        },
+    )
+    from sqlalchemy import delete, update
+
+    from app.models import LlmProviderRegistry, User
+    from app.security.field_encryption import encode_admin_stored_secret
+
+    await db_session.execute(
+        update(User).where(User.email == admin_email.lower()).values(is_platform_admin=True)
+    )
+    await db_session.execute(delete(LlmProviderRegistry))
+    db_session.add(
+        LlmProviderRegistry(
+            id=uuid.uuid4(),
+            provider_id="acme",
+            models_json='["deploy-alpha", "deploy-beta"]',
+            api_base_url=None,
+            logo_url=None,
+            status="connected",
+            is_default=True,
+            sort_order=0,
+            api_key=encode_admin_stored_secret("sk-test"),
+            litellm_provider_slug="acme",
+        )
+    )
+    await db_session.flush()
+
+    r_login = await client.post(
+        "/auth/login",
+        json={"email": admin_email, "password": "securepass123"},
+    )
+    assert r_login.status_code == 200
+    client.cookies.set("atelier_token", r_login.cookies.get("atelier_token"))
+
+    r = await client.get("/admin/llm/model-suggestions", params={"source": "registry"})
+    assert r.status_code == 200, r.text
+    payload = r.json()
+    ids = {m["id"] for m in payload["models"]}
+    assert ids == {"deploy-alpha", "deploy-beta"}
+    assert all(m["source"] == "registry" for m in payload["models"])
+
+    r2 = await client.get(
+        "/admin/llm/model-suggestions",
+        params={"source": "registry", "litellm_provider": "openai"},
+    )
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["warning"]
+    assert not r2.json()["models"]

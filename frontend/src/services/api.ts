@@ -319,6 +319,11 @@ export interface TokenUsageRow {
   output_tokens: number
   estimated_cost_usd: string | null
   created_at: string
+  studio_name?: string | null
+  software_name?: string | null
+  project_name?: string | null
+  work_order_title?: string | null
+  user_display_name?: string | null
 }
 
 export interface TokenUsageTotals {
@@ -522,7 +527,7 @@ export interface AdminConnectivityResult {
 export type AdminLlmProbeBody = {
   model?: string | null
   api_base_url?: string | null
-  provider_key?: string | null
+  provider_id?: string | null
 }
 
 export async function postAdminTestLlm(
@@ -671,8 +676,7 @@ export function modelIdsFromEntries(models: LlmRegistryModelEntry[]): string[] {
 
 export interface LlmProviderRegistryRow {
   id: string
-  provider_key: string
-  display_name: string
+  provider_id: string
   models: LlmRegistryModelEntry[]
   api_base_url: string | null
   logo_url: string | null
@@ -686,7 +690,6 @@ export interface LlmProviderRegistryRow {
 }
 
 export type LlmProviderUpsertBody = {
-  display_name: string
   models: LlmRegistryModelEntry[]
   api_base_url?: string | null
   status?: string
@@ -711,18 +714,18 @@ export async function getAdminLlmProviders(): Promise<LlmProviderRegistryRow[]> 
 }
 
 export async function putAdminLlmProvider(
-  providerKey: string,
+  providerId: string,
   body: LlmProviderUpsertBody,
 ): Promise<LlmProviderRegistryRow> {
   return request<LlmProviderRegistryRow>(
     'PUT',
-    `/admin/llm/providers/${encodeURIComponent(providerKey)}`,
+    `/admin/llm/providers/${encodeURIComponent(providerId)}`,
     body,
   )
 }
 
-export async function deleteAdminLlmProvider(providerKey: string): Promise<void> {
-  return request<void>('DELETE', `/admin/llm/providers/${encodeURIComponent(providerKey)}`)
+export async function deleteAdminLlmProvider(providerId: string): Promise<void> {
+  return request<void>('DELETE', `/admin/llm/providers/${encodeURIComponent(providerId)}`)
 }
 
 export interface LlmRoutingRuleRow {
@@ -754,18 +757,19 @@ export interface LlmModelSuggestionsResponse {
 }
 
 export async function getAdminLlmModelSuggestions(params: {
-  provider_key?: string | null
+  provider_id?: string | null
   litellm_provider?: string | null
   q?: string | null
   mode?: 'chat' | 'embedding'
-  source?: 'auto' | 'catalog' | 'upstream'
+  source?: 'auto' | 'catalog' | 'upstream' | 'registry'
 } = {}): Promise<LlmModelSuggestionsResponse> {
   const qs = new URLSearchParams()
-  if (params.provider_key) qs.set('provider_key', params.provider_key)
+  if (params.provider_id) qs.set('provider_id', params.provider_id)
   if (params.litellm_provider) qs.set('litellm_provider', params.litellm_provider)
   if (params.q) qs.set('q', params.q)
   if (params.mode) qs.set('mode', params.mode)
-  if (params.source) qs.set('source', params.source)
+  /** Omitting source makes the backend default to `auto`, which prefers upstream /v1/models (often OpenAI-only). */
+  qs.set('source', params.source ?? 'catalog')
   const suffix = qs.toString()
   return request<LlmModelSuggestionsResponse>(
     'GET',
@@ -774,7 +778,7 @@ export async function getAdminLlmModelSuggestions(params: {
 }
 
 export interface StudioLlmPolicyRow {
-  provider_key: string
+  provider_id: string
   enabled: boolean
   selected_model: string | null
 }

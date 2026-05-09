@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.exceptions import ApiError
 from app.models import (
@@ -72,6 +72,16 @@ async def _promote_tool_admin(db_session, email: str) -> None:
     await db_session.flush()
 
 
+async def _ensure_openai_registry_connected(db_session) -> None:
+    """Tests assume a connected registry row; PUT no longer elevates status without Test."""
+    await db_session.execute(
+        update(LlmProviderRegistry)
+        .where(LlmProviderRegistry.provider_id == "openai")
+        .values(status="connected")
+    )
+    await db_session.flush()
+
+
 def _last_nonempty_line(text: str) -> str:
     for line in reversed(text.strip().splitlines()):
         s = line.strip()
@@ -110,14 +120,13 @@ async def test_stream_sse_envelope_format(
     await client.put(
         "/admin/llm/providers/openai",
         json={
-            "display_name": "OpenAI",
             "models": ["gpt-4o-mini"],
-            "status": "connected",
             "is_default": True,
             "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
+    await _ensure_openai_registry_connected(db_session)
 
     async def fake_rag(self, *a, **k):
         return RAGContext(text="ctx", truncated=False)
@@ -174,14 +183,13 @@ async def test_stream_meta_includes_llm_outbound_when_log_prompts(
     await client.put(
         "/admin/llm/providers/openai",
         json={
-            "display_name": "OpenAI",
             "models": ["gpt-4o-mini"],
-            "status": "connected",
             "is_default": True,
             "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
+    await _ensure_openai_registry_connected(db_session)
 
     async def fake_rag(self, *a, **k):
         return RAGContext(text="ctx", truncated=False)
@@ -246,14 +254,13 @@ async def test_stream_llm_failure_persists_error_and_completes_sse(
     await client.put(
         "/admin/llm/providers/openai",
         json={
-            "display_name": "OpenAI",
             "models": ["gpt-4o-mini"],
-            "status": "connected",
             "is_default": True,
             "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
+    await _ensure_openai_registry_connected(db_session)
 
     async def fake_rag(self, *a, **k):
         return RAGContext(text="ctx", truncated=False)
@@ -295,14 +302,13 @@ async def test_stream_conflict_meta_populated(
     await client.put(
         "/admin/llm/providers/openai",
         json={
-            "display_name": "OpenAI",
             "models": ["gpt-4o-mini"],
-            "status": "connected",
             "is_default": True,
             "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
+    await _ensure_openai_registry_connected(db_session)
 
     async def fake_rag(self, *a, **k):
         return RAGContext(text="ctx", truncated=True)
@@ -363,14 +369,13 @@ async def test_thread_post_passes_plaintext_override_to_rag(
     await client.put(
         "/admin/llm/providers/openai",
         json={
-            "display_name": "OpenAI",
             "models": ["gpt-4o-mini"],
-            "status": "connected",
             "is_default": True,
             "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
+    await _ensure_openai_registry_connected(db_session)
     captured: dict[str, object] = {}
 
     async def cap_rag(self, *a: object, **k: object) -> RAGContext:
@@ -411,14 +416,13 @@ async def test_thread_post_passes_include_git_history_to_rag(
     await client.put(
         "/admin/llm/providers/openai",
         json={
-            "display_name": "OpenAI",
             "models": ["gpt-4o-mini"],
-            "status": "connected",
             "is_default": True,
             "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
+    await _ensure_openai_registry_connected(db_session)
     captured: dict[str, object] = {}
 
     async def cap_rag(self, *a: object, **k: object) -> RAGContext:
@@ -492,14 +496,13 @@ async def test_get_thread_returns_history(
     await client.put(
         "/admin/llm/providers/openai",
         json={
-            "display_name": "OpenAI",
             "models": ["gpt-4o-mini"],
-            "status": "connected",
             "is_default": True,
             "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
+    await _ensure_openai_registry_connected(db_session)
 
     async def fake_rag(self, *a, **k):
         return RAGContext(text="ctx", truncated=False)
@@ -544,14 +547,13 @@ async def test_llm_failure_writes_tombstone_message(
     await client.put(
         "/admin/llm/providers/openai",
         json={
-            "display_name": "OpenAI",
             "models": ["gpt-4o-mini"],
-            "status": "connected",
             "is_default": True,
             "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
+    await _ensure_openai_registry_connected(db_session)
 
     async def fake_rag(self, *a, **k):
         return RAGContext(text="ctx", truncated=False)
@@ -594,14 +596,13 @@ async def test_stream_meta_context_truncated_true_when_budget_tight(
     await client.put(
         "/admin/llm/providers/openai",
         json={
-            "display_name": "OpenAI",
             "models": ["gpt-4o-mini"],
-            "status": "connected",
             "is_default": True,
             "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
+    await _ensure_openai_registry_connected(db_session)
     huge = "C" * 8000
     patch_r = await client.patch(
         f"/projects/{pid}/sections/{section_id}",
@@ -656,14 +657,13 @@ async def test_reset_thread_clears_history(
     await client.put(
         "/admin/llm/providers/openai",
         json={
-            "display_name": "OpenAI",
             "models": ["gpt-4o-mini"],
-            "status": "connected",
             "is_default": True,
             "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
+    await _ensure_openai_registry_connected(db_session)
 
     async def fake_rag(self, *a, **k):
         return RAGContext(text="ctx", truncated=False)
@@ -737,14 +737,13 @@ async def test_replace_selection_422_without_plaintext_override(
     await client.put(
         "/admin/llm/providers/openai",
         json={
-            "display_name": "OpenAI",
             "models": ["gpt-4o-mini"],
-            "status": "connected",
             "is_default": True,
             "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
+    await _ensure_openai_registry_connected(db_session)
 
     async def fake_rag(self, *a, **k):
         return RAGContext(text="ctx", truncated=False)
@@ -781,14 +780,13 @@ async def test_replace_selection_422_without_selection_bounds(
     await client.put(
         "/admin/llm/providers/openai",
         json={
-            "display_name": "OpenAI",
             "models": ["gpt-4o-mini"],
-            "status": "connected",
             "is_default": True,
             "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
+    await _ensure_openai_registry_connected(db_session)
 
     async def fake_rag(self, *a, **k):
         return RAGContext(text="ctx", truncated=False)
@@ -817,14 +815,13 @@ async def test_stream_meta_patch_proposal_append(
     await client.put(
         "/admin/llm/providers/openai",
         json={
-            "display_name": "OpenAI",
             "models": ["gpt-4o-mini"],
-            "status": "connected",
             "is_default": True,
             "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
+    await _ensure_openai_registry_connected(db_session)
 
     async def fake_rag(self, *a, **k):
         return RAGContext(text="ctx", truncated=False)
@@ -881,21 +878,19 @@ async def test_stream_rejects_disallowed_preferred_model(
     await client.put(
         "/admin/llm/providers/openai",
         json={
-            "display_name": "OpenAI",
             "models": ["gpt-4o-mini"],
-            "status": "connected",
             "is_default": True,
             "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
+    await _ensure_openai_registry_connected(db_session)
     sid = uuid.UUID(studio_id_str)
     prov_key = f"prov_thr_{sfx}"
     db_session.add(
         LlmProviderRegistry(
             id=uuid.uuid4(),
-            provider_key=prov_key,
-            display_name="Test LLM",
+            provider_id=prov_key,
             models_json=json.dumps(["gpt-4o-mini", "gpt-4o"]),
             status="connected",
             is_default=True,
@@ -912,7 +907,7 @@ async def test_stream_rejects_disallowed_preferred_model(
     db_session.add(
         StudioLlmProviderPolicy(
             studio_id=sid,
-            provider_key=prov_key,
+            provider_id=prov_key,
             enabled=True,
             selected_model="gpt-4o-mini",
         )
@@ -944,21 +939,19 @@ async def test_stream_accepts_allowed_preferred_model(
     await client.put(
         "/admin/llm/providers/openai",
         json={
-            "display_name": "OpenAI",
             "models": ["gpt-4o-mini"],
-            "status": "connected",
             "is_default": True,
             "sort_order": 0,
             "llm_api_key": "sk-test",
         },
     )
+    await _ensure_openai_registry_connected(db_session)
     sid = uuid.UUID(studio_id_str)
     prov_key = f"prov_thr2_{sfx}"
     db_session.add(
         LlmProviderRegistry(
             id=uuid.uuid4(),
-            provider_key=prov_key,
-            display_name="Test LLM",
+            provider_id=prov_key,
             models_json=json.dumps(["gpt-4o-mini", "gpt-4o"]),
             status="connected",
             is_default=True,
@@ -975,7 +968,7 @@ async def test_stream_accepts_allowed_preferred_model(
     db_session.add(
         StudioLlmProviderPolicy(
             studio_id=sid,
-            provider_key=prov_key,
+            provider_id=prov_key,
             enabled=True,
             selected_model="gpt-4o-mini",
         )

@@ -12,17 +12,16 @@ from app.models import LlmProviderRegistry
 from app.services.llm_registry_credentials import (
     get_default_llm_registry_row,
     resolve_openai_compatible_llm_credentials,
-    resolve_provider_key_for_model,
+    resolve_provider_id_for_model,
 )
 
 
 @pytest.mark.asyncio
-async def test_resolve_provider_key_for_model_ordered() -> None:
+async def test_resolve_provider_id_for_model_ordered() -> None:
     db = AsyncMock()
     openai_row = LlmProviderRegistry(
         id=uuid4(),
-        provider_key="openai",
-        display_name="OpenAI",
+        provider_id="openai",
         models_json='["gpt-4o-mini"]',
         api_base_url=None,
         logo_url=None,
@@ -33,8 +32,7 @@ async def test_resolve_provider_key_for_model_ordered() -> None:
     )
     other = LlmProviderRegistry(
         id=uuid4(),
-        provider_key="z_other",
-        display_name="Z",
+        provider_id="z_other",
         models_json='["gpt-4o-mini"]',
         api_base_url=None,
         logo_url=None,
@@ -48,7 +46,7 @@ async def test_resolve_provider_key_for_model_ordered() -> None:
     exec_result.scalars = MagicMock(return_value=MagicMock(all=lambda: [openai_row, other]))
     db.execute = AsyncMock(return_value=exec_result)
 
-    pk = await resolve_provider_key_for_model(db, "gpt-4o-mini")
+    pk = await resolve_provider_id_for_model(db, "gpt-4o-mini")
     assert pk == "openai"
 
 
@@ -69,8 +67,7 @@ async def test_resolve_credentials_uses_registry_row_key_when_present(
     db = AsyncMock()
     reg = LlmProviderRegistry(
         id=uuid4(),
-        provider_key="acme",
-        display_name="Acme",
+        provider_id="acme",
         models_json='["m1"]',
         api_base_url="https://api.acme.example/v1",
         logo_url=None,
@@ -84,7 +81,7 @@ async def test_resolve_credentials_uses_registry_row_key_when_present(
     model, key, api_base, out_reg = await resolve_openai_compatible_llm_credentials(
         db,
         effective_model="m1",
-        route_provider_key="acme",
+        route_provider_id="acme",
     )
     assert model == "acme/m1"
     assert key == "from-registry"
@@ -103,8 +100,7 @@ async def test_resolve_raises_llm_not_configured_when_registry_row_has_no_api_ke
     db = AsyncMock()
     reg = LlmProviderRegistry(
         id=uuid4(),
-        provider_key="acme",
-        display_name="Acme",
+        provider_id="acme",
         models_json='["m1"]',
         api_base_url=None,
         logo_url=None,
@@ -119,7 +115,7 @@ async def test_resolve_raises_llm_not_configured_when_registry_row_has_no_api_ke
         await resolve_openai_compatible_llm_credentials(
             db,
             effective_model="m1",
-            route_provider_key="acme",
+            route_provider_id="acme",
         )
     assert ei.value.error_code == "LLM_NOT_CONFIGURED"
 
@@ -139,13 +135,13 @@ async def test_resolve_raises_when_route_provider_unknown(
         await resolve_openai_compatible_llm_credentials(
             db,
             effective_model="m1",
-            route_provider_key="missing",
+            route_provider_id="missing",
         )
     assert ei.value.error_code == "LLM_NOT_CONFIGURED"
 
 
 @pytest.mark.asyncio
-async def test_resolve_uses_default_row_when_route_provider_key_none(
+async def test_resolve_uses_default_row_when_route_provider_id_none(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def _decode(stored: str | None) -> str | None:
@@ -160,8 +156,7 @@ async def test_resolve_uses_default_row_when_route_provider_key_none(
 
     default_row = LlmProviderRegistry(
         id=uuid4(),
-        provider_key="openai",
-        display_name="OpenAI",
+        provider_id="openai",
         models_json='["gpt-4o-mini"]',
         api_base_url=None,
         logo_url=None,
@@ -184,7 +179,7 @@ async def test_resolve_uses_default_row_when_route_provider_key_none(
     model, key, _base, out_reg = await resolve_openai_compatible_llm_credentials(
         db,
         effective_model="gpt-4o-mini",
-        route_provider_key=None,
+        route_provider_id=None,
     )
     assert key == "default-key"
     assert "gpt-4o-mini" in model or model == "gpt-4o-mini"
@@ -195,8 +190,7 @@ async def test_resolve_uses_default_row_when_route_provider_key_none(
 async def test_get_default_llm_registry_row_returns_query_scalar() -> None:
     want = LlmProviderRegistry(
         id=uuid4(),
-        provider_key="b",
-        display_name="B",
+        provider_id="b",
         models_json="[]",
         api_base_url=None,
         logo_url=None,

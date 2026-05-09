@@ -68,8 +68,7 @@ async def llm_admin_config(db_session: AsyncSession) -> None:
     db_session.add(
         LlmProviderRegistry(
             id=uuid.uuid4(),
-            provider_key="openai",
-            display_name="OpenAI",
+            provider_id="openai",
             models_json=models_payload,
             api_base_url=None,
             logo_url=None,

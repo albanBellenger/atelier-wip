@@ -21,8 +21,7 @@ async def _seed_embedding_via_llm_registry(db_session: object) -> None:
     db_session.add(
         LlmProviderRegistry(
             id=uuid.uuid4(),
-            provider_key="openai",
-            display_name="OpenAI",
+            provider_id="openai",
             models_json=json.dumps(["text-embedding-3-small"]),
             status="connected",
             is_default=True,

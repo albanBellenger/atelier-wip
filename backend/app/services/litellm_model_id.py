@@ -12,7 +12,7 @@ def normalize_litellm_chat_model(
 
     If ``model`` already contains ``/``, it is returned unchanged (admin set ``provider/model``).
     If ``registry_row`` is set and the model has no slash, prefix with
-    ``litellm_provider_slug`` when non-empty, else ``provider_key``.
+    ``litellm_provider_slug`` when non-empty, else ``provider_id``.
     With no registry row, the model is unchanged (cannot infer provider safely).
     """
     m = (model or "").strip()
@@ -22,7 +22,7 @@ def normalize_litellm_chat_model(
         return m
     slug = (getattr(registry_row, "litellm_provider_slug", None) or "").strip()
     if not slug:
-        slug = (registry_row.provider_key or "").strip()
+        slug = (registry_row.provider_id or "").strip()
     if not slug:
         return m
     return f"{slug}/{m}"

@@ -60,8 +60,7 @@ function renderStudios(): {
     providers: [
       {
         id: 'p1',
-        provider_key: 'openai',
-        display_name: 'OpenAI',
+        provider_id: 'openai',
         models: [{ id: 'gpt-4o-mini', context_metadata_source: 'unknown' }],
         litellm_provider_slug: null,
         api_base_url: null,
@@ -75,10 +74,10 @@ function renderStudios(): {
     ],
   })
   vi.spyOn(api, 'getAdminStudioLlmPolicy').mockResolvedValue([
-    { provider_key: 'openai', enabled: false, selected_model: 'gpt-4o-mini' },
+    { provider_id: 'openai', enabled: false, selected_model: 'gpt-4o-mini' },
   ])
   const putPolicySpy = vi.spyOn(api, 'putAdminStudioLlmPolicy').mockResolvedValue([
-    { provider_key: 'openai', enabled: true, selected_model: 'gpt-4o-mini' },
+    { provider_id: 'openai', enabled: true, selected_model: 'gpt-4o-mini' },
   ])
 
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -147,7 +146,7 @@ describe('StudiosSection', () => {
     const user = userEvent.setup()
     const { putPolicySpy } = renderStudios()
     await screen.findByText('Studio Alpha')
-    await screen.findByText('OpenAI')
+    await screen.findByText('openai')
 
     const switches = screen.getAllByRole('switch')
     expect(switches.length).toBeGreaterThan(0)
@@ -157,7 +156,7 @@ describe('StudiosSection', () => {
       expect(putPolicySpy).toHaveBeenCalled()
     })
     const arg = putPolicySpy.mock.calls[0][1] as { rows: api.StudioLlmPolicyRow[] }
-    const openai = arg.rows.find((r) => r.provider_key === 'openai')
+    const openai = arg.rows.find((r) => r.provider_id === 'openai')
     expect(openai?.enabled).toBe(true)
   })
 
@@ -171,8 +170,7 @@ describe('StudiosSection', () => {
       providers: [
         {
           id: 'p1',
-          provider_key: 'openai',
-          display_name: 'OpenAI',
+          provider_id: 'openai',
           models: [{ id: 'gpt-4o-mini', context_metadata_source: 'unknown' }],
         litellm_provider_slug: null,
           api_base_url: null,
@@ -186,10 +184,10 @@ describe('StudiosSection', () => {
       ],
     })
     vi.spyOn(api, 'getAdminStudioLlmPolicy').mockResolvedValue([
-      { provider_key: 'openai', enabled: false, selected_model: 'gpt-4o-mini' },
+      { provider_id: 'openai', enabled: false, selected_model: 'gpt-4o-mini' },
     ])
     vi.spyOn(api, 'putAdminStudioLlmPolicy').mockResolvedValue([
-      { provider_key: 'openai', enabled: true, selected_model: 'gpt-4o-mini' },
+      { provider_id: 'openai', enabled: true, selected_model: 'gpt-4o-mini' },
     ])
     const deleteSpy = vi.spyOn(api, 'deleteAdminStudio').mockResolvedValue(undefined)
 

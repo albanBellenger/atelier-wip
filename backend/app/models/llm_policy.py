@@ -17,8 +17,7 @@ class LlmProviderRegistry(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    provider_key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
-    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    provider_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     models_json: Mapped[str] = mapped_column(Text, nullable=False)
     api_base_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     logo_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
@@ -35,7 +34,7 @@ class StudioLlmProviderPolicy(Base):
     studio_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("studios.id", ondelete="CASCADE"), primary_key=True
     )
-    provider_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    provider_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     selected_model: Mapped[str | None] = mapped_column(String(256), nullable=True)
 

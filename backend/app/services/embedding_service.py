@@ -45,7 +45,7 @@ class EmbeddingService:
     async def require_embedding_ready(
         self, studio_id: UUID | None
     ) -> tuple[str, str, str, str]:
-        """Returns ``(model, api_key, provider_key, api_base)`` or raises ApiError 503.
+        """Returns ``(model, api_key, provider_id, api_base)`` or raises ApiError 503.
 
         ``api_base`` is the OpenAI v1 root for LiteLLM (e.g. ``https://api.openai.com/v1``).
         Credentials and routing come from ``llm_provider_registry`` + embeddings routing rule.
@@ -65,7 +65,7 @@ class EmbeddingService:
                 ),
             )
         reg_row = await self.db.scalar(
-            select(LlmProviderRegistry).where(LlmProviderRegistry.provider_key == pk)
+            select(LlmProviderRegistry).where(LlmProviderRegistry.provider_id == pk)
         )
         if reg_row is None:
             raise ApiError(
@@ -84,7 +84,7 @@ class EmbeddingService:
         model = normalize_litellm_embedding_model(
             raw_model,
             litellm_provider_slug=slug_raw or None,
-            provider_name_fallback=(reg_row.provider_key or "").strip().lower(),
+            provider_name_fallback=(reg_row.provider_id or "").strip().lower(),
         )
         api_base = openai_v1_base(reg_row.api_base_url)
         return model, key, pk, api_base
@@ -98,7 +98,7 @@ class EmbeddingService:
     ) -> list[list[float]]:
         if not texts:
             return []
-        model, api_key, _provider_key, api_base = await self.require_embedding_ready(
+        model, api_key, _provider_id, api_base = await self.require_embedding_ready(
             studio_id
         )
         out: list[list[float]] = []
@@ -213,7 +213,7 @@ async def embedding_resolvable(session: AsyncSession, studio_id: UUID | None) ->
     if not raw_model or not pk:
         return False
     row = await session.scalar(
-        select(LlmProviderRegistry).where(LlmProviderRegistry.provider_key == pk)
+        select(LlmProviderRegistry).where(LlmProviderRegistry.provider_id == pk)
     )
     if row is None:
         return False

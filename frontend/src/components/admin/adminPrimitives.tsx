@@ -168,17 +168,22 @@ export function PageTitle({
 
 export function Card({
   title,
+  titleHint,
   right,
   children,
 }: {
-  title: string
+  title: ReactNode
+  titleHint?: ReactNode
   right?: ReactNode
   children: ReactNode
 }): React.ReactElement {
   return (
     <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40">
       <div className="flex items-center justify-between gap-4 border-b border-zinc-800/80 px-5 py-3.5">
-        <h2 className="text-[13px] font-medium text-zinc-200">{title}</h2>
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          <h2 className="min-w-0 flex-1 truncate text-[13px] font-medium text-zinc-200">{title}</h2>
+          {titleHint ?? null}
+        </div>
         <div>{right}</div>
       </div>
       {children}

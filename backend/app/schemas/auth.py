@@ -100,7 +100,7 @@ class AdminLlmProbeBody(BaseModel):
 
     model: str | None = None
     api_base_url: str | None = None
-    provider_key: str | None = None
+    provider_id: str | None = None
 
     @field_validator("api_base_url", mode="before")
     @classmethod

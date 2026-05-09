@@ -8,10 +8,10 @@ import {
 
 export function useAdminLlmModelSuggestions(opts: {
   q: string
-  providerKey?: string | null
+  providerId?: string | null
   litellmProvider?: string | null
   mode?: 'chat' | 'embedding'
-  source?: 'auto' | 'catalog' | 'upstream'
+  source?: 'auto' | 'catalog' | 'upstream' | 'registry'
   /** When true, fetch even if q is short (e.g. modal open). */
   prefetch?: boolean
   /** Minimum trimmed q length before fetching when prefetch is false. Default 2. */
@@ -34,18 +34,18 @@ export function useAdminLlmModelSuggestions(opts: {
       'llm',
       'model-suggestions',
       debouncedQ,
-      opts.providerKey ?? '',
+      opts.providerId ?? '',
       opts.litellmProvider ?? '',
       opts.mode ?? 'chat',
-      opts.source ?? 'auto',
+      opts.source ?? 'catalog',
     ],
     queryFn: () =>
       getAdminLlmModelSuggestions({
-        provider_key: opts.providerKey ?? undefined,
+        provider_id: opts.providerId ?? undefined,
         litellm_provider: opts.litellmProvider ?? undefined,
         q: debouncedQ.trim() || undefined,
         mode: opts.mode,
-        source: opts.source,
+        source: opts.source ?? 'catalog',
       }),
     enabled: opts.enabled !== false && qOk,
     staleTime: 5 * 60 * 1000,

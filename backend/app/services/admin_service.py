@@ -54,7 +54,7 @@ class AdminService:
                     "including a default provider with an API key."
                 ),
             )
-        if not (b.provider_key or "").strip():
+        if not (b.provider_id or "").strip():
             from app.services.llm_registry_credentials import get_default_llm_registry_row
 
             default_row = await get_default_llm_registry_row(self.db)
@@ -64,13 +64,14 @@ class AdminService:
                     message="No default LLM provider is set.",
                     detail=(
                         "Mark one connected provider as default in Admin Console → LLM, "
-                        "or pass provider_key in the probe request."
+                        "or pass provider_id in the probe request."
                     ),
                 )
         return await LLMService(self.db).admin_connectivity_probe(
             model_override=b.model,
             api_base_url_override=b.api_base_url,
-            provider_key=b.provider_key,
+            provider_id=b.provider_id,
+            persist_registry_status=True,
         )
 
     async def test_embedding(self) -> AdminConnectivityResult:

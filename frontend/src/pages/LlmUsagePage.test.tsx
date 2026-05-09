@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -46,8 +47,15 @@ describe('LlmUsagePage', () => {
     expect(
       await screen.findByRole('heading', { name: /^LLM usage$/i }),
     ).toBeInTheDocument()
+    const help = screen.getByRole('button', {
+      name: 'Filter usage by studio, software, project, work order, LLM source, and dates.',
+    })
+    expect(help).toBeInTheDocument()
+    const user = userEvent.setup()
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+    await user.hover(help)
     expect(
-      screen.getByRole('button', {
+      screen.getByRole('tooltip', {
         name: 'Filter usage by studio, software, project, work order, LLM source, and dates.',
       }),
     ).toBeInTheDocument()

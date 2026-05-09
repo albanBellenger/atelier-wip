@@ -150,8 +150,10 @@ class AuthService:
         row = await get_default_llm_registry_row(self.db)
         if row is None:
             return LlmRuntimePublic(llm_provider=None, llm_model=None)
+        if (row.status or "").strip().lower() != "connected":
+            return LlmRuntimePublic(llm_provider=None, llm_model=None)
         m = first_registry_model(row)
-        return LlmRuntimePublic(llm_provider=row.provider_key, llm_model=m)
+        return LlmRuntimePublic(llm_provider=row.provider_id, llm_model=m)
 
     async def patch_profile(self, user: User, body: UserProfilePatch) -> MeResponse:
         row = await self.db.execute(select(User).where(User.id == user.id))

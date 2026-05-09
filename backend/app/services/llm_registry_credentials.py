@@ -30,28 +30,28 @@ def first_registry_model(row: LlmProviderRegistry | None) -> str | None:
 async def load_ordered_registry_providers(
     db: AsyncSession,
 ) -> list[LlmProviderRegistry]:
-    """Stable ordering for model→provider scans (sort_order, then provider_key)."""
+    """Stable ordering for model→provider scans (sort_order, then provider_id)."""
     result = await db.execute(
         select(LlmProviderRegistry).order_by(
             LlmProviderRegistry.sort_order,
-            LlmProviderRegistry.provider_key,
+            LlmProviderRegistry.provider_id,
         )
     )
     return list(result.scalars().all())
 
 
 async def get_default_llm_registry_row(db: AsyncSession) -> LlmProviderRegistry | None:
-    """First registry row with ``is_default`` (tie-break: sort_order, provider_key)."""
+    """First registry row with ``is_default`` (tie-break: sort_order, provider_id)."""
     result = await db.execute(
         select(LlmProviderRegistry)
         .where(LlmProviderRegistry.is_default.is_(True))
-        .order_by(LlmProviderRegistry.sort_order, LlmProviderRegistry.provider_key)
+        .order_by(LlmProviderRegistry.sort_order, LlmProviderRegistry.provider_id)
         .limit(1)
     )
     return result.scalar_one_or_none()
 
 
-async def resolve_provider_key_for_model(
+async def resolve_provider_id_for_model(
     db: AsyncSession,
     model_name: str,
 ) -> str | None:
@@ -64,7 +64,7 @@ async def resolve_provider_key_for_model(
         if not _registry_connected(pr):
             continue
         if want in _models_from_registry_row(pr):
-            return pr.provider_key
+            return pr.provider_id
     return None
 
 
@@ -80,13 +80,13 @@ async def resolve_openai_compatible_llm_credentials(
     db: AsyncSession,
     *,
     effective_model: str,
-    route_provider_key: str | None,
+    route_provider_id: str | None,
 ) -> tuple[str, str, str, LlmProviderRegistry]:
     """Return ``(model_id, bearer_token, api_base, registry_row)``.
 
     ``api_base`` is OpenAI v1 root for LiteLLM. Credentials always come from
-    ``llm_provider_registry`` (explicit ``route_provider_key`` row, or the default row
-    when ``route_provider_key`` is unset).
+    ``llm_provider_registry`` (explicit ``route_provider_id`` row, or the default row
+    when ``route_provider_id`` is unset).
     """
     model = (effective_model or "").strip()
     if not model:
@@ -96,11 +96,11 @@ async def resolve_openai_compatible_llm_credentials(
             message="Tool Admin must configure LLM model and API key.",
         )
 
-    pk = (route_provider_key or "").strip().lower() or None
+    pk = (route_provider_id or "").strip().lower() or None
     reg_row: LlmProviderRegistry | None = None
     if pk:
         reg_row = await db.scalar(
-            select(LlmProviderRegistry).where(LlmProviderRegistry.provider_key == pk)
+            select(LlmProviderRegistry).where(LlmProviderRegistry.provider_id == pk)
         )
         if reg_row is None:
             raise ApiError(

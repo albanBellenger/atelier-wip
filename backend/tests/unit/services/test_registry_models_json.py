@@ -45,9 +45,8 @@ def test_model_ids_from_json() -> None:
 
 def test_entry_for_litellm_model_matches_prefix() -> None:
     row = LlmProviderRegistry(
-        provider_key="openai",
+        provider_id="openai",
         litellm_provider_slug="openai",
-        display_name="",
         models_json="[]",
         api_base_url=None,
         logo_url=None,

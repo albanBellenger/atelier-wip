@@ -49,8 +49,7 @@ class LlmProviderRegistryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    provider_key: str
-    display_name: str
+    provider_id: str
     models: list[LlmRegistryModelEntry]
     api_base_url: str | None
     logo_url: str | None = None
@@ -64,14 +63,16 @@ class LlmProviderRegistryResponse(BaseModel):
 
 
 class LlmProviderRegistryUpdate(BaseModel):
-    display_name: str = Field(min_length=1, max_length=255)
     models: list[LlmRegistryModelEntry] = Field(min_length=1)
     api_base_url: str | None = Field(default=None, max_length=512)
-    status: str = "connected"
     is_default: bool = False
     sort_order: int = 0
     llm_api_key: str | None = None
     litellm_provider_slug: str | None = Field(default=None, max_length=64)
+    disabled: bool | None = Field(
+        default=None,
+        description="On update: True disables the row; False re-enables (needs-key until Test).",
+    )
 
     @field_validator("models", mode="before")
     @classmethod
@@ -96,7 +97,7 @@ class LlmDeploymentResponse(BaseModel):
 
 
 class StudioLlmPolicyRowResponse(BaseModel):
-    provider_key: str
+    provider_id: str
     enabled: bool
     selected_model: str | None
 
@@ -121,7 +122,7 @@ class LlmModelSuggestionItem(BaseModel):
     id: str
     label: str | None = None
     provider: str | None = None
-    source: str  # "upstream" | "catalog"
+    source: str  # "upstream" | "catalog" | "registry"
 
 
 class LlmModelSuggestionsResponse(BaseModel):

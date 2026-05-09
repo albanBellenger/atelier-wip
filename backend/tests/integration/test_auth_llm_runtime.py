@@ -39,9 +39,9 @@ async def test_llm_runtime_ok_for_authenticated_user(
         text(
             """
             INSERT INTO llm_provider_registry (
-                id, provider_key, display_name, models_json, status, is_default, sort_order
+                id, provider_id, models_json, status, is_default, sort_order
             ) VALUES (
-                CAST(:id AS uuid), :pk, 'Runtime test', :models_json, 'connected', true, 0
+                CAST(:id AS uuid), :pk, :models_json, 'connected', true, 0
             )
             """
         ),

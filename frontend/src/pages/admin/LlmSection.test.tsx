@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as api from '../../services/api'
 import { LlmSection } from './LlmSection'
@@ -34,8 +34,7 @@ describe('LlmSection', () => {
 
     const putSpy = vi.spyOn(api, 'putAdminLlmProvider').mockResolvedValue({
       id: 'new-id',
-      provider_key: 'acme',
-      display_name: 'Acme AI',
+      provider_id: 'acme',
       models: [{ id: 'model-a', context_metadata_source: 'unknown' }],
       api_base_url: null,
       logo_url: null,
@@ -58,6 +57,16 @@ describe('LlmSection', () => {
     )
 
     expect(await screen.findByText(/Model registry/i)).toBeInTheDocument()
+    expect(
+      screen.queryByText(/Registered providers and model IDs for routing/i),
+    ).not.toBeInTheDocument()
+    await user.hover(screen.getByRole('button', { name: /model registry overview/i }))
+    expect(
+      await screen.findByRole('tooltip', {
+        name: /Registered providers and model IDs for routing and studio allow-lists/i,
+      }),
+    ).toBeInTheDocument()
+
     expect(screen.getByRole('link', { name: 'Embedding settings' })).toHaveAttribute(
       'href',
       '/admin/settings',
@@ -65,8 +74,21 @@ describe('LlmSection', () => {
 
     await user.click(screen.getByRole('button', { name: /add provider/i }))
 
-    await user.type(screen.getByLabelText(/^Provider key/i), 'acme')
-    await user.type(screen.getByLabelText(/^Display name/i), 'Acme AI')
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).queryByText(/Short ids are fine if LiteLLM/i)).not.toBeInTheDocument()
+    expect(within(dialog).queryByText(/Non-empty values mark that position/i)).not.toBeInTheDocument()
+    expect(within(dialog).queryByText(/If empty, the provider ID is used/i)).not.toBeInTheDocument()
+
+    await user.hover(
+      within(dialog).getByRole('button', { name: /model id format and litellm catalog/i }),
+    )
+    expect(
+      await screen.findByRole('tooltip', {
+        name: /Short ids are fine if LiteLLM can infer the provider/i,
+      }),
+    ).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText(/^Provider ID/i), 'acme')
     await user.type(screen.getByLabelText(/^Model IDs/i), 'model-a, model-b')
     await user.type(
       screen.getByLabelText(/^API base URL \(optional\)/i),
@@ -79,7 +101,6 @@ describe('LlmSection', () => {
       expect(putSpy).toHaveBeenCalledWith(
         'acme',
         expect.objectContaining({
-          display_name: 'Acme AI',
           models: [
             { id: 'model-a', context_metadata_source: 'unknown' },
             { id: 'model-b', context_metadata_source: 'unknown' },
@@ -103,8 +124,7 @@ describe('LlmSection', () => {
       providers: [
         {
           id: 'prov-1',
-          provider_key: 'moonshot',
-          display_name: 'M2 Moonshot',
+          provider_id: 'moonshot',
           models: [{ id: 'old-model', context_metadata_source: 'unknown' }],
           api_base_url: 'https://api.moonshot.example/v1',
           logo_url: 'https://icons.duckduckgo.com/ip3/api.moonshot.example.ico',
@@ -128,10 +148,9 @@ describe('LlmSection', () => {
 
     const putSpy = vi.spyOn(api, 'putAdminLlmProvider').mockImplementation(async (key, body) => {
       deploymentState.providers = deploymentState.providers.map((p) =>
-        p.provider_key === key
+        p.provider_id === key
           ? {
               ...p,
-              display_name: body.display_name,
               models: body.models,
               api_base_url: body.api_base_url !== undefined ? body.api_base_url : p.api_base_url,
               status: body.status !== undefined ? body.status : p.status,
@@ -144,11 +163,10 @@ describe('LlmSection', () => {
             }
           : p,
       )
-      const row = deploymentState.providers.find((p) => p.provider_key === key)
+      const row = deploymentState.providers.find((p) => p.provider_id === key)
       return {
         id: row?.id ?? 'prov-1',
-        provider_key: key,
-        display_name: body.display_name,
+        provider_id: key,
         models: body.models,
         api_base_url: body.api_base_url ?? null,
         logo_url: row?.logo_url ?? null,
@@ -179,7 +197,7 @@ describe('LlmSection', () => {
       </MemoryRouter>,
     )
 
-    expect(await screen.findByText('M2 Moonshot')).toBeInTheDocument()
+    expect((await screen.findAllByText('moonshot')).length).toBeGreaterThan(0)
 
     await user.click(screen.getByRole('button', { name: /^edit$/i }))
 
@@ -194,7 +212,6 @@ describe('LlmSection', () => {
       expect(putSpy).toHaveBeenCalledWith(
         'moonshot',
         expect.objectContaining({
-          display_name: 'M2 Moonshot',
           models: [
             { id: 'alpha', context_metadata_source: 'unknown' },
             { id: 'beta', context_metadata_source: 'unknown' },
@@ -212,11 +229,47 @@ describe('LlmSection', () => {
       expect(probeSpy).toHaveBeenCalledWith({
         model: 'alpha',
         api_base_url: 'https://api.moonshot.example/v1',
-        provider_key: 'moonshot',
+        provider_id: 'moonshot',
       })
     })
 
     expect(await screen.findByText('Probe OK')).toBeInTheDocument()
+  })
+
+  it('shows routing policy help in tooltip, not inline', async () => {
+    const user = userEvent.setup()
+
+    vi.spyOn(api, 'listStudios').mockResolvedValue([
+      { id: 'studio-1', name: 'Studio One', description: null, logo_path: null, created_at: '' },
+    ])
+    vi.spyOn(api, 'getAdminLlmDeployment').mockResolvedValue({
+      has_providers: false,
+      providers: [],
+    })
+    vi.spyOn(api, 'getAdminLlmRouting').mockResolvedValue([])
+    vi.spyOn(api, 'getAdminStudioLlmPolicy').mockResolvedValue([])
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <LlmSection />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByRole('heading', { name: /routing & fallback policy/i })).toBeInTheDocument()
+    expect(screen.queryByText(/Primary and fallback values must be model IDs configured/i)).not.toBeInTheDocument()
+
+    await user.hover(screen.getByRole('button', { name: /routing and fallback policy details/i }))
+    const tip = await screen.findByRole('tooltip', {
+      name: /Primary and fallback values must be model IDs configured on an LLM registry provider row above/i,
+    })
+    expect(tip).toBeInTheDocument()
+    expect(within(tip).getByRole('link', { name: /litellm providers/i })).toHaveAttribute(
+      'href',
+      'https://docs.litellm.ai/docs/providers',
+    )
   })
 
   it('adds a routing rule from the modal and persists with putAdminLlmRouting', async () => {
@@ -247,9 +300,16 @@ describe('LlmSection', () => {
 
     expect(await screen.findByText(/Model registry/i)).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: /add routing/i }))
+    await user.click(screen.getByRole('button', { name: 'Add routing rule' }))
 
     const dialog = await screen.findByRole('dialog', { name: /add routing rule/i })
+
+    await waitFor(() => {
+      expect(api.getAdminLlmModelSuggestions).toHaveBeenCalledWith(
+        expect.objectContaining({ source: 'registry' }),
+      )
+    })
+
     await user.type(within(dialog).getByLabelText(/^Primary model$/i), 'gpt-4o-mini')
     await user.click(within(dialog).getByRole('button', { name: /^add rule$/i }))
 

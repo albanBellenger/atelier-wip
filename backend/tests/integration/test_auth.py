@@ -123,9 +123,7 @@ async def test_admin_put_llm_provider_api_key_encrypted_at_rest(
     put = await client.put(
         f"/admin/llm/providers/{pk}",
         json={
-            "display_name": "OpenAI",
             "models": ["gpt-4o-mini"],
-            "status": "connected",
             "is_default": True,
             "sort_order": 0,
             "llm_api_key": secret,
@@ -137,7 +135,7 @@ async def test_admin_put_llm_provider_api_key_encrypted_at_rest(
     assert out["llm_api_key_hint"] == "…abcd"
     row = (
         await db_session.execute(
-            select(LlmProviderRegistry).where(LlmProviderRegistry.provider_key == pk)
+            select(LlmProviderRegistry).where(LlmProviderRegistry.provider_id == pk)
         )
     ).scalar_one()
     assert row is not None

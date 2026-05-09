@@ -23,6 +23,11 @@ class TokenUsageRowOut(BaseModel):
     output_tokens: int
     estimated_cost_usd: Decimal | None
     created_at: datetime
+    studio_name: str | None = None
+    software_name: str | None = None
+    project_name: str | None = None
+    work_order_title: str | None = None
+    user_display_name: str | None = None
 
 
 class TokenUsageTotalsOut(BaseModel):

@@ -5,7 +5,7 @@ from __future__ import annotations
 from urllib.parse import urlparse
 
 # Known labs → canonical domain for DuckDuckGo icon CDN (ip3/{host}.ico).
-_PROVIDER_KEY_DOMAINS: dict[str, str] = {
+_PROVIDER_ID_DOMAINS: dict[str, str] = {
     "openai": "openai.com",
     "anthropic": "anthropic.com",
     "google": "google.com",
@@ -47,15 +47,15 @@ def _ddg_icon_url(host: str) -> str:
 
 def resolve_llm_provider_logo_url(
     *,
-    provider_key: str,
+    provider_id: str,
     api_base_url: str | None,
 ) -> str | None:
     """Return a stable favicon-style URL, or None if we cannot infer a host."""
     host = _host_from_api_base(api_base_url)
     if host:
         return _ddg_icon_url(host)
-    pk = (provider_key or "").strip().lower()
-    domain = _PROVIDER_KEY_DOMAINS.get(pk)
+    pk = (provider_id or "").strip().lower()
+    domain = _PROVIDER_ID_DOMAINS.get(pk)
     if domain:
         return _ddg_icon_url(domain)
     return None

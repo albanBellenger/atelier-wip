@@ -31,6 +31,10 @@ def _mask_secret(s: str | None) -> bool:
     return bool(s and s.strip())
 
 
+def _norm_status(s: str | None) -> str:
+    return (s or "").strip().lower()
+
+
 class LlmConnectivityService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
@@ -44,8 +48,7 @@ class LlmConnectivityService:
         models = parse_models_json(row.models_json)
         return LlmProviderRegistryResponse(
             id=row.id,
-            provider_key=row.provider_key,
-            display_name=row.display_name,
+            provider_id=row.provider_id,
             models=models,
             api_base_url=row.api_base_url,
             logo_url=row.logo_url,
@@ -63,7 +66,7 @@ class LlmConnectivityService:
             (
                 await self.db.execute(
                     select(LlmProviderRegistry).order_by(
-                        LlmProviderRegistry.sort_order, LlmProviderRegistry.provider_key
+                        LlmProviderRegistry.sort_order, LlmProviderRegistry.provider_id
                     )
                 )
             )
@@ -74,21 +77,25 @@ class LlmConnectivityService:
 
     async def upsert_provider(
         self,
-        provider_key: str,
+        provider_id: str,
         body: LlmProviderRegistryUpdate,
     ) -> LlmProviderRegistryResponse:
-        pk = provider_key.strip().lower()
+        pk = provider_id.strip().lower()
         row = await self.db.scalar(
-            select(LlmProviderRegistry).where(LlmProviderRegistry.provider_key == pk)
+            select(LlmProviderRegistry).where(LlmProviderRegistry.provider_id == pk)
         )
         save_warnings: list[str] = []
         reg: LlmProviderRegistry
 
         if row:
-            row.display_name = body.display_name
+            old_status = _norm_status(row.status)
+            old_models_json = row.models_json
+            old_api_base = row.api_base_url
+            old_slug = row.litellm_provider_slug
+            old_has_key = _mask_secret(row.api_key)
+
             api_raw = body.api_base_url.strip() if body.api_base_url else ""
             row.api_base_url = api_raw or None
-            row.status = body.status
             row.is_default = body.is_default
             row.sort_order = body.sort_order
             if "llm_api_key" in body.model_fields_set:
@@ -107,7 +114,7 @@ class LlmConnectivityService:
                 )
             await self.db.flush()
             row.logo_url = resolve_llm_provider_logo_url(
-                provider_key=pk,
+                provider_id=pk,
                 api_base_url=row.api_base_url,
             )
             await self.db.flush()
@@ -117,6 +124,33 @@ class LlmConnectivityService:
             row.models_json = serialize_models_json(enriched)
             await self.db.flush()
             reg = row
+
+            new_has_key = _mask_secret(row.api_key)
+            key_material = False
+            if "llm_api_key" in body.model_fields_set:
+                if body.llm_api_key is None or str(body.llm_api_key).strip() == "":
+                    key_material = old_has_key
+                else:
+                    key_material = True
+
+            material_change = (
+                old_models_json != row.models_json
+                or (old_api_base or "") != (row.api_base_url or "")
+                or (old_slug or "") != (row.litellm_provider_slug or "")
+                or key_material
+            )
+
+            if "disabled" in body.model_fields_set and body.disabled is True:
+                reg.status = "disabled"
+            elif "disabled" in body.model_fields_set and body.disabled is False:
+                reg.status = "needs-key"
+            elif old_status == "disabled":
+                reg.status = "disabled"
+            elif not new_has_key:
+                reg.status = "needs-key"
+            elif old_status == "connected" and material_change:
+                reg.status = "needs-key"
+            await self.db.flush()
         else:
             api_raw = body.api_base_url.strip() if body.api_base_url else ""
             api_key_val: str | None = None
@@ -131,12 +165,11 @@ class LlmConnectivityService:
                 slug_val = None if raw_slug is None else (str(raw_slug).strip() or None)
             ent = LlmProviderRegistry(
                 id=uuid4(),
-                provider_key=pk,
-                display_name=body.display_name,
+                provider_id=pk,
                 models_json=serialize_models_json(list(body.models)),
                 api_base_url=api_raw or None,
                 api_key=api_key_val,
-                status=body.status,
+                status="needs-key",
                 is_default=body.is_default,
                 sort_order=body.sort_order,
                 litellm_provider_slug=slug_val,
@@ -144,7 +177,7 @@ class LlmConnectivityService:
             self.db.add(ent)
             await self.db.flush()
             ent.logo_url = resolve_llm_provider_logo_url(
-                provider_key=pk,
+                provider_id=pk,
                 api_base_url=ent.api_base_url,
             )
             await self.db.flush()
@@ -156,10 +189,16 @@ class LlmConnectivityService:
             reg = ent
 
         probe_id = first_model_id_from_json(reg.models_json)
-        if probe_id and (decode_admin_stored_secret(reg.api_key) or "").strip():
+        status_after = _norm_status(reg.status)
+        if (
+            probe_id
+            and (decode_admin_stored_secret(reg.api_key) or "").strip()
+            and status_after != "disabled"
+        ):
             probe = await LLMService(self.db).admin_connectivity_probe(
-                provider_key=pk,
+                provider_id=pk,
                 model_override=probe_id,
+                persist_registry_status=False,
             )
             if not probe.ok:
                 detail = probe.detail if isinstance(probe.detail, str) else str(probe.detail or "")
@@ -169,9 +208,9 @@ class LlmConnectivityService:
 
         return self._row_to_out(reg, save_warnings=save_warnings)
 
-    async def delete_provider(self, provider_key: str) -> None:
+    async def delete_provider(self, provider_id: str) -> None:
         await self.db.execute(
-            delete(LlmProviderRegistry).where(LlmProviderRegistry.provider_key == provider_key)
+            delete(LlmProviderRegistry).where(LlmProviderRegistry.provider_id == provider_id)
         )
         await self.db.flush()
 
@@ -213,7 +252,7 @@ class LlmConnectivityService:
         )
         return [
             StudioLlmPolicyRowResponse(
-                provider_key=r.provider_key,
+                provider_id=r.provider_id,
                 enabled=r.enabled,
                 selected_model=r.selected_model,
             )
@@ -232,7 +271,7 @@ class LlmConnectivityService:
             self.db.add(
                 StudioLlmProviderPolicy(
                     studio_id=studio_id,
-                    provider_key=row.provider_key,
+                    provider_id=row.provider_id,
                     enabled=row.enabled,
                     selected_model=row.selected_model,
                 )

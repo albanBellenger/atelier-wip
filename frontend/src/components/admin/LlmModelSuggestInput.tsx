@@ -7,7 +7,7 @@ export function LlmModelSuggestInput({
   listId,
   value,
   onChange,
-  providerKey,
+  providerId,
   litellmProvider,
   placeholder,
   className,
@@ -21,7 +21,7 @@ export function LlmModelSuggestInput({
   listId: string
   value: string
   onChange: (next: string) => void
-  providerKey?: string | null
+  providerId?: string | null
   litellmProvider?: string | null
   placeholder?: string
   className?: string
@@ -29,11 +29,11 @@ export function LlmModelSuggestInput({
   prefetch?: boolean
   minChars?: number
   mode?: 'chat' | 'embedding'
-  source?: 'auto' | 'catalog' | 'upstream'
+  source?: 'auto' | 'catalog' | 'upstream' | 'registry'
 }): ReactElement {
   const q = useAdminLlmModelSuggestions({
     q: value,
-    providerKey,
+    providerId,
     litellmProvider,
     mode,
     source,

@@ -4,6 +4,9 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import update
+
+from app.models import LlmProviderRegistry
 
 
 async def _register(client: AsyncClient, suffix: str, label: str) -> str:
@@ -84,10 +87,8 @@ async def test_admin_put_llm_routing_schedules_existing_sections_when_embedding_
     prov = await client.put(
         "/admin/llm/providers/openai",
         json={
-            "display_name": "OpenAI",
             "models": ["gpt-4o-mini", "text-embedding-3-small"],
             "api_base_url": None,
-            "status": "connected",
             "is_default": True,
             "sort_order": 0,
             "llm_api_key": "sk-test",
@@ -95,6 +96,12 @@ async def test_admin_put_llm_routing_schedules_existing_sections_when_embedding_
         },
     )
     assert prov.status_code == 200, prov.text
+    await db_session.execute(
+        update(LlmProviderRegistry)
+        .where(LlmProviderRegistry.provider_id == "openai")
+        .values(status="connected")
+    )
+    await db_session.flush()
 
     rt = await client.put(
         "/admin/llm/routing",

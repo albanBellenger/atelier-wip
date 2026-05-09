@@ -17,7 +17,6 @@ from app.schemas.token_usage_report import (
     BudgetMonthStatusOut,
     MeTokenUsageBuilderBudgetOut,
     TokenUsageReportOut,
-    TokenUsageRowOut,
     TokenUsageTotalsOut,
 )
 from app.services.budget_month_status import compute_builder_budget_status
@@ -221,7 +220,8 @@ async def me_token_usage(
         offset=off,
     )
     if csv_mode:
-        body = svc.rows_to_csv(rows)
+        enriched = await svc.enrich_rows_for_report(rows)
+        body = svc.rows_to_csv(enriched)
         return Response(
             content=body.encode("utf-8"),
             media_type="text/csv",
@@ -259,7 +259,7 @@ async def me_token_usage(
             ),
         )
     return TokenUsageReportOut(
-        rows=[TokenUsageRowOut.model_validate(r) for r in rows],
+        rows=await svc.enrich_rows_for_report(rows),
         totals=TokenUsageTotalsOut(
             input_tokens=tin,
             output_tokens=tout,

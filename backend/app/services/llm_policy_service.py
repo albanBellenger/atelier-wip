@@ -74,7 +74,7 @@ class LlmPolicyService:
         studio_id: UUID,
         call_source: str,
     ) -> tuple[str | None, str | None]:
-        """Return (effective_model_override, provider_key) or (None, None) for registry defaults."""
+        """Return (effective_model_override, provider_id) or (None, None) for registry defaults."""
         use_case = use_case_for_call_source(call_source)
         reg_count = await self.db.scalar(
             select(func.count()).select_from(LlmProviderRegistry)
@@ -101,7 +101,7 @@ class LlmPolicyService:
                 await self.db.execute(
                     select(LlmProviderRegistry).order_by(
                         LlmProviderRegistry.sort_order,
-                        LlmProviderRegistry.provider_key,
+                        LlmProviderRegistry.provider_id,
                     )
                 )
             )
@@ -119,7 +119,7 @@ class LlmPolicyService:
             .scalars()
             .all()
         )
-        policy_map = {p.provider_key: p for p in policy_rows}
+        policy_map = {p.provider_id: p for p in policy_rows}
         has_any_policy = len(policy_rows) > 0
 
         def provider_for_model(model_name: str) -> str | None:
@@ -127,7 +127,7 @@ class LlmPolicyService:
                 if not _registry_connected(pr):
                     continue
                 if model_name in _models_from_registry_row(pr):
-                    return pr.provider_key
+                    return pr.provider_id
             return None
 
         for cand in candidates:
@@ -151,7 +151,7 @@ class LlmPolicyService:
         *,
         studio_id: UUID | None,
     ) -> tuple[str | None, str | None]:
-        """Resolve (registry model id, provider_key) for embeddings via routing + catalog.
+        """Resolve (registry model id, provider_id) for embeddings via routing + catalog.
 
         Uses **only** ``LlmRoutingRule.use_case == \"embeddings\"`` — no fallback to chat.
 
@@ -182,7 +182,7 @@ class LlmPolicyService:
                 await self.db.execute(
                     select(LlmProviderRegistry).order_by(
                         LlmProviderRegistry.sort_order,
-                        LlmProviderRegistry.provider_key,
+                        LlmProviderRegistry.provider_id,
                     )
                 )
             )
@@ -205,7 +205,7 @@ class LlmPolicyService:
                 .scalars()
                 .all()
             )
-            policy_map = {p.provider_key: p for p in policy_rows}
+            policy_map = {p.provider_id: p for p in policy_rows}
             has_any_policy = len(policy_rows) > 0
 
         def provider_for_model(model_name: str) -> str | None:
@@ -213,7 +213,7 @@ class LlmPolicyService:
                 if not _registry_connected(pr):
                     continue
                 if model_name in _models_from_registry_row(pr):
-                    return pr.provider_key
+                    return pr.provider_id
             return None
 
         for cand in candidates:
@@ -254,7 +254,7 @@ class LlmPolicyService:
                 await self.db.execute(
                     select(LlmProviderRegistry).order_by(
                         LlmProviderRegistry.sort_order,
-                        LlmProviderRegistry.provider_key,
+                        LlmProviderRegistry.provider_id,
                     )
                 )
             )
@@ -287,14 +287,14 @@ class LlmPolicyService:
             allowed.append(t)
 
         if has_any_policy:
-            prov_by_key = {p.provider_key: p for p in providers_all}
+            prov_by_key = {p.provider_id: p for p in providers_all}
             for pol in policy_rows:
                 if not pol.enabled:
                     continue
                 sm = (pol.selected_model or "").strip()
                 if not sm:
                     continue
-                pr = prov_by_key.get(pol.provider_key)
+                pr = prov_by_key.get(pol.provider_id)
                 if pr is None or not _registry_connected(pr):
                     continue
                 if sm in _models_from_registry_row(pr):

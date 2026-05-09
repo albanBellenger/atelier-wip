@@ -255,7 +255,7 @@ Auth ([`auth.py`](../backend/app/routers/auth.py)): `register`, `login`, `logout
 | admin | GET | `/admin/studios/{studio_id}` | `require_platform_admin` + `get_studio_for_platform_admin` |
 | admin | GET | `/admin/studios/{studio_id}/gitlab` | `require_platform_admin` (read-only) |
 | admin | GET/PUT | `/admin/studios/{studio_id}/llm-policy` | `require_platform_admin` |
-| admin | GET/PUT/DELETE | `/admin/llm/providers/{provider_key}`, `/admin/llm/routing`, `/admin/llm/deployment` | `require_platform_admin` |
+| admin | GET/PUT/DELETE | `/admin/llm/providers/{provider_id}`, `/admin/llm/routing`, `/admin/llm/deployment` | `require_platform_admin` |
 | admin | GET/PUT/PATCH/DELETE | `/admin/embeddings/*` | `require_platform_admin` |
 | admin | GET/PUT | `/admin/config` | **404** (removed) |
 | admin | GET/PUT | `/admin/cross-studio`, `/admin/cross-studio/{grant_id}` | **404** (removed) |

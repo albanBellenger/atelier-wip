@@ -28,20 +28,20 @@ export class AdminLlmPage {
     ).toBeVisible()
   }
 
-  /** Row in the model registry (matches provider key or visible label substring). */
-  providerRow(providerKey: string): Locator {
+  /** Row in the model registry (matches provider ID or visible label substring). */
+  providerRow(providerId: string): Locator {
     const deploymentCard = this.page.locator('section').filter({
       has: this.page.getByRole('heading', { name: 'LLM deployment', exact: true }),
     })
-    return deploymentCard.locator('div.grid').filter({ hasText: providerKey }).first()
+    return deploymentCard.locator('div.grid').filter({ hasText: providerId }).first()
   }
 
   /** Toggle provider enablement for the selected studio (Per-studio enablement). */
-  async enableProviderToggle(providerKey: string): Promise<void> {
+  async enableProviderToggle(providerId: string): Promise<void> {
     const card = this.page.locator('section').filter({
       has: this.page.getByRole('heading', { name: 'Per-studio enablement', exact: true }),
     })
-    const row = card.locator('li').filter({ hasText: providerKey })
+    const row = card.locator('li').filter({ hasText: providerId })
     await row.getByRole('switch').click()
   }
 

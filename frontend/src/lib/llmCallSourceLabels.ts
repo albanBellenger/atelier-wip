@@ -13,6 +13,7 @@ export const LLM_CALL_SOURCE_LABELS: Record<string, string> = {
   thread_patch_append: 'Thread: patch append',
   thread_patch_replace: 'Thread: patch replace',
   thread_patch_edit: 'Thread: patch edit',
+  builder_composer_hint: 'Builder composer hint',
 }
 
 export function llmCallSourceLabel(key: string): string {

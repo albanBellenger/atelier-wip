@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from collections import defaultdict
+from typing import Any, Literal, Sequence
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
@@ -15,12 +16,12 @@ from app.services.llm_registry_credentials import (
     get_default_llm_registry_row,
     resolve_openai_compatible_llm_credentials,
 )
-from app.services.registry_models_json import first_model_id_from_json
+from app.services.registry_models_json import first_model_id_from_json, model_ids_from_json
 
 LITELLM_MODEL_CATALOG_URL = "https://api.litellm.ai/model_catalog"
 
 Mode = Literal["chat", "embedding"]
-Source = Literal["auto", "catalog", "upstream"]
+Source = Literal["auto", "catalog", "upstream", "registry"]
 
 _MAX_SUGGESTIONS = 100
 
@@ -88,6 +89,79 @@ def parse_catalog_body(body: object) -> list[LlmModelSuggestionItem]:
     return out
 
 
+def _registry_row_slug(row: LlmProviderRegistry) -> str:
+    return (row.litellm_provider_slug or row.provider_id or "").strip().lower()
+
+
+def collect_registry_suggestions(
+    rows: Sequence[LlmProviderRegistry],
+    *,
+    provider_id_filter: str | None,
+    litellm_provider_filter: str | None,
+    q: str | None,
+) -> tuple[list[LlmModelSuggestionItem], list[str]]:
+    """Model ids from ``LlmProviderRegistry.models_json`` (LLM deployment), optional filters."""
+    warnings: list[str] = []
+    pk_f = (provider_id_filter or "").strip().lower() or None
+    slug_f = (litellm_provider_filter or "").strip().lower() or None
+    ql = (q or "").strip().lower()
+
+    filtered: list[LlmProviderRegistry] = []
+    for row in rows:
+        if pk_f and row.provider_id.lower() != pk_f:
+            continue
+        if slug_f and _registry_row_slug(row) != slug_f:
+            continue
+        filtered.append(row)
+
+    if rows and not filtered and (pk_f or slug_f):
+        warnings.append("No registry provider matched this filter.")
+
+    mid_entries: dict[str, list[str]] = defaultdict(list)
+    seen_pk: dict[str, set[str]] = defaultdict(set)
+
+    for row in filtered:
+        pk = row.provider_id
+        pk_lower = pk.lower()
+        for mid in model_ids_from_json(row.models_json):
+            m = mid.strip()
+            if not m:
+                continue
+            if ql and ql not in m.lower():
+                continue
+            if pk_lower in seen_pk[m]:
+                continue
+            seen_pk[m].add(pk_lower)
+            mid_entries[m].append(pk)
+
+    out: list[LlmModelSuggestionItem] = []
+    for mid in sorted(mid_entries.keys(), key=str.lower):
+        prov_ids = sorted(set(mid_entries[mid]), key=str.lower)
+        if len(prov_ids) == 1:
+            out.append(
+                LlmModelSuggestionItem(
+                    id=mid,
+                    label=f"{mid} ({prov_ids[0]})",
+                    provider=prov_ids[0].lower(),
+                    source="registry",
+                )
+            )
+        else:
+            out.append(
+                LlmModelSuggestionItem(
+                    id=mid,
+                    label=f"{mid} ({', '.join(prov_ids)})",
+                    provider=None,
+                    source="registry",
+                )
+            )
+            warnings.append(
+                f"Model id {mid!r} appears on multiple registry providers ({', '.join(prov_ids)})."
+            )
+
+    return out[:_MAX_SUGGESTIONS], warnings
+
+
 class LlmModelSuggestionsService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
@@ -95,28 +169,38 @@ class LlmModelSuggestionsService:
     async def suggest(
         self,
         *,
-        provider_key: str | None,
+        provider_id: str | None,
         litellm_provider: str | None,
         q: str | None,
         mode: Mode,
         source: Source,
     ) -> LlmModelSuggestionsResponse:
+        if source == "registry":
+            return await self._suggest_registry(
+                provider_id=provider_id,
+                litellm_provider=litellm_provider,
+                q=q,
+            )
+
         warnings: list[str] = []
         reg_row: LlmProviderRegistry | None = None
-        pk = (provider_key or "").strip().lower() or None
+        pk = (provider_id or "").strip().lower() or None
         if pk:
             reg_row = await self.db.scalar(
-                select(LlmProviderRegistry).where(LlmProviderRegistry.provider_key == pk)
+                select(LlmProviderRegistry).where(
+                    func.lower(LlmProviderRegistry.provider_id) == pk
+                )
             )
 
         catalog_slug = (litellm_provider or "").strip().lower() or None
         if not catalog_slug and reg_row is not None:
             catalog_slug = (
-                (reg_row.litellm_provider_slug or reg_row.provider_key or "").strip().lower()
+                (reg_row.litellm_provider_slug or reg_row.provider_id or "").strip().lower()
                 or None
             )
-        if not catalog_slug:
-            catalog_slug = "openai"
+        if not catalog_slug and pk:
+            # Register-provider flow: row may not exist yet; use key as catalog filter (not openai).
+            catalog_slug = pk
 
         effective_model = ""
         if reg_row is not None:
@@ -138,7 +222,7 @@ class LlmModelSuggestionsService:
                 _norm_model, key, api_base, _ = await resolve_openai_compatible_llm_credentials(
                     self.db,
                     effective_model=effective_model,
-                    route_provider_key=pk,
+                    route_provider_id=pk,
                 )
             except ApiError as e:
                 wmsg = str(e.detail) if isinstance(e.detail, str) else str(e)
@@ -166,10 +250,11 @@ class LlmModelSuggestionsService:
         )
         if need_catalog:
             params: dict[str, Any] = {
-                "provider": catalog_slug,
                 "mode": mode,
                 "page_size": 50,
             }
+            if catalog_slug:
+                params["provider"] = catalog_slug
             qstrip = (q or "").strip()
             if qstrip:
                 params["model"] = qstrip
@@ -196,3 +281,43 @@ class LlmModelSuggestionsService:
         items = sorted(merged.values(), key=lambda x: x.id.lower())
         warn_str = "; ".join(warnings) if warnings else None
         return LlmModelSuggestionsResponse(models=items[:_MAX_SUGGESTIONS], warning=warn_str)
+
+    async def _suggest_registry(
+        self,
+        *,
+        provider_id: str | None,
+        litellm_provider: str | None,
+        q: str | None,
+    ) -> LlmModelSuggestionsResponse:
+        result = await self.db.execute(
+            select(LlmProviderRegistry).order_by(
+                LlmProviderRegistry.sort_order,
+                LlmProviderRegistry.provider_id,
+            )
+        )
+        rows = list(result.scalars().all())
+        if not rows:
+            return LlmModelSuggestionsResponse(
+                models=[],
+                warning="No LLM providers are registered on this deployment.",
+            )
+        items, extra_warnings = collect_registry_suggestions(
+            rows,
+            provider_id_filter=(provider_id or "").strip().lower() or None,
+            litellm_provider_filter=(litellm_provider or "").strip().lower() or None,
+            q=q,
+        )
+        if not items:
+            if extra_warnings:
+                return LlmModelSuggestionsResponse(
+                    models=[],
+                    warning="; ".join(extra_warnings),
+                )
+            qs = (q or "").strip()
+            if qs:
+                warn = f"No deployment models matched query {qs!r}."
+            else:
+                warn = "No model IDs are configured on LLM provider registry rows."
+            return LlmModelSuggestionsResponse(models=[], warning=warn)
+        warn_str = "; ".join(extra_warnings) if extra_warnings else None
+        return LlmModelSuggestionsResponse(models=items, warning=warn_str)

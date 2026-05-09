@@ -34,8 +34,7 @@ async def test_test_llm_returns_failure_when_no_default_row(
     db_session.add(
         LlmProviderRegistry(
             id=uuid.uuid4(),
-            provider_key="solo",
-            display_name="Solo",
+            provider_id="solo",
             models_json='["gpt-4o-mini"]',
             api_base_url=None,
             logo_url=None,

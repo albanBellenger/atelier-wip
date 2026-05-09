@@ -102,6 +102,8 @@ async def test_token_usage_scope_member_studio_admin_tool_admin_csv(
     body = me_r.json()
     assert len(body["rows"]) == 1
     assert body["rows"][0]["user_id"] == uid_m
+    assert body["rows"][0]["studio_name"] == f"S{sfx}"
+    assert body["rows"][0]["user_display_name"] == "member"
     assert "work_order_id" in body["rows"][0]
 
     client.cookies.set("atelier_token", token_sa)
@@ -109,6 +111,10 @@ async def test_token_usage_scope_member_studio_admin_tool_admin_csv(
     assert st_r.status_code == 200
     st_body = st_r.json()
     assert len(st_body["rows"]) == 2
+    by_uid = {r["user_id"]: r for r in st_body["rows"]}
+    assert by_uid[uid_m]["user_display_name"] == "member"
+    assert by_uid[uid_sa]["user_display_name"] == "sadmin"
+    assert by_uid[uid_m]["studio_name"] == f"S{sfx}"
 
     csv_studio = await client.get(
         f"/studios/{studio_a}/token-usage",
@@ -118,6 +124,7 @@ async def test_token_usage_scope_member_studio_admin_tool_admin_csv(
     disp = csv_studio.headers.get("content-disposition") or ""
     assert "attachment" in disp.lower()
     assert "call_source" in csv_studio.text
+    assert "studio_name" in csv_studio.text
 
     token_out = await _register(client, sfx, "outsider")
     client.cookies.set("atelier_token", token_out)
@@ -172,7 +179,9 @@ async def test_token_usage_scope_member_studio_admin_tool_admin_csv(
     )
     assert csv_me.status_code == 200
     assert "call_source" in csv_me.text
-    assert "work_order_id" in csv_me.text.split("\n")[0]
+    header = csv_me.text.split("\n")[0]
+    assert "work_order_id" in header
+    assert "studio_name" in header
 
     client.cookies.set("atelier_token", token_m)
     me_ct = await client.get(
@@ -285,7 +294,13 @@ async def test_me_token_usage_project_and_work_order_filters_and_404s(
     )
     assert by_wo.status_code == 200
     assert len(by_wo.json()["rows"]) == 1
-    assert by_wo.json()["rows"][0]["call_source"] == "thread"
+    wo_row = by_wo.json()["rows"][0]
+    assert wo_row["call_source"] == "thread"
+    assert wo_row["work_order_title"] == "WO token filter"
+    assert wo_row["software_name"] == "SW"
+    assert wo_row["project_name"] == "Proj"
+    assert wo_row["studio_name"] == f"S{sfx}"
+    assert wo_row["user_display_name"] == "pw_member"
 
     nf_proj = await client.get(
         "/me/token-usage",
