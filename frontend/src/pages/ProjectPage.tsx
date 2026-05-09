@@ -560,7 +560,7 @@ export function ProjectPage(): ReactElement {
                   : projectView === 'chat'
                     ? 'Project chat'
                     : projectView === 'rag'
-                      ? 'Chat RAG'
+                      ? 'Project RAG'
                       : null}
               </div>
             )}
@@ -770,7 +770,7 @@ export function ProjectPage(): ReactElement {
                         : 'text-zinc-500 hover:text-zinc-200'
                     }`}
                   >
-                    Chat RAG
+                    Project RAG
                   </button>
                 </>
               ) : null}

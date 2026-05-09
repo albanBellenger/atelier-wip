@@ -406,7 +406,7 @@ describe('ProjectPage landing layout', () => {
     })
   })
 
-  it('keeps chat RAG tab when URL has tab=rag (studio editor, after capabilities load)', async () => {
+  it('keeps Project RAG tab when URL has tab=rag (studio editor, after capabilities load)', async () => {
     vi.spyOn(api, 'me').mockResolvedValue({
       user: {
         id: 'u1',
@@ -533,7 +533,7 @@ describe('ProjectPage landing layout', () => {
       screen.queryByRole('button', { name: /publish to gitlab/i }),
     ).toBeNull()
     expect(screen.queryByRole('button', { name: 'Project chat' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Chat RAG' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Project RAG' })).toBeNull()
   })
 
   it('shows Project settings link for a Studio Owner', async () => {

@@ -5,7 +5,12 @@ import uuid
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Artifact, ArtifactChunk
+from app.models import (
+    Artifact,
+    ArtifactChunk,
+    ProjectArtifactExclusion,
+    SoftwareArtifactExclusion,
+)
 from app.services.embedding_service import EmbeddingService
 from app.services.rag_service import RAGService, _mandatory_parts_with_overflow, _unified_chunk_fill
 from tests.factories import create_project, create_section, create_software, create_studio
@@ -238,6 +243,146 @@ async def test_rag_includes_software_library_artifact_chunks(
     )
     joined = "\n\n".join(b.body for b in prev.blocks)
     assert "SOFTWARE_LIBRARY_CHUNK" in joined
+
+
+@pytest.mark.asyncio
+async def test_rag_omits_software_excluded_library_chunks(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Software-scope exclusion must hide software-library chunks from retrieval."""
+    async def ready(_self: object, _studio_id: object) -> tuple[str, str, str, str]:
+        return ("text-embedding-3-small", "sk-fake", "openai", "http://embed.example")
+
+    async def batch(
+        _self: object,
+        texts: list[str],
+        *,
+        studio_id: object,
+        usage_scope: object | None = None,
+    ) -> list[list[float]]:
+        return [[0.03] * 1536 for _ in texts]
+
+    monkeypatch.setattr(EmbeddingService, "require_embedding_ready", ready)
+    monkeypatch.setattr(EmbeddingService, "embed_batch", batch)
+
+    studio = await create_studio(db_session)
+    sw = await create_software(db_session, studio.id, definition="d")
+    pr = await create_project(db_session, sw.id)
+    sec = await create_section(
+        db_session, pr.id, title="T", slug="t", order=0, content="qtext"
+    )
+    lib_id = uuid.uuid4()
+    db_session.add(
+        Artifact(
+            id=lib_id,
+            project_id=None,
+            scope_level="software",
+            library_studio_id=studio.id,
+            library_software_id=sw.id,
+            name="LibDoc",
+            file_type="md",
+            size_bytes=1,
+            storage_path=f"software/{sw.id}/{lib_id}/x.md",
+            embedding_status="embedded",
+        )
+    )
+    db_session.add(
+        ArtifactChunk(
+            artifact_id=lib_id,
+            chunk_index=0,
+            content="SOFTWARE_LIBRARY_CHUNK_EXCLUDED",
+            embedding=[0.03] * 1536,
+        )
+    )
+    db_session.add(
+        SoftwareArtifactExclusion(
+            software_id=sw.id,
+            artifact_id=lib_id,
+            created_by=None,
+        )
+    )
+    await db_session.flush()
+
+    rag = RAGService(db_session)
+    prev = await rag.build_context_with_blocks(
+        "qtext",
+        pr.id,
+        sec.id,
+        token_budget=6000,
+    )
+    joined = "\n\n".join(b.body for b in prev.blocks)
+    assert "SOFTWARE_LIBRARY_CHUNK_EXCLUDED" not in joined
+
+
+@pytest.mark.asyncio
+async def test_rag_omits_project_excluded_artifact_chunks(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Project-scope exclusion must hide that project's artifact chunks from retrieval."""
+    async def ready(_self: object, _studio_id: object) -> tuple[str, str, str, str]:
+        return ("text-embedding-3-small", "sk-fake", "openai", "http://embed.example")
+
+    async def batch(
+        _self: object,
+        texts: list[str],
+        *,
+        studio_id: object,
+        usage_scope: object | None = None,
+    ) -> list[list[float]]:
+        return [[0.02] * 1536 for _ in texts]
+
+    monkeypatch.setattr(EmbeddingService, "require_embedding_ready", ready)
+    monkeypatch.setattr(EmbeddingService, "embed_batch", batch)
+
+    studio = await create_studio(db_session)
+    sw = await create_software(db_session, studio.id, definition="d")
+    pr = await create_project(db_session, sw.id)
+    sec = await create_section(
+        db_session, pr.id, title="T", slug="t", order=0, content="qtext"
+    )
+    aid = uuid.uuid4()
+    db_session.add(
+        Artifact(
+            id=aid,
+            project_id=pr.id,
+            scope_level="project",
+            library_studio_id=None,
+            library_software_id=None,
+            name="Doc",
+            file_type="md",
+            size_bytes=1,
+            storage_path=f"{pr.id}/{aid}/d.md",
+            embedding_status="embedded",
+        )
+    )
+    db_session.add(
+        ArtifactChunk(
+            artifact_id=aid,
+            chunk_index=0,
+            content="PROJECT_ARTIFACT_CHUNK_EXCLUDED",
+            embedding=[0.02] * 1536,
+        )
+    )
+    db_session.add(
+        ProjectArtifactExclusion(
+            project_id=pr.id,
+            artifact_id=aid,
+            created_by=None,
+        )
+    )
+    await db_session.flush()
+
+    rag = RAGService(db_session)
+    prev = await rag.build_context_with_blocks(
+        "qtext",
+        pr.id,
+        sec.id,
+        token_budget=6000,
+    )
+    joined = "\n\n".join(b.body for b in prev.blocks)
+    assert "PROJECT_ARTIFACT_CHUNK_EXCLUDED" not in joined
 
 
 @pytest.mark.asyncio

@@ -8,11 +8,20 @@ from dataclasses import dataclass
 from typing import Any
 
 import structlog
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, exists, not_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
-from app.models import Artifact, ArtifactChunk, Project, Section, SectionChunk, Software
+from app.models import (
+    Artifact,
+    ArtifactChunk,
+    Project,
+    ProjectArtifactExclusion,
+    Section,
+    SectionChunk,
+    Software,
+    SoftwareArtifactExclusion,
+)
 from app.models.work_order import WorkOrder
 from app.schemas.context_preview import ContextBlockOut, ContextPreviewOut
 from app.schemas.section_context_preferences import SectionContextPrefsOut
@@ -336,6 +345,22 @@ class RAGService:
                 )
 
             d_art = ArtifactChunk.embedding.cosine_distance(qvec)
+            excluded_at_software = exists(
+                select(1)
+                .select_from(SoftwareArtifactExclusion)
+                .where(
+                    SoftwareArtifactExclusion.artifact_id == Artifact.id,
+                    SoftwareArtifactExclusion.software_id == software.id,
+                )
+            )
+            excluded_at_project = exists(
+                select(1)
+                .select_from(ProjectArtifactExclusion)
+                .where(
+                    ProjectArtifactExclusion.artifact_id == Artifact.id,
+                    ProjectArtifactExclusion.project_id == project_id,
+                )
+            )
             art_stmt = (
                 select(ArtifactChunk, Artifact.name, d_art.label("d"))
                 .join(Artifact, ArtifactChunk.artifact_id == Artifact.id)
@@ -350,7 +375,9 @@ class RAGService:
                             Artifact.scope_level == "studio",
                             Artifact.library_studio_id == software.studio_id,
                         ),
-                    )
+                    ),
+                    not_(excluded_at_software),
+                    not_(excluded_at_project),
                 )
                 .order_by(d_art)
                 .limit(5)

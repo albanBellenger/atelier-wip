@@ -99,7 +99,7 @@ export function useStudioAccess(
       }
     }
 
-    if (capsQuery.isPending || capsQuery.isFetching) {
+    if (capsQuery.isPending && !capsQuery.data) {
       return {
         ...denyAll,
         isLoadingCapabilities: true,
@@ -117,7 +117,7 @@ export function useStudioAccess(
 
     return {
       ...mapStudioCapabilitiesOutToFields(capsQuery.data),
-      isLoadingCapabilities: false,
+      isLoadingCapabilities: capsQuery.isFetching,
       capabilitiesError: false,
     }
   }, [

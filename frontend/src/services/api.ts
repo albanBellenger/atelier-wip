@@ -483,6 +483,35 @@ export async function putStudioCrossStudioIncoming(
   )
 }
 
+// --- Platform admin embedding singleton (/admin/embedding-config) ---
+
+export interface EmbeddingAdminConfigPublic {
+  embedding_provider: string | null
+  embedding_model: string | null
+  embedding_api_base_url: string | null
+  embedding_api_key_set: boolean
+  embedding_api_key_hint?: string | null
+  embedding_dim?: number | null
+}
+
+/** Only include fields you intend to change; omitted keys are left unchanged on the server. */
+export type EmbeddingAdminConfigUpdateBody = {
+  embedding_provider?: string | null
+  embedding_model?: string | null
+  embedding_api_key?: string | null
+  embedding_api_base_url?: string | null
+}
+
+export async function getAdminEmbeddingConfig(): Promise<EmbeddingAdminConfigPublic> {
+  return request<EmbeddingAdminConfigPublic>('GET', '/admin/embedding-config')
+}
+
+export async function putAdminEmbeddingConfig(
+  body: EmbeddingAdminConfigUpdateBody,
+): Promise<EmbeddingAdminConfigPublic> {
+  return request<EmbeddingAdminConfigPublic>('PUT', '/admin/embedding-config', body)
+}
+
 export interface AdminConnectivityResult {
   ok: boolean
   message: string

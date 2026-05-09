@@ -143,6 +143,14 @@ function attentionCounts(): Api.AttentionCounts {
 
 /** MSW handlers for fixed ids st1 / sw1 / p1 / sec1 / art1 / wo1 / iss1 / grant1 / key1 */
 export function apiCoverageHandlers(): RequestHandler[] {
+  const adminEmb: Api.EmbeddingAdminConfigPublic = {
+    embedding_provider: null,
+    embedding_model: null,
+    embedding_api_base_url: null,
+    embedding_api_key_set: false,
+    embedding_api_key_hint: null,
+  }
+
   const connectivity: Api.AdminConnectivityResult = {
     ok: true,
     message: 'ok',
@@ -305,6 +313,8 @@ export function apiCoverageHandlers(): RequestHandler[] {
     http.get('http://api.test/auth/llm-runtime', () =>
       HttpResponse.json({ llm_provider: null, llm_model: null }),
     ),
+    http.get('http://api.test/admin/embedding-config', () => HttpResponse.json(adminEmb)),
+    http.put('http://api.test/admin/embedding-config', () => HttpResponse.json(adminEmb)),
     http.post('http://api.test/admin/test/llm', () => HttpResponse.json(connectivity)),
     http.post('http://api.test/admin/test/embedding', () =>
       HttpResponse.json(connectivity),
@@ -543,6 +553,8 @@ export async function invokeThinApiCoverage(api: typeof import('./api')): Promis
   await api.login({ email: 'n@e.com', password: 'pw' })
   await api.logout()
   await api.getLlmRuntimeInfo()
+  await api.getAdminEmbeddingConfig()
+  await api.putAdminEmbeddingConfig({ embedding_model: null })
   await api.postAdminTestLlm()
   await api.postAdminTestEmbedding()
   await api.getStudioCrossStudioIncoming('st1')

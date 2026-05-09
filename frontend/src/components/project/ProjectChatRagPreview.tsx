@@ -81,7 +81,7 @@ export function ProjectChatRagPreview(props: { projectId: string }): ReactElemen
       {q.isPending && <p className="text-zinc-500">Loading context…</p>}
       {q.isError && (
         <p className="text-red-400" data-testid="project-chat-rag-error">
-          Could not load chat RAG preview.
+          Could not load project RAG preview.
         </p>
       )}
       {q.data && (

@@ -11,8 +11,6 @@ from httpx import AsyncClient
 from app.database import engine
 from app.exceptions import ApiError
 from app.main import app
-from app.services.embedding_service import EmbeddingService
-from tests.integration.embedding_mocks import fake_embedding_embed_batch
 from tests.integration.test_work_orders import _studio_project_with_sections
 
 
@@ -169,7 +167,6 @@ async def test_software_chat_websocket_assistant_done_includes_llm_outbound_when
         chat_messages=None,
         debug_prompt_payload=None,
     ):
-        from app.config import get_settings
         from app.models import Software
         from app.schemas.token_usage_scope import TokenUsageScope
         from app.services.llm_service import serialize_outbound_chat_messages_for_debug
@@ -184,7 +181,7 @@ async def test_software_chat_websocket_assistant_done_includes_llm_outbound_when
         )
         yield "Hi", ctx
         yield " team", ctx
-        if debug_prompt_payload is not None and get_settings().log_llm_prompts:
+        if debug_prompt_payload is not None:
             openai_msgs = chat_messages or []
             full_messages: list = [
                 {"role": "system", "content": "sys"},
@@ -248,11 +245,6 @@ async def test_software_chat_websocket_assistant_done_includes_llm_outbound_when
                 patch(
                     "app.services.llm_service.LLMService.trim_chat_messages_for_stream",
                     _trim_skip_llm_config,
-                ),
-                patch.object(
-                    EmbeddingService,
-                    "embed_batch",
-                    fake_embedding_embed_batch,
                 ),
                 patch(
                     "app.routers.software_chat.get_settings",
