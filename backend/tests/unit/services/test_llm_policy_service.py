@@ -332,6 +332,90 @@ async def test_assert_studio_budget_pause_blocks_over_cap(db_session: AsyncSessi
 
 
 @pytest.mark.asyncio
+async def test_resolve_embedding_route_platform_skips_studio_policies(
+    db_session: AsyncSession,
+) -> None:
+    sid = uuid.uuid4()
+    db_session.add(
+        Studio(id=sid, name="S", budget_overage_action="pause_generations")
+    )
+    await db_session.flush()
+    db_session.add(
+        LlmProviderRegistry(
+            id=uuid.uuid4(),
+            provider_key="openai",
+            display_name="OpenAI",
+            models_json=json.dumps(["text-embedding-3-small"]),
+            status="connected",
+            is_default=True,
+            sort_order=0,
+        )
+    )
+    db_session.add(
+        LlmRoutingRule(
+            use_case="embeddings",
+            primary_model="text-embedding-3-small",
+            fallback_model=None,
+        )
+    )
+    db_session.add(
+        StudioLlmProviderPolicy(
+            studio_id=sid,
+            provider_key="openai",
+            enabled=True,
+            selected_model="gpt-4o-mini",
+        )
+    )
+    await db_session.flush()
+    pol = LlmPolicyService(db_session)
+    m, pk = await pol.resolve_embedding_route(studio_id=None)
+    assert m == "text-embedding-3-small"
+    assert pk == "openai"
+
+
+@pytest.mark.asyncio
+async def test_resolve_embedding_route_studio_ignores_chat_selected_model(
+    db_session: AsyncSession,
+) -> None:
+    sid = uuid.uuid4()
+    db_session.add(
+        Studio(id=sid, name="S", budget_overage_action="pause_generations")
+    )
+    await db_session.flush()
+    db_session.add(
+        LlmProviderRegistry(
+            id=uuid.uuid4(),
+            provider_key="openai",
+            display_name="OpenAI",
+            models_json=json.dumps(["gpt-4o-mini", "text-embedding-3-small"]),
+            status="connected",
+            is_default=True,
+            sort_order=0,
+        )
+    )
+    db_session.add(
+        LlmRoutingRule(
+            use_case="embeddings",
+            primary_model="text-embedding-3-small",
+            fallback_model=None,
+        )
+    )
+    db_session.add(
+        StudioLlmProviderPolicy(
+            studio_id=sid,
+            provider_key="openai",
+            enabled=True,
+            selected_model="gpt-4o-mini",
+        )
+    )
+    await db_session.flush()
+    pol = LlmPolicyService(db_session)
+    m, pk = await pol.resolve_embedding_route(studio_id=sid)
+    assert m == "text-embedding-3-small"
+    assert pk == "openai"
+
+
+@pytest.mark.asyncio
 async def test_resolve_preferred_chat_model_accepts_allowed_and_rejects_other(
     db_session: AsyncSession,
 ) -> None:

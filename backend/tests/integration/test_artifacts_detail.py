@@ -9,7 +9,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 
 from app.models import Artifact, ArtifactChunk, CrossStudioAccess, User
-from app.services.embedding_service import OPENAI_EMBEDDING_API_BASE
+from tests.integration.embedding_mocks import patch_fake_embedding_transport
 
 
 async def _register(client: AsyncClient, suffix: str, label: str) -> str:
@@ -46,13 +46,6 @@ async def _studio_project(client: AsyncClient, sfx: str) -> tuple[str, str, str,
     assert pr.status_code == 200
     project_id = pr.json()["id"]
     return token, studio_id, software_id, project_id
-
-
-async def _promote_tool_admin(db_session, email: str) -> None:
-    r = await db_session.execute(select(User).where(User.email == email))
-    u = r.scalar_one()
-    u.is_platform_admin = True
-    await db_session.flush()
 
 
 @pytest.fixture(autouse=True)
@@ -108,16 +101,7 @@ def _in_memory_minio(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def fake_embed(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def ready(_self: object) -> tuple[str, str, str, str]:
-        return ("text-embedding-3-small", "sk-fake", "openai", OPENAI_EMBEDDING_API_BASE)
-
-    async def batch(_self: object, texts: list[str], *, usage_scope: object | None = None) -> list[list[float]]:
-        return [[0.0] * 1536 for _ in texts]
-
-    from app.services.embedding_service import EmbeddingService
-
-    monkeypatch.setattr(EmbeddingService, "require_embedding_ready", ready)
-    monkeypatch.setattr(EmbeddingService, "embed_batch", batch)
+    patch_fake_embedding_transport(monkeypatch)
 
 
 async def _seed_embedded_artifact_with_chunk(
@@ -149,16 +133,7 @@ async def test_artifact_detail_member_sees_chunk_previews(
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _studio_id, _sfid, pid = await _studio_project(client, sfx)
-    await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
     client.cookies.set("atelier_token", token)
-    await client.put(
-        "/admin/embedding-config",
-        json={
-            "embedding_provider": "openai",
-            "embedding_model": "text-embedding-3-small",
-            "embedding_api_key": "sk-test",
-        },
-    )
     up = await client.post(
         f"/projects/{pid}/artifacts",
         files={"file": ("n.md", b"# Hi", "text/markdown")},
@@ -187,16 +162,7 @@ async def test_artifact_detail_viewer_no_chunk_previews(
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, studio_id, _sfid, pid = await _studio_project(client, sfx)
-    await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
     client.cookies.set("atelier_token", token)
-    await client.put(
-        "/admin/embedding-config",
-        json={
-            "embedding_provider": "openai",
-            "embedding_model": "text-embedding-3-small",
-            "embedding_api_key": "sk-test",
-        },
-    )
     up = await client.post(
         f"/projects/{pid}/artifacts",
         files={"file": ("v.md", b"# V", "text/markdown")},
@@ -235,16 +201,7 @@ async def test_artifact_detail_unauthenticated_401(
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _sid, _sfid, pid = await _studio_project(client, sfx)
-    await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
     client.cookies.set("atelier_token", token)
-    await client.put(
-        "/admin/embedding-config",
-        json={
-            "embedding_provider": "openai",
-            "embedding_model": "text-embedding-3-small",
-            "embedding_api_key": "sk-test",
-        },
-    )
     up = await client.post(
         f"/projects/{pid}/artifacts",
         files={"file": ("a.md", b"# A", "text/markdown")},
@@ -264,16 +221,7 @@ async def test_artifact_detail_wrong_studio_forbidden(
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token_a, _sa, _sfa, pid_a = await _studio_project(client, sfx)
-    await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
     client.cookies.set("atelier_token", token_a)
-    await client.put(
-        "/admin/embedding-config",
-        json={
-            "embedding_provider": "openai",
-            "embedding_model": "text-embedding-3-small",
-            "embedding_api_key": "sk-test",
-        },
-    )
     up = await client.post(
         f"/projects/{pid_a}/artifacts",
         files={"file": ("a.md", b"# A", "text/markdown")},
@@ -312,16 +260,7 @@ async def test_artifact_detail_cross_studio_stranger_forbidden(
         )
     ).json()["id"]
 
-    await _promote_tool_admin(db_session, f"ownerb-{sfx}@example.com")
     client.cookies.set("atelier_token", token_b)
-    await client.put(
-        "/admin/embedding-config",
-        json={
-            "embedding_provider": "openai",
-            "embedding_model": "text-embedding-3-small",
-            "embedding_api_key": "sk-test",
-        },
-    )
     up = await client.post(
         f"/projects/{pid_b}/artifacts",
         files={"file": ("n.md", b"# x", "text/markdown")},
@@ -344,16 +283,7 @@ async def test_artifact_detail_invalid_project_uuid_422(
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _sid, _sfid, pid = await _studio_project(client, sfx)
-    await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
     client.cookies.set("atelier_token", token)
-    await client.put(
-        "/admin/embedding-config",
-        json={
-            "embedding_provider": "openai",
-            "embedding_model": "text-embedding-3-small",
-            "embedding_api_key": "sk-test",
-        },
-    )
     up = await client.post(
         f"/projects/{pid}/artifacts",
         files={"file": ("a.md", b"# A", "text/markdown")},
@@ -372,16 +302,7 @@ async def test_artifact_detail_unknown_artifact_404(
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _sid, _sfid, pid = await _studio_project(client, sfx)
-    await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
     client.cookies.set("atelier_token", token)
-    await client.put(
-        "/admin/embedding-config",
-        json={
-            "embedding_provider": "openai",
-            "embedding_model": "text-embedding-3-small",
-            "embedding_api_key": "sk-test",
-        },
-    )
     bad = uuid.uuid4()
     r = await client.get(f"/projects/{pid}/artifacts/{bad}")
     assert r.status_code == 404
@@ -416,16 +337,7 @@ async def test_artifact_detail_by_id_cross_studio_viewer_no_previews(
         )
     ).json()["id"]
 
-    await _promote_tool_admin(db_session, f"ownerb-{sfx}@example.com")
     client.cookies.set("atelier_token", token_b)
-    await client.put(
-        "/admin/embedding-config",
-        json={
-            "embedding_provider": "openai",
-            "embedding_model": "text-embedding-3-small",
-            "embedding_api_key": "sk-test",
-        },
-    )
     up = await client.post(
         f"/projects/{pid_b}/artifacts",
         files={"file": ("n.md", b"# cross", "text/markdown")},
@@ -464,3 +376,33 @@ async def test_artifact_detail_by_id_cross_studio_viewer_no_previews(
     r = await client.get(f"/artifacts/{aid}")
     assert r.status_code == 200, r.text
     assert r.json()["chunk_previews"] == []
+
+
+@pytest.mark.asyncio
+async def test_download_artifact_by_id_storage_read_error(
+    client: AsyncClient,
+    db_session: object,
+    fake_embed: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _sid, _sfid, pid = await _studio_project(client, sfx)
+    client.cookies.set("atelier_token", token)
+    up = await client.post(
+        f"/projects/{pid}/artifacts",
+        files={"file": ("r.md", b"# Read\n", "text/markdown")},
+        data={"name": "R"},
+    )
+    assert up.status_code == 200, up.text
+    aid = up.json()["id"]
+
+    from app.storage.minio_storage import StorageClient
+
+    async def get_bytes_fail(_self: object, *_a: object, **_k: object) -> bytes:
+        raise RuntimeError("minio read failed")
+
+    monkeypatch.setattr(StorageClient, "get_bytes", get_bytes_fail)
+
+    dl = await client.get(f"/artifacts/{aid}/download")
+    assert dl.status_code == 502
+    assert dl.json()["code"] == "STORAGE_ERROR"

@@ -1,93 +1,22 @@
-"""Tool admin configuration for embedding providers (singleton admin_config)."""
+"""Platform admin helpers (connectivity probes, user admin flags)."""
 
 from uuid import UUID
 
-from fastapi import BackgroundTasks
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
-from app.models import AdminConfig, LlmProviderRegistry, User
-from app.schemas.auth import (
-    AdminConnectivityResult,
-    AdminLlmProbeBody,
-    EmbeddingAdminConfigResponse,
-    EmbeddingAdminConfigUpdate,
-    UserPublic,
-)
-from app.security.field_encryption import (
-    admin_secret_suffix_hint,
-    encode_admin_stored_secret,
-)
-from app.services.embedding_pipeline import (
-    enqueue_sections_missing_embeddings_after_config,
-)
-from app.services.embedding_service import EmbeddingService, embedding_configured
+from app.models import LlmProviderRegistry, User
+from app.schemas.auth import AdminConnectivityResult, AdminLlmProbeBody, UserPublic
+from app.services.embedding_service import EmbeddingService
 from app.services.llm_service import LLMService
 
 
-def _mask(s: str | None) -> bool:
-    return bool(s and s.strip())
-
-
 class AdminService:
-    """CRUD for singleton `admin_config` row (id=1) — embedding fields only."""
+    """Connectivity probes and platform-admin user operations."""
 
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
-
-    async def get_or_create(self) -> AdminConfig:
-        row = await self.db.get(AdminConfig, 1)
-        if row is None:
-            row = AdminConfig(id=1)
-            self.db.add(row)
-            await self.db.flush()
-        return row
-
-    async def get_embedding_public(self) -> EmbeddingAdminConfigResponse:
-        row = await self.get_or_create()
-        return EmbeddingAdminConfigResponse(
-            embedding_provider=row.embedding_provider,
-            embedding_model=row.embedding_model,
-            embedding_api_base_url=row.embedding_api_base_url,
-            embedding_api_key_set=_mask(row.embedding_api_key),
-            embedding_api_key_hint=admin_secret_suffix_hint(row.embedding_api_key),
-            embedding_dim=row.embedding_dim,
-        )
-
-    async def update_embedding(
-        self,
-        body: EmbeddingAdminConfigUpdate,
-        background_tasks: BackgroundTasks | None = None,
-        *,
-        actor_user_id: UUID | None = None,
-    ) -> EmbeddingAdminConfigResponse:
-        was_embed = await embedding_configured(self.db)
-        row = await self.get_or_create()
-        data = body.model_dump(exclude_unset=True)
-        if "embedding_api_key" in data:
-            data["embedding_api_key"] = encode_admin_stored_secret(
-                data["embedding_api_key"]
-            )
-        for key, value in data.items():
-            setattr(row, key, value)
-        await self.db.flush()
-        now_embed = await embedding_configured(self.db)
-        if actor_user_id is not None:
-            from app.services.admin_activity_service import AdminActivityService
-
-            await AdminActivityService(self.db).record(
-                action="admin_config.updated",
-                actor_user_id=actor_user_id,
-                summary="Tool Admin embedding configuration updated",
-            )
-        if (
-            not was_embed
-            and now_embed
-            and background_tasks is not None
-        ):
-            background_tasks.add_task(enqueue_sections_missing_embeddings_after_config)
-        return await self.get_embedding_public()
 
     async def set_platform_admin_status(
         self,
@@ -145,10 +74,12 @@ class AdminService:
         )
 
     async def test_embedding(self) -> AdminConnectivityResult:
-        """Single-vector embedding using stored embedding config."""
+        """Single-vector embedding via LLM registry + embeddings routing rule."""
         try:
             emb = EmbeddingService(self.db)
-            vectors = await emb.embed_batch(["Atelier connectivity probe"])
+            vectors = await emb.embed_batch(
+                ["Atelier connectivity probe"], studio_id=None
+            )
         except ApiError as e:
             detail = e.detail if isinstance(e.detail, str) else str(e.detail)
             return AdminConnectivityResult(

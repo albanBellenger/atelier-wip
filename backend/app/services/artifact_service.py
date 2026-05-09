@@ -33,6 +33,24 @@ from app.services.embedding_service import EmbeddingService
 from app.services.notification_dispatch_service import NotificationDispatchService
 
 
+async def _studio_id_for_project(session: AsyncSession, project_id: UUID) -> UUID:
+    proj = await session.get(Project, project_id)
+    if proj is None:
+        raise ApiError(
+            status_code=404,
+            code="NOT_FOUND",
+            message="Project not found.",
+        )
+    sw = await session.get(Software, proj.software_id)
+    if sw is None:
+        raise ApiError(
+            status_code=404,
+            code="NOT_FOUND",
+            message="Software not found.",
+        )
+    return sw.studio_id
+
+
 def _safe_filename(name: str, file_type: str) -> str:
     base = (name or "file").strip()
     base = re.sub(r"[^\w.\-]+", "_", base, flags=re.ASCII)
@@ -228,8 +246,9 @@ class ArtifactService:
         raw: bytes,
         display_name: str | None,
     ) -> Artifact:
+        sid = await _studio_id_for_project(self.db, project_id)
         emb = EmbeddingService(self.db)
-        await emb.require_embedding_ready()
+        await emb.require_embedding_ready(sid)
 
         ft = self._validate_upload_bytes(original_filename, raw)
 
@@ -264,7 +283,7 @@ class ArtifactService:
         display_name: str | None,
     ) -> Artifact:
         emb = EmbeddingService(self.db)
-        await emb.require_embedding_ready()
+        await emb.require_embedding_ready(studio_id)
 
         ft = self._validate_upload_bytes(original_filename, raw)
 
@@ -298,9 +317,6 @@ class ArtifactService:
         raw: bytes,
         display_name: str | None,
     ) -> Artifact:
-        emb = EmbeddingService(self.db)
-        await emb.require_embedding_ready()
-
         sw = await self.db.get(Software, software_id)
         if sw is None:
             raise ApiError(
@@ -308,6 +324,9 @@ class ArtifactService:
                 code="NOT_FOUND",
                 message="Software not found.",
             )
+
+        emb = EmbeddingService(self.db)
+        await emb.require_embedding_ready(sw.studio_id)
 
         ft = self._validate_upload_bytes(original_filename, raw)
 
@@ -340,8 +359,9 @@ class ArtifactService:
         name: str,
         content: str,
     ) -> Artifact:
+        sid = await _studio_id_for_project(self.db, project_id)
         emb = EmbeddingService(self.db)
-        await emb.require_embedding_ready()
+        await emb.require_embedding_ready(sid)
 
         raw = content.encode("utf-8")
         try:
@@ -383,7 +403,7 @@ class ArtifactService:
         content: str,
     ) -> Artifact:
         emb = EmbeddingService(self.db)
-        await emb.require_embedding_ready()
+        await emb.require_embedding_ready(studio_id)
 
         raw = content.encode("utf-8")
         try:
@@ -424,9 +444,6 @@ class ArtifactService:
         name: str,
         content: str,
     ) -> Artifact:
-        emb = EmbeddingService(self.db)
-        await emb.require_embedding_ready()
-
         sw = await self.db.get(Software, software_id)
         if sw is None:
             raise ApiError(
@@ -434,6 +451,9 @@ class ArtifactService:
                 code="NOT_FOUND",
                 message="Software not found.",
             )
+
+        emb = EmbeddingService(self.db)
+        await emb.require_embedding_ready(sw.studio_id)
 
         raw = content.encode("utf-8")
         try:

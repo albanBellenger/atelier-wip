@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { ChatRoom } from '../components/chat/ChatRoom'
+import { ProjectChatRagPreview } from '../components/project/ProjectChatRagPreview'
 import { KnowledgeGraph } from '../components/graph/KnowledgeGraph'
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
 import { BuilderTokenStrip } from '../components/home/BuilderTokenStrip'
@@ -236,11 +237,11 @@ export function ProjectPage(): ReactElement {
   const [commitMsg, setCommitMsg] = useState('')
 
   const tabRaw = searchParams.get('tab')
-  const projectView: 'outline' | 'graph' | 'chat' =
-    tabRaw === 'graph' || tabRaw === 'chat' ? tabRaw : 'outline'
+  const projectView: 'outline' | 'graph' | 'chat' | 'rag' =
+    tabRaw === 'graph' || tabRaw === 'chat' || tabRaw === 'rag' ? tabRaw : 'outline'
 
   const setProjectTab = useCallback(
-    (next: 'outline' | 'graph' | 'chat') => {
+    (next: 'outline' | 'graph' | 'chat' | 'rag') => {
       const nextParams = new URLSearchParams(searchParams)
       if (next === 'outline') {
         nextParams.delete('tab')
@@ -261,7 +262,7 @@ export function ProjectPage(): ReactElement {
     if (isLoadingCapabilities) {
       return
     }
-    if (tabRaw === 'chat' && !access.isStudioEditor) {
+    if ((tabRaw === 'chat' || tabRaw === 'rag') && !access.isStudioEditor) {
       const next = new URLSearchParams(searchParams)
       next.delete('tab')
       setSearchParams(next, { replace: true })
@@ -558,7 +559,9 @@ export function ProjectPage(): ReactElement {
                   ? 'Knowledge graph'
                   : projectView === 'chat'
                     ? 'Project chat'
-                    : null}
+                    : projectView === 'rag'
+                      ? 'Chat RAG'
+                      : null}
               </div>
             )}
             {access.canPublish ? (
@@ -746,17 +749,30 @@ export function ProjectPage(): ReactElement {
                 Knowledge graph
               </button>
               {access.isStudioEditor ? (
-                <button
-                  type="button"
-                  onClick={() => setProjectTab('chat')}
-                  className={`rounded-md px-3 py-1.5 text-[12px] font-medium ${
-                    projectView === 'chat'
-                      ? 'bg-zinc-800 text-zinc-100'
-                      : 'text-zinc-500 hover:text-zinc-200'
-                  }`}
-                >
-                  Project chat
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setProjectTab('chat')}
+                    className={`rounded-md px-3 py-1.5 text-[12px] font-medium ${
+                      projectView === 'chat'
+                        ? 'bg-zinc-800 text-zinc-100'
+                        : 'text-zinc-500 hover:text-zinc-200'
+                    }`}
+                  >
+                    Project chat
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProjectTab('rag')}
+                    className={`rounded-md px-3 py-1.5 text-[12px] font-medium ${
+                      projectView === 'rag'
+                        ? 'bg-zinc-800 text-zinc-100'
+                        : 'text-zinc-500 hover:text-zinc-200'
+                    }`}
+                  >
+                    Chat RAG
+                  </button>
+                </>
               ) : null}
             </div>
 
@@ -868,11 +884,15 @@ export function ProjectPage(): ReactElement {
                   />
                 )}
               </div>
-            ) : (
+            ) : projectView === 'chat' ? (
               <div className="mt-8">
                 <ChatRoom projectId={pid} studioId={sid} />
               </div>
-            )}
+            ) : projectView === 'rag' ? (
+              <div className="mt-8">
+                <ProjectChatRagPreview projectId={pid} />
+              </div>
+            ) : null}
           </>
         )}
 

@@ -39,13 +39,16 @@ export function ArtifactExclusionPanel(props: {
                 ? row.excluded_at_software != null
                 : row.excluded_at_project != null
             return (
-              <li key={row.id} className="flex flex-wrap items-center gap-3 py-3 first:pt-0">
-                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+              <li
+                key={row.id}
+                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 py-3 first:pt-0"
+              >
+                <div className="flex min-w-0 flex-wrap items-center gap-2 overflow-hidden">
                   <ArtifactScopeBadge level={row.scope_level} />
                   <span className="min-w-0 truncate text-[13px] font-medium text-zinc-100">
                     {row.name}
                   </span>
-                  <span className="text-[11px] text-zinc-500">
+                  <span className="min-w-0 break-words text-[11px] text-zinc-500">
                     {row.project_name}
                     {row.excluded_at_software != null && mode === 'project' ? (
                       <span className="text-zinc-600"> · Excluded at software</span>
@@ -64,18 +67,22 @@ export function ArtifactExclusionPanel(props: {
                         : `Exclude ${row.name} from ${mode} context`
                     }
                     onClick={() => onToggleExcluded(row.id, !excluded)}
-                    className={`relative h-5 w-9 shrink-0 overflow-hidden rounded-full border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/60 disabled:opacity-50 ${
-                      excluded
-                        ? 'border-rose-500 bg-rose-600'
-                        : 'border-zinc-600 bg-zinc-800'
-                    }`}
+                    className="relative z-10 flex h-11 min-h-[44px] w-[52px] min-w-[48px] shrink-0 cursor-pointer items-center justify-center rounded-md border border-transparent transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/60 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <span
-                      className={`absolute top-0.5 h-4 w-4 rounded-full bg-zinc-100 shadow transition-transform ${
-                        excluded ? 'translate-x-[1.125rem]' : 'translate-x-0.5'
+                      className={`relative h-5 w-9 overflow-hidden rounded-full border transition-colors ${
+                        excluded
+                          ? 'border-rose-500 bg-rose-600'
+                          : 'border-zinc-600 bg-zinc-800'
                       }`}
-                      aria-hidden
-                    />
+                    >
+                      <span
+                        className={`pointer-events-none absolute top-0.5 h-4 w-4 rounded-full bg-zinc-100 shadow transition-transform ${
+                          excluded ? 'translate-x-[1.125rem]' : 'translate-x-0.5'
+                        }`}
+                        aria-hidden
+                      />
+                    </span>
                   </button>
                 ) : null}
               </li>

@@ -14,6 +14,7 @@ from app.config import get_settings
 from app.database import async_session_factory, get_db
 from app.deps import ProjectAccess, fetch_project_access, get_project_access
 from app.exceptions import ApiError
+from app.schemas.context_preview import ContextPreviewOut
 from app.schemas.project_chat import ChatHistoryResponse, ChatMessageOut
 from app.services.auth_service import AuthService
 from app.services.chat_history_window import HISTORY_TRIM_NOTICE
@@ -21,6 +22,7 @@ from app.services.chat_room_registry import broadcast_json, register, unregister
 from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.llm_service import LLMService
 from app.services.project_chat_service import ProjectChatService
+from app.services.rag_service import RAGService
 
 router = APIRouter(tags=["project-chat"])
 
@@ -57,6 +59,42 @@ async def get_project_chat_history(
     return ChatHistoryResponse(
         messages=[ChatMessageOut.model_validate(m) for m in rows],
         next_before=next_before,
+    )
+
+
+@router.get(
+    "/projects/{project_id}/chat/rag-preview",
+    response_model=ContextPreviewOut,
+)
+async def get_project_chat_rag_preview(
+    project_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    pa: ProjectAccess = Depends(get_project_access),
+    q: str = Query("", max_length=8000, description="RAG query for chunk retrieval"),
+    token_budget: int = Query(6000, ge=100, le=50_000),
+    include_git_history: bool = Query(False),
+    debug_raw_rag: bool = Query(
+        False,
+        description="Dev/staging only: include debug_raw_rag_text (same string as build_context).",
+    ),
+) -> ContextPreviewOut:
+    """Structured RAG preview using the same assembly as project chat (no current section, no prefs)."""
+    _ensure_project(pa, project_id)
+    if not pa.studio_access.is_studio_editor:
+        raise ApiError(
+            status_code=403,
+            code="FORBIDDEN",
+            message="Studio Owner or Builder access required for project chat.",
+        )
+    allow_debug = get_settings().env != "production"
+    rag = RAGService(session)
+    return await rag.build_context_with_blocks(
+        q,
+        project_id,
+        None,
+        token_budget=token_budget,
+        include_git_history=include_git_history,
+        include_debug_raw_rag=bool(debug_raw_rag and allow_debug),
     )
 
 

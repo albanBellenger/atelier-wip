@@ -95,42 +95,6 @@ class UserProfilePatch(BaseModel):
     display_name: str = Field(min_length=1, max_length=255)
 
 
-class EmbeddingAdminConfigResponse(BaseModel):
-    """GET ``/admin/embedding-config`` — tool-level embedding settings (no LLM fields)."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    embedding_provider: str | None
-    embedding_model: str | None
-    embedding_api_base_url: str | None
-    embedding_api_key_set: bool
-    embedding_api_key_hint: str | None = None
-    embedding_dim: int | None = None
-
-
-class EmbeddingAdminConfigUpdate(BaseModel):
-    """PUT ``/admin/embedding-config`` — partial updates supported."""
-
-    embedding_provider: str | None = None
-    embedding_model: str | None = None
-    embedding_api_key: str | None = None
-    embedding_api_base_url: str | None = None
-
-    @field_validator("embedding_api_base_url", mode="before")
-    @classmethod
-    def normalize_optional_api_base(cls, v: object) -> str | None:
-        if v is None:
-            return None
-        if not isinstance(v, str):
-            return None
-        s = v.strip().rstrip("/")
-        if not s:
-            return None
-        if not (s.startswith("http://") or s.startswith("https://")):
-            raise ValueError("API base URL must start with http:// or https://")
-        return s
-
-
 class AdminLlmProbeBody(BaseModel):
     """Optional overrides for ``POST /admin/test/llm`` (defaults from default registry row)."""
 

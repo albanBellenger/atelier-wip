@@ -22,7 +22,7 @@ async def _register(client: AsyncClient, suffix: str, label: str) -> str:
 
 
 @pytest.mark.asyncio
-async def test_admin_put_embedding_config_schedules_existing_sections(
+async def test_admin_put_llm_routing_schedules_existing_sections_when_embedding_resolvable(
     client: AsyncClient,
     db_session,
     monkeypatch: pytest.MonkeyPatch,
@@ -81,13 +81,47 @@ async def test_admin_put_embedding_config_schedules_existing_sections(
     await db_session.flush()
 
     client.cookies.set("atelier_token", token)
-    put = await client.put(
-        "/admin/embedding-config",
+    prov = await client.put(
+        "/admin/llm/providers/openai",
         json={
-            "embedding_provider": "openai",
-            "embedding_model": "text-embedding-3-small",
-            "embedding_api_key": "sk-test",
+            "display_name": "OpenAI",
+            "models": ["gpt-4o-mini", "text-embedding-3-small"],
+            "api_base_url": None,
+            "status": "connected",
+            "is_default": True,
+            "sort_order": 0,
+            "llm_api_key": "sk-test",
+            "litellm_provider_slug": "openai",
         },
     )
-    assert put.status_code == 200, put.text
+    assert prov.status_code == 200, prov.text
+
+    rt = await client.put(
+        "/admin/llm/routing",
+        json={
+            "rules": [
+                {
+                    "use_case": "chat",
+                    "primary_model": "gpt-4o-mini",
+                    "fallback_model": None,
+                },
+                {
+                    "use_case": "code_gen",
+                    "primary_model": "gpt-4o-mini",
+                    "fallback_model": None,
+                },
+                {
+                    "use_case": "classification",
+                    "primary_model": "gpt-4o-mini",
+                    "fallback_model": None,
+                },
+                {
+                    "use_case": "embeddings",
+                    "primary_model": "text-embedding-3-small",
+                    "fallback_model": None,
+                },
+            ]
+        },
+    )
+    assert rt.status_code == 200, rt.text
     assert section_id in scheduled

@@ -16,7 +16,7 @@ This document summarizes important environment variables and Compose profiles. C
 | `expose_internal_error_detail` | Set via `ATELIER_EXPOSE_INTERNAL_ERRORS=true` only on **non-production** debug hosts — never enable in production. |
 | `MINIO_*` | Object storage endpoint and credentials (see `.env.example` / Docker Compose). |
 
-Tool Admin LLM and embedding keys are stored in the database (`admin_config`), not in `.env`.
+Tool Admin LLM provider keys and embedding routing are stored in the database (`llm_provider_registry`, `llm_routing_rules`), not in `.env`.
 
 ## Frontend build-time
 

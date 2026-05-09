@@ -406,6 +406,77 @@ describe('ProjectPage landing layout', () => {
     })
   })
 
+  it('keeps chat RAG tab when URL has tab=rag (studio editor, after capabilities load)', async () => {
+    vi.spyOn(api, 'me').mockResolvedValue({
+      user: {
+        id: 'u1',
+        email: 'a@b.com',
+        display_name: 'A',
+        is_platform_admin: false,
+      },
+      studios: [
+        { studio_id: 's1', studio_name: 'S', role: 'studio_member' },
+      ],
+      cross_studio_grants: [],
+    })
+    vi.spyOn(api, 'getProject').mockResolvedValue({
+      id: 'p1',
+      software_id: 'sw1',
+      name: 'Proj',
+      description: null,
+      publish_folder_slug: 'proj',
+      archived: false,
+      created_at: '',
+      updated_at: '',
+      work_orders_done: 0,
+      work_orders_total: 0,
+      sections_count: 0,
+      last_edited_at: null,
+      sections: [],
+    })
+    vi.spyOn(api, 'getProjectChatRagPreview').mockResolvedValue({
+      blocks: [
+        {
+          label: 'Software definition',
+          kind: 'software_def',
+          tokens: 1,
+          relevance: null,
+          truncated: false,
+          body: '## Software definition\nx',
+        },
+      ],
+      total_tokens: 1,
+      budget_tokens: 6000,
+      overflow_strategy_applied: null,
+      debug_raw_rag_text: null,
+    })
+
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+
+    render(
+      <MemoryRouter
+        initialEntries={[
+          '/studios/s1/software/sw1/projects/p1?tab=rag',
+        ]}
+      >
+        <QueryClientProvider client={qc}>
+          <Routes>
+            <Route
+              path="/studios/:studioId/software/:softwareId/projects/:projectId"
+              element={<ProjectPage />}
+            />
+          </Routes>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('project-chat-rag-preview')).toBeInTheDocument()
+    })
+  })
+
   it('does not show publish for studio viewers', async () => {
     vi.spyOn(api, 'me').mockResolvedValue({
       user: {
@@ -461,6 +532,8 @@ describe('ProjectPage landing layout', () => {
     expect(
       screen.queryByRole('button', { name: /publish to gitlab/i }),
     ).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Project chat' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Chat RAG' })).toBeNull()
   })
 
   it('shows Project settings link for a Studio Owner', async () => {

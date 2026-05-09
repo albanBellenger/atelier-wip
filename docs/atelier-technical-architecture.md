@@ -82,15 +82,11 @@ is_platform_admin BOOLEAN DEFAULT FALSE,
 created_at    TIMESTAMPTZ DEFAULT NOW()
 ```
 
-### `admin_config`
+### `embedding_dimension_state`
+Runtime bookkeeping only (no credentials): first observed embedding vector width from LiteLLM responses, used to detect mismatches against fixed `vector(1536)` chunk columns. Singleton row `id = 1`.
 ```sql
-id                  INTEGER PRIMARY KEY DEFAULT 1,  -- singleton
-llm_provider        TEXT,
-llm_model           TEXT,
-llm_api_key         TEXT,
-embedding_provider  TEXT,
-embedding_model     TEXT,
-embedding_api_key   TEXT
+id           INTEGER PRIMARY KEY,  -- fixed to 1
+observed_dim INTEGER               -- nullable until first successful embed
 ```
 
 ### `studios`
@@ -369,9 +365,8 @@ Listing and read/unread updates use `NotificationService` (e.g. `/me/notificatio
 ### AdminService
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
-| `/admin/embedding-config` | GET | Tool Admin | Get embedding singleton (model, keys, dimension) |
-| `/admin/embedding-config` | PUT | Tool Admin | Update embedding singleton |
-| `/admin/config` | GET/PUT | Tool Admin | **Removed** — returns **404** (use `/admin/embedding-config` and Admin Console → LLM) |
+| `/admin/test/embedding` | POST | Tool Admin | Connectivity probe for embeddings (platform resolution via LLM registry + embeddings routing rule) |
+| `/admin/config` | GET/PUT | Tool Admin | **Removed** — returns **404** (configure providers and embeddings routing in Admin Console → LLM) |
 | `/admin/cross-studio` | GET | Tool Admin | List pending cross-studio access requests |
 | `/admin/cross-studio/{id}` | PUT | Tool Admin | Approve or reject request |
 | `/admin/token-usage` | GET | Tool Admin | All-studio token usage with filters |
@@ -515,10 +510,8 @@ async def chat_structured(
     context: TokenContext,
     output_schema: dict             # required — JSON schema defining expected output shape
 ) -> dict: ...                      # returns parsed dict, never raw string
-
-def embed(text: str) -> list[float]: ...
 ```
-- Reads `admin_config` on every call (hot config changes)
+- Resolves chat credentials from `llm_provider_registry` and routing rules (updates apply on registry writes)
 - Automatically records token usage via TokenTracker on every call
 - Supports OpenAI, Anthropic, Azure, and any LlamaIndex-supported provider
 - **Structured output abstraction:** `chat_structured` translates the `output_schema` to the correct provider mechanism:
@@ -527,6 +520,8 @@ def embed(text: str) -> list[float]: ...
   - **Others:** JSON-mode system prompt instruction + post-response parsing with retry on parse failure
 - All structured calls (Work Order generation, conflict analysis, drift detection) use `chat_structured` — never `chat_stream`
 - Streaming (`chat_stream`) is reserved for user-facing conversational calls (private threads, project chat) where deterministic structure is not required
+
+**EmbeddingService** (internal) resolves embedding model strings and API keys the same way: `llm_provider_registry` plus the **embeddings** use case in `llm_routing_rules`; studio-scoped jobs additionally respect `studio_llm_provider_policy` provider enablement without requiring chat `selected_model` to match the embedding model id. Observed vector width is recorded in `embedding_dimension_state`.
 
 ### RAGService (internal)
 ```python
@@ -1105,8 +1100,8 @@ ENCRYPTION_KEY=changeme-32-byte-fernet-key
 ### Admin (Tool Admin only)
 | Method | Path | Description |
 |---|---|---|
-| GET/PUT | `/admin/embedding-config` | Embedding singleton (not LLM chat credentials) |
-| GET/PUT | `/admin/config` | **404** — removed; use embedding-config + LLM registry |
+| POST | `/admin/test/embedding` | Embedding connectivity probe (registry + embeddings routing) |
+| GET/PUT | `/admin/config` | **404** — removed; use Admin Console → LLM |
 | GET | `/admin/cross-studio` | Pending access requests |
 | PUT | `/admin/cross-studio/{id}` | Approve / reject |
 | GET | `/admin/token-usage` | All-studio usage |

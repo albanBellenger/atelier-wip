@@ -4,7 +4,7 @@ This document captures **Phase 3** items from the admin console plan that are **
 
 ## Multi-provider credential registry
 
-Today, [`AdminConfig`](../backend/app/models/admin_config.py) holds a **single** LLM API key and embedding API key. Phase 3 adds **encrypted credentials per provider** (or per provider + deployment region) when multiple upstream accounts must be active simultaneously. Admin routes would expose masked previews only; writes would re-encrypt server-side.
+Today, [`LlmProviderRegistry`](../backend/app/models/llm_policy.py) already stores **encrypted credentials per provider**. Phase 3 extends this with optional **per deployment region** rows when multiple upstream accounts must be active simultaneously under finer grouping. Admin routes would expose masked previews only; writes would re-encrypt server-side.
 
 ## Per-builder budgets and alert tiers
 

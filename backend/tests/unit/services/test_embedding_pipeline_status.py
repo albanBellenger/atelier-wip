@@ -29,8 +29,8 @@ async def test_enqueue_sets_skipped_when_embedding_not_configured() -> None:
     mock_cm.__aexit__ = AsyncMock(return_value=None)
 
     with patch.object(ep, "async_session_factory", return_value=mock_cm):
-        with patch.object(ep, "embedding_configured", new_callable=AsyncMock) as m_ec:
-            m_ec.return_value = False
+        with patch.object(ep, "usage_scope_for_artifact", new_callable=AsyncMock) as m_us:
+            m_us.return_value = None
             await ep.enqueue_artifact_embedding(aid)
 
     assert art.embedding_status == "skipped"
@@ -59,11 +59,16 @@ async def test_run_artifact_embedding_success_sets_embedded_and_counts() -> None
     mock_session.flush = AsyncMock()
     mock_emb = MagicMock()
     mock_emb.embed_batch = AsyncMock(return_value=[[0.1] * 1536, [0.2] * 1536])
+    scope = types.SimpleNamespace(studio_id=uuid.uuid4())
 
     with patch.object(ep, "get_storage_client", return_value=storage):
         with patch.object(ep, "EmbeddingService", return_value=mock_emb):
             with patch.object(ep, "chunk_artifact_text", return_value=["a", "b"]):
-                await ep.run_artifact_embedding(mock_session, aid)
+                with patch.object(
+                    ep, "usage_scope_for_artifact", new_callable=AsyncMock
+                ) as m_us:
+                    m_us.return_value = scope
+                    await ep.run_artifact_embedding(mock_session, aid)
 
     assert row.extracted_char_count == 102
     assert row.chunk_count == 2
@@ -139,10 +144,13 @@ async def test_enqueue_failure_marks_failed_with_truncated_error() -> None:
         return next(factories)
 
     with patch.object(ep, "async_session_factory", side_effect=_factory):
-        with patch.object(ep, "embedding_configured", new_callable=AsyncMock) as m_ec:
-            m_ec.return_value = True
-            with patch.object(ep, "run_artifact_embedding", AsyncMock(side_effect=Boom())):
-                await ep.enqueue_artifact_embedding(aid)
+        scope = types.SimpleNamespace(studio_id=uuid.uuid4())
+        with patch.object(ep, "usage_scope_for_artifact", AsyncMock(return_value=scope)):
+            with patch.object(ep, "embedding_resolvable", AsyncMock(return_value=True)):
+                with patch.object(
+                    ep, "run_artifact_embedding", AsyncMock(side_effect=Boom())
+                ):
+                    await ep.enqueue_artifact_embedding(aid)
 
     assert art.embedding_status == "failed"
     assert art.embedding_error is not None
@@ -174,8 +182,7 @@ async def test_embed_in_upload_session_skips_when_not_configured() -> None:
     )
     mock_session = AsyncMock()
     mock_session.get = AsyncMock(return_value=art)
-    with patch.object(ep, "embedding_configured", new_callable=AsyncMock) as m_ec:
-        m_ec.return_value = False
+    with patch.object(ep, "usage_scope_for_artifact", AsyncMock(return_value=None)):
         await ep.embed_artifact_in_upload_session(mock_session, aid)
     assert art.embedding_status == "skipped"
     mock_session.flush.assert_awaited()
@@ -202,10 +209,11 @@ async def test_embed_in_upload_session_runs_embedding_in_savepoint() -> None:
         yield None
 
     mock_session.begin_nested = MagicMock(return_value=_nested())
-    with patch.object(ep, "embedding_configured", new_callable=AsyncMock) as m_ec:
-        m_ec.return_value = True
-        with patch.object(ep, "run_artifact_embedding", new_callable=AsyncMock) as m_run:
-            await ep.embed_artifact_in_upload_session(mock_session, aid)
+    scope = types.SimpleNamespace(studio_id=uuid.uuid4())
+    with patch.object(ep, "usage_scope_for_artifact", AsyncMock(return_value=scope)):
+        with patch.object(ep, "embedding_resolvable", AsyncMock(return_value=True)):
+            with patch.object(ep, "run_artifact_embedding", new_callable=AsyncMock) as m_run:
+                await ep.embed_artifact_in_upload_session(mock_session, aid)
     m_run.assert_awaited_once_with(mock_session, aid)
     mock_session.begin_nested.assert_called_once()
 
@@ -231,15 +239,16 @@ async def test_embed_in_upload_session_marks_failed_on_run_error() -> None:
         yield None
 
     mock_session.begin_nested = MagicMock(return_value=_nested())
-    with patch.object(ep, "embedding_configured", new_callable=AsyncMock) as m_ec:
-        m_ec.return_value = True
-        with patch.object(
-            ep,
-            "run_artifact_embedding",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("embed failed"),
-        ):
-            await ep.embed_artifact_in_upload_session(mock_session, aid)
+    scope = types.SimpleNamespace(studio_id=uuid.uuid4())
+    with patch.object(ep, "usage_scope_for_artifact", AsyncMock(return_value=scope)):
+        with patch.object(ep, "embedding_resolvable", AsyncMock(return_value=True)):
+            with patch.object(
+                ep,
+                "run_artifact_embedding",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("embed failed"),
+            ):
+                await ep.embed_artifact_in_upload_session(mock_session, aid)
     mock_session.refresh.assert_awaited_once_with(art)
     assert art.embedding_status == "failed"
     assert art.embedding_error == "embed failed"

@@ -23,7 +23,6 @@ from app.services.chat_history_window import (
     history_trim_budget_tokens,
     trim_openai_chat_messages,
 )
-from app.services.embedding_service import EmbeddingService
 from app.services.litellm_exception_mapping import (
     map_litellm_exception,
     map_litellm_exception_to_probe_detail,
@@ -616,7 +615,3 @@ class LLMService:
             message="LLM connection succeeded.",
             detail=preview[:500] if preview else None,
         )
-
-    async def embed_texts(self, texts: list[str]) -> list[list[float]]:
-        """Delegates to EmbeddingService (same admin embedding config)."""
-        return await EmbeddingService(self.db).embed_batch(texts)

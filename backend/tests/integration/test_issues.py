@@ -119,6 +119,94 @@ async def test_member_cannot_update_issue_owned_by_another_actor(
 
 
 @pytest.mark.asyncio
+async def test_non_admin_member_lists_only_own_actor_issues(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token_owner, studio_id, _sw, pid, _a, _b = await _studio_project_with_sections(
+        client, sfx
+    )
+    member_token = await _register(client, sfx, "list_member")
+    client.cookies.set("atelier_token", token_owner)
+    invite = await client.post(
+        f"/studios/{studio_id}/members",
+        json={
+            "email": f"list_member-{sfx}@example.com",
+            "role": "studio_member",
+        },
+    )
+    assert invite.status_code == 200
+
+    async def fake_chat_structured(self, **kwargs):
+        return {
+            "findings": [
+                {
+                    "finding_type": "pair_conflict",
+                    "section_index_a": 0,
+                    "section_index_b": 1,
+                    "description": "Other actor only.",
+                }
+            ]
+        }
+
+    monkeypatch.setattr(
+        "app.services.llm_service.LLMService.chat_structured",
+        fake_chat_structured,
+    )
+
+    analyze = await client.post(f"/projects/{pid}/analyze")
+    assert analyze.status_code == 200
+
+    client.cookies.set("atelier_token", member_token)
+    lr = await client.get(f"/projects/{pid}/issues")
+    assert lr.status_code == 200
+    assert lr.json() == []
+
+
+@pytest.mark.asyncio
+async def test_put_issue_wrong_project_id_returns_404(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _sid, sw, pid1, _a, _b = await _studio_project_with_sections(client, sfx)
+    client.cookies.set("atelier_token", token)
+    pr2 = await client.post(
+        f"/software/{sw}/projects",
+        json={"name": "P2", "description": None},
+    )
+    assert pr2.status_code == 200
+    pid2 = pr2.json()["id"]
+
+    async def fake_chat_structured(self, **kwargs):
+        return {
+            "findings": [
+                {
+                    "finding_type": "pair_conflict",
+                    "section_index_a": 0,
+                    "section_index_b": 1,
+                    "description": "Scoped to P1.",
+                }
+            ]
+        }
+
+    monkeypatch.setattr(
+        "app.services.llm_service.LLMService.chat_structured",
+        fake_chat_structured,
+    )
+    await client.post(f"/projects/{pid1}/analyze")
+    rows = (await client.get(f"/projects/{pid1}/issues")).json()
+    issue_id = rows[0]["id"]
+
+    bad = await client.put(
+        f"/projects/{pid2}/issues/{issue_id}",
+        json={"status": "resolved"},
+    )
+    assert bad.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_put_issue_not_found(client: AsyncClient) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _sid, _sw, pid, _a, _b = await _studio_project_with_sections(

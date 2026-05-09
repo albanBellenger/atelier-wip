@@ -14,7 +14,11 @@ from app.database import async_session_factory
 from app.models import Artifact, ArtifactChunk, Section, SectionChunk
 from app.services.notification_dispatch_service import NotificationDispatchService
 from app.services.document_extract import extract_md_text, extract_pdf_text
-from app.services.embedding_service import EmbeddingService, embedding_configured
+from app.services.embedding_service import (
+    EmbeddingService,
+    embedding_platform_resolvable,
+    embedding_resolvable,
+)
 from app.services.embedding_token_usage_scope import (
     usage_scope_for_artifact,
     usage_scope_for_section,
@@ -60,7 +64,9 @@ async def embed_artifact_in_upload_session(
     art = await session.get(Artifact, artifact_id)
     if art is None:
         return
-    if not await embedding_configured(session):
+    scope = await usage_scope_for_artifact(session, artifact_id)
+    sid = scope.studio_id if scope else None
+    if sid is None or not await embedding_resolvable(session, sid):
         art.embedding_status = "skipped"
         art.embedding_error = None
         art.extracted_char_count = None
@@ -115,7 +121,8 @@ async def run_artifact_embedding(session: AsyncSession, artifact_id: uuid.UUID) 
         return
     emb = EmbeddingService(session)
     emb_ctx = await usage_scope_for_artifact(session, artifact_id)
-    vectors = await emb.embed_batch(chunks, usage_scope=emb_ctx)
+    sid = emb_ctx.studio_id if emb_ctx else None
+    vectors = await emb.embed_batch(chunks, studio_id=sid, usage_scope=emb_ctx)
     for i, (chunk, vec) in enumerate(zip(chunks, vectors, strict=True)):
         session.add(
             ArtifactChunk(
@@ -157,7 +164,8 @@ async def run_section_embedding(session: AsyncSession, section_id: uuid.UUID) ->
         return
     emb = EmbeddingService(session)
     emb_ctx = await usage_scope_for_section(session, section_id)
-    vectors = await emb.embed_batch(chunks, usage_scope=emb_ctx)
+    sid = emb_ctx.studio_id if emb_ctx else None
+    vectors = await emb.embed_batch(chunks, studio_id=sid, usage_scope=emb_ctx)
     for i, (chunk, vec) in enumerate(zip(chunks, vectors, strict=True)):
         session.add(
             SectionChunk(
@@ -173,7 +181,9 @@ async def enqueue_artifact_embedding(artifact_id: uuid.UUID) -> None:
     """Run artifact embedding in a fresh session (background task / scripts)."""
     async with async_session_factory() as session:
         try:
-            if not await embedding_configured(session):
+            scope = await usage_scope_for_artifact(session, artifact_id)
+            sid = scope.studio_id if scope else None
+            if sid is None or not await embedding_resolvable(session, sid):
                 art = await session.get(Artifact, artifact_id)
                 if art is not None:
                     art.embedding_status = "skipped"
@@ -200,7 +210,9 @@ async def enqueue_section_embedding(section_id: uuid.UUID) -> None:
     """Run section embedding on the current event loop."""
     async with async_session_factory() as session:
         try:
-            if not await embedding_configured(session):
+            scope = await usage_scope_for_section(session, section_id)
+            sid = scope.studio_id if scope else None
+            if sid is None or not await embedding_resolvable(session, sid):
                 return
             await run_section_embedding(session, section_id)
             await session.commit()
@@ -216,7 +228,7 @@ def schedule_section_embedding(section_id: uuid.UUID) -> None:
 async def enqueue_sections_missing_embeddings_after_config() -> None:
     """After embedding is first configured, embed existing sections that have content but no chunks."""
     async with async_session_factory() as session:
-        if not await embedding_configured(session):
+        if not await embedding_platform_resolvable(session):
             return
         no_chunks = ~exists(
             select(1).where(SectionChunk.section_id == Section.id)

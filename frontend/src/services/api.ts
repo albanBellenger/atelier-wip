@@ -483,35 +483,6 @@ export async function putStudioCrossStudioIncoming(
   )
 }
 
-// --- Platform admin embedding singleton (/admin/embedding-config) ---
-
-export interface EmbeddingAdminConfigPublic {
-  embedding_provider: string | null
-  embedding_model: string | null
-  embedding_api_base_url: string | null
-  embedding_api_key_set: boolean
-  embedding_api_key_hint?: string | null
-  embedding_dim?: number | null
-}
-
-/** Only include fields you intend to change; omitted keys are left unchanged on the server. */
-export type EmbeddingAdminConfigUpdateBody = {
-  embedding_provider?: string | null
-  embedding_model?: string | null
-  embedding_api_key?: string | null
-  embedding_api_base_url?: string | null
-}
-
-export async function getAdminEmbeddingConfig(): Promise<EmbeddingAdminConfigPublic> {
-  return request<EmbeddingAdminConfigPublic>('GET', '/admin/embedding-config')
-}
-
-export async function putAdminEmbeddingConfig(
-  body: EmbeddingAdminConfigUpdateBody,
-): Promise<EmbeddingAdminConfigPublic> {
-  return request<EmbeddingAdminConfigPublic>('PUT', '/admin/embedding-config', body)
-}
-
 export interface AdminConnectivityResult {
   ok: boolean
   message: string
@@ -1903,6 +1874,37 @@ export async function getContextPreview(
   return request<ContextPreview>(
     'GET',
     `/projects/${projectId}/sections/${sectionId}/context-preview${suffix}`,
+  )
+}
+
+/** Same RAG assembly as project chat (`current_section_id` none; no section prefs). */
+export async function getProjectChatRagPreview(
+  projectId: string,
+  opts?: {
+    q?: string
+    tokenBudget?: number
+    includeGitHistory?: boolean
+    debugRawRag?: boolean
+  },
+): Promise<ContextPreview> {
+  const sp = new URLSearchParams()
+  if (opts?.q != null && opts.q !== '') {
+    sp.set('q', opts.q)
+  }
+  if (opts?.tokenBudget != null) {
+    sp.set('token_budget', String(opts.tokenBudget))
+  }
+  if (opts?.includeGitHistory === true) {
+    sp.set('include_git_history', 'true')
+  }
+  if (opts?.debugRawRag === true) {
+    sp.set('debug_raw_rag', 'true')
+  }
+  const qs = sp.toString()
+  const suffix = qs ? `?${qs}` : ''
+  return request<ContextPreview>(
+    'GET',
+    `/projects/${projectId}/chat/rag-preview${suffix}`,
   )
 }
 

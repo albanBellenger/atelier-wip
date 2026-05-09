@@ -11,7 +11,7 @@ import pytest_asyncio
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import AdminConfig, LlmProviderRegistry, LlmRoutingRule
+from app.models import EmbeddingDimensionState, LlmProviderRegistry, LlmRoutingRule
 from app.security.field_encryption import encode_admin_stored_secret
 from app.security.jwt import create_access_token
 
@@ -40,11 +40,13 @@ def _require_llm_env(request: pytest.FixtureRequest) -> None:
 
 @pytest_asyncio.fixture(autouse=True)
 async def llm_admin_config(db_session: AsyncSession) -> None:
-    """Sync embedding singleton + default LLM registry row from env for real provider calls."""
-    row = await db_session.get(AdminConfig, 1)
-    if row is None:
-        row = AdminConfig(id=1)
-        db_session.add(row)
+    """Sync LLM registry + embeddings routing from env for real provider calls."""
+    dim_row = await db_session.get(EmbeddingDimensionState, 1)
+    if dim_row is None:
+        dim_row = EmbeddingDimensionState(id=1)
+        db_session.add(dim_row)
+    dim_row.observed_dim = dim_row.observed_dim or 1536
+
     key = (
         (os.environ.get("LLM_API_KEY") or os.environ.get("OPENAI_API_KEY") or "")
         .strip()
@@ -53,27 +55,22 @@ async def llm_admin_config(db_session: AsyncSession) -> None:
         (os.environ.get("LLM_MODEL") or os.environ.get("OPENAI_MODEL") or "gpt-4o-mini")
         .strip()
     )
-    emb_key = (os.environ.get("EMBEDDING_API_KEY") or key).strip()
     emb_model = (
         os.environ.get("EMBEDDING_MODEL")
         or os.environ.get("OPENAI_EMBEDDING_MODEL")
         or "text-embedding-3-small"
     ).strip()
-    row.embedding_api_key = emb_key
-    row.embedding_model = emb_model
-    row.embedding_provider = "openai"
-    row.embedding_dim = row.embedding_dim or 1536
-    await db_session.flush()
 
     await db_session.execute(delete(LlmRoutingRule))
     await db_session.execute(delete(LlmProviderRegistry))
     await db_session.flush()
+    models_payload = json.dumps([model, emb_model])
     db_session.add(
         LlmProviderRegistry(
             id=uuid.uuid4(),
             provider_key="openai",
             display_name="OpenAI",
-            models_json=json.dumps([model]),
+            models_json=models_payload,
             api_base_url=None,
             logo_url=None,
             status="connected",
@@ -85,6 +82,21 @@ async def llm_admin_config(db_session: AsyncSession) -> None:
     )
     db_session.add(
         LlmRoutingRule(use_case="chat", primary_model=model, fallback_model=None),
+    )
+    db_session.add(
+        LlmRoutingRule(
+            use_case="embeddings",
+            primary_model=emb_model,
+            fallback_model=None,
+        ),
+    )
+    db_session.add(
+        LlmRoutingRule(use_case="code_gen", primary_model=model, fallback_model=None),
+    )
+    db_session.add(
+        LlmRoutingRule(
+            use_case="classification", primary_model=model, fallback_model=None
+        ),
     )
     await db_session.flush()
 

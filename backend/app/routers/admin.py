@@ -15,8 +15,6 @@ from app.schemas.auth import (
     AdminConnectivityResult,
     AdminLlmProbeBody,
     AdminStatusUpdate,
-    EmbeddingAdminConfigResponse,
-    EmbeddingAdminConfigUpdate,
     UserCreate,
     UserPublic,
 )
@@ -47,6 +45,10 @@ from app.services.admin_studio_console_service import AdminStudioConsoleService
 from app.services.admin_user_directory_service import AdminUserDirectoryService
 from app.services.auth_service import AuthService
 from app.services.embedding_admin_service import EmbeddingAdminService
+from app.services.embedding_pipeline import (
+    enqueue_sections_missing_embeddings_after_config,
+)
+from app.services.embedding_service import embedding_platform_resolvable
 from app.services.llm_connectivity_service import LlmConnectivityService
 from app.services.llm_model_suggestions_service import LlmModelSuggestionsService
 from app.services.studio_service import StudioService
@@ -55,34 +57,14 @@ from app.services.studio_tool_admin_service import StudioToolAdminService
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
-@router.get("/embedding-config", response_model=EmbeddingAdminConfigResponse)
-async def get_admin_embedding_config(
-    session: AsyncSession = Depends(get_db),
-    _: User = Depends(require_platform_admin),
-) -> EmbeddingAdminConfigResponse:
-    return await AdminService(session).get_embedding_public()
-
-
-@router.put("/embedding-config", response_model=EmbeddingAdminConfigResponse)
-async def put_admin_embedding_config(
-    background_tasks: BackgroundTasks,
-    body: EmbeddingAdminConfigUpdate,
-    session: AsyncSession = Depends(get_db),
-    admin_user: User = Depends(require_platform_admin),
-) -> EmbeddingAdminConfigResponse:
-    return await AdminService(session).update_embedding(
-        body, background_tasks, actor_user_id=admin_user.id
-    )
-
-
 @router.get("/config", include_in_schema=False, response_model=None)
 async def admin_config_get_removed(_: User = Depends(require_platform_admin)) -> None:
     raise ApiError(
         status_code=404,
         code="NOT_FOUND",
         message=(
-            "GET /admin/config was removed; use GET /admin/embedding-config for embeddings "
-            "or Admin Console → LLM for provider registry."
+            "GET /admin/config was removed; configure embeddings via Admin Console → LLM "
+            "(provider registry + embeddings routing rule)."
         ),
     )
 
@@ -93,8 +75,8 @@ async def admin_config_put_removed(_: User = Depends(require_platform_admin)) ->
         status_code=404,
         code="NOT_FOUND",
         message=(
-            "PUT /admin/config was removed; use PUT /admin/embedding-config for embeddings "
-            "or Admin Console → LLM for provider registry."
+            "PUT /admin/config was removed; configure embeddings via Admin Console → LLM "
+            "(provider registry + embeddings routing rule)."
         ),
     )
 
@@ -232,10 +214,16 @@ async def list_llm_providers(
 async def upsert_llm_provider(
     provider_key: str,
     body: LlmProviderRegistryUpdate,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_platform_admin),
 ) -> LlmProviderRegistryResponse:
-    return await LlmConnectivityService(session).upsert_provider(provider_key, body)
+    was = await embedding_platform_resolvable(session)
+    out = await LlmConnectivityService(session).upsert_provider(provider_key, body)
+    now = await embedding_platform_resolvable(session)
+    if not was and now:
+        background_tasks.add_task(enqueue_sections_missing_embeddings_after_config)
+    return out
 
 
 @router.delete("/llm/providers/{provider_key}", status_code=204)
@@ -278,10 +266,16 @@ async def get_llm_routing(
 @router.put("/llm/routing", response_model=list[LlmRoutingRuleResponse])
 async def put_llm_routing(
     body: LlmRoutingRuleUpdate,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_platform_admin),
 ) -> list[LlmRoutingRuleResponse]:
-    return await LlmConnectivityService(session).put_routing(body)
+    was = await embedding_platform_resolvable(session)
+    out = await LlmConnectivityService(session).put_routing(body)
+    now = await embedding_platform_resolvable(session)
+    if not was and now:
+        background_tasks.add_task(enqueue_sections_missing_embeddings_after_config)
+    return out
 
 
 @router.get(

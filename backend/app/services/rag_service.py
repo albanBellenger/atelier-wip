@@ -307,7 +307,12 @@ class RAGService:
             try:
                 emb = EmbeddingService(self.db)
                 emb_ctx = await usage_scope_for_project(self.db, project_id)
-                qvec = (await emb.embed_batch([query_for_embedding], usage_scope=emb_ctx))[0]
+                sid = emb_ctx.studio_id if emb_ctx else None
+                qvec = (
+                    await emb.embed_batch(
+                        [query_for_embedding], studio_id=sid, usage_scope=emb_ctx
+                    )
+                )[0]
             except ApiError as e:
                 log.warning("rag_embed_skip", reason=str(e))
 

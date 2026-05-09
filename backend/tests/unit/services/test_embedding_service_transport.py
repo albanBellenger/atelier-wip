@@ -2,19 +2,43 @@
 
 from __future__ import annotations
 
+import json
+import uuid
 from unittest.mock import AsyncMock
 
 import httpx
 import pytest
 from openai import APIConnectionError, APITimeoutError
 
-import uuid
-
 from app.exceptions import ApiError
-from app.models import AdminConfig, EmbeddingModelRegistry
+from app.models import LlmProviderRegistry, LlmRoutingRule
 from app.services.embedding_service import EmbeddingService
 
 _REQ = httpx.Request("POST", "https://example.test/v1/embeddings")
+
+
+async def _seed_embedding_via_llm_registry(db_session: object) -> None:
+    db_session.add(
+        LlmProviderRegistry(
+            id=uuid.uuid4(),
+            provider_key="openai",
+            display_name="OpenAI",
+            models_json=json.dumps(["text-embedding-3-small"]),
+            status="connected",
+            is_default=True,
+            sort_order=0,
+            api_key="sk-test",
+            litellm_provider_slug="openai",
+        )
+    )
+    db_session.add(
+        LlmRoutingRule(
+            use_case="embeddings",
+            primary_model="text-embedding-3-small",
+            fallback_model=None,
+        )
+    )
+    await db_session.flush()
 
 
 @pytest.mark.asyncio
@@ -22,15 +46,7 @@ async def test_embed_batch_read_timeout_maps_to_embedding_timeout(
     db_session: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    row = await db_session.get(AdminConfig, 1)
-    if row is None:
-        row = AdminConfig(id=1)
-        db_session.add(row)
-        await db_session.flush()
-    row.embedding_model = "m"
-    row.embedding_api_key = "k"
-    row.embedding_provider = "openai"
-    await db_session.flush()
+    await _seed_embedding_via_llm_registry(db_session)
 
     monkeypatch.setattr(
         "app.services.embedding_service.litellm.aembedding",
@@ -38,7 +54,7 @@ async def test_embed_batch_read_timeout_maps_to_embedding_timeout(
     )
     svc = EmbeddingService(db_session)
     with pytest.raises(ApiError) as e:
-        await svc.embed_batch(["hello"])
+        await svc.embed_batch(["hello"], studio_id=None)
     assert e.value.error_code == "EMBEDDING_TIMEOUT"
     assert e.value.status_code == 504
 
@@ -48,12 +64,7 @@ async def test_embed_batch_connect_error_maps_to_transport(
     db_session: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    row = await db_session.get(AdminConfig, 1)
-    assert row is not None
-    row.embedding_model = "m"
-    row.embedding_api_key = "k"
-    row.embedding_provider = "openai"
-    await db_session.flush()
+    await _seed_embedding_via_llm_registry(db_session)
 
     monkeypatch.setattr(
         "app.services.embedding_service.litellm.aembedding",
@@ -61,52 +72,16 @@ async def test_embed_batch_connect_error_maps_to_transport(
     )
     svc = EmbeddingService(db_session)
     with pytest.raises(ApiError) as e:
-        await svc.embed_batch(["hello"])
+        await svc.embed_batch(["hello"], studio_id=None)
     assert e.value.error_code == "EMBEDDING_TRANSPORT_ERROR"
     assert e.value.status_code == 502
 
 
 @pytest.mark.asyncio
-async def test_require_embedding_ready_prefixes_from_registry_default(
+async def test_require_embedding_ready_prefixes_litellm_slug(
     db_session: object,
 ) -> None:
-    row = await db_session.get(AdminConfig, 1)
-    if row is None:
-        row = AdminConfig(id=1)
-        db_session.add(row)
-        await db_session.flush()
-    row.embedding_api_key = "k"
-    row.embedding_provider = "openai"
-    row.embedding_model = "ignored-when-registry-default"
-    db_session.add(
-        EmbeddingModelRegistry(
-            id=uuid.uuid4(),
-            model_id="text-embedding-3-small",
-            provider_name="OpenAI",
-            dim=1536,
-            default_role="default",
-            litellm_provider_slug="openai",
-        )
-    )
-    await db_session.flush()
+    await _seed_embedding_via_llm_registry(db_session)
     svc = EmbeddingService(db_session)
-    model, *_rest = await svc.require_embedding_ready()
-    assert model == "openai/text-embedding-3-small"
-
-
-@pytest.mark.asyncio
-async def test_require_embedding_ready_admin_config_prefixes_with_provider(
-    db_session: object,
-) -> None:
-    row = await db_session.get(AdminConfig, 1)
-    if row is None:
-        row = AdminConfig(id=1)
-        db_session.add(row)
-        await db_session.flush()
-    row.embedding_model = "text-embedding-3-small"
-    row.embedding_api_key = "k"
-    row.embedding_provider = "openai"
-    await db_session.flush()
-    svc = EmbeddingService(db_session)
-    model, *_rest = await svc.require_embedding_ready()
+    model, *_rest = await svc.require_embedding_ready(None)
     assert model == "openai/text-embedding-3-small"

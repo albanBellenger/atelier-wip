@@ -200,7 +200,7 @@ export function EmbeddingsSection(): ReactElement {
     <div className="space-y-6">
       <PageTitle
         title="Embeddings"
-        subtitle="Vector indexes for artifact libraries and spec sections. Register embedding models, inspect library coverage per studio, and tune automatic re-indexing."
+        subtitle="Vector indexes for artifact libraries and spec sections. Live embedding calls use Admin Console → LLM (provider keys plus the embeddings routing rule). Here: optional model catalog metadata, library coverage per studio, reindex policy, and connectivity probe."
         actions={
           <Btn
             type="button"

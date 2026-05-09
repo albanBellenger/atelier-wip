@@ -392,3 +392,60 @@ async def test_me_token_usage_budget_studio_id_cap_and_spend(
         params={"limit": 10, "budget_studio_id": str(uuid.uuid4())},
     )
     assert nf_bb.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_me_token_usage_requires_membership_or_platform_admin(
+    client: AsyncClient,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    await _register(client, sfx, "bootstrap")
+    token = await _register(client, sfx, "lonely")
+    client.cookies.set("atelier_token", token)
+    r = await client.get("/me/token-usage")
+    assert r.status_code == 403
+    assert r.json()["code"] == "FORBIDDEN"
+
+
+@pytest.mark.asyncio
+async def test_me_token_usage_studio_filter_unknown_studio_404(
+    client: AsyncClient,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    await _register(client, sfx, "bootstrap_mf")
+    token = await _register(client, sfx, "mf")
+    client.cookies.set("atelier_token", token)
+    await client.post("/studios", json={"name": f"M{sfx}", "description": ""})
+    r = await client.get(
+        "/me/token-usage",
+        params={"studio_id": str(uuid.uuid4()), "limit": 10},
+    )
+    assert r.status_code == 404
+    assert r.json()["code"] == "NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_me_token_usage_studio_filter_not_member_403(
+    client: AsyncClient,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    await _register(client, sfx, "bootstrap_ab")
+    token_a = await _register(client, sfx, "own_a")
+    client.cookies.set("atelier_token", token_a)
+    (
+        await client.post("/studios", json={"name": f"A{sfx}", "description": ""})
+    ).json()["id"]
+
+    token_b = await _register(client, sfx, "own_b")
+    client.cookies.set("atelier_token", token_b)
+    studio_b = (
+        await client.post("/studios", json={"name": f"B{sfx}", "description": ""})
+    ).json()["id"]
+
+    client.cookies.set("atelier_token", token_a)
+    bad = await client.get(
+        "/me/token-usage",
+        params={"studio_id": studio_b, "limit": 10},
+    )
+    assert bad.status_code == 403
+    assert bad.json()["code"] == "FORBIDDEN"

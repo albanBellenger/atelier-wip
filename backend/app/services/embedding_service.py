@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from typing import Any
+from uuid import UUID
 
 import litellm
 import structlog
@@ -11,12 +12,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
-from app.models import AdminConfig, EmbeddingModelRegistry
+from app.models import EmbeddingDimensionState, LlmProviderRegistry
 from app.openai_compat_urls import embeddings_url, openai_v1_base
 from app.schemas.token_usage_scope import TokenUsageScope
 from app.security.field_encryption import decode_admin_stored_secret
 from app.services.litellm_exception_mapping import map_litellm_exception
 from app.services.litellm_model_id import normalize_litellm_embedding_model
+from app.services.llm_policy_service import LlmPolicyService
 from app.services.token_tracker import record_usage
 
 log = structlog.get_logger("atelier.embedding")
@@ -32,70 +34,73 @@ class EmbeddingService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    async def _get_config(self) -> AdminConfig:
-        row = await self.db.get(AdminConfig, 1)
+    async def _get_dimension_row(self) -> EmbeddingDimensionState:
+        row = await self.db.get(EmbeddingDimensionState, 1)
         if row is None:
-            row = AdminConfig(id=1)
+            row = EmbeddingDimensionState(id=1)
             self.db.add(row)
             await self.db.flush()
         return row
 
-    async def require_embedding_ready(self) -> tuple[str, str, str, str]:
-        """Returns ``(model, api_key, provider, api_base)`` or raises ApiError 503.
+    async def require_embedding_ready(
+        self, studio_id: UUID | None
+    ) -> tuple[str, str, str, str]:
+        """Returns ``(model, api_key, provider_key, api_base)`` or raises ApiError 503.
 
         ``api_base`` is the OpenAI v1 root for LiteLLM (e.g. ``https://api.openai.com/v1``).
+        Credentials and routing come from ``llm_provider_registry`` + embeddings routing rule.
+
+        ``studio_id=None`` uses platform resolution (admin probe). Otherwise studio policy
+        gates enabled providers without requiring chat ``selected_model`` to match.
         """
-        cfg = await self._get_config()
-        reg_default = (
-            await self.db.execute(
-                select(EmbeddingModelRegistry).where(
-                    EmbeddingModelRegistry.default_role == "default"
-                )
-            )
-        ).scalar_one_or_none()
-        if reg_default is not None:
-            raw = (reg_default.model_id or "").strip()
-            model = normalize_litellm_embedding_model(
-                raw,
-                litellm_provider_slug=reg_default.litellm_provider_slug,
-                provider_name_fallback=reg_default.provider_name,
-            )
-        else:
-            raw = (cfg.embedding_model or "").strip()
-            model = normalize_litellm_embedding_model(
-                raw,
-                litellm_provider_slug=None,
-                provider_name_fallback=(cfg.embedding_provider or "").strip(),
-            )
-        key = (decode_admin_stored_secret(cfg.embedding_api_key) or "").strip()
-        provider = (cfg.embedding_provider or "").strip().lower()
-        if not model or not key:
+        pol = LlmPolicyService(self.db)
+        raw_model, pk = await pol.resolve_embedding_route(studio_id=studio_id)
+        if not raw_model or not pk:
             raise ApiError(
                 status_code=503,
                 code="EMBEDDING_NOT_CONFIGURED",
-                message="Tool Admin must configure embedding provider, model, and API key.",
-            )
-        if provider not in ("openai", ""):
-            raise ApiError(
-                status_code=503,
-                code="EMBEDDING_PROVIDER_UNSUPPORTED",
                 message=(
-                    "Set embedding_provider to 'openai' (or leave empty) for OpenAI-compatible APIs; "
-                    "use embedding API base URL for a custom endpoint."
+                    "Tool Admin must add an embeddings routing rule and register the embedding "
+                    "model on a connected LLM provider with an API key (Admin Console → LLM)."
                 ),
             )
-        api_base = openai_v1_base(cfg.embedding_api_base_url)
-        return model, key, provider or "openai", api_base
+        reg_row = await self.db.scalar(
+            select(LlmProviderRegistry).where(LlmProviderRegistry.provider_key == pk)
+        )
+        if reg_row is None:
+            raise ApiError(
+                status_code=503,
+                code="EMBEDDING_NOT_CONFIGURED",
+                message="Embedding provider registry row is missing.",
+            )
+        key = (decode_admin_stored_secret(reg_row.api_key) or "").strip()
+        if not key:
+            raise ApiError(
+                status_code=503,
+                code="EMBEDDING_NOT_CONFIGURED",
+                message="Embedding provider has no API key configured.",
+            )
+        slug_raw = (reg_row.litellm_provider_slug or "").strip()
+        model = normalize_litellm_embedding_model(
+            raw_model,
+            litellm_provider_slug=slug_raw or None,
+            provider_name_fallback=(reg_row.provider_key or "").strip().lower(),
+        )
+        api_base = openai_v1_base(reg_row.api_base_url)
+        return model, key, pk, api_base
 
     async def embed_batch(
         self,
         texts: list[str],
         *,
+        studio_id: UUID | None,
         usage_scope: TokenUsageScope | None = None,
     ) -> list[list[float]]:
         if not texts:
             return []
-        model, api_key, _provider, api_base = await self.require_embedding_ready()
+        model, api_key, _provider_key, api_base = await self.require_embedding_ready(
+            studio_id
+        )
         out: list[list[float]] = []
         for start in range(0, len(texts), EMBED_BATCH):
             batch = texts[start : start + EMBED_BATCH]
@@ -136,7 +141,7 @@ class EmbeddingService:
         rows.sort(key=_sort_key)
 
         vectors: list[list[float]] = []
-        cfg = await self._get_config()
+        dim_row = await self._get_dimension_row()
         for item in rows:
             emb = getattr(item, "embedding", None)
             if emb is None and isinstance(item, dict):
@@ -148,15 +153,15 @@ class EmbeddingService:
                     message="Invalid embedding response.",
                 )
             dim = len(emb)
-            if cfg.embedding_dim is None:
-                cfg.embedding_dim = dim
+            if dim_row.observed_dim is None:
+                dim_row.observed_dim = dim
                 await self.db.flush()
-            elif cfg.embedding_dim != dim:
+            elif dim_row.observed_dim != dim:
                 raise ApiError(
                     status_code=502,
                     code="EMBEDDING_DIMENSION_MISMATCH",
                     message=(
-                        f"Embedding dimension mismatch: stored {cfg.embedding_dim}, "
+                        f"Embedding dimension mismatch: stored {dim_row.observed_dim}, "
                         f"provider returned {dim}."
                     ),
                 )
@@ -201,14 +206,27 @@ class EmbeddingService:
         return vectors
 
 
-async def embedding_configured(session: AsyncSession) -> bool:
-    """True when embedding API can be called (for optional section re-embed)."""
-    r = await session.execute(select(AdminConfig).where(AdminConfig.id == 1))
-    row = r.scalar_one_or_none()
+async def embedding_resolvable(session: AsyncSession, studio_id: UUID | None) -> bool:
+    """True when ``EmbeddingService.require_embedding_ready`` would succeed for ``studio_id``."""
+    pol = LlmPolicyService(session)
+    raw_model, pk = await pol.resolve_embedding_route(studio_id=studio_id)
+    if not raw_model or not pk:
+        return False
+    row = await session.scalar(
+        select(LlmProviderRegistry).where(LlmProviderRegistry.provider_key == pk)
+    )
     if row is None:
         return False
-    prov = (row.embedding_provider or "").strip().lower()
-    if prov and prov != "openai":
-        log.warning("embedding_skip_unsupported_provider", provider=prov)
-        return False
-    return bool((row.embedding_model or "").strip() and (row.embedding_api_key or "").strip())
+    key = (decode_admin_stored_secret(row.api_key) or "").strip()
+    return bool(key)
+
+
+async def embedding_platform_resolvable(session: AsyncSession) -> bool:
+    """Embedding resolution with no studio policy (routing + registry only)."""
+    return await embedding_resolvable(session, None)
+
+
+# Back-compat alias for call sites still named embedding_configured
+async def embedding_configured(session: AsyncSession) -> bool:
+    """Prefer :func:`embedding_platform_resolvable` — kept for minimal churn in jobs."""
+    return await embedding_platform_resolvable(session)

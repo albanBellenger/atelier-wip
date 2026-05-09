@@ -1,18 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { LlmModelSuggestInput } from '../components/admin/LlmModelSuggestInput'
 import { adminConsolePath } from '../lib/adminConsoleNav'
-import {
-  type AuthErrorBody,
-  type EmbeddingAdminConfigPublic,
-  type EmbeddingAdminConfigUpdateBody,
-  getAdminEmbeddingConfig,
-  me,
-  postAdminTestEmbedding,
-  putAdminEmbeddingConfig,
-} from '../services/api'
+import { type AuthErrorBody, me, postAdminTestEmbedding } from '../services/api'
 
 function formatApiDetail(err: unknown): string {
   if (err && typeof err === 'object' && 'detail' in err) {
@@ -38,61 +29,12 @@ export function AdminSettingsPage(): ReactElement {
     }
   }, [profileQ.isError, navigate])
 
-  const configQ = useQuery({
-    queryKey: ['admin', 'embedding-config'],
-    queryFn: () => getAdminEmbeddingConfig(),
-    enabled: Boolean(profileQ.data?.user.is_platform_admin),
-  })
-
-  const [embedProvider, setEmbedProvider] = useState('')
-  const [embedModel, setEmbedModel] = useState('')
-  const [embedApiBaseUrl, setEmbedApiBaseUrl] = useState('')
-  const [embedKey, setEmbedKey] = useState('')
-  const [clearEmbedKey, setClearEmbedKey] = useState(false)
-  const [hydrated, setHydrated] = useState(false)
-
-  useEffect(() => {
-    if (!configQ.data || hydrated) return
-    const c = configQ.data
-    setEmbedProvider(c.embedding_provider ?? '')
-    setEmbedModel(c.embedding_model ?? '')
-    setEmbedApiBaseUrl(c.embedding_api_base_url ?? '')
-    setEmbedKey('')
-    setClearEmbedKey(false)
-    setHydrated(true)
-  }, [configQ.data, hydrated])
-
   const testEmbedMut = useMutation({
     mutationFn: () => postAdminTestEmbedding(),
-  })
-
-  const saveMut = useMutation({
-    mutationFn: (body: EmbeddingAdminConfigUpdateBody) => putAdminEmbeddingConfig(body),
-    onSuccess: (data: EmbeddingAdminConfigPublic) => {
-      void qc.setQueryData(['admin', 'embedding-config'], data)
+    onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['admin', 'llm', 'deployment'] })
-      setEmbedKey('')
-      setClearEmbedKey(false)
-      setEmbedProvider(data.embedding_provider ?? '')
-      setEmbedModel(data.embedding_model ?? '')
-      setEmbedApiBaseUrl(data.embedding_api_base_url ?? '')
-      setHydrated(true)
     },
   })
-
-  function buildBody(): EmbeddingAdminConfigUpdateBody {
-    const body: EmbeddingAdminConfigUpdateBody = {
-      embedding_provider: embedProvider.trim() || null,
-      embedding_model: embedModel.trim() || null,
-      embedding_api_base_url: embedApiBaseUrl.trim() || null,
-    }
-    if (clearEmbedKey) {
-      body.embedding_api_key = ''
-    } else if (embedKey.trim()) {
-      body.embedding_api_key = embedKey.trim()
-    }
-    return body
-  }
 
   if (profileQ.isPending || !profileQ.data) {
     return (
@@ -118,9 +60,6 @@ export function AdminSettingsPage(): ReactElement {
     )
   }
 
-  const embedKeySet = configQ.data?.embedding_api_key_set ?? false
-  const embedKeyHint = configQ.data?.embedding_api_key_hint
-
   return (
     <div className="min-h-screen bg-zinc-950 px-4 py-10 text-zinc-100">
       <div className="mx-auto max-w-xl">
@@ -138,172 +77,69 @@ export function AdminSettingsPage(): ReactElement {
             Token usage
           </Link>
         </div>
-        <h1 className="text-2xl font-semibold">Embedding settings</h1>
+        <h1 className="text-2xl font-semibold">Platform admin shortcuts</h1>
         <p className="mt-2 text-sm text-zinc-400">
-          Configure the tool-wide embedding provider used for section vectors and RAG. API keys are
-          encrypted at rest (Fernet) when{' '}
-          <span className="font-mono text-zinc-300">ENCRYPTION_KEY</span> is set. The full key is
-          never sent to the browser; when a key is stored you see a short suffix hint. Leave
-          &quot;New API key&quot; blank to keep the stored key, or use &quot;Remove stored key&quot;
-          to clear.
+          Embedding models, API keys, and routing live in the Admin Console. Register embedding
+          models on a provider row, add an <span className="font-mono text-zinc-300">embeddings</span>{' '}
+          routing rule, then use the connectivity check below.
         </p>
 
-        <div className="mt-6 rounded-lg border border-violet-500/40 bg-violet-950/30 px-4 py-3 text-sm text-zinc-200">
-          <p className="font-medium text-violet-200">LLM provider configuration has moved</p>
-          <p className="mt-1 text-zinc-400">
-            Add models, API keys, and routing in the Admin Console under{' '}
-            <span className="text-zinc-300">LLM connectivity</span>.
-          </p>
+        <div className="mt-6 space-y-3 rounded-lg border border-violet-500/40 bg-violet-950/30 px-4 py-3 text-sm text-zinc-200">
+          <p className="font-medium text-violet-200">LLM provider registry</p>
           <Link
             to={adminConsolePath('llm')}
-            className="mt-2 inline-block font-medium text-violet-400 hover:underline"
+            className="inline-block font-medium text-violet-400 hover:underline"
           >
-            Open Admin Console — LLM tab
+            Open Admin Console — LLM
           </Link>
+          <p className="text-zinc-400">
+            Embeddings routing bucket and provider keys are configured here (including the{' '}
+            <span className="font-mono text-zinc-300">embeddings</span> agent group).
+          </p>
         </div>
 
-        {configQ.isPending && (
-          <p className="mt-6 text-zinc-500">Loading configuration…</p>
-        )}
-        {configQ.isError && (
-          <p className="mt-6 text-sm text-red-400">
-            Could not load settings. You may not be signed in as a platform admin.
-          </p>
-        )}
-
-        {configQ.data && (
-          <form
-            className="mt-8 space-y-8"
-            onSubmit={(e) => {
-              e.preventDefault()
-              saveMut.mutate(buildBody())
-            }}
+        <div className="mt-4 space-y-3 rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm">
+          <p className="font-medium text-zinc-300">Embeddings console</p>
+          <Link
+            to={adminConsolePath('embeddings')}
+            className="inline-block font-medium text-violet-400 hover:underline"
           >
-            <section className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
-              <h2 className="text-sm font-medium text-zinc-300">Embedding</h2>
-              <label className="block text-sm">
-                <span className="text-zinc-400">Provider</span>
-                <input
-                  className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100"
-                  value={embedProvider}
-                  onChange={(e) => setEmbedProvider(e.target.value)}
-                  placeholder="openai"
-                  autoComplete="off"
-                />
-              </label>
-              <label className="block text-sm">
-                <span className="text-zinc-400">Model</span>
-                <LlmModelSuggestInput
-                  id="admin-settings-embed-model"
-                  listId="admin-settings-embed-model-dl"
-                  value={embedModel}
-                  onChange={setEmbedModel}
-                  litellmProvider={embedProvider.trim().toLowerCase() || undefined}
-                  mode="embedding"
-                  minChars={2}
-                  placeholder="Type 2+ characters for embedding catalog suggestions"
-                  className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100"
-                />
-              </label>
-              <label className="block text-sm">
-                <span className="text-zinc-400">API base URL</span>
-                <input
-                  className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 font-mono text-sm text-zinc-100"
-                  value={embedApiBaseUrl}
-                  onChange={(e) => setEmbedApiBaseUrl(e.target.value)}
-                  placeholder="https://api.openai.com/v1 (optional)"
-                  autoComplete="off"
-                />
-              </label>
-              <p className="text-xs text-zinc-500">
-                Embeddings use <span className="font-mono">{`{base}/embeddings`}</span>. Leave empty for
-                OpenAI&apos;s default host.
-              </p>
-              <p className="text-xs text-zinc-500">
-                API key:{' '}
-                {embedKeySet ? (
-                  <span className="text-zinc-400">
-                    A key is stored
-                    {embedKeyHint ? (
-                      <span className="font-mono text-zinc-300"> ({embedKeyHint})</span>
-                    ) : null}
-                    .
-                  </span>
-                ) : (
-                  <span className="text-zinc-500">Not set.</span>
-                )}
-              </p>
-              <label className="block text-sm">
-                <span className="text-zinc-400">New API key</span>
-                <input
-                  type="password"
-                  className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100"
-                  value={embedKey}
-                  onChange={(e) => setEmbedKey(e.target.value)}
-                  placeholder="Leave blank to keep current key"
-                  autoComplete="new-password"
-                  disabled={clearEmbedKey}
-                />
-              </label>
-              <label className="flex items-center gap-2 text-sm text-zinc-400">
-                <input
-                  type="checkbox"
-                  checked={clearEmbedKey}
-                  onChange={(e) => {
-                    setClearEmbedKey(e.target.checked)
-                    if (e.target.checked) setEmbedKey('')
-                  }}
-                />
-                Remove stored embedding API key
-              </label>
-              <div className="flex flex-col gap-2 border-t border-zinc-800 pt-4">
-                <p className="text-xs text-zinc-500">
-                  Embeds a short probe string using the saved embedding model, key, and API base.
-                </p>
-                <button
-                  type="button"
-                  disabled={testEmbedMut.isPending}
-                  onClick={() => testEmbedMut.mutate()}
-                  className="self-start rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-700 disabled:opacity-50"
-                >
-                  {testEmbedMut.isPending ? 'Testing…' : 'Test embedding'}
-                </button>
-                {testEmbedMut.data && (
-                  <p
-                    className={`text-sm ${testEmbedMut.data.ok ? 'text-emerald-400' : 'text-amber-400'}`}
-                  >
-                    {testEmbedMut.data.message}
-                    {testEmbedMut.data.detail ? (
-                      <span className="block whitespace-pre-wrap text-zinc-400">
-                        {testEmbedMut.data.detail}
-                      </span>
-                    ) : null}
-                  </p>
-                )}
-                {testEmbedMut.isError && (
-                  <p className="text-sm text-red-400">{formatApiDetail(testEmbedMut.error)}</p>
-                )}
-              </div>
-            </section>
+            Open Admin Console — Embeddings
+          </Link>
+          <p className="text-zinc-500">
+            Library coverage, embedding model catalog metadata, reindex policy, and probe.
+          </p>
+        </div>
 
-            {saveMut.isSuccess && (
-              <p className="text-sm text-emerald-400">Settings saved.</p>
-            )}
-            {saveMut.isError && (
-              <p className="whitespace-pre-wrap text-sm text-red-400">
-                {formatApiDetail(saveMut.error)}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={saveMut.isPending}
-              className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+        <div className="mt-8 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
+          <h2 className="text-sm font-medium text-zinc-300">Test embedding API</h2>
+          <p className="mt-1 text-xs text-zinc-500">
+            Calls the platform embedding route (LLM registry + embeddings routing rule).
+          </p>
+          <button
+            type="button"
+            disabled={testEmbedMut.isPending}
+            onClick={() => testEmbedMut.mutate()}
+            className="mt-3 rounded-lg border border-zinc-600 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-200 hover:bg-zinc-700 disabled:opacity-50"
+          >
+            {testEmbedMut.isPending ? 'Testing…' : 'Test embedding'}
+          </button>
+          {testEmbedMut.data && (
+            <p
+              className={`mt-2 text-sm ${testEmbedMut.data.ok ? 'text-emerald-400' : 'text-amber-400'}`}
             >
-              {saveMut.isPending ? 'Saving…' : 'Save'}
-            </button>
-          </form>
-        )}
+              {testEmbedMut.data.message}
+              {testEmbedMut.data.detail ? (
+                <span className="block whitespace-pre-wrap text-zinc-400">
+                  {testEmbedMut.data.detail}
+                </span>
+              ) : null}
+            </p>
+          )}
+          {testEmbedMut.isError && (
+            <p className="mt-2 text-sm text-red-400">{formatApiDetail(testEmbedMut.error)}</p>
+          )}
+        </div>
       </div>
     </div>
   )

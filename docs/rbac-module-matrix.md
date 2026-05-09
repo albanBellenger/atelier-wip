@@ -249,7 +249,6 @@ Auth ([`auth.py`](../backend/app/routers/auth.py)): `register`, `login`, `logout
 
 | Router | Method | Path pattern | RBAC dependency |
 |--------|--------|--------------|-----------------|
-| admin | GET/PUT | `/admin/embedding-config` | `require_platform_admin` |
 | admin | POST | `/admin/test/llm`, `/admin/test/embedding` | `require_platform_admin` |
 | admin | GET | `/admin/console/overview` | `require_platform_admin` |
 | admin | GET/POST | `/admin/studios` | `require_platform_admin` |

@@ -1,13 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const apiMocks = vi.hoisted(() => ({
   me: vi.fn(),
-  getAdminEmbeddingConfig: vi.fn(),
-  getAdminLlmModelSuggestions: vi.fn(),
+  postAdminTestEmbedding: vi.fn(),
 }))
 
 vi.mock('../services/api', async (importOriginal) => {
@@ -15,18 +14,14 @@ vi.mock('../services/api', async (importOriginal) => {
   return {
     ...actual,
     me: apiMocks.me,
-    getAdminEmbeddingConfig: apiMocks.getAdminEmbeddingConfig,
-    getAdminLlmModelSuggestions: apiMocks.getAdminLlmModelSuggestions,
+    postAdminTestEmbedding: apiMocks.postAdminTestEmbedding,
   }
 })
 
 import { AdminSettingsPage } from './AdminSettingsPage'
 
 describe('AdminSettingsPage', () => {
-  const suggestSpy = vi.fn()
-
   beforeEach(() => {
-    suggestSpy.mockReset()
     apiMocks.me.mockResolvedValue({
       user: {
         id: 'u1',
@@ -36,15 +31,10 @@ describe('AdminSettingsPage', () => {
       },
       studios: [],
     })
-    apiMocks.getAdminEmbeddingConfig.mockResolvedValue({
-      embedding_provider: 'openai',
-      embedding_model: '',
-      embedding_api_base_url: null,
-      embedding_api_key_set: false,
-    })
-    apiMocks.getAdminLlmModelSuggestions.mockImplementation((p) => {
-      suggestSpy(p)
-      return Promise.resolve({ models: [], warning: null })
+    apiMocks.postAdminTestEmbedding.mockResolvedValue({
+      ok: true,
+      message: 'Embedding connection succeeded (1536 dimensions).',
+      detail: null,
     })
   })
 
@@ -52,7 +42,7 @@ describe('AdminSettingsPage', () => {
     vi.clearAllMocks()
   })
 
-  it('requests embedding catalog suggestions after debounced typing in model field', async () => {
+  it('platform admin sees shortcuts and can run embedding probe', async () => {
     const user = userEvent.setup()
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
@@ -63,23 +53,34 @@ describe('AdminSettingsPage', () => {
       </MemoryRouter>,
     )
 
-    await screen.findByText('Embedding settings')
-    const modelInput = await screen.findByPlaceholderText(
-      /Type 2\+ characters for embedding catalog suggestions/i,
-    )
-    await user.type(modelInput, 'te')
-
-    await waitFor(
-      () => {
-        expect(suggestSpy).toHaveBeenCalled()
-      },
-      { timeout: 4000 },
-    )
+    expect(await screen.findByRole('heading', { name: /Platform admin shortcuts/i })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /Test embedding/i }))
+    expect(apiMocks.postAdminTestEmbedding).toHaveBeenCalled()
     expect(
-      suggestSpy.mock.calls.some((c) => {
-        const p = c[0] as { q?: string | null; mode?: string }
-        return String(p?.q ?? '').includes('te') && p?.mode === 'embedding'
-      }),
-    ).toBe(true)
+      await screen.findByText(/Embedding connection succeeded/i),
+    ).toBeInTheDocument()
+  })
+
+  it('non-platform admin cannot access settings content', async () => {
+    apiMocks.me.mockResolvedValue({
+      user: {
+        id: 'u2',
+        email: 'm@example.com',
+        display_name: 'Member',
+        is_platform_admin: false,
+      },
+      studios: [],
+    })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <AdminSettingsPage />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText(/Access denied/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Test embedding/i })).not.toBeInTheDocument()
   })
 })

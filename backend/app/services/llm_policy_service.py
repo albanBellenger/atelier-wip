@@ -84,6 +84,8 @@ class LlmPolicyService:
 
         routing = await self.db.get(LlmRoutingRule, use_case)
         if routing is None:
+            if use_case == "embeddings":
+                return None, None
             routing = await self.db.get(LlmRoutingRule, "chat")
         if routing is None:
             return None, None
@@ -136,11 +138,92 @@ class LlmPolicyService:
             if has_any_policy:
                 if pol is None or not pol.enabled:
                     continue
-                if pol.selected_model != cand:
+                if use_case != "embeddings" and pol.selected_model != cand:
                     continue
             else:
                 # Registry populated but studio not configured yet — allow routing candidate.
                 pass
+            return cand, pk
+        return None, None
+
+    async def resolve_embedding_route(
+        self,
+        *,
+        studio_id: UUID | None,
+    ) -> tuple[str | None, str | None]:
+        """Resolve (registry model id, provider_key) for embeddings via routing + catalog.
+
+        Uses **only** ``LlmRoutingRule.use_case == \"embeddings\"`` — no fallback to chat.
+
+        * ``studio_id is None`` (platform): first routing candidate hosted on a connected
+          provider with that model in ``models_json``.
+        * ``studio_id`` set: same scan; if the studio has any ``StudioLlmProviderPolicy``
+          rows, the embedding provider must be **enabled** there. Chat ``selected_model``
+          is **not** compared (embedding model ids differ from chat picks).
+        """
+        reg_count = await self.db.scalar(
+            select(func.count()).select_from(LlmProviderRegistry)
+        )
+        if not reg_count:
+            return None, None
+
+        routing = await self.db.get(LlmRoutingRule, "embeddings")
+        if routing is None:
+            return None, None
+
+        candidates: list[str] = []
+        if routing.primary_model.strip():
+            candidates.append(routing.primary_model.strip())
+        if routing.fallback_model and routing.fallback_model.strip():
+            candidates.append(routing.fallback_model.strip())
+
+        providers = list(
+            (
+                await self.db.execute(
+                    select(LlmProviderRegistry).order_by(
+                        LlmProviderRegistry.sort_order,
+                        LlmProviderRegistry.provider_key,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        policy_rows: list[StudioLlmProviderPolicy] = []
+        policy_map: dict[str, StudioLlmProviderPolicy] = {}
+        has_any_policy = False
+        if studio_id is not None:
+            policy_rows = list(
+                (
+                    await self.db.execute(
+                        select(StudioLlmProviderPolicy).where(
+                            StudioLlmProviderPolicy.studio_id == studio_id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            policy_map = {p.provider_key: p for p in policy_rows}
+            has_any_policy = len(policy_rows) > 0
+
+        def provider_for_model(model_name: str) -> str | None:
+            for pr in providers:
+                if not _registry_connected(pr):
+                    continue
+                if model_name in _models_from_registry_row(pr):
+                    return pr.provider_key
+            return None
+
+        for cand in candidates:
+            pk = provider_for_model(cand)
+            if pk is None:
+                continue
+            pol = policy_map.get(pk)
+            if studio_id is not None and has_any_policy:
+                if pol is None or not pol.enabled:
+                    continue
             return cand, pk
         return None, None
 

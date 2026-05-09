@@ -202,6 +202,14 @@ async def test_mcp_key_list_pull_patch_flow(client: AsyncClient) -> None:
         )
         assert forbidden.status_code == 403
 
+        invalid = await ac.patch(
+            f"/mcp/v1/work-orders/{wid}",
+            headers={"Authorization": f"Bearer {secret}"},
+            json={"status": "not_a_valid_status"},
+        )
+        assert invalid.status_code == 400
+        assert invalid.json()["code"] == "BAD_REQUEST"
+
 
 @pytest.mark.asyncio
 async def test_mcp_pull_includes_related_work_orders_after_dependency(

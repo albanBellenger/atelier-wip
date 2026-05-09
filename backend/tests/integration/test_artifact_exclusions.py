@@ -6,10 +6,8 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
 
-from app.models import User
-from app.services.embedding_service import OPENAI_EMBEDDING_API_BASE
+from tests.integration.embedding_mocks import patch_fake_embedding_transport
 
 
 async def _register(client: AsyncClient, suffix: str, label: str) -> str:
@@ -80,40 +78,14 @@ def _in_memory_minio(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def fake_embed(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def ready(_self: object) -> tuple[str, str, str, str]:
-        return ("text-embedding-3-small", "sk-fake", "openai", OPENAI_EMBEDDING_API_BASE)
-
-    async def batch(_self: object, texts: list[str], *, usage_scope: object | None = None) -> list[list[float]]:
-        return [[0.0] * 1536 for _ in texts]
-
-    from app.services.embedding_service import EmbeddingService
-
-    monkeypatch.setattr(EmbeddingService, "require_embedding_ready", ready)
-    monkeypatch.setattr(EmbeddingService, "embed_batch", batch)
-
-
-async def _promote_tool_admin(db_session, email: str) -> None:
-    r = await db_session.execute(select(User).where(User.email == email))
-    u = r.scalar_one()
-    u.is_platform_admin = True
-    await db_session.flush()
+    patch_fake_embedding_transport(monkeypatch)
 
 
 async def _studio_two_projects_one_artifact_each(
     client: AsyncClient, db_session, sfx: str
 ) -> tuple[str, str, str, str, str, str]:
     token = await _register(client, sfx, "owner")
-    await _promote_tool_admin(db_session, f"owner-{sfx}@example.com")
     client.cookies.set("atelier_token", token)
-    put_cfg = await client.put(
-        "/admin/embedding-config",
-        json={
-            "embedding_provider": "openai",
-            "embedding_model": "text-embedding-3-small",
-            "embedding_api_key": "sk-test",
-        },
-    )
-    assert put_cfg.status_code == 200, put_cfg.text
 
     cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
     assert cr.status_code == 200

@@ -16,18 +16,12 @@ from app.security.jwt import create_access_token
 from tests.factories import create_user
 
 
+from tests.integration.embedding_mocks import patch_fake_embedding_transport
+
+
 @pytest.fixture(autouse=True)
 def _fake_embedding_rbac(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services.embedding_service import EmbeddingService, OPENAI_EMBEDDING_API_BASE
-
-    async def ready(_self: object) -> tuple[str, str, str, str]:
-        return ("text-embedding-3-small", "sk-fake", "openai", OPENAI_EMBEDDING_API_BASE)
-
-    async def batch(_self: object, texts: list[str], *, usage_scope: object | None = None) -> list[list[float]]:
-        return [[0.0] * 1536 for _ in texts]
-
-    monkeypatch.setattr(EmbeddingService, "require_embedding_ready", ready)
-    monkeypatch.setattr(EmbeddingService, "embed_batch", batch)
+    patch_fake_embedding_transport(monkeypatch)
 
 
 @pytest.fixture(autouse=True)
@@ -148,7 +142,7 @@ async def _home_studio_graph(
 
 
 @pytest.mark.asyncio
-async def test_tool_admin_only_embedding_config(
+async def test_tool_admin_only_llm_providers_list(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
     """Tool admin gate does not depend on registration ordering."""
@@ -161,11 +155,11 @@ async def test_tool_admin_only_embedding_config(
     await db_session.flush()
 
     client.cookies.set("atelier_token", create_access_token(admin.id))
-    ok = await client.get("/admin/embedding-config")
+    ok = await client.get("/admin/llm/providers")
     assert ok.status_code == 200
 
     client.cookies.set("atelier_token", create_access_token(member.id))
-    denied = await client.get("/admin/embedding-config")
+    denied = await client.get("/admin/llm/providers")
     assert denied.status_code == 403
 
 
@@ -354,6 +348,10 @@ async def test_rbac_home_studio_matrix(client: AsyncClient) -> None:
     # --- Project chat history ---
     assert await req("viewer", "GET", f"/projects/{pid}/chat") == 403
     assert await req("builder", "GET", f"/projects/{pid}/chat") == 200
+
+    # --- Project chat RAG preview ---
+    assert await req("viewer", "GET", f"/projects/{pid}/chat/rag-preview") == 403
+    assert await req("builder", "GET", f"/projects/{pid}/chat/rag-preview") == 200
 
     # --- Section improve ---
     assert (
