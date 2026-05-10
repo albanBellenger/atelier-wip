@@ -6,13 +6,15 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents._atelier_product_prefix import ATELIER_PRODUCT_PREFIX
 from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.llm_service import LLMService
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
 
 SYSTEM_PROMPT = (
-    "You write short UI strings for a specification builder product (Atelier). "
+    ATELIER_PRODUCT_PREFIX
+    + "You write short UI strings for a specification builder product. "
     "Stay professional and concrete. No markdown, no quotes around outputs."
 )
 

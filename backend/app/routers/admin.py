@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import get_studio_for_platform_admin, require_platform_admin
-from app.exceptions import ApiError
 from app.models import Studio, User
 from app.schemas.auth import (
     AdminConnectivityResult,
@@ -56,30 +55,6 @@ from app.services.studio_service import StudioService
 from app.services.studio_tool_admin_service import StudioToolAdminService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
-
-
-@router.get("/config", include_in_schema=False, response_model=None)
-async def admin_config_get_removed(_: User = Depends(require_platform_admin)) -> None:
-    raise ApiError(
-        status_code=404,
-        code="NOT_FOUND",
-        message=(
-            "GET /admin/config was removed; configure embeddings via Admin Console → LLM "
-            "(provider registry + embeddings routing rule)."
-        ),
-    )
-
-
-@router.put("/config", include_in_schema=False, response_model=None)
-async def admin_config_put_removed(_: User = Depends(require_platform_admin)) -> None:
-    raise ApiError(
-        status_code=404,
-        code="NOT_FOUND",
-        message=(
-            "PUT /admin/config was removed; configure embeddings via Admin Console → LLM "
-            "(provider registry + embeddings routing rule)."
-        ),
-    )
 
 
 @router.get("/users", response_model=list[AdminUserDirectoryRowResponse])

@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ADMIN_CONSOLE_ACCENT,
@@ -14,16 +14,12 @@ import {
   Toggle,
 } from '../../components/admin/adminPrimitives'
 import type { AuthErrorBody } from '../../services/api'
-import type { LlmProviderRegistryRow, StudioLlmPolicyRow } from '../../services/api'
+import { useStudioLlmPolicy } from '../../hooks/useStudioLlmPolicy'
 import {
   deleteAdminStudio,
-  getAdminLlmDeployment,
   getAdminStudio,
-  getAdminStudioLlmPolicy,
   listAdminStudios,
-  modelIdsFromEntries,
   postAdminStudio,
-  putAdminStudioLlmPolicy,
 } from '../../services/api'
 
 function formatApiDetail(err: unknown): string {
@@ -43,36 +39,6 @@ function formatDate(iso: string): string {
   } catch {
     return iso
   }
-}
-
-function buildPolicyRows(
-  providers: LlmProviderRegistryRow[],
-  existing: StudioLlmPolicyRow[] | undefined,
-): StudioLlmPolicyRow[] {
-  const map = new Map(existing?.map((r) => [r.provider_id, r]) ?? [])
-  return providers.map((p) => {
-    const prev = map.get(p.provider_id)
-    const ids = modelIdsFromEntries(p.models)
-    const defaultModel = ids[0] ?? null
-    return {
-      provider_id: p.provider_id,
-      enabled: prev?.enabled ?? false,
-      selected_model:
-        prev?.selected_model && ids.includes(prev.selected_model)
-          ? prev.selected_model
-          : defaultModel,
-    }
-  })
-}
-
-function buildStudioPolicyRows(
-  connectedProviders: LlmProviderRegistryRow[],
-  existing: StudioLlmPolicyRow[] | undefined,
-): StudioLlmPolicyRow[] {
-  const built = buildPolicyRows(connectedProviders, existing)
-  const connIds = new Set(connectedProviders.map((p) => p.provider_id))
-  const preserved = (existing ?? []).filter((r) => !connIds.has(r.provider_id))
-  return [...built, ...preserved]
 }
 
 export function StudiosSection(): ReactElement {
@@ -95,17 +61,6 @@ export function StudiosSection(): ReactElement {
     retry: false,
   })
 
-  const deploymentQ = useQuery({
-    queryKey: ['admin', 'llm', 'deployment'],
-    queryFn: () => getAdminLlmDeployment(),
-  })
-
-  const policyQ = useQuery({
-    queryKey: ['admin', 'llm', 'policy', selectedId],
-    queryFn: () => getAdminStudioLlmPolicy(selectedId),
-    enabled: Boolean(selectedId),
-  })
-
   useEffect(() => {
     const list = studiosQ.data
     if (!list?.length) {
@@ -117,6 +72,15 @@ export function StudiosSection(): ReactElement {
       return list[0].studio_id
     })
   }, [studiosQ.data])
+
+  const {
+    deploymentQuery,
+    policyQuery,
+    connectedProviders,
+    rowsForStudio,
+    savePolicyIsPending,
+    updatePolicyRow,
+  } = useStudioLlmPolicy(selectedId)
 
   const detail = detailQ.data
 
@@ -145,42 +109,6 @@ export function StudiosSection(): ReactElement {
       void qc.removeQueries({ queryKey: ['admin', 'llm', 'policy', deletedId] })
     },
   })
-
-  const savePolicy = useMutation({
-    mutationFn: ({ sid, rows }: { sid: string; rows: StudioLlmPolicyRow[] }) =>
-      putAdminStudioLlmPolicy(sid, { rows }),
-    onSuccess: async (_, { sid }) => {
-      await qc.invalidateQueries({ queryKey: ['admin', 'llm', 'policy', sid] })
-    },
-  })
-
-  const providers = deploymentQ.data?.providers ?? []
-  const connectedProviders = useMemo(
-    () => providers.filter((p) => p.status === 'connected'),
-    [providers],
-  )
-  const rowsForStudio = useMemo(
-    () => buildStudioPolicyRows(connectedProviders, policyQ.data),
-    [connectedProviders, policyQ.data],
-  )
-
-  const persistRows = useCallback(
-    (next: StudioLlmPolicyRow[]) => {
-      if (!selectedId) return
-      savePolicy.mutate({ sid: selectedId, rows: next })
-    },
-    [selectedId, savePolicy],
-  )
-
-  const updatePolicyRow = useCallback(
-    (providerId: string, patch: Partial<Pick<StudioLlmPolicyRow, 'enabled' | 'selected_model'>>) => {
-      const next = rowsForStudio.map((r) =>
-        r.provider_id === providerId ? { ...r, ...patch } : r,
-      )
-      persistRows(next)
-    },
-    [persistRows, rowsForStudio],
-  )
 
   const list = studiosQ.data ?? []
   const gitlab = detail?.gitlab
@@ -392,7 +320,7 @@ export function StudiosSection(): ReactElement {
               </Card>
 
               <Card title="Allowed providers (this studio)">
-                {deploymentQ.isPending ? (
+                {deploymentQuery.isPending ? (
                   <div className="px-5 py-4 text-sm text-zinc-500">Loading providers…</div>
                 ) : connectedProviders.length === 0 ? (
                   <div className="px-5 py-4 text-sm text-zinc-500">
@@ -424,15 +352,15 @@ export function StudiosSection(): ReactElement {
                             if (!row) return
                             updatePolicyRow(p.provider_id, { enabled: !row.enabled })
                           }}
-                          disabled={savePolicy.isPending}
+                          disabled={savePolicyIsPending}
                         />
                       </li>
                     ))}
                   </ul>
                 )}
-                {policyQ.isError ? (
+                {policyQuery.isError ? (
                   <p className="px-5 pb-3 text-[12px] text-rose-300" role="alert">
-                    {formatApiDetail(policyQ.error)}
+                    {formatApiDetail(policyQuery.error)}
                   </p>
                 ) : null}
               </Card>

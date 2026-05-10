@@ -67,12 +67,12 @@ async def test_auth_register_admin_member_rbac_and_login_errors(
     assert me_member.json()["user"]["is_platform_admin"] is False
 
     client.cookies.set("atelier_token", token_admin)
-    cfg = await client.get("/admin/config")
-    assert cfg.status_code == 404
-    assert cfg.json()["code"] == "NOT_FOUND"
+    users_admin = await client.get("/admin/users")
+    assert users_admin.status_code == 200
+    assert isinstance(users_admin.json(), list)
 
     client.cookies.set("atelier_token", token_member)
-    forbidden = await client.get("/admin/config")
+    forbidden = await client.get("/admin/users")
     assert forbidden.status_code == 403
     assert forbidden.json()["code"] == "FORBIDDEN"
 

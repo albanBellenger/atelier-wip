@@ -8,6 +8,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents._atelier_product_prefix import ATELIER_PRODUCT_PREFIX
 from app.config import get_settings
 from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.chat_openai_history import fetch_openai_messages_for_project
@@ -15,10 +16,7 @@ from app.services.llm_service import LLMService, serialize_outbound_chat_message
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
 
-PROJECT_CHAT_SYSTEM_PROMPT_PREFIX = (
-    "You are a concise assistant helping the whole project team discuss "
-    "the specification and implementation. Ground answers in the context.\n\n"
-)
+PROJECT_CHAT_SYSTEM_PROMPT_PREFIX = "Ground answers in the context.\n\n"
 
 # User turns are supplied via the chat API `messages` list; no static user prompt body.
 USER_PROMPT = ""
@@ -33,7 +31,7 @@ class ProjectChatAgent:
 
     @staticmethod
     def build_system_prompt(rag_text: str) -> str:
-        return PROJECT_CHAT_SYSTEM_PROMPT_PREFIX + rag_text
+        return ATELIER_PRODUCT_PREFIX + PROJECT_CHAT_SYSTEM_PROMPT_PREFIX + rag_text
 
     async def stream_assistant_tokens(
         self,

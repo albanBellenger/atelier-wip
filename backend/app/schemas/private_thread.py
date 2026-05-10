@@ -2,11 +2,39 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+@dataclass(frozen=True)
+class ThreadFinding:
+    finding_type: Literal["conflict", "gap"]
+    description: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {"finding_type": self.finding_type, "description": self.description}
+
+
+def normalize_thread_findings(scan: object) -> list[dict[str, str]]:
+    if not isinstance(scan, dict):
+        return []
+    raw = scan.get("findings")
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, str]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        ft = item.get("finding_type")
+        desc = str(item.get("description") or "").strip()
+        if ft not in ("conflict", "gap") or not desc:
+            continue
+        out.append({"finding_type": str(ft), "description": desc})
+    return out
 
 
 class ThreadMessageOut(BaseModel):

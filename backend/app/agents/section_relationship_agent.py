@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents._atelier_product_prefix import ATELIER_PRODUCT_PREFIX
 from app.exceptions import ApiError
 from app.models import Section
 from app.schemas.token_usage_scope import TokenUsageScope
@@ -17,7 +18,8 @@ from app.services.llm_service import LLMService
 # ── Prompts ───────────────────────────────────────────────────────────────────
 
 SYSTEM_PROMPT = (
-    "Identify explicit cross-references between specification sections "
+    ATELIER_PRODUCT_PREFIX
+    + "Identify explicit cross-references between specification sections "
     "(dependencies, mentions of another section by name or concept). "
     "Return directed edges from_index → to_index using the indices given. "
     "Only include clear references; omit speculative links."

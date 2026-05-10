@@ -18,7 +18,7 @@ See [README.md](../README.md#emergency-recovery) for details.
 
 **LLM inference** (provider keys, models, optional OpenAI-compatible base URLs) is configured in **Admin → Console → LLM** via the provider registry API (`/admin/llm/...`). Chat and structured calls resolve credentials from the **default** registry row (and routing rules where applicable). Without a configured default provider and API key, LLM-dependent features return `503` with structured error codes such as `LLM_NOT_CONFIGURED`.
 
-**Embeddings** resolve like chat LLMs: Tool Admin configures provider rows and an **embeddings** routing rule in **Admin → Console → LLM** (`/admin/llm/providers`, `/admin/llm/routing`). Optional catalog metadata, library coverage, reindex policy, and the embedding probe live under **Admin → Console → Embeddings**. Observed vector width is stored in `embedding_dimension_state` (singleton). The legacy `GET/PUT /admin/config` paths still return **404**.
+**Embeddings** resolve like chat LLMs: Tool Admin configures provider rows and an **embeddings** routing rule in **Admin → Console → LLM** (`/admin/llm/providers`, `/admin/llm/routing`). Optional catalog metadata, library coverage, reindex policy, and the embedding probe live under **Admin → Console → Embeddings**. Observed vector width is stored in `embedding_dimension_state` (singleton). The legacy `GET/PUT /admin/config` paths are **not registered** (requests fall through to the framework’s default **404**).
 
 ## GitLab tokens
 

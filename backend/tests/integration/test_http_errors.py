@@ -12,8 +12,8 @@ async def test_me_without_auth_returns_401(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_admin_config_without_auth_returns_401(client: AsyncClient) -> None:
-    r = await client.get("/admin/config")
+async def test_admin_users_without_auth_returns_401(client: AsyncClient) -> None:
+    r = await client.get("/admin/users")
     assert r.status_code == 401
     assert r.json()["code"] == "UNAUTHORIZED"
 

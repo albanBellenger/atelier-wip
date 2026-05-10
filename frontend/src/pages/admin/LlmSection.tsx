@@ -28,26 +28,24 @@ import {
   type LlmRegistryModelEntry,
   type LlmRegistryModelKind,
   type LlmRoutingRuleRow,
-  type StudioLlmPolicyRow,
-  getAdminLlmDeployment,
-  getAdminLlmRouting,
-  getAdminLlmRoutingBuckets,
-  getAdminStudioLlmPolicy,
   listStudios,
   modelIdsFromEntries,
   deleteAdminLlmProvider,
   postAdminTestLlm,
   postAdminTestEmbedding,
+  getAdminLlmRouting,
+  getAdminLlmRoutingBuckets,
   putAdminLlmProvider,
   putAdminLlmRouting,
-  putAdminStudioLlmPolicy,
 } from '../../services/api'
 import {
-  ROUTING_AGENT_GROUP_OPTIONS,
-  ROUTING_SORT_ORDER,
+  resolveRoutingBucketOrder,
+  routingAgentGroupOptionsFromBucketOrder,
   routingBucketAgentsSummary,
   routingBucketTitle,
+  sortLlmRoutingRules,
 } from '../../lib/llmRoutingBuckets'
+import { useStudioLlmPolicy } from '../../hooks/useStudioLlmPolicy'
 import { ProviderUpsertModal } from './ProviderUpsertModal'
 
 const EMPTY_LLM_PROVIDERS: LlmProviderRegistryRow[] = []
@@ -237,10 +235,6 @@ function firstModelOfKind(
   return models.find((m) => registryEntryKind(m) === kind)?.id
 }
 
-function chatModelIdsForPolicy(models: LlmRegistryModelEntry[]): string[] {
-  return models.filter((m) => registryEntryKind(m) === 'chat').map((m) => m.id)
-}
-
 function parseModelKindsCsv(text: string, n: number): LlmRegistryModelKind[] {
   const parts = text.split(/[,\n]+/).map((s) => s.trim().toLowerCase())
   const out: LlmRegistryModelKind[] = []
@@ -319,20 +313,6 @@ function formatProviderMutationErr(err: unknown): string {
   return err instanceof Error ? err.message : 'Request failed'
 }
 
-function sortRoutingRules(rules: LlmRoutingRuleRow[]): LlmRoutingRuleRow[] {
-  const order = [...ROUTING_SORT_ORDER]
-  return [...rules].sort((a, b) => {
-    const ua = a.use_case ?? ''
-    const ub = b.use_case ?? ''
-    const ia = order.indexOf(ua as (typeof ROUTING_SORT_ORDER)[number])
-    const ib = order.indexOf(ub as (typeof ROUTING_SORT_ORDER)[number])
-    if (ia !== -1 && ib !== -1) return ia - ib
-    if (ia !== -1) return -1
-    if (ib !== -1) return 1
-    return ua.localeCompare(ub)
-  })
-}
-
 /** Canonical form used by `putAdminLlmRouting` — order-independent compare. */
 function normalizeRoutingRulesForCompare(rules: LlmRoutingRuleRow[]): LlmRoutingRuleRow[] {
   return [...rules]
@@ -378,10 +358,14 @@ function AddRoutingModal({
   bucketsPayload: AdminLlmRoutingBucketsResponse | undefined
   onAdd: (row: LlmRoutingRuleRow) => void
 }): ReactElement | null {
+  const agentGroupOptions = useMemo(
+    () => routingAgentGroupOptionsFromBucketOrder(resolveRoutingBucketOrder(bucketsPayload)),
+    [bucketsPayload],
+  )
   const existingKeys = blockedUseCasesCsv
     ? blockedUseCasesCsv.split(',').filter((s) => s.length > 0)
     : []
-  const options = ROUTING_AGENT_GROUP_OPTIONS.filter((o) => !existingKeys.includes(o.value))
+  const options = agentGroupOptions.filter((o) => !existingKeys.includes(o.value))
   const [useCase, setUseCase] = useState('')
   const [primary, setPrimary] = useState('')
   const [fallback, setFallback] = useState('')
@@ -391,11 +375,13 @@ function AddRoutingModal({
     const keys = blockedUseCasesCsv
       ? blockedUseCasesCsv.split(',').filter((s) => s.length > 0)
       : []
-    const opts = ROUTING_AGENT_GROUP_OPTIONS.filter((o) => !keys.includes(o.value))
+    const opts = routingAgentGroupOptionsFromBucketOrder(
+      resolveRoutingBucketOrder(bucketsPayload),
+    ).filter((o) => !keys.includes(o.value))
     setUseCase(opts[0]?.value ?? '')
     setPrimary('')
     setFallback('')
-  }, [open, blockedUseCasesCsv])
+  }, [open, blockedUseCasesCsv, bucketsPayload])
 
   if (!open) {
     return null
@@ -544,36 +530,6 @@ function AddRoutingModal({
   )
 }
 
-function buildPolicyRows(
-  providers: LlmProviderRegistryRow[],
-  existing: StudioLlmPolicyRow[] | undefined,
-): StudioLlmPolicyRow[] {
-  const map = new Map(existing?.map((r) => [r.provider_id, r]) ?? [])
-  return providers.map((p) => {
-    const prev = map.get(p.provider_id)
-    const ids = chatModelIdsForPolicy(p.models)
-    const defaultModel = ids[0] ?? null
-    return {
-      provider_id: p.provider_id,
-      enabled: prev?.enabled ?? false,
-      selected_model:
-        prev?.selected_model && ids.includes(prev.selected_model)
-          ? prev.selected_model
-          : defaultModel,
-    }
-  })
-}
-
-function buildStudioPolicyRows(
-  connectedProviders: LlmProviderRegistryRow[],
-  existing: StudioLlmPolicyRow[] | undefined,
-): StudioLlmPolicyRow[] {
-  const built = buildPolicyRows(connectedProviders, existing)
-  const connIds = new Set(connectedProviders.map((p) => p.provider_id))
-  const preserved = (existing ?? []).filter((r) => !connIds.has(r.provider_id))
-  return [...built, ...preserved]
-}
-
 export function LlmSection(): ReactElement {
   const qc = useQueryClient()
   const [studioId, setStudioId] = useState('')
@@ -586,16 +542,16 @@ export function LlmSection(): ReactElement {
     queryFn: () => listStudios(),
   })
 
-  const deploymentQ = useQuery({
-    queryKey: ['admin', 'llm', 'deployment'],
-    queryFn: () => getAdminLlmDeployment(),
-  })
+  const {
+    deploymentQuery,
+    policyQuery,
+    connectedProviders,
+    rowsForStudio,
+    savePolicyIsPending,
+    updatePolicyRow,
+  } = useStudioLlmPolicy(studioId)
 
-  const providers = deploymentQ.data?.providers ?? EMPTY_LLM_PROVIDERS
-  const connectedProviders = useMemo(
-    () => providers.filter((p) => p.status === 'connected'),
-    [providers],
-  )
+  const providers = deploymentQuery.data?.providers ?? EMPTY_LLM_PROVIDERS
 
   const routingQ = useQuery({
     queryKey: ['admin', 'llm', 'routing'],
@@ -606,6 +562,11 @@ export function LlmSection(): ReactElement {
     queryKey: ['admin', 'llm', 'routing-buckets'],
     queryFn: () => getAdminLlmRoutingBuckets(),
   })
+
+  const routingBucketOrder = useMemo(
+    () => resolveRoutingBucketOrder(routingBucketsQ.data),
+    [routingBucketsQ.data],
+  )
 
   const [routingDraft, setRoutingDraft] = useState<LlmRoutingRuleRow[]>([])
   const [routingModalOpen, setRoutingModalOpen] = useState(false)
@@ -688,12 +649,6 @@ export function LlmSection(): ReactElement {
     variables: testLlmMut.variables,
   })
 
-  const policyQ = useQuery({
-    queryKey: ['admin', 'llm', 'policy', studioId],
-    queryFn: () => getAdminStudioLlmPolicy(studioId),
-    enabled: Boolean(studioId),
-  })
-
   useEffect(() => {
     const list = studiosQ.data
     if (!list?.length) return
@@ -702,14 +657,6 @@ export function LlmSection(): ReactElement {
       return list[0].id
     })
   }, [studiosQ.data])
-
-  const savePolicy = useMutation({
-    mutationFn: ({ sid, rows }: { sid: string; rows: StudioLlmPolicyRow[] }) =>
-      putAdminStudioLlmPolicy(sid, { rows }),
-    onSuccess: async (_, { sid }) => {
-      await qc.invalidateQueries({ queryKey: ['admin', 'llm', 'policy', sid] })
-    },
-  })
 
   const addProvider = useMutation({
     mutationFn: (args: { providerId: string; body: LlmProviderUpsertBody }) =>
@@ -744,29 +691,6 @@ export function LlmSection(): ReactElement {
     },
   })
 
-  const rowsForStudio = useMemo(
-    () => buildStudioPolicyRows(connectedProviders, policyQ.data),
-    [connectedProviders, policyQ.data],
-  )
-
-  const persistRows = useCallback(
-    (next: StudioLlmPolicyRow[]) => {
-      if (!studioId) return
-      savePolicy.mutate({ sid: studioId, rows: next })
-    },
-    [studioId, savePolicy],
-  )
-
-  const updateRow = useCallback(
-    (providerId: string, patch: Partial<Pick<StudioLlmPolicyRow, 'enabled' | 'selected_model'>>) => {
-      const next = rowsForStudio.map((r) =>
-        r.provider_id === providerId ? { ...r, ...patch } : r,
-      )
-      persistRows(next)
-    },
-    [persistRows, rowsForStudio],
-  )
-
   const studioName =
     studiosQ.data?.find((s) => s.id === studioId)?.name ?? 'This studio'
 
@@ -777,7 +701,7 @@ export function LlmSection(): ReactElement {
         subtitle="Provider registry, routing rules, and per-studio policy. API keys and base URLs live on each registry row; the default row supplies credentials when routing does not pick a specific provider."
       />
 
-      {policyQ.isError ? (
+      {policyQuery.isError ? (
         <p className="text-[12px] text-rose-300">Could not load studio LLM policy.</p>
       ) : null}
 
@@ -809,13 +733,13 @@ export function LlmSection(): ReactElement {
           </div>
         }
       >
-        {deploymentQ.isPending ? (
+        {deploymentQuery.isPending ? (
           <p className="px-5 py-6 text-[13px] text-zinc-500">Loading LLM deployment…</p>
         ) : null}
-        {deploymentQ.isError ? (
+        {deploymentQuery.isError ? (
           <p className="px-5 py-6 text-[13px] text-rose-300">Could not load deployment data.</p>
         ) : null}
-        {deploymentQ.data && !deploymentQ.isError ? (
+        {deploymentQuery.data && !deploymentQuery.isError ? (
           <>
             <div className="px-5 py-4">
               <div className="flex items-center gap-1.5">
@@ -827,7 +751,7 @@ export function LlmSection(): ReactElement {
                   content={MODEL_REGISTRY_HELP}
                 />
               </div>
-              {!deploymentQ.data.has_providers ? (
+              {!deploymentQuery.data.has_providers ? (
                 <p className="mt-3 rounded-md border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-[12px] text-amber-200/90">
                   No providers yet. Add a provider below, set models and API key, and mark one row
                   as default so chat and probes can resolve credentials.
@@ -1114,10 +1038,10 @@ export function LlmSection(): ReactElement {
                   </div>
                   <select
                     className="rounded-md border border-zinc-800 bg-zinc-950/60 px-2 py-1 text-[11.5px] text-zinc-300 disabled:opacity-50"
-                    disabled={!enabled || savePolicy.isPending}
+                    disabled={!enabled || savePolicyIsPending}
                     value={modelVal}
                     onChange={(e) =>
-                      updateRow(p.provider_id, { selected_model: e.target.value })
+                      updatePolicyRow(p.provider_id, { selected_model: e.target.value })
                     }
                   >
                     {p.models.map((m) => (
@@ -1128,8 +1052,8 @@ export function LlmSection(): ReactElement {
                   </select>
                   <Toggle
                     checked={enabled}
-                    disabled={savePolicy.isPending}
-                    onChange={(v) => updateRow(p.provider_id, { enabled: v })}
+                    disabled={savePolicyIsPending}
+                    onChange={(v) => updatePolicyRow(p.provider_id, { enabled: v })}
                   />
                 </li>
               )
@@ -1205,7 +1129,7 @@ export function LlmSection(): ReactElement {
             <p className="text-[13px] text-zinc-500">Loading routing…</p>
           ) : (
             <>
-              {sortRoutingRules(routingDraft).map((r) => {
+              {sortLlmRoutingRules(routingDraft, routingBucketOrder).map((r) => {
                 const rowCatalogMode = r.use_case === 'embeddings' ? 'embedding' : 'chat'
                 const agentsSummary = routingBucketAgentsSummary(
                   r.use_case,
@@ -1338,7 +1262,10 @@ export function LlmSection(): ReactElement {
         bucketsPayload={routingBucketsQ.data}
         onAdd={(row) => {
           setRoutingDraft((prev) =>
-            sortRoutingRules([...prev.filter((x) => x.use_case !== row.use_case), row]),
+            sortLlmRoutingRules(
+              [...prev.filter((x) => x.use_case !== row.use_case), row],
+              routingBucketOrder,
+            ),
           )
         }}
       />

@@ -21,6 +21,10 @@ from app.schemas.admin_console import (
 from app.security.field_encryption import admin_secret_suffix_hint, decode_admin_stored_secret, encode_admin_stored_secret
 from app.services.litellm_model_context import enrich_model_entries_from_litellm
 from app.services.llm_provider_logo_service import resolve_llm_provider_logo_url
+from app.services.llm_registry_status import (
+    llm_registry_row_is_connected,
+    normalize_llm_registry_status,
+)
 from app.services.llm_service import LLMService
 from app.services.registry_models_json import (
     first_model_id_for_kind,
@@ -34,10 +38,6 @@ def _mask_secret(s: str | None) -> bool:
     return bool(s and s.strip())
 
 
-def _norm_status(s: str | None) -> str:
-    return (s or "").strip().lower()
-
-
 def _registry_hosts_model_for_kind(
     providers: list[LlmProviderRegistry],
     model_id: str,
@@ -47,7 +47,7 @@ def _registry_hosts_model_for_kind(
     if not want:
         return True
     for pr in providers:
-        if _norm_status(pr.status) != "connected":
+        if not llm_registry_row_is_connected(pr):
             continue
         if want in model_ids_for_kind(pr.models_json, kind):
             return True
@@ -112,7 +112,7 @@ class LlmConnectivityService:
         reg: LlmProviderRegistry
 
         if row:
-            old_status = _norm_status(row.status)
+            old_status = normalize_llm_registry_status(row.status)
             old_models_json = row.models_json
             old_api_base = row.api_base_url
             old_slug = row.litellm_provider_slug
@@ -219,7 +219,7 @@ class LlmConnectivityService:
         await self._sync_default_flag_with_status(reg, pk, save_warnings)
 
         probe_id = first_model_id_for_kind(reg.models_json, "chat")
-        status_after = _norm_status(reg.status)
+        status_after = normalize_llm_registry_status(reg.status)
         if (
             probe_id
             and (decode_admin_stored_secret(reg.api_key) or "").strip()
@@ -245,7 +245,7 @@ class LlmConnectivityService:
         save_warnings: list[str],
     ) -> None:
         """At most one ``is_default``; only ``connected`` rows may keep it."""
-        status_norm = _norm_status(reg.status)
+        status_norm = normalize_llm_registry_status(reg.status)
 
         if reg.is_default and status_norm != "connected":
             reg.is_default = False
@@ -281,7 +281,7 @@ class LlmConnectivityService:
         providers = list(
             (await self.db.execute(select(LlmProviderRegistry))).scalars().all()
         )
-        connected = [p for p in providers if _norm_status(p.status) == "connected"]
+        connected = [p for p in providers if llm_registry_row_is_connected(p)]
         if connected:
             for rule in body.rules:
                 uc = (rule.use_case or "").strip().lower()

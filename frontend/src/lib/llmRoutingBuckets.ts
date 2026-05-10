@@ -2,10 +2,11 @@
  * Platform routing buckets: maps token_usage.call_source → DB use_case keys for admin UI copy.
  * Canonical call_source lists come from GET /admin/llm/routing/buckets (backend ``llm_routing_buckets``).
  */
-import type { AdminLlmRoutingBucketsResponse } from '../services/api'
+import type { AdminLlmRoutingBucketsResponse, LlmRoutingRuleRow } from '../services/api'
 
 import { llmCallSourceLabel } from './llmCallSourceLabels'
 
+/** Fallback when GET /admin/llm/routing/buckets is not loaded; must match backend ``ROUTING_BUCKET_ORDER``. */
 export const ROUTING_SORT_ORDER = ['chat', 'code_gen', 'classification', 'embeddings'] as const
 
 export type RoutingBucketKey = (typeof ROUTING_SORT_ORDER)[number]
@@ -23,6 +24,41 @@ export const ROUTING_AGENT_GROUP_OPTIONS: { value: RoutingBucketKey; label: stri
     value,
     label: ROUTING_BUCKET_TITLE[value],
   }))
+
+/** Prefer server ``bucket_order``; falls back to ``ROUTING_SORT_ORDER``. */
+export function resolveRoutingBucketOrder(
+  buckets: AdminLlmRoutingBucketsResponse | undefined,
+): readonly string[] {
+  const o = buckets?.bucket_order
+  return o && o.length > 0 ? o : ROUTING_SORT_ORDER
+}
+
+export function routingAgentGroupOptionsFromBucketOrder(
+  bucketOrder: readonly string[],
+): { value: string; label: string }[] {
+  return bucketOrder.map((value) => ({
+    value,
+    label: routingBucketTitle(value),
+  }))
+}
+
+/** Stable admin UI ordering for routing rows; tie-break unknown ``use_case`` lexicographically. */
+export function sortLlmRoutingRules(
+  rules: LlmRoutingRuleRow[],
+  bucketOrder: readonly string[] = ROUTING_SORT_ORDER,
+): LlmRoutingRuleRow[] {
+  const order = [...bucketOrder]
+  return [...rules].sort((a, b) => {
+    const ua = a.use_case ?? ''
+    const ub = b.use_case ?? ''
+    const ia = order.indexOf(ua)
+    const ib = order.indexOf(ub)
+    if (ia !== -1 && ib !== -1) return ia - ib
+    if (ia !== -1) return -1
+    if (ib !== -1) return 1
+    return ua.localeCompare(ub)
+  })
+}
 
 export function routingBucketTitle(useCase: string): string {
   if (useCase in ROUTING_BUCKET_TITLE) {

@@ -24,16 +24,13 @@ from app.services.llm_registry_credentials import (
     first_registry_model,
     get_default_llm_registry_row,
 )
+from app.services.llm_registry_status import llm_registry_row_is_connected
 from app.services.registry_models_json import (
     model_ids_for_kind,
     parse_models_json,
 )
 from app.services.budget_month_status import studio_overage_soft_allow
 from app.services.llm_routing_buckets import use_case_for_call_source
-
-
-def _registry_connected(pr: LlmProviderRegistry) -> bool:
-    return (pr.status or "").strip().lower() == "connected"
 
 
 def _chat_model_ids_from_registry_row(pr: LlmProviderRegistry) -> list[str]:
@@ -58,7 +55,7 @@ def _max_context_tokens_for_model_id(
     if not want:
         return None
     for pr in providers_all:
-        if not _registry_connected(pr):
+        if not llm_registry_row_is_connected(pr):
             continue
         for entry in parse_models_json(pr.models_json):
             if entry.kind != "chat" or entry.id != want:
@@ -135,7 +132,7 @@ class LlmPolicyService:
 
         def provider_for_model(model_name: str) -> str | None:
             for pr in providers:
-                if not _registry_connected(pr):
+                if not llm_registry_row_is_connected(pr):
                     continue
                 if model_name in _registry_model_ids_for_use_case(pr, use_case):
                     return pr.provider_id
@@ -262,7 +259,7 @@ class LlmPolicyService:
                 if not sm:
                     continue
                 pr = prov_by_key.get(pol.provider_id)
-                if pr is None or not _registry_connected(pr):
+                if pr is None or not llm_registry_row_is_connected(pr):
                     continue
                 if sm in _chat_model_ids_from_registry_row(pr):
                     add_allowed(sm)
@@ -274,7 +271,7 @@ class LlmPolicyService:
                     candidates.append(routing.primary_model.strip())
                 if routing.fallback_model and routing.fallback_model.strip():
                     candidates.append(routing.fallback_model.strip())
-                connected = [p for p in providers_all if _registry_connected(p)]
+                connected = [p for p in providers_all if llm_registry_row_is_connected(p)]
                 for cand in candidates:
                     for pr in connected:
                         if cand in _chat_model_ids_from_registry_row(pr):

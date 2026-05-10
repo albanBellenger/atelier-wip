@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 from app.exceptions import ApiError
 from app.models import Project, Section, Software, WorkOrder
 from app.models.work_order import WorkOrderNote, WorkOrderSection
+from app.agents._atelier_product_prefix import ATELIER_PRODUCT_PREFIX
 from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.llm_service import LLMService
 
@@ -21,8 +22,9 @@ log = structlog.get_logger("atelier.drift")
 # ── Prompts ───────────────────────────────────────────────────────────────────
 
 SYSTEM_PROMPT = (
-    "You compare software specification excerpts to a Work Order. "
-    "Answer conservatively: mark likely_stale true only when the spec change "
+    ATELIER_PRODUCT_PREFIX
+    + "You compare software specification excerpts to a Work Order. "
+    "Mark likely_stale true only when the spec change "
     "would meaningfully invalidate or obsolete the Work Order's description "
     "or acceptance criteria."
 )

@@ -366,10 +366,10 @@ Listing and read/unread updates use `NotificationService` (e.g. `/me/notificatio
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
 | `/admin/test/embedding` | POST | Tool Admin | Connectivity probe for embeddings (platform resolution via LLM registry + embeddings routing rule) |
-| `/admin/config` | GET/PUT | Tool Admin | **Removed** — returns **404** (configure providers and embeddings routing in Admin Console → LLM) |
-| `/admin/cross-studio` | GET | Tool Admin | **404** — removed; pending approvals use studio routes (`GET/PUT …/cross-studio-incoming…`) |
-| `/admin/cross-studio/{id}` | PUT | Tool Admin | **404** — removed (same as above) |
-| `/admin/token-usage` | GET | Tool Admin | **404** — removed; use `GET /studios/{id}/token-usage` (studio admin) or `GET /me/token-usage` |
+| `/admin/config` | GET/PUT | Tool Admin | **Not registered** (default **404**; removed); configure providers and embeddings routing in Admin Console → LLM |
+| `/admin/cross-studio` | GET | Tool Admin | **Not registered** (default **404**; removed); pending approvals use studio routes (`GET/PUT …/cross-studio-incoming…`) |
+| `/admin/cross-studio/{id}` | PUT | Tool Admin | **Not registered** (default **404**; removed; same as above) |
+| `/admin/token-usage` | GET | Tool Admin | **Not registered** (default **404**; removed); use `GET /studios/{id}/token-usage` (studio admin) or `GET /me/token-usage` |
 | `/admin/users` | GET/POST | Tool Admin | User directory / create user (`require_platform_admin`) |
 | `/admin/users/{id}/admin-status` | PUT | Tool Admin | Set platform admin flag (`require_platform_admin`) |
 
@@ -1103,10 +1103,10 @@ ENCRYPTION_KEY=changeme-32-byte-fernet-key
 | Method | Path | Description |
 |---|---|---|
 | POST | `/admin/test/embedding` | Embedding connectivity probe (registry + embeddings routing) |
-| GET/PUT | `/admin/config` | **404** — removed; use Admin Console → LLM |
-| GET | `/admin/cross-studio` | **404** — removed; use studio `…/cross-studio-incoming…` |
-| PUT | `/admin/cross-studio/{id}` | **404** — removed (same) |
-| GET | `/admin/token-usage` | **404** — removed; use `/studios/{id}/token-usage` or `/me/token-usage` |
+| GET/PUT | `/admin/config` | **Not registered** (default **404**; removed); use Admin Console → LLM |
+| GET | `/admin/cross-studio` | **Not registered** (default **404**; removed); use studio `…/cross-studio-incoming…` |
+| PUT | `/admin/cross-studio/{id}` | **Not registered** (default **404**; removed; same) |
+| GET | `/admin/token-usage` | **Not registered** (default **404**; removed); use `/studios/{id}/token-usage` or `/me/token-usage` |
 | GET/POST | `/admin/users` | User directory / create |
 | PUT | `/admin/users/{id}/admin-status` | Platform admin toggle |
 
@@ -1192,7 +1192,7 @@ ENCRYPTION_KEY=changeme-32-byte-fernet-key
 ### Token Usage
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| GET | `/admin/token-usage` | Tool Admin | **404** — removed; no all-studios aggregate route |
+| GET | `/admin/token-usage` | Tool Admin | **Not registered** (default **404**; removed); no all-studios aggregate route |
 | GET | `/studios/{id}/token-usage` | Studio Owner | Own studio |
 | GET | `/me/token-usage` | Member | Own usage |
 

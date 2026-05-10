@@ -657,6 +657,11 @@ export function modelIdsFromEntries(models: LlmRegistryModelEntry[]): string[] {
   return models.map((m) => m.id)
 }
 
+/** Chat/completion model ids only (excludes explicit ``embedding`` entries). Missing ``kind`` counts as chat. */
+export function chatModelIdsFromEntries(models: LlmRegistryModelEntry[]): string[] {
+  return models.filter((m) => m.kind !== 'embedding').map((m) => m.id)
+}
+
 export interface LlmProviderRegistryRow {
   id: string
   provider_id: string

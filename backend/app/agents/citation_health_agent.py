@@ -6,15 +6,17 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents._atelier_product_prefix import ATELIER_PRODUCT_PREFIX
 from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.llm_service import LLMService
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
 
 SYSTEM_PROMPT = (
-    "You audit specification citations. Be conservative: only count "
-    "resolved when a claim clearly ties to a named source. Do not invent "
-    "sources. Output strictly follows the JSON schema."
+    ATELIER_PRODUCT_PREFIX
+    + "You audit specification citations. Only count "
+    "resolved when a claim clearly ties to a named source. "
+    "Output strictly follows the JSON schema."
 )
 
 USER_PROMPT = (

@@ -257,9 +257,9 @@ Auth ([`auth.py`](../backend/app/routers/auth.py)): `register`, `login`, `logout
 | admin | GET/PUT | `/admin/studios/{studio_id}/llm-policy` | `require_platform_admin` |
 | admin | GET/PUT/DELETE | `/admin/llm/providers/{provider_id}`, `/admin/llm/routing`, `/admin/llm/deployment` | `require_platform_admin` |
 | admin | GET/PUT/PATCH/DELETE | `/admin/embeddings/*` | `require_platform_admin` |
-| admin | GET/PUT | `/admin/config` | **404** (removed) |
-| admin | GET/PUT | `/admin/cross-studio`, `/admin/cross-studio/{grant_id}` | **404** (removed) |
-| admin | GET | `/admin/token-usage` | **404** (removed) |
+| admin | GET/PUT | `/admin/config` | **Not registered** (default **404**; removed) |
+| admin | GET/PUT | `/admin/cross-studio`, `/admin/cross-studio/{grant_id}` | **Not registered** (default **404**; removed) |
+| admin | GET | `/admin/token-usage` | **Not registered** (default **404**; removed) |
 | admin | GET/POST | `/admin/users` | `require_platform_admin` |
 | admin | PUT | `/admin/users/{user_id}/admin-status` | `require_platform_admin` |
 | studios | GET | `/studios` | `get_current_user` |

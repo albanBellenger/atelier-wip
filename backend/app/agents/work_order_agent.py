@@ -6,6 +6,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents._atelier_product_prefix import ATELIER_PRODUCT_PREFIX
 from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.llm_service import LLMService
 
@@ -80,7 +81,9 @@ class WorkOrderAgent:
         def_block: str,
         sections_blob: str,
     ) -> dict[str, Any]:
-        system_prompt = SYSTEM_PROMPT_TEMPLATE.format(sw_name=sw_name, def_block=def_block)
+        system_prompt = ATELIER_PRODUCT_PREFIX + SYSTEM_PROMPT_TEMPLATE.format(
+            sw_name=sw_name, def_block=def_block
+        )
         user_prompt = USER_PROMPT.format(sections_blob=sections_blob)
         return await self.llm.chat_structured(
             system_prompt=system_prompt,

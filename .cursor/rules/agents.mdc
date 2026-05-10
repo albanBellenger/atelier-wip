@@ -16,12 +16,22 @@ Current agents:
 - `drift_agent.py` — detects whether a Work Order is stale after a section save
 - `conflict_agent.py` — finds conflicts and gaps between section pairs
 - `work_order_agent.py` — generates Work Orders from selected sections
+- `work_order_dedupe_agent.py` — backlog duplicate detection for Work Orders
 - `section_relationship_agent.py` — detects relationships between sections on publish
 - `software_chat_agent.py` — software-scoped chat streaming
 - `project_chat_agent.py` — project-scoped chat streaming (system prompt + RAG text)
 - `citation_health_agent.py` — structured citation coverage for a section
 - `builder_composer_agent.py` — builder home composer hint strings
 - `section_improve_agent.py` — revises section markdown from RAG + instruction
+- `private_thread_agent.py` — private section thread streaming, findings scan, patch proposals
+
+---
+
+## Shared product prefix
+
+- `_atelier_product_prefix.py` is **not** an agent. It exports exactly one module-level string: `ATELIER_PRODUCT_PREFIX` — English-only product framing (Atelier hierarchy, entity glosses, conservatism bar). No task instructions or output-format guidance.
+- Every agent prepends `ATELIER_PRODUCT_PREFIX` to its task-specific system prompt (concatenation order: prefix → agent body → optional per-call dynamic text such as RAG).
+- Per-agent task prompts remain owned by that agent file and must not be shared across agents, except for this single shared prefix module.
 
 ---
 
@@ -95,7 +105,8 @@ Rules:
 - All prompt strings must be written in English only.
 - Prompts must be extracted verbatim from their origin — do not paraphrase or
   restructure during a refactor. Behaviour changes require a separate PR.
-- Each agent owns its prompts. Do not share prompt constants across agents.
+- Each agent owns its task-specific prompts. Do not share task prompt constants across agents.
+- The only exception is `ATELIER_PRODUCT_PREFIX` in `_atelier_product_prefix.py` (see **Shared product prefix** above): shared domain vocabulary and conservatism only; no task or format instructions.
 
 ---
 

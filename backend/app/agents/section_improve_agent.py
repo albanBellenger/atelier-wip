@@ -6,6 +6,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents._atelier_product_prefix import ATELIER_PRODUCT_PREFIX
 from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.llm_service import LLMService
 
@@ -13,8 +14,7 @@ from app.services.llm_service import LLMService
 
 SECTION_IMPROVE_SYSTEM_PROMPT_PREFIX = (
     "You revise specification markdown. Preserve intent and structure where "
-    "reasonable; remove ambiguity; do not invent requirements absent from the "
-    "input or context. Return JSON only with improved_markdown.\n\n"
+    "reasonable; remove ambiguity. Return JSON only with improved_markdown.\n\n"
 )
 
 USER_PROMPT = """Section title: {title}
@@ -55,7 +55,7 @@ class SectionImproveAgent:
         body_text: str,
         instruction: str | None,
     ) -> dict[str, Any]:
-        system_prompt = SECTION_IMPROVE_SYSTEM_PROMPT_PREFIX + rag_text
+        system_prompt = ATELIER_PRODUCT_PREFIX + SECTION_IMPROVE_SYSTEM_PROMPT_PREFIX + rag_text
         instruction_block = ""
         if instruction and instruction.strip():
             instruction_block = f"\nAuthor instruction:\n{instruction.strip()}\n"

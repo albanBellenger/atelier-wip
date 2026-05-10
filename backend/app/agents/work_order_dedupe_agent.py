@@ -6,6 +6,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents._atelier_product_prefix import ATELIER_PRODUCT_PREFIX
 from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.llm_service import LLMService
 
@@ -61,8 +62,8 @@ SYSTEM_PROMPT_TEMPLATE = (
     "You are a technical project lead. Software: {sw_name}.\n\n"
     "Software definition (context):\n{def_block}\n\n"
     "Your task: find groups of Work Orders in the backlog that describe overlapping or "
-    "redundant work and could be merged into a single work order. Be conservative: only "
-    "group items that are truly duplicate or clearly combinable. "
+    "redundant work and could be merged into a single work order. "
+    "Only group items that are truly duplicate or clearly combinable. "
     "Each group must list at least two work order UUIDs from the list provided. "
     "For suggested_combined, propose a merged title, description, implementation guidance, "
     "and acceptance criteria. Use empty strings for optional text you would leave blank."
@@ -88,7 +89,7 @@ class WorkOrderDedupeAgent:
         def_block: str,
         backlog_blob: str,
     ) -> dict[str, Any]:
-        system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
+        system_prompt = ATELIER_PRODUCT_PREFIX + SYSTEM_PROMPT_TEMPLATE.format(
             sw_name=sw_name, def_block=def_block
         )
         user_prompt = USER_PROMPT.format(backlog_blob=backlog_blob)

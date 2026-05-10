@@ -9,6 +9,7 @@ import structlog
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents._atelier_product_prefix import ATELIER_PRODUCT_PREFIX
 from app.exceptions import ApiError
 from app.models import Issue, Section
 from app.schemas.token_usage_scope import TokenUsageScope
@@ -20,7 +21,8 @@ log = structlog.get_logger("atelier.conflict")
 # ── Prompts ───────────────────────────────────────────────────────────────────
 
 SYSTEM_PROMPT = (
-    "You analyze software specification sections for contradictions between "
+    ATELIER_PRODUCT_PREFIX
+    + "You analyze software specification sections for contradictions between "
     "pairs of sections and for obvious gaps within single sections.\n"
     "- pair_conflict: contradictory requirements between section_index_a and "
     "section_index_b (both indices valid).\n"

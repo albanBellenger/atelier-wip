@@ -9,6 +9,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents._atelier_product_prefix import ATELIER_PRODUCT_PREFIX
 from app.config import get_settings
 from app.exceptions import ApiError
 from app.models import Project, Software
@@ -70,7 +71,7 @@ class SoftwareChatAgent:
         )
         def_blob = _trim_text(software.definition, 12_000)
         desc = _trim_text(software.description, 2000)
-        return SOFTWARE_CHAT_SYSTEM_PROMPT_TEMPLATE.format(
+        return ATELIER_PRODUCT_PREFIX + SOFTWARE_CHAT_SYSTEM_PROMPT_TEMPLATE.format(
             software_name=software.name,
             description=desc or "—",
             projects_line=projects_line,
