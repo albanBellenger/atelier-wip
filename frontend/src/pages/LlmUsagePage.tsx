@@ -1,9 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
 import { useCallback, useEffect, useMemo } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import {
+  Link,
+  useLocation,
+  useNavigate,
+  useSearchParams,
+} from 'react-router-dom'
 
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
+import { ReturnNavLink } from '../components/nav/ReturnNavLink'
 import { Tooltip } from '../components/ui/Tooltip'
 import { InfoCircleHelpButton } from '../components/ui/InfoCircleHelpButton'
 import { LlmUsageReportPanel } from '../components/tokenUsage/LlmUsageReportPanel'
@@ -12,14 +18,25 @@ import {
   getHostedEnvironment,
   hostedEnvironmentLabel,
 } from '../lib/hostedEnvironment'
+import {
+  readLlmUsageFilterIdsFromSearch,
+  resolveExplicitLlmUsageReturn,
+  resolveLlmUsageReturnNav,
+} from '../lib/llmUsageReturnTarget'
 import { APP_VERSION } from '../version'
-import { logout as logoutApi, me } from '../services/api'
+import {
+  listSoftware,
+  listStudioProjects,
+  logout as logoutApi,
+  me,
+} from '../services/api'
 
 const LLM_USAGE_FILTERS_HELP =
   'Filter usage by studio, software, project, work order, LLM source, and dates.'
 
 export function LlmUsagePage(): ReactElement {
   const navigate = useNavigate()
+  const location = useLocation()
   const [searchParams] = useSearchParams()
   const hostedEnv = getHostedEnvironment()
   const hostedEnvLabel = hostedEnvironmentLabel(hostedEnv)
@@ -45,20 +62,83 @@ export function LlmUsagePage(): ReactElement {
     void navigate('/auth', { replace: true })
   }, [navigate])
 
-  const headerStudioId = useMemo(() => {
-    if (!profileQ.data) return null
-    return resolveLlmUsageHeaderStudioId(profileQ.data, searchParams)
-  }, [profileQ.data, searchParams])
+  const profile = profileQ.data ?? null
 
-  if (profileQ.isPending || !profileQ.data) {
+  const headerStudioId = useMemo(() => {
+    if (!profile) return null
+    return resolveLlmUsageHeaderStudioId(profile, searchParams)
+  }, [profile, searchParams])
+
+  const { studioIds, softwareIds, projectIds } = useMemo(
+    () => readLlmUsageFilterIdsFromSearch(searchParams),
+    [searchParams],
+  )
+
+  const explicitReturn = useMemo(
+    () =>
+      profile
+        ? resolveExplicitLlmUsageReturn(location.state, searchParams)
+        : null,
+    [profile, location.state, searchParams],
+  )
+
+  const studioForQueries = useMemo(() => {
+    if (studioIds.length === 1) return studioIds[0]
+    return headerStudioId ?? ''
+  }, [studioIds, headerStudioId])
+
+  const needProjects =
+    Boolean(profile) &&
+    !explicitReturn &&
+    projectIds.length === 1 &&
+    Boolean(studioForQueries)
+  const needSoftware =
+    Boolean(profile) &&
+    !explicitReturn &&
+    projectIds.length === 0 &&
+    softwareIds.length === 1 &&
+    Boolean(studioForQueries)
+
+  const studioProjectsQ = useQuery({
+    queryKey: ['studio', studioForQueries, 'projects', 'llm-return'],
+    queryFn: () => listStudioProjects(studioForQueries),
+    enabled: needProjects,
+    retry: false,
+  })
+
+  const softwareListQ = useQuery({
+    queryKey: ['studios', studioForQueries, 'software', 'llm-return'],
+    queryFn: () => listSoftware(studioForQueries),
+    enabled: needSoftware,
+    retry: false,
+  })
+
+  const returnNav = useMemo(() => {
+    if (!profile) return null
+    return resolveLlmUsageReturnNav({
+      profile,
+      searchParams,
+      locationState: location.state,
+      headerStudioId,
+      studioProjects: studioProjectsQ.data,
+      softwareList: softwareListQ.data,
+    })
+  }, [
+    profile,
+    searchParams,
+    location.state,
+    headerStudioId,
+    studioProjectsQ.data,
+    softwareListQ.data,
+  ])
+
+  if (profileQ.isPending || !profile) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#0a0a0b] text-zinc-400">
         Loading…
       </div>
     )
   }
-
-  const profile = profileQ.data
 
   return (
     <div className="min-h-screen bg-[#0a0a0b] px-8 pb-16 pt-8 font-sans text-zinc-100">
@@ -70,7 +150,7 @@ export function LlmUsagePage(): ReactElement {
         />
 
         <div className="mt-4">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <h1 className="font-serif text-[24px] font-medium leading-tight text-zinc-100 md:text-[26px]">
               LLM usage
             </h1>
@@ -82,6 +162,7 @@ export function LlmUsagePage(): ReactElement {
             >
               <InfoCircleHelpButton aria-label={LLM_USAGE_FILTERS_HELP} />
             </Tooltip>
+            <ReturnNavLink target={returnNav} className="sm:ml-auto" />
           </div>
           <div className="mt-3">
             <LlmUsageReportPanel profile={profile} />

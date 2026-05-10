@@ -80,11 +80,20 @@ async def _promote_tool_admin(db_session, email: str) -> None:
 
 
 async def _ensure_openai_registry_connected(db_session) -> None:
-    """Tests assume a connected registry row; PUT no longer elevates status without Test."""
+    """Tests assume a connected default registry row.
+
+    ``upsert_provider`` clears ``is_default`` while status is not ``connected``; tests PATCH status
+    after PUT and must restore the default flag so ``get_default_llm_registry_row`` resolves.
+    """
+    await db_session.execute(
+        update(LlmProviderRegistry)
+        .where(LlmProviderRegistry.provider_id != "openai")
+        .values(is_default=False)
+    )
     await db_session.execute(
         update(LlmProviderRegistry)
         .where(LlmProviderRegistry.provider_id == "openai")
-        .values(status="connected")
+        .values(status="connected", is_default=True)
     )
     await db_session.flush()
 

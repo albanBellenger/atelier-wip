@@ -69,6 +69,41 @@ describe('BuilderTokenStrip', () => {
     )
   })
 
+  it('appends returnTo when detailReturnPath and detailReturnLabel are set', () => {
+    vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
+      items: [],
+      next_cursor: null,
+    })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <BuilderTokenStrip
+            report={{
+              rows: [],
+              totals: {
+                input_tokens: 0,
+                output_tokens: 0,
+                estimated_cost_usd: '0',
+              },
+            }}
+            isPending={false}
+            canSeeTokenUsage
+            billedToStudioName={null}
+            detailReportHref="/llm-usage?software_id=sw-99"
+            detailReturnPath="/studios/s1/software/sw-99"
+            detailReturnLabel="My SW"
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    const links = screen.getAllByRole('link', { name: /detailed report/i })
+    const href = links[0].getAttribute('href') ?? ''
+    expect(href).toContain('software_id=sw-99')
+    expect(href).toContain('returnTo=%2Fstudios%2Fs1%2Fsoftware%2Fsw-99')
+    expect(href).toContain('returnLabel=')
+  })
+
   it('honours custom heading', () => {
     vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
       items: [],

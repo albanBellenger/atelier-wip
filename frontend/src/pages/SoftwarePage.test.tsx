@@ -147,13 +147,14 @@ describe('SoftwarePage', () => {
       name: /open library/i,
     })
     expect(openLibraryLinks).toHaveLength(2)
-    expect(openLibraryLinks[0]).toHaveAttribute(
-      'href',
-      '/studios/s1/artifact-library?softwareId=sw1',
+    expect(openLibraryLinks[0].getAttribute('href')).toContain(
+      'softwareId=sw1',
     )
-    expect(openLibraryLinks[1]).toHaveAttribute(
-      'href',
-      '/studios/s1/artifact-library',
+    expect(openLibraryLinks[0].getAttribute('href')).toContain(
+      'returnTo=%2Fstudios%2Fs1%2Fsoftware%2Fsw1',
+    )
+    expect(openLibraryLinks[1].getAttribute('href')).toContain(
+      'returnTo=%2Fstudios%2Fs1%2Fsoftware%2Fsw1',
     )
     expect(
       screen.queryByRole('link', { name: /software settings/i }),

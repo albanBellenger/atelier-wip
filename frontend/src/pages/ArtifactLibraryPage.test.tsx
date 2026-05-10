@@ -128,6 +128,8 @@ describe('ArtifactLibraryPage', () => {
         softwareId: 'sw9',
       })
     })
+    const swLink = await screen.findByRole('link', { name: /^SW9$/i })
+    expect(swLink).toHaveAttribute('href', '/studios/s1/software/sw9')
   })
 
   it('shows embedding badges for pending and embedded rows', async () => {

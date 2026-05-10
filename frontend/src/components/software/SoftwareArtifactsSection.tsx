@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
 import { Link } from 'react-router-dom'
 
+import { appendReturnParamsToRelativeHref } from '../../lib/returnNavigation'
 import { formatFileByteSize } from '../../lib/formatFileByteSize'
 import { formatPersonShortLabel } from '../../lib/formatPersonShortLabel'
 import { formatRelativeTimeUtc } from '../../lib/formatRelativeTime'
@@ -36,6 +37,8 @@ export function SoftwareArtifactsSection(props: {
   isError: boolean
   rows: SoftwareArtifactRow[] | undefined
   onDownload: (artifactId: string, filename: string) => void
+  libraryReturnPath?: string
+  libraryReturnLabel?: string
 }): ReactElement | null {
   const {
     studioId,
@@ -47,6 +50,8 @@ export function SoftwareArtifactsSection(props: {
     isError,
     rows,
     onDownload,
+    libraryReturnPath,
+    libraryReturnLabel,
   } = props
 
   if (!isMember) {
@@ -67,7 +72,18 @@ export function SoftwareArtifactsSection(props: {
         {defaultProjectId ? (
           <div className="flex w-full min-w-0 flex-col items-stretch gap-2 sm:w-auto sm:max-w-md sm:items-end">
             <Link
-              to={`/studios/${studioId}/artifact-library?softwareId=${encodeURIComponent(softwareId)}`}
+              to={
+                libraryReturnPath &&
+                libraryReturnLabel &&
+                libraryReturnPath.length > 0 &&
+                libraryReturnLabel.length > 0
+                  ? appendReturnParamsToRelativeHref(
+                      `/studios/${studioId}/artifact-library?softwareId=${encodeURIComponent(softwareId)}`,
+                      libraryReturnPath,
+                      libraryReturnLabel,
+                    )
+                  : `/studios/${studioId}/artifact-library?softwareId=${encodeURIComponent(softwareId)}`
+              }
               className="self-end text-[11px] text-zinc-400 hover:text-zinc-200"
             >
               Open library →

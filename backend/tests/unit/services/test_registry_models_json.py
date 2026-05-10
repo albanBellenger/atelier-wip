@@ -4,16 +4,90 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from app.models import LlmProviderRegistry
 from app.schemas.llm_registry_model import LlmRegistryModelEntry
 from app.services.registry_models_json import (
     entry_for_litellm_model,
+    first_model_id_from_json,
     model_ids_from_json,
     parse_models_json,
     serialize_models_json,
 )
+
+
+def test_parse_invalid_json_returns_empty() -> None:
+    assert parse_models_json("{not json") == []
+
+
+def test_parse_non_list_json_returns_empty() -> None:
+    assert parse_models_json('{"a": 1}') == []
+
+
+def test_parse_skips_whitespace_only_strings() -> None:
+    raw = json.dumps(["", "  ", "ok"])
+    got = parse_models_json(raw)
+    assert [e.id for e in got] == ["ok"]
+
+
+def test_parse_invalid_dict_falls_back_to_id_when_present() -> None:
+    raw = json.dumps([{"not_a_schema_field": "x", "id": "fallback-id"}])
+    got = parse_models_json(raw)
+    assert len(got) == 1
+    assert got[0].id == "fallback-id"
+
+
+def test_parse_invalid_dict_skipped_when_no_id() -> None:
+    raw = json.dumps([{"nope": 1}])
+    assert parse_models_json(raw) == []
+
+
+def test_first_model_id_from_json() -> None:
+    assert first_model_id_from_json(json.dumps(["a", "b"])) == "a"
+    assert first_model_id_from_json("[]") is None
+
+
+def test_entry_for_litellm_model_empty_target() -> None:
+    row = LlmProviderRegistry(
+        provider_id="openai",
+        litellm_provider_slug="openai",
+        models_json="[]",
+        api_base_url=None,
+        logo_url=None,
+        status="connected",
+        is_default=False,
+        sort_order=0,
+        api_key=None,
+    )
+    assert (
+        entry_for_litellm_model(
+            entries=[LlmRegistryModelEntry(id="x")],
+            litellm_model="  ",
+            registry_row=row,
+        )
+        is None
+    )
+
+
+def test_entry_for_litellm_model_no_match() -> None:
+    row = LlmProviderRegistry(
+        provider_id="openai",
+        litellm_provider_slug="openai",
+        models_json="[]",
+        api_base_url=None,
+        logo_url=None,
+        status="connected",
+        is_default=False,
+        sort_order=0,
+        api_key=None,
+    )
+    assert (
+        entry_for_litellm_model(
+            entries=[LlmRegistryModelEntry(id="other")],
+            litellm_model="openai/unknown",
+            registry_row=row,
+        )
+        is None
+    )
 
 
 def test_parse_legacy_string_list() -> None:

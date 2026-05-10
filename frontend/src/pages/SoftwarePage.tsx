@@ -20,6 +20,7 @@ import {
   getHostedEnvironment,
   hostedEnvironmentLabel,
 } from '../lib/hostedEnvironment'
+import { appendReturnParamsToRelativeHref } from '../lib/returnNavigation'
 import { withUtcMonthQuery } from '../lib/utcMonthBounds'
 import { useStudioAccess } from '../hooks/useStudioAccess'
 import { APP_VERSION } from '../version'
@@ -441,7 +442,11 @@ export function SoftwarePage(): ReactElement {
                     </button>
                   ) : null}
                   <Link
-                    to={`/llm-usage${withUtcMonthQuery(`software_id=${encodeURIComponent(sfid)}`)}`}
+                    to={appendReturnParamsToRelativeHref(
+                      `/llm-usage${withUtcMonthQuery(`software_id=${encodeURIComponent(sfid)}`)}`,
+                      `/studios/${sid}/software/${sfid}`,
+                      swQ.data?.name ?? 'Software',
+                    )}
                     className="inline-flex items-center justify-center rounded-md border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-[12px] font-medium text-zinc-300 hover:bg-zinc-800"
                   >
                     Token usage
@@ -704,6 +709,8 @@ export function SoftwarePage(): ReactElement {
               isError={artifactsQ.isError}
               rows={artifactsQ.data}
               onDownload={handleArtifactDownload}
+              libraryReturnPath={`/studios/${sid}/software/${sfid}`}
+              libraryReturnLabel={swQ.data?.name ?? 'Software'}
             />
 
             <StudioArtifactsSection
@@ -716,6 +723,8 @@ export function SoftwarePage(): ReactElement {
               isError={studioArtifactsQ.isError}
               rows={studioArtifactsQ.data}
               onDownload={handleArtifactDownload}
+              libraryReturnPath={`/studios/${sid}/software/${sfid}`}
+              libraryReturnLabel={swQ.data?.name ?? 'Software'}
             />
 
             {gitHistQ.data && gitHistQ.data.commits.length > 0 ? (
@@ -768,6 +777,8 @@ export function SoftwarePage(): ReactElement {
                   canSeeTokenUsage={userCanSeeMeTokenUsage(profile)}
                   billedToStudioName={billedToStudioName}
                   detailReportHref={`/llm-usage${withUtcMonthQuery(`software_id=${encodeURIComponent(sfid)}`)}`}
+                  detailReturnPath={`/studios/${sid}/software/${sfid}`}
+                  detailReturnLabel={swQ.data?.name ?? 'Software'}
                   sectionPaddingClass="p-5"
                 />
               </div>

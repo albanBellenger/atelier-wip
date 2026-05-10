@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
 import { Link } from 'react-router-dom'
 
+import { appendReturnParamsToRelativeHref } from '../../lib/returnNavigation'
 import {
   categoryBreakdownFromRows,
   DISPLAY_TOKEN_BUDGET,
@@ -20,6 +21,9 @@ export type BuilderTokenStripProps = {
   billedToStudioName: string | null
   /** Defaults to ``/llm-usage`` (e.g. pass ``?software_id=…`` for software-scoped report). */
   detailReportHref?: string
+  /** When set with ``detailReturnLabel``, appended as validated ``returnTo`` / ``returnLabel`` query params. */
+  detailReturnPath?: string
+  detailReturnLabel?: string
   /** Outer section vertical padding; default matches the home dashboard card. */
   sectionPaddingClass?: 'p-5' | 'p-6'
   /** Card title (default: Your LLM usage). */
@@ -70,9 +74,22 @@ export function BuilderTokenStrip({
   canSeeTokenUsage,
   billedToStudioName,
   detailReportHref = '/llm-usage',
+  detailReturnPath,
+  detailReturnLabel,
   sectionPaddingClass = 'p-6',
   heading = 'Your LLM usage',
 }: BuilderTokenStripProps): ReactElement {
+  const detailHref =
+    detailReturnPath &&
+    detailReturnLabel &&
+    detailReturnPath.length > 0 &&
+    detailReturnLabel.length > 0
+      ? appendReturnParamsToRelativeHref(
+          detailReportHref,
+          detailReturnPath,
+          detailReturnLabel,
+        )
+      : detailReportHref
   const shell = `rounded-2xl border border-zinc-800 bg-zinc-900/40 ${sectionPaddingClass}`
   if (!canSeeTokenUsage) {
     return (
@@ -101,7 +118,7 @@ export function BuilderTokenStrip({
         <div className="flex items-baseline justify-between">
           <h3 className="text-[13px] font-medium text-zinc-200">{heading}</h3>
           <Link
-            to={detailReportHref}
+            to={detailHref}
             className="text-[11px] text-zinc-400 hover:text-zinc-200"
           >
             Detailed report →
@@ -166,7 +183,7 @@ export function BuilderTokenStrip({
           <p className="mt-1 text-[11px] text-zinc-500">{billingLine}</p>
         </div>
         <Link
-          to={detailReportHref}
+          to={detailHref}
           className="shrink-0 text-[11px] text-zinc-400 hover:text-zinc-200"
         >
           Detailed report →

@@ -24,6 +24,7 @@ import {
   hostedEnvironmentLabel,
 } from '../lib/hostedEnvironment'
 import { formatRelativeTimeUtc } from '../lib/formatRelativeTime'
+import { appendReturnParamsToRelativeHref } from '../lib/returnNavigation'
 import { withUtcMonthQuery } from '../lib/utcMonthBounds'
 import {
   createSection,
@@ -535,6 +536,9 @@ export function ProjectPage(): ReactElement {
     )
   }
 
+  const projectReturnPath = `/studios/${sid}/software/${sfid}/projects/${pid}`
+  const projectReturnLabel = proj?.name ?? 'Project'
+
   return (
     <div className="min-h-screen bg-[#0a0a0b] px-8 pb-16 pt-8 font-sans text-zinc-100">
       <div className="mx-auto max-w-[1240px]">
@@ -585,7 +589,11 @@ export function ProjectPage(): ReactElement {
               ← Software
             </Link>
             <Link
-              to={`/studios/${sid}/artifact-library?softwareId=${encodeURIComponent(sfid)}`}
+              to={appendReturnParamsToRelativeHref(
+                `/studios/${sid}/artifact-library?softwareId=${encodeURIComponent(sfid)}`,
+                projectReturnPath,
+                projectReturnLabel,
+              )}
               className="shrink-0 hover:text-zinc-200"
             >
               Artifacts
@@ -606,7 +614,11 @@ export function ProjectPage(): ReactElement {
             ) : null}
             {profile && userCanSeeMeTokenUsage(profile) ? (
               <Link
-                to={`/llm-usage${withUtcMonthQuery(`project_id=${encodeURIComponent(pid)}`)}`}
+                to={appendReturnParamsToRelativeHref(
+                  `/llm-usage${withUtcMonthQuery(`project_id=${encodeURIComponent(pid)}`)}`,
+                  projectReturnPath,
+                  projectReturnLabel,
+                )}
                 className="shrink-0 hover:text-zinc-200"
               >
                 Token usage
@@ -822,6 +834,8 @@ export function ProjectPage(): ReactElement {
                     isError={projectAggregatedArtifactsQ.isError}
                     rows={projectAggregatedArtifactsQ.data}
                     onDownload={handleArtifactDownload}
+                    libraryReturnPath={projectReturnPath}
+                    libraryReturnLabel={projectReturnLabel}
                   />
                 </div>
 
@@ -865,6 +879,8 @@ export function ProjectPage(): ReactElement {
                     canSeeTokenUsage={userCanSeeMeTokenUsage(profile)}
                     billedToStudioName={billedToStudioName}
                     detailReportHref={`/llm-usage${withUtcMonthQuery(`project_id=${encodeURIComponent(pid)}`)}`}
+                    detailReturnPath={projectReturnPath}
+                    detailReturnLabel={projectReturnLabel}
                     sectionPaddingClass="p-6"
                   />
                 </aside>

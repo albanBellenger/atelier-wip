@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react'
 import { Link } from 'react-router-dom'
 
+import { appendReturnParamsToRelativeHref } from '../../lib/returnNavigation'
 import { formatFileByteSize } from '../../lib/formatFileByteSize'
 import { formatPersonShortLabel } from '../../lib/formatPersonShortLabel'
 import { formatRelativeTimeUtc } from '../../lib/formatRelativeTime'
@@ -36,6 +37,8 @@ export function StudioArtifactsSection(props: {
   isError: boolean
   rows: StudioArtifactRow[] | undefined
   onDownload: (artifactId: string, filename: string) => void
+  libraryReturnPath?: string
+  libraryReturnLabel?: string
 }): ReactElement | null {
   const {
     studioId,
@@ -47,6 +50,8 @@ export function StudioArtifactsSection(props: {
     isError,
     rows,
     onDownload,
+    libraryReturnPath,
+    libraryReturnLabel,
   } = props
 
   if (!isMember) {
@@ -54,7 +59,18 @@ export function StudioArtifactsSection(props: {
   }
 
   // Omit softwareId so the library page shows "All software" (not the quick-upload default).
-  const libraryHref = `/studios/${studioId}/artifact-library`
+  const libraryBaseHref = `/studios/${studioId}/artifact-library`
+  const libraryHref =
+    libraryReturnPath &&
+    libraryReturnLabel &&
+    libraryReturnPath.length > 0 &&
+    libraryReturnLabel.length > 0
+      ? appendReturnParamsToRelativeHref(
+          libraryBaseHref,
+          libraryReturnPath,
+          libraryReturnLabel,
+        )
+      : libraryBaseHref
 
   return (
     <section className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60">

@@ -19,6 +19,7 @@ import {
 
 import { llmCallSourceLabel } from '../../lib/llmCallSourceLabels'
 import { deriveLlmUsageReportMode } from '../../lib/llmUsageReportMode'
+import { mergePreserveReturnParams } from '../../lib/returnNavigation'
 import {
   usageScopeLabel,
   usageScopeTitle,
@@ -185,10 +186,17 @@ export function LlmUsageReportPanel(props: {
       if (debounceRef.current) clearTimeout(debounceRef.current)
       debounceRef.current = setTimeout(() => {
         const qs = filtersToSearchParams(next)
-        navigate({ pathname: '/llm-usage', search: qs }, { replace: true })
+        const merged = mergePreserveReturnParams(qs, searchParams)
+        navigate(
+          {
+            pathname: '/llm-usage',
+            search: merged,
+          },
+          { replace: true },
+        )
       }, 280)
     },
-    [navigate],
+    [navigate, searchParams],
   )
 
   const updateFilters = useCallback(

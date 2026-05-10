@@ -16,6 +16,7 @@ import {
   getHostedEnvironment,
   hostedEnvironmentLabel,
 } from '../lib/hostedEnvironment'
+import { appendReturnParamsToRelativeHref } from '../lib/returnNavigation'
 import { withUtcMonthQuery } from '../lib/utcMonthBounds'
 import { useStudioAccess } from '../hooks/useStudioAccess'
 import { APP_VERSION } from '../version'
@@ -239,7 +240,11 @@ export function StudioPage(): ReactElement {
                 <div className="flex shrink-0 flex-row flex-wrap items-center justify-start gap-2 lg:justify-end">
                   {profile && userCanSeeMeTokenUsage(profile) ? (
                     <Link
-                      to={`/llm-usage${withUtcMonthQuery(`studio_id=${encodeURIComponent(sid)}`)}`}
+                      to={appendReturnParamsToRelativeHref(
+                        `/llm-usage${withUtcMonthQuery(`studio_id=${encodeURIComponent(sid)}`)}`,
+                        `/studios/${sid}`,
+                        studioQ.data?.name ?? 'Studio',
+                      )}
                       className="inline-flex items-center justify-center rounded-md border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-[12px] font-medium text-zinc-300 hover:bg-zinc-800"
                     >
                       Token usage
@@ -280,6 +285,8 @@ export function StudioPage(): ReactElement {
                   isError={artifactsQ.isError}
                   rows={artifactsQ.data}
                   onDownload={handleArtifactDownload}
+                  libraryReturnPath={`/studios/${sid}`}
+                  libraryReturnLabel={studioQ.data?.name ?? 'Studio'}
                 />
               </div>
               <aside className="min-w-0 lg:sticky lg:top-6 lg:self-start">
@@ -308,6 +315,8 @@ export function StudioPage(): ReactElement {
                     billedToStudioName={billedToStudioName}
                     heading="Studio LLM usage"
                     detailReportHref={`/llm-usage${withUtcMonthQuery(`studio_id=${encodeURIComponent(sid)}`)}`}
+                    detailReturnPath={`/studios/${sid}`}
+                    detailReturnLabel={studioQ.data?.name ?? 'Studio'}
                     sectionPaddingClass="p-5"
                   />
                 </div>

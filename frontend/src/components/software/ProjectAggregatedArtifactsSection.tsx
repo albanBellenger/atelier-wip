@@ -2,6 +2,7 @@ import type { ReactElement } from 'react'
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 
+import { appendReturnParamsToRelativeHref } from '../../lib/returnNavigation'
 import { formatFileByteSize } from '../../lib/formatFileByteSize'
 import { formatPersonShortLabel } from '../../lib/formatPersonShortLabel'
 import { formatRelativeTimeUtc } from '../../lib/formatRelativeTime'
@@ -37,6 +38,8 @@ export function ProjectAggregatedArtifactsSection(props: {
   isError: boolean
   rows: SoftwareArtifactRow[] | undefined
   onDownload: (artifactId: string, filename: string) => void
+  libraryReturnPath?: string
+  libraryReturnLabel?: string
 }): ReactElement | null {
   const {
     studioId,
@@ -48,6 +51,8 @@ export function ProjectAggregatedArtifactsSection(props: {
     isError,
     rows,
     onDownload,
+    libraryReturnPath,
+    libraryReturnLabel,
   } = props
 
   const visibleRows = useMemo(
@@ -63,7 +68,18 @@ export function ProjectAggregatedArtifactsSection(props: {
     return null
   }
 
-  const libraryPath = `/studios/${studioId}/artifact-library?softwareId=${encodeURIComponent(softwareId)}`
+  const libraryBase = `/studios/${studioId}/artifact-library?softwareId=${encodeURIComponent(softwareId)}`
+  const libraryPath =
+    libraryReturnPath &&
+    libraryReturnLabel &&
+    libraryReturnPath.length > 0 &&
+    libraryReturnLabel.length > 0
+      ? appendReturnParamsToRelativeHref(
+          libraryBase,
+          libraryReturnPath,
+          libraryReturnLabel,
+        )
+      : libraryBase
 
   return (
     <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40">

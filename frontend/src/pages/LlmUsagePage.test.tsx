@@ -63,6 +63,106 @@ describe('LlmUsagePage', () => {
     expect(await screen.findByText(/Atelier · Builder workspace/i)).toBeInTheDocument()
   })
 
+  it('shows return nav from returnTo query', async () => {
+    vi.spyOn(api, 'me').mockResolvedValue({
+      user: {
+        id: 'u1',
+        email: 'a@b.com',
+        display_name: 'Alex',
+        is_platform_admin: false,
+      },
+      studios: [
+        { studio_id: 's1', studio_name: 'Studio One', role: 'studio_member' },
+      ],
+      cross_studio_grants: [],
+    })
+    vi.spyOn(api, 'getMeTokenUsage').mockResolvedValue({
+      rows: [],
+      totals: {
+        input_tokens: 0,
+        output_tokens: 0,
+        estimated_cost_usd: '0',
+      },
+    })
+    vi.spyOn(api, 'listSoftware').mockResolvedValue([])
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter
+        initialEntries={[
+          '/llm-usage?returnTo=%2Fstudios%2Fs1%2Fsoftware%2Fsw1&returnLabel=Alpha+App',
+        ]}
+      >
+        <QueryClientProvider client={qc}>
+          <LlmUsagePage />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    expect(
+      await screen.findByRole('link', { name: /return to alpha app/i }),
+    ).toHaveAttribute('href', '/studios/s1/software/sw1')
+  })
+
+  it('shows derived return nav for a single project_id filter', async () => {
+    vi.spyOn(api, 'me').mockResolvedValue({
+      user: {
+        id: 'u1',
+        email: 'a@b.com',
+        display_name: 'Alex',
+        is_platform_admin: false,
+      },
+      studios: [
+        { studio_id: 's1', studio_name: 'Studio One', role: 'studio_member' },
+      ],
+      cross_studio_grants: [],
+    })
+    vi.spyOn(api, 'getStudioTokenUsage').mockResolvedValue({
+      rows: [],
+      totals: {
+        input_tokens: 0,
+        output_tokens: 0,
+        estimated_cost_usd: '0',
+      },
+    })
+    vi.spyOn(api, 'listSoftware').mockResolvedValue([])
+    vi.spyOn(api, 'listStudioProjects').mockResolvedValue([
+      {
+        id: 'p9',
+        software_id: 'sw1',
+        name: 'Roadmap',
+        description: null,
+        publish_folder_slug: 'r',
+        archived: false,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+        sections: null,
+        work_orders_done: 0,
+        work_orders_total: 0,
+        sections_count: 0,
+        last_edited_at: null,
+        software_name: 'Sw',
+      },
+    ])
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter
+        initialEntries={[
+          '/llm-usage?studio_id=s1&project_id=p9&date_from=2026-01-01&date_to=2026-01-31',
+        ]}
+      >
+        <QueryClientProvider client={qc}>
+          <LlmUsagePage />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    expect(
+      await screen.findByRole('link', { name: /return to roadmap/i }),
+    ).toHaveAttribute('href', '/studios/s1/software/sw1/projects/p9')
+  })
+
   it('formats totals input/output tokens with locale grouping', async () => {
     vi.spyOn(api, 'me').mockResolvedValue({
       user: {

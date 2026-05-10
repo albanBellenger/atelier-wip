@@ -3,12 +3,14 @@ import type { ReactElement } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Link,
+  useLocation,
   useNavigate,
   useParams,
   useSearchParams,
 } from 'react-router-dom'
 
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
+import { ReturnNavLink } from '../components/nav/ReturnNavLink'
 import { ArtifactDetailDrawer } from '../components/artifacts/ArtifactDetailDrawer'
 import {
   EmbeddingStatusBadge,
@@ -25,6 +27,10 @@ import {
   hostedEnvironmentLabel,
 } from '../lib/hostedEnvironment'
 import { useStudioAccess } from '../hooks/useStudioAccess'
+import {
+  parseReturnNavFromLocationState,
+  readReturnNavFromSearchParams,
+} from '../lib/returnNavigation'
 import { APP_VERSION } from '../version'
 import {
   type AuthErrorBody,
@@ -75,6 +81,7 @@ function rowOriginLabel(
 
 export function ArtifactLibraryPage(): ReactElement {
   const { studioId } = useParams<{ studioId: string }>()
+  const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const qc = useQueryClient()
@@ -163,6 +170,26 @@ export function ArtifactLibraryPage(): ReactElement {
   }, [urlSoftwareFilter])
 
   const softwareOptions = softwareQ.data ?? []
+
+  const returnNav = useMemo(
+    () =>
+      parseReturnNavFromLocationState(location.state) ??
+      readReturnNavFromSearchParams(searchParams),
+    [location.state, searchParams],
+  )
+
+  const headerTrailingCrumb = useMemo(() => {
+    if (!urlSoftwareFilter) {
+      return { projectLabel: 'Artifact library' as const }
+    }
+    const sw = softwareOptions.find((s) => s.id === urlSoftwareFilter)
+    return {
+      label: sw?.name ?? 'Software',
+      softwareId: urlSoftwareFilter,
+      projectLabel: 'Artifact library',
+    }
+  }, [urlSoftwareFilter, softwareOptions])
+
   const effectiveUploadSoftwareId = useMemo(() => {
     if (uploadSoftwareId.trim()) return uploadSoftwareId.trim()
     const first = softwareOptions[0]?.id
@@ -278,8 +305,6 @@ export function ArtifactLibraryPage(): ReactElement {
     [searchParams, setSearchParams],
   )
 
-  const headerTrailingCrumb = { projectLabel: 'Artifact library' }
-
   if (!sid) {
     void navigate('/studios', { replace: true })
     return <div className="min-h-screen bg-zinc-950" />
@@ -325,10 +350,13 @@ export function ArtifactLibraryPage(): ReactElement {
         />
 
         <div className="mt-8 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Artifact library
-            </h1>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <h1 className="text-2xl font-semibold tracking-tight">
+                Artifact library
+              </h1>
+              <ReturnNavLink target={returnNav} />
+            </div>
             <p className="mt-2 max-w-xl text-[13px] text-zinc-400">
               Studio, software, and project files in one place. Filter by
               software or upload to the scope you need.

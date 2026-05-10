@@ -233,6 +233,37 @@ export function BuilderHomeDashboard({
 
   const access = useStudioAccess(profile, studioId ?? undefined, softwareId ?? undefined)
 
+  const tokenReturn = useMemo(() => {
+    if (studioId && softwareId && projectId) {
+      return {
+        path: `/studios/${studioId}/software/${softwareId}/projects/${projectId}`,
+        label: project?.name ?? 'Project',
+      }
+    }
+    if (studioId && softwareId) {
+      return {
+        path: `/studios/${studioId}/software/${softwareId}`,
+        label: software?.name ?? 'Software',
+      }
+    }
+    if (studioId) {
+      return {
+        path: `/studios/${studioId}`,
+        label:
+          profile.studios.find((s) => s.studio_id === studioId)?.studio_name ??
+          'Studio',
+      }
+    }
+    return { path: '/', label: 'Builder workspace' }
+  }, [
+    studioId,
+    softwareId,
+    projectId,
+    project,
+    software,
+    profile.studios,
+  ])
+
   const showAnalysisShortcut =
     access.isStudioEditor && !access.isCrossStudioViewer
   const showGenerateShortcut = access.isStudioEditor
@@ -424,6 +455,8 @@ export function BuilderHomeDashboard({
                       ? `/llm-usage${withUtcMonthQuery(`studio_id=${encodeURIComponent(studioId)}`)}`
                       : '/llm-usage'
                   }
+                  detailReturnPath={tokenReturn.path}
+                  detailReturnLabel={tokenReturn.label}
                 />
                 {studioId && softwareId && projectId && access.isMember ? (
                   <>
