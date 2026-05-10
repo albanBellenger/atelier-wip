@@ -340,7 +340,9 @@ async def test_resolve_embedding_route_platform_skips_studio_policies(
         LlmProviderRegistry(
             id=uuid.uuid4(),
             provider_id="openai",
-            models_json=json.dumps(["text-embedding-3-small"]),
+            models_json=json.dumps(
+                [{"id": "text-embedding-3-small", "kind": "embedding"}]
+            ),
             status="connected",
             is_default=True,
             sort_order=0,
@@ -381,7 +383,12 @@ async def test_resolve_embedding_route_studio_ignores_chat_selected_model(
         LlmProviderRegistry(
             id=uuid.uuid4(),
             provider_id="openai",
-            models_json=json.dumps(["gpt-4o-mini", "text-embedding-3-small"]),
+            models_json=json.dumps(
+                [
+                    {"id": "gpt-4o-mini", "kind": "chat"},
+                    {"id": "text-embedding-3-small", "kind": "embedding"},
+                ]
+            ),
             status="connected",
             is_default=True,
             sort_order=0,

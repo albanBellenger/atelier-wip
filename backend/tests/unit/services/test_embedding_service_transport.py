@@ -22,7 +22,9 @@ async def _seed_embedding_via_llm_registry(db_session: object) -> None:
         LlmProviderRegistry(
             id=uuid.uuid4(),
             provider_id="openai",
-            models_json=json.dumps(["text-embedding-3-small"]),
+            models_json=json.dumps(
+                [{"id": "text-embedding-3-small", "kind": "embedding"}]
+            ),
             status="connected",
             is_default=True,
             sort_order=0,

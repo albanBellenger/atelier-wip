@@ -2,7 +2,9 @@
 
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from app.security.passwords import BCRYPT_MAX_PASSWORD_BYTES
 
@@ -115,6 +117,26 @@ class AdminLlmProbeBody(BaseModel):
         if not (s.startswith("http://") or s.startswith("https://")):
             raise ValueError("API base URL must start with http:// or https://")
         return s
+
+
+class AdminEmbeddingProbeBody(BaseModel):
+    """Optional overrides for ``POST /admin/test/embedding`` (scoped registry probe).
+
+    When both ``provider_id`` and ``model`` are omitted, the probe uses embeddings routing
+    (same as legacy behaviour). When both are set, the probe targets that registry row and
+    model id without consulting routing rules.
+    """
+
+    provider_id: str | None = None
+    model: str | None = None
+
+    @model_validator(mode="after")
+    def provider_and_model_together(self) -> Self:
+        p = (self.provider_id or "").strip()
+        m = (self.model or "").strip()
+        if bool(p) != bool(m):
+            raise ValueError("provider_id and model must both be set or both omitted.")
+        return self
 
 
 class AdminConnectivityResult(BaseModel):

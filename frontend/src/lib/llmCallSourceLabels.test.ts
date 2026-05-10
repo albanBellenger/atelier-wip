@@ -5,4 +5,9 @@ describe('llmCallSourceLabels', () => {
     expect(KNOWN_LLM_CALL_SOURCES).toContain('builder_composer_hint')
     expect(llmCallSourceLabel('builder_composer_hint')).toBe('Builder composer hint')
   })
+
+  it('returns empty string for nullish keys so callers can chain safely', () => {
+    expect(llmCallSourceLabel(undefined)).toBe('')
+    expect(llmCallSourceLabel(null)).toBe('')
+  })
 })

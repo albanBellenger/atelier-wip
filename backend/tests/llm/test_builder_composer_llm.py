@@ -32,3 +32,25 @@ async def test_builder_composer_hint_returns_structured_copy(
     assert isinstance(data.get("input_placeholder"), str) and data[
         "input_placeholder"
     ].strip()
+
+
+async def test_builder_composer_hint_without_project_or_local_hour(
+    client: AsyncClient,
+    studio_member_software_project: dict[str, object],
+) -> None:
+    """Covers UTC hour note and no-project branch in BuilderComposerService."""
+    software_id = studio_member_software_project["software_id"]
+    headers = studio_member_software_project["headers"]
+    assert isinstance(headers, dict)
+
+    r = await client.post(
+        "/me/builder-composer-hint",
+        headers=headers,
+        json={"software_id": str(software_id)},
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert isinstance(data.get("headline"), str) and data["headline"].strip()
+    assert isinstance(data.get("input_placeholder"), str) and data[
+        "input_placeholder"
+    ].strip()

@@ -10,11 +10,10 @@ from app.models import LlmProviderRegistry
 from app.openai_compat_urls import openai_v1_base
 from app.security.field_encryption import decode_admin_stored_secret
 from app.services.litellm_model_id import normalize_litellm_chat_model
-from app.services.registry_models_json import first_model_id_from_json, model_ids_from_json
-
-
-def _models_from_registry_row(pr: LlmProviderRegistry) -> list[str]:
-    return model_ids_from_json(pr.models_json)
+from app.services.registry_models_json import (
+    first_model_id_for_kind,
+    model_ids_for_kind,
+)
 
 
 def _registry_connected(pr: LlmProviderRegistry) -> bool:
@@ -24,7 +23,7 @@ def _registry_connected(pr: LlmProviderRegistry) -> bool:
 def first_registry_model(row: LlmProviderRegistry | None) -> str | None:
     if row is None:
         return None
-    return first_model_id_from_json(row.models_json)
+    return first_model_id_for_kind(row.models_json, "chat")
 
 
 async def load_ordered_registry_providers(
@@ -63,7 +62,7 @@ async def resolve_provider_id_for_model(
     for pr in providers:
         if not _registry_connected(pr):
             continue
-        if want in _models_from_registry_row(pr):
+        if want in model_ids_for_kind(pr.models_json, "chat"):
             return pr.provider_id
     return None
 

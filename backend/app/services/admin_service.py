@@ -7,7 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
 from app.models import LlmProviderRegistry, User
-from app.schemas.auth import AdminConnectivityResult, AdminLlmProbeBody, UserPublic
+from app.schemas.auth import (
+    AdminConnectivityResult,
+    AdminEmbeddingProbeBody,
+    AdminLlmProbeBody,
+    UserPublic,
+)
 from app.services.embedding_service import EmbeddingService
 from app.services.llm_service import LLMService
 
@@ -74,13 +79,25 @@ class AdminService:
             persist_registry_status=True,
         )
 
-    async def test_embedding(self) -> AdminConnectivityResult:
-        """Single-vector embedding via LLM registry + embeddings routing rule."""
+    async def test_embedding(
+        self, body: AdminEmbeddingProbeBody | None = None
+    ) -> AdminConnectivityResult:
+        """Embedding probe: routing-based, or scoped to a registry provider + model."""
+        b = body or AdminEmbeddingProbeBody()
+        scoped = bool((b.provider_id or "").strip() and (b.model or "").strip())
         try:
             emb = EmbeddingService(self.db)
-            vectors = await emb.embed_batch(
-                ["Atelier connectivity probe"], studio_id=None
-            )
+            if scoped:
+                vectors = await emb.probe_registry_embedding_model(
+                    provider_id=b.provider_id or "",
+                    raw_model_id=b.model or "",
+                )
+            else:
+                vectors = await emb.embed_batch(
+                    ["Atelier connectivity probe"],
+                    studio_id=None,
+                    connectivity_probe=True,
+                )
         except ApiError as e:
             detail = e.detail if isinstance(e.detail, str) else str(e.detail)
             return AdminConnectivityResult(

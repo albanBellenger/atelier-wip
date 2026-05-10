@@ -88,7 +88,10 @@ async def test_admin_put_llm_routing_schedules_existing_sections_when_embedding_
     prov = await client.put(
         "/admin/llm/providers/openai",
         json={
-            "models": ["gpt-4o-mini", "text-embedding-3-small"],
+            "models": [
+                {"id": "gpt-4o-mini", "kind": "chat"},
+                {"id": "text-embedding-3-small", "kind": "embedding"},
+            ],
             "api_base_url": None,
             "is_default": True,
             "sort_order": 0,

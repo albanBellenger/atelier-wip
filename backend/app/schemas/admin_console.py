@@ -83,7 +83,13 @@ class LlmProviderRegistryUpdate(BaseModel):
         out: list[object] = []
         for item in v:
             if isinstance(item, str) and item.strip():
-                out.append({"id": item.strip(), "context_metadata_source": "unknown"})
+                out.append(
+                    {
+                        "id": item.strip(),
+                        "kind": "chat",
+                        "context_metadata_source": "unknown",
+                    }
+                )
             else:
                 out.append(item)
         return out

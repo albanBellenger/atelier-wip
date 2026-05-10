@@ -64,7 +64,12 @@ async def llm_admin_config(db_session: AsyncSession) -> None:
     await db_session.execute(delete(LlmRoutingRule))
     await db_session.execute(delete(LlmProviderRegistry))
     await db_session.flush()
-    models_payload = json.dumps([model, emb_model])
+    models_payload = json.dumps(
+        [
+            {"id": model, "kind": "chat"},
+            {"id": emb_model, "kind": "embedding"},
+        ]
+    )
     db_session.add(
         LlmProviderRegistry(
             id=uuid.uuid4(),
@@ -240,5 +245,82 @@ async def studio_member_software_project(
     return {
         "software_id": software.id,
         "project_id": project.id,
+        "headers": studio_member["headers"],
+    }
+
+
+@pytest_asyncio.fixture
+async def project_two_sections_for_graph_llm(
+    db_session: AsyncSession,
+    studio_member: dict[str, object],
+) -> dict[str, object]:
+    """Two sections with explicit cross-references for graph/analyze-sections LLM."""
+    studio_id = studio_member["studio_id"]
+    assert isinstance(studio_id, uuid.UUID)
+    software = await create_software(
+        db_session,
+        studio_id,
+        name="Graph LLM software",
+        definition="API and data layers.",
+    )
+    project = await create_project(db_session, software.id, name="Graph LLM project")
+    await create_section(
+        db_session,
+        project.id,
+        title="API layer",
+        slug="api-layer",
+        order=0,
+        content=(
+            "### Overview\n"
+            "Public HTTP handlers live here. For persistence rules, see the "
+            "**Data layer** section — it owns all database contracts."
+        ),
+    )
+    await create_section(
+        db_session,
+        project.id,
+        title="Data layer",
+        slug="data-layer",
+        order=1,
+        content=(
+            "### Persistence\n"
+            "Database schema and migrations. The **API layer** section describes "
+            "how handlers call into this layer."
+        ),
+    )
+    return {
+        "project_id": project.id,
+        "headers": studio_member["headers"],
+    }
+
+
+@pytest_asyncio.fixture
+async def empty_section_citation_ctx(
+    db_session: AsyncSession,
+    studio_member: dict[str, object],
+) -> dict[str, object]:
+    """Section with no plaintext (citation health short-circuits before LLM)."""
+    studio_id = studio_member["studio_id"]
+    assert isinstance(studio_id, uuid.UUID)
+    software = await create_software(
+        db_session,
+        studio_id,
+        name="Citation empty LLM software",
+        definition="Docs.",
+    )
+    project = await create_project(
+        db_session, software.id, name="Citation empty project"
+    )
+    section = await create_section(
+        db_session,
+        project.id,
+        title="Placeholder section",
+        slug="placeholder",
+        order=0,
+        content="",
+    )
+    return {
+        "project_id": project.id,
+        "section_id": section.id,
         "headers": studio_member["headers"],
     }

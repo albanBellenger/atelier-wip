@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.exceptions import ApiError
 from app.models import LlmProviderRegistry, LlmRoutingRule, StudioLlmProviderPolicy
+from app.schemas.llm_registry_model import LlmRegistryModelKind
 from app.schemas.admin_console import (
     LlmProviderRegistryResponse,
     LlmProviderRegistryUpdate,
@@ -21,7 +23,8 @@ from app.services.litellm_model_context import enrich_model_entries_from_litellm
 from app.services.llm_provider_logo_service import resolve_llm_provider_logo_url
 from app.services.llm_service import LLMService
 from app.services.registry_models_json import (
-    first_model_id_from_json,
+    first_model_id_for_kind,
+    model_ids_for_kind,
     parse_models_json,
     serialize_models_json,
 )
@@ -33,6 +36,22 @@ def _mask_secret(s: str | None) -> bool:
 
 def _norm_status(s: str | None) -> str:
     return (s or "").strip().lower()
+
+
+def _registry_hosts_model_for_kind(
+    providers: list[LlmProviderRegistry],
+    model_id: str,
+    kind: LlmRegistryModelKind,
+) -> bool:
+    want = (model_id or "").strip()
+    if not want:
+        return True
+    for pr in providers:
+        if _norm_status(pr.status) != "connected":
+            continue
+        if want in model_ids_for_kind(pr.models_json, kind):
+            return True
+    return False
 
 
 _DEFAULT_STALE_WARNING = (
@@ -199,7 +218,7 @@ class LlmConnectivityService:
 
         await self._sync_default_flag_with_status(reg, pk, save_warnings)
 
-        probe_id = first_model_id_from_json(reg.models_json)
+        probe_id = first_model_id_for_kind(reg.models_json, "chat")
         status_after = _norm_status(reg.status)
         if (
             probe_id
@@ -259,6 +278,27 @@ class LlmConnectivityService:
         ]
 
     async def put_routing(self, body: LlmRoutingRuleUpdate) -> list[LlmRoutingRuleResponse]:
+        providers = list(
+            (await self.db.execute(select(LlmProviderRegistry))).scalars().all()
+        )
+        connected = [p for p in providers if _norm_status(p.status) == "connected"]
+        if connected:
+            for rule in body.rules:
+                uc = (rule.use_case or "").strip().lower()
+                exp_kind: LlmRegistryModelKind = "embedding" if uc == "embeddings" else "chat"
+                for cand in (rule.primary_model, rule.fallback_model):
+                    tid = (cand or "").strip() if cand else ""
+                    if not tid:
+                        continue
+                    if not _registry_hosts_model_for_kind(connected, tid, exp_kind):
+                        raise ApiError(
+                            status_code=400,
+                            code="ROUTING_MODEL_KIND_MISMATCH",
+                            message=(
+                                f"Routing rule {rule.use_case!r}: model {tid!r} is not deployed "
+                                f"as {exp_kind} on any connected LLM provider."
+                            ),
+                        )
         await self.db.execute(delete(LlmRoutingRule))
         for rule in body.rules:
             self.db.add(
@@ -295,6 +335,31 @@ class LlmConnectivityService:
     async def put_studio_policy(
         self, studio_id: UUID, body: StudioLlmPolicyUpdate
     ) -> list[StudioLlmPolicyRowResponse]:
+        for row in body.rows:
+            sm = (row.selected_model or "").strip()
+            if not sm:
+                continue
+            pr = await self.db.scalar(
+                select(LlmProviderRegistry).where(
+                    func.lower(LlmProviderRegistry.provider_id)
+                    == (row.provider_id or "").strip().lower()
+                )
+            )
+            if pr is None:
+                raise ApiError(
+                    status_code=400,
+                    code="STUDIO_POLICY_UNKNOWN_PROVIDER",
+                    message=f"Unknown LLM provider {row.provider_id!r}.",
+                )
+            if sm not in model_ids_for_kind(pr.models_json, "chat"):
+                raise ApiError(
+                    status_code=400,
+                    code="STUDIO_POLICY_CHAT_MODEL_INVALID",
+                    message=(
+                        f"selected_model {sm!r} is not registered as a chat model on provider "
+                        f"{row.provider_id!r}."
+                    ),
+                )
         await self.db.execute(
             delete(StudioLlmProviderPolicy).where(
                 StudioLlmProviderPolicy.studio_id == studio_id

@@ -21,9 +21,11 @@ import { Tooltip } from '../../components/ui/Tooltip'
 import { InfoCircleHelpButton } from '../../components/ui/InfoCircleHelpButton'
 import {
   type AdminLlmProbeBody,
+  type AdminEmbeddingProbeBody,
   type LlmProviderRegistryRow,
   type LlmProviderUpsertBody,
   type LlmRegistryModelEntry,
+  type LlmRegistryModelKind,
   type LlmRoutingRuleRow,
   type StudioLlmPolicyRow,
   getAdminLlmDeployment,
@@ -33,6 +35,7 @@ import {
   modelIdsFromEntries,
   deleteAdminLlmProvider,
   postAdminTestLlm,
+  postAdminTestEmbedding,
   putAdminLlmProvider,
   putAdminLlmRouting,
   putAdminStudioLlmPolicy,
@@ -220,33 +223,66 @@ function registryMaxContextTitle(models: LlmRegistryModelEntry[]): string | unde
   return lines.length ? lines.join('\n') : undefined
 }
 
+function registryEntryKind(m: LlmRegistryModelEntry): LlmRegistryModelKind {
+  return m.kind === 'embedding' ? 'embedding' : 'chat'
+}
+
+function firstModelOfKind(
+  models: LlmRegistryModelEntry[],
+  kind: LlmRegistryModelKind,
+): string | undefined {
+  return models.find((m) => registryEntryKind(m) === kind)?.id
+}
+
+function chatModelIdsForPolicy(models: LlmRegistryModelEntry[]): string[] {
+  return models.filter((m) => registryEntryKind(m) === 'chat').map((m) => m.id)
+}
+
+function parseModelKindsCsv(text: string, n: number): LlmRegistryModelKind[] {
+  const parts = text.split(/[,\n]+/).map((s) => s.trim().toLowerCase())
+  const out: LlmRegistryModelKind[] = []
+  for (let i = 0; i < n; i += 1) {
+    const p = parts[i]
+    out.push(p === 'embedding' ? 'embedding' : 'chat')
+  }
+  return out
+}
+
+function formatModelKindsCsv(models: LlmRegistryModelEntry[]): string {
+  return models.map((m) => registryEntryKind(m)).join(', ')
+}
+
 function buildModelEntriesFromForm(
   modelsText: string,
   contextTokensText: string,
+  kindsText: string,
 ): LlmRegistryModelEntry[] {
   const ids = parseModelIds(modelsText)
   const tokenParts = contextTokensText.split(/[,\n]+/).map((s) => s.trim())
   while (tokenParts.length < ids.length) {
     tokenParts.push('')
   }
+  const kinds = parseModelKindsCsv(kindsText, ids.length)
   return ids.map((id, i) => {
+    const kind = kinds[i] ?? 'chat'
     const raw = tokenParts[i]
     if (!raw) {
-      return { id, context_metadata_source: 'unknown' as const }
+      return { id, kind, context_metadata_source: 'unknown' as const }
     }
     const n = parseInt(raw, 10)
     if (!Number.isFinite(n) || n < 1) {
-      return { id, context_metadata_source: 'unknown' as const }
+      return { id, kind, context_metadata_source: 'unknown' as const }
     }
-    return { id, max_context_tokens: n, context_metadata_source: 'manual' as const }
+    return { id, kind, max_context_tokens: n, context_metadata_source: 'manual' as const }
   })
 }
 
 function formatModelSummary(m: LlmRegistryModelEntry): string {
+  const tag = registryEntryKind(m) === 'embedding' ? '[emb] ' : ''
   if (m.max_context_tokens != null) {
-    return `${m.id} (${m.max_context_tokens.toLocaleString()} tok)`
+    return `${tag}${m.id} (${m.max_context_tokens.toLocaleString()} tok)`
   }
-  return m.id
+  return `${tag}${m.id}`
 }
 
 function appendUniqueModelId(currentText: string, id: string): string {
@@ -283,13 +319,44 @@ function formatProviderMutationErr(err: unknown): string {
 function sortRoutingRules(rules: LlmRoutingRuleRow[]): LlmRoutingRuleRow[] {
   const order = [...ROUTING_SORT_ORDER]
   return [...rules].sort((a, b) => {
-    const ia = order.indexOf(a.use_case as (typeof ROUTING_SORT_ORDER)[number])
-    const ib = order.indexOf(b.use_case as (typeof ROUTING_SORT_ORDER)[number])
+    const ua = a.use_case ?? ''
+    const ub = b.use_case ?? ''
+    const ia = order.indexOf(ua as (typeof ROUTING_SORT_ORDER)[number])
+    const ib = order.indexOf(ub as (typeof ROUTING_SORT_ORDER)[number])
     if (ia !== -1 && ib !== -1) return ia - ib
     if (ia !== -1) return -1
     if (ib !== -1) return 1
-    return a.use_case.localeCompare(b.use_case)
+    return ua.localeCompare(ub)
   })
+}
+
+/** Canonical form used by `putAdminLlmRouting` — order-independent compare. */
+function normalizeRoutingRulesForCompare(rules: LlmRoutingRuleRow[]): LlmRoutingRuleRow[] {
+  return [...rules]
+    .map((r) => ({
+      use_case: (r.use_case ?? '').trim().slice(0, 32),
+      primary_model: (r.primary_model ?? '').trim(),
+      fallback_model: r.fallback_model?.trim() ? r.fallback_model.trim() : null,
+    }))
+    .sort((a, b) => a.use_case.localeCompare(b.use_case))
+}
+
+function routingRulesEqual(a: LlmRoutingRuleRow[], b: LlmRoutingRuleRow[]): boolean {
+  const na = normalizeRoutingRulesForCompare(a)
+  const nb = normalizeRoutingRulesForCompare(b)
+  if (na.length !== nb.length) return false
+  for (let i = 0; i < na.length; i += 1) {
+    const x = na[i]
+    const y = nb[i]
+    if (
+      x.use_case !== y.use_case ||
+      x.primary_model !== y.primary_model ||
+      x.fallback_model !== y.fallback_model
+    ) {
+      return false
+    }
+  }
+  return true
 }
 
 function AddRoutingModal({
@@ -488,6 +555,7 @@ function AddProviderModal({
   const [providerId, setProviderId] = useState('')
   const [modelsText, setModelsText] = useState('')
   const [contextTokensText, setContextTokensText] = useState('')
+  const [modelKindsText, setModelKindsText] = useState('')
   const [apiBaseUrl, setApiBaseUrl] = useState('')
   const [llmApiKey, setLlmApiKey] = useState('')
   const [litellmSlug, setLitellmSlug] = useState('')
@@ -499,6 +567,7 @@ function AddProviderModal({
     setProviderId('')
     setModelsText('')
     setContextTokensText('')
+    setModelKindsText('')
     setApiBaseUrl('')
     setLlmApiKey('')
     setLitellmSlug('')
@@ -512,7 +581,7 @@ function AddProviderModal({
 
   const submit = (): void => {
     const pk = normalizeProviderId(providerId)
-    const models = buildModelEntriesFromForm(modelsText, contextTokensText)
+    const models = buildModelEntriesFromForm(modelsText, contextTokensText, modelKindsText)
     if (!pk || models.length === 0) {
       return
     }
@@ -636,7 +705,19 @@ function AddProviderModal({
                 type="button"
                 className="mb-0.5 shrink-0"
                 onClick={() => {
-                  setModelsText((t) => appendUniqueModelId(t, suggestAppend))
+                  const id = suggestAppend.trim()
+                  if (!id) return
+                  setModelsText((t) => appendUniqueModelId(t, id))
+                  setModelKindsText((k) => {
+                    const nextModels = appendUniqueModelId(modelsText, id)
+                    const modelCount = parseModelIds(nextModels).length
+                    const parts = k.split(/[,\n]+/).map((s) => s.trim()).filter(Boolean)
+                    while (parts.length < modelCount - 1) {
+                      parts.push('chat')
+                    }
+                    parts.push(liteCatalogMode === 'embedding' ? 'embedding' : 'chat')
+                    return parts.join(', ')
+                  })
                   setSuggestAppend('')
                 }}
               >
@@ -663,6 +744,24 @@ function AddProviderModal({
               rows={2}
               spellCheck={false}
               placeholder="Comma-aligned with model list; leave blank to let LiteLLM fill on save"
+              className="mt-1.5 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
+            />
+          </div>
+          <div>
+            <StatLabel>
+              <label htmlFor="llm-add-model-kinds">Model kinds (optional)</label>
+            </StatLabel>
+            <p className="mt-0.5 text-[10px] text-zinc-500">
+              Comma-aligned with model list: <span className="font-mono text-zinc-400">chat</span> or{' '}
+              <span className="font-mono text-zinc-400">embedding</span>. Leave empty for all chat.
+            </p>
+            <textarea
+              id="llm-add-model-kinds"
+              value={modelKindsText}
+              onChange={(e) => setModelKindsText(e.target.value)}
+              rows={2}
+              spellCheck={false}
+              placeholder="e.g. chat, chat, embedding"
               className="mt-1.5 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
             />
           </div>
@@ -767,7 +866,7 @@ function buildPolicyRows(
   const map = new Map(existing?.map((r) => [r.provider_id, r]) ?? [])
   return providers.map((p) => {
     const prev = map.get(p.provider_id)
-    const ids = modelIdsFromEntries(p.models)
+    const ids = chatModelIdsForPolicy(p.models)
     const defaultModel = ids[0] ?? null
     return {
       provider_id: p.provider_id,
@@ -809,6 +908,7 @@ function EditProviderModal({
 }): ReactElement | null {
   const [modelsText, setModelsText] = useState('')
   const [contextTokensText, setContextTokensText] = useState('')
+  const [modelKindsText, setModelKindsText] = useState('')
   const [apiBaseUrl, setApiBaseUrl] = useState('')
   const [llmApiKey, setLlmApiKey] = useState('')
   const [clearLlmKey, setClearLlmKey] = useState(false)
@@ -822,6 +922,7 @@ function EditProviderModal({
     if (!provider) return
     setModelsText(modelIdsFromEntries(provider.models).join(', '))
     setContextTokensText(formatContextTokensCsv(provider.models))
+    setModelKindsText(formatModelKindsCsv(provider.models))
     setApiBaseUrl(provider.api_base_url ?? '')
     setLlmApiKey('')
     setClearLlmKey(false)
@@ -837,7 +938,7 @@ function EditProviderModal({
   }
 
   const submit = (): void => {
-    const models = buildModelEntriesFromForm(modelsText, contextTokensText)
+    const models = buildModelEntriesFromForm(modelsText, contextTokensText, modelKindsText)
     if (models.length === 0) {
       return
     }
@@ -968,7 +1069,19 @@ function EditProviderModal({
                 type="button"
                 className="mb-0.5 shrink-0"
                 onClick={() => {
-                  setModelsText((t) => appendUniqueModelId(t, suggestAppend))
+                  const id = suggestAppend.trim()
+                  if (!id) return
+                  setModelsText((t) => appendUniqueModelId(t, id))
+                  setModelKindsText((k) => {
+                    const nextModels = appendUniqueModelId(modelsText, id)
+                    const modelCount = parseModelIds(nextModels).length
+                    const parts = k.split(/[,\n]+/).map((s) => s.trim()).filter(Boolean)
+                    while (parts.length < modelCount - 1) {
+                      parts.push('chat')
+                    }
+                    parts.push(liteCatalogMode === 'embedding' ? 'embedding' : 'chat')
+                    return parts.join(', ')
+                  })
                   setSuggestAppend('')
                 }}
               >
@@ -995,6 +1108,24 @@ function EditProviderModal({
               rows={2}
               spellCheck={false}
               placeholder="Comma-aligned with model list; leave blank to let LiteLLM fill on save"
+              className="mt-1.5 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
+            />
+          </div>
+          <div>
+            <StatLabel>
+              <label htmlFor="llm-edit-model-kinds">Model kinds (optional)</label>
+            </StatLabel>
+            <p className="mt-0.5 text-[10px] text-zinc-500">
+              Comma-aligned: <span className="font-mono text-zinc-400">chat</span> or{' '}
+              <span className="font-mono text-zinc-400">embedding</span>. Leave empty for all chat.
+            </p>
+            <textarea
+              id="llm-edit-model-kinds"
+              value={modelKindsText}
+              onChange={(e) => setModelKindsText(e.target.value)}
+              rows={2}
+              spellCheck={false}
+              placeholder="e.g. chat, embedding"
               className="mt-1.5 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
             />
           </div>
@@ -1192,7 +1323,8 @@ export function LlmSection(): ReactElement {
   const routingRegistryScopeOptions = useMemo(() => {
     const s = new Set<string>()
     for (const p of connectedProviders) {
-      const slug = (p.litellm_provider_slug ?? p.provider_id).trim().toLowerCase()
+      const raw = p.litellm_provider_slug ?? p.provider_id ?? ''
+      const slug = String(raw).trim().toLowerCase()
       if (slug) s.add(slug)
     }
     return [...s].sort()
@@ -1212,6 +1344,16 @@ export function LlmSection(): ReactElement {
     },
   })
 
+  const routingMatchesSaved = useMemo(
+    () =>
+      Boolean(
+        routingQ.isSuccess &&
+          routingQ.data &&
+          routingRulesEqual(routingDraft, routingQ.data),
+      ),
+    [routingQ.isSuccess, routingQ.data, routingDraft],
+  )
+
   const updateRoutingRow = useCallback(
     (useCase: string, patch: Partial<Pick<LlmRoutingRuleRow, 'primary_model' | 'fallback_model'>>) => {
       setRoutingDraft((prev) =>
@@ -1227,6 +1369,13 @@ export function LlmSection(): ReactElement {
 
   const testLlmMut = useMutation({
     mutationFn: (body: AdminLlmProbeBody = {}) => postAdminTestLlm(body),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['admin', 'llm', 'deployment'] })
+    },
+  })
+
+  const testEmbedMut = useMutation({
+    mutationFn: (body: AdminEmbeddingProbeBody = {}) => postAdminTestEmbedding(body),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['admin', 'llm', 'deployment'] })
     },
@@ -1399,15 +1548,17 @@ export function LlmSection(): ReactElement {
                         'Status',
                         'Actions',
                       ]}
-                      grid="grid-cols-[1.05fr_1.35fr_0.55fr_1fr_0.65fr_0.9fr]"
+                      grid="grid-cols-[1.05fr_1.35fr_0.55fr_1fr_0.65fr_1.15fr]"
                     />
                     {providers.map((p) => {
                       const savingThis =
                         updateRegistry.isPending && updateRegistry.variables?.key === p.provider_id
+                      const chatModel = firstModelOfKind(p.models, 'chat')
+                      const embModel = firstModelOfKind(p.models, 'embedding')
                       return (
                         <TRow
                           key={p.id}
-                          grid="grid-cols-[1.05fr_1.35fr_0.55fr_1fr_0.65fr_0.9fr]"
+                          grid="grid-cols-[1.05fr_1.35fr_0.55fr_1fr_0.65fr_1.15fr]"
                         >
                           <div className="flex min-w-0 items-start gap-2">
                             <ProviderGlyph name={p.provider_id} logoUrl={p.logo_url} />
@@ -1431,9 +1582,9 @@ export function LlmSection(): ReactElement {
                           <div className="min-w-0">
                             <p
                               className="font-mono text-[10.5px] leading-snug text-zinc-300 line-clamp-3 break-words"
-                              title={p.models.map((m) => m.id).join(', ')}
+                              title={p.models.map((m) => `${m.id} (${registryEntryKind(m)})`).join(', ')}
                             >
-                              {p.models.length ? p.models.map((m) => m.id).join(', ') : '—'}
+                              {p.models.length ? p.models.map((m) => formatModelSummary(m)).join(' · ') : '—'}
                             </p>
                           </div>
                           <p
@@ -1464,28 +1615,54 @@ export function LlmSection(): ReactElement {
                             <Btn
                               type="button"
                               size="sm"
-                              disabled={savingThis || testLlmMut.isPending}
+                              disabled={savingThis || testLlmMut.isPending || testEmbedMut.isPending}
                               onClick={() => setEditingProvider(p)}
                             >
                               Edit
                             </Btn>
-                            <Btn
-                              type="button"
-                              size="sm"
-                              disabled={testLlmMut.isPending || savingThis}
-                              onClick={() => {
-                                const model = p.models[0]?.id
-                                const trimmedBase = p.api_base_url?.trim()
-                                const body: AdminLlmProbeBody = {
-                                  provider_id: p.provider_id,
+                            {chatModel ? (
+                              <Btn
+                                type="button"
+                                size="sm"
+                                disabled={
+                                  testLlmMut.isPending || testEmbedMut.isPending || savingThis
                                 }
-                                if (model) body.model = model
-                                if (trimmedBase) body.api_base_url = trimmedBase
-                                testLlmMut.mutate(body)
-                              }}
-                            >
-                              {llmProbeTarget === p.provider_id ? 'Testing…' : 'Test'}
-                            </Btn>
+                                onClick={() => {
+                                  const trimmedBase = p.api_base_url?.trim()
+                                  const body: AdminLlmProbeBody = {
+                                    provider_id: p.provider_id,
+                                    model: chatModel,
+                                  }
+                                  if (trimmedBase) body.api_base_url = trimmedBase
+                                  testLlmMut.mutate(body)
+                                }}
+                              >
+                                {testLlmMut.isPending &&
+                                testLlmMut.variables?.provider_id === p.provider_id
+                                  ? 'Testing chat…'
+                                  : 'Test chat'}
+                              </Btn>
+                            ) : null}
+                            {embModel ? (
+                              <Btn
+                                type="button"
+                                size="sm"
+                                disabled={
+                                  testLlmMut.isPending || testEmbedMut.isPending || savingThis
+                                }
+                                onClick={() => {
+                                  testEmbedMut.mutate({
+                                    provider_id: p.provider_id,
+                                    model: embModel,
+                                  })
+                                }}
+                              >
+                                {testEmbedMut.isPending &&
+                                testEmbedMut.variables?.provider_id === p.provider_id
+                                  ? 'Testing emb…'
+                                  : 'Test embedding'}
+                              </Btn>
+                            ) : null}
                           </div>
                         </TRow>
                       )
@@ -1500,15 +1677,17 @@ export function LlmSection(): ReactElement {
               ) : null}
             </div>
             <div className="border-t border-zinc-800/60 px-5 py-4">
-              <StatLabel>LLM probe result</StatLabel>
+              <StatLabel>Connectivity probe results</StatLabel>
               <p className="mt-1 text-[11px] text-zinc-500">
-                Shown for <span className="text-zinc-400">Test LLM</span> and per-row{' '}
-                <span className="text-zinc-400">Test</span> in the registry.
+                <span className="text-zinc-400">Chat</span> probes use completions;{' '}
+                <span className="text-zinc-400">Embedding</span> probes call the embeddings API (per
+                row or routing).
               </p>
               {testLlmMut.data ? (
                 <p
                   className={`mt-2 text-[12px] ${testLlmMut.data.ok ? 'text-emerald-400' : 'text-amber-400'}`}
                 >
+                  <span className="text-zinc-500">Chat: </span>
                   {testLlmMut.data.message}
                   {testLlmMut.data.detail ? (
                     <span className="mt-1 block whitespace-pre-wrap text-zinc-500">
@@ -1519,26 +1698,62 @@ export function LlmSection(): ReactElement {
               ) : null}
               {testLlmMut.isError ? (
                 <p className="mt-2 text-[12px] text-rose-300">
+                  <span className="text-zinc-500">Chat: </span>
                   {formatProviderMutationErr(testLlmMut.error)}
                 </p>
               ) : null}
-              {!testLlmMut.data && !testLlmMut.isError ? (
+              {testEmbedMut.data ? (
+                <p
+                  className={`mt-2 text-[12px] ${testEmbedMut.data.ok ? 'text-emerald-400' : 'text-amber-400'}`}
+                >
+                  <span className="text-zinc-500">Embedding: </span>
+                  {testEmbedMut.data.message}
+                  {testEmbedMut.data.detail ? (
+                    <span className="mt-1 block whitespace-pre-wrap text-zinc-500">
+                      {testEmbedMut.data.detail}
+                    </span>
+                  ) : null}
+                </p>
+              ) : null}
+              {testEmbedMut.isError ? (
+                <p className="mt-2 text-[12px] text-rose-300">
+                  <span className="text-zinc-500">Embedding: </span>
+                  {formatProviderMutationErr(testEmbedMut.error)}
+                </p>
+              ) : null}
+              {!testLlmMut.data &&
+              !testLlmMut.isError &&
+              !testEmbedMut.data &&
+              !testEmbedMut.isError ? (
                 <p className="mt-2 text-[12px] text-zinc-600">No probe run yet.</p>
               ) : null}
             </div>
             <div className="border-t border-zinc-800/60 px-5 py-4">
               <p className="text-[11px] text-zinc-500">
-                Sends a minimal chat completion using the default registry row (or pass a
-                provider from a row&apos;s <span className="text-zinc-400">Test</span> button).
+                Default chat probe uses the default registry row.{' '}
+                <span className="text-zinc-400">Test embedding (routing)</span> uses the embeddings
+                routing rule (no per-row overrides).
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Btn
                   type="button"
                   size="sm"
-                  disabled={testLlmMut.isPending}
+                  disabled={testLlmMut.isPending || testEmbedMut.isPending}
                   onClick={() => testLlmMut.mutate({})}
                 >
                   {llmProbeTarget === 'default' ? 'Testing…' : 'Test LLM (default)'}
+                </Btn>
+                <Btn
+                  type="button"
+                  size="sm"
+                  disabled={testLlmMut.isPending || testEmbedMut.isPending}
+                  onClick={() => testEmbedMut.mutate({})}
+                >
+                  {testEmbedMut.isPending &&
+                  !(testEmbedMut.variables?.provider_id ?? '').trim() &&
+                  !(testEmbedMut.variables?.model ?? '').trim()
+                    ? 'Testing…'
+                    : 'Test embedding (routing)'}
                 </Btn>
               </div>
             </div>
@@ -1690,6 +1905,8 @@ export function LlmSection(): ReactElement {
             <>
               {sortRoutingRules(routingDraft).map((r) => {
                 const rowCatalogMode = r.use_case === 'embeddings' ? 'embedding' : 'chat'
+                const agentsSummary = routingBucketAgentsSummary(r.use_case)
+                const bucketTitle = routingBucketTitle(r.use_case)
                 return (
                 <div
                   key={r.use_case}
@@ -1697,23 +1914,31 @@ export function LlmSection(): ReactElement {
                 >
                   <div>
                     <StatLabel>Agent group</StatLabel>
-                    <div className="mt-1.5 text-[13px] text-zinc-200">
-                      {routingBucketTitle(r.use_case)}
+                    <div className="mt-1.5 flex items-start gap-1.5">
+                      <div className="min-w-0 flex-1 text-[13px] leading-snug text-zinc-200">
+                        {bucketTitle}
+                      </div>
+                      {agentsSummary ? (
+                        <Tooltip
+                          className="shrink-0 pt-0.5"
+                          side="bottom"
+                          interactive
+                          accessibleTrigger={false}
+                          content={
+                            <span className="block text-[12px] leading-relaxed text-zinc-200">
+                              {agentsSummary}
+                            </span>
+                          }
+                        >
+                          <InfoCircleHelpButton
+                            aria-label={`Call sources included in the ${bucketTitle} routing bucket`}
+                            onClick={(e) => e.stopPropagation()}
+                            ringOffsetClass="focus-visible:ring-offset-zinc-950"
+                          />
+                        </Tooltip>
+                      ) : null}
                     </div>
-                    <p className="mt-1 text-[11px] leading-snug text-zinc-500">
-                      {routingBucketAgentsSummary(r.use_case)}
-                    </p>
                     <div className="mt-0.5 font-mono text-[10.5px] text-zinc-500">{r.use_case}</div>
-                    {r.use_case === 'embeddings' ? (
-                      <p className="mt-2 text-[11px] leading-snug text-zinc-500">
-                        Primary and fallback must be model IDs already listed on a connected provider in{' '}
-                        <span className="font-medium text-zinc-400">Model registry</span> above. Append
-                        embedding model ids via <span className="font-medium text-zinc-400">Register provider</span>{' '}
-                        or <span className="font-medium text-zinc-400">Edit</span>, using{' '}
-                        <span className="font-mono text-zinc-500">Add from LiteLLM catalog</span> with{' '}
-                        <span className="font-mono text-zinc-500">Embedding models</span>, then save routing here.
-                      </p>
-                    ) : null}
                   </div>
                   <div>
                     <StatLabel>
@@ -1788,7 +2013,8 @@ export function LlmSection(): ReactElement {
                   style={{ background: ADMIN_CONSOLE_ACCENT }}
                   disabled={
                     saveRouting.isPending ||
-                    routingDraft.some((row) => !row.primary_model.trim())
+                    routingDraft.some((row) => !row.primary_model.trim()) ||
+                    routingMatchesSaved
                   }
                   onClick={() => saveRouting.mutate(routingDraft)}
                 >

@@ -16,7 +16,7 @@ from app.services.llm_registry_credentials import (
     get_default_llm_registry_row,
     resolve_openai_compatible_llm_credentials,
 )
-from app.services.registry_models_json import first_model_id_from_json, model_ids_from_json
+from app.services.registry_models_json import first_model_id_for_kind, parse_models_json
 
 LITELLM_MODEL_CATALOG_URL = "https://api.litellm.ai/model_catalog"
 
@@ -99,6 +99,7 @@ def collect_registry_suggestions(
     provider_id_filter: str | None,
     litellm_provider_filter: str | None,
     q: str | None,
+    model_kind: Mode,
 ) -> tuple[list[LlmModelSuggestionItem], list[str]]:
     """Model ids from ``LlmProviderRegistry.models_json`` (LLM deployment), optional filters."""
     warnings: list[str] = []
@@ -123,8 +124,10 @@ def collect_registry_suggestions(
     for row in filtered:
         pk = row.provider_id
         pk_lower = pk.lower()
-        for mid in model_ids_from_json(row.models_json):
-            m = mid.strip()
+        for entry in parse_models_json(row.models_json):
+            if entry.kind != model_kind:
+                continue
+            m = entry.id.strip()
             if not m:
                 continue
             if ql and ql not in m.lower():
@@ -180,6 +183,7 @@ class LlmModelSuggestionsService:
                 provider_id=provider_id,
                 litellm_provider=litellm_provider,
                 q=q,
+                mode=mode,
             )
 
         warnings: list[str] = []
@@ -204,11 +208,11 @@ class LlmModelSuggestionsService:
 
         effective_model = ""
         if reg_row is not None:
-            effective_model = first_model_id_from_json(reg_row.models_json) or ""
+            effective_model = first_model_id_for_kind(reg_row.models_json, "chat") or ""
         if not effective_model:
             def_row = await get_default_llm_registry_row(self.db)
             if def_row is not None:
-                effective_model = first_model_id_from_json(def_row.models_json) or ""
+                effective_model = first_model_id_for_kind(def_row.models_json, "chat") or ""
         if not effective_model:
             effective_model = "gpt-4o-mini"
 
@@ -288,6 +292,7 @@ class LlmModelSuggestionsService:
         provider_id: str | None,
         litellm_provider: str | None,
         q: str | None,
+        mode: Mode,
     ) -> LlmModelSuggestionsResponse:
         result = await self.db.execute(
             select(LlmProviderRegistry).order_by(
@@ -306,6 +311,7 @@ class LlmModelSuggestionsService:
             provider_id_filter=(provider_id or "").strip().lower() or None,
             litellm_provider_filter=(litellm_provider or "").strip().lower() or None,
             q=q,
+            model_kind=mode,
         )
         if not items:
             if extra_warnings:

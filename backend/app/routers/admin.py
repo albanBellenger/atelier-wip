@@ -13,6 +13,7 @@ from app.exceptions import ApiError
 from app.models import Studio, User
 from app.schemas.auth import (
     AdminConnectivityResult,
+    AdminEmbeddingProbeBody,
     AdminLlmProbeBody,
     AdminStatusUpdate,
     UserCreate,
@@ -125,8 +126,9 @@ async def test_admin_llm(
 async def test_admin_embedding(
     session: AsyncSession = Depends(get_db),
     _: User = Depends(require_platform_admin),
+    body: AdminEmbeddingProbeBody = Body(default_factory=AdminEmbeddingProbeBody),
 ) -> AdminConnectivityResult:
-    return await AdminService(session).test_embedding()
+    return await AdminService(session).test_embedding(body)
 
 
 @router.post("/jobs/stale-draft-notifications")

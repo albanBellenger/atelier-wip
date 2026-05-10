@@ -148,6 +148,7 @@ export function LlmUsageFilterBar(props: {
     const q = listSearch.trim().toLowerCase()
     if (!q) return KNOWN_LLM_CALL_SOURCES
     return KNOWN_LLM_CALL_SOURCES.filter((ct) => {
+      if (typeof ct !== 'string' || ct.length === 0) return false
       const label = llmCallSourceLabel(ct).toLowerCase()
       return label.includes(q) || ct.toLowerCase().includes(q)
     })

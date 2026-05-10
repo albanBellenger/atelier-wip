@@ -102,8 +102,8 @@ describe('LlmSection', () => {
         'acme',
         expect.objectContaining({
           models: [
-            { id: 'model-a', context_metadata_source: 'unknown' },
-            { id: 'model-b', context_metadata_source: 'unknown' },
+            { id: 'model-a', kind: 'chat', context_metadata_source: 'unknown' },
+            { id: 'model-b', kind: 'chat', context_metadata_source: 'unknown' },
           ],
           api_base_url: 'https://api.example.com/v1',
         }),
@@ -203,6 +203,11 @@ describe('LlmSection', () => {
           Promise.resolve({ ok: true, message: 'Probe OK', detail: null }),
         ),
     )
+    vi.spyOn(api, 'postAdminTestEmbedding').mockResolvedValue({
+      ok: true,
+      message: 'Emb OK',
+      detail: null,
+    })
 
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
@@ -214,18 +219,18 @@ describe('LlmSection', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getAllByRole('button', { name: /^test$/i })).toHaveLength(2)
+      expect(screen.getAllByRole('button', { name: /test chat/i })).toHaveLength(2)
     })
-    const rowTestButtons = screen.getAllByRole('button', { name: /^test$/i })
+    const rowTestButtons = screen.getAllByRole('button', { name: /test chat/i })
     expect(rowTestButtons).toHaveLength(2)
     await user.click(rowTestButtons[0])
 
-    expect(screen.getAllByRole('button', { name: /testing/i })).toHaveLength(1)
-    expect(screen.getAllByRole('button', { name: /^test$/i })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: /testing chat/i })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: /^test chat$/i })).toHaveLength(1)
 
     release()
     await waitFor(() => {
-      expect(screen.queryByRole('button', { name: /testing/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /testing chat/i })).not.toBeInTheDocument()
     })
   })
 
@@ -309,6 +314,11 @@ describe('LlmSection', () => {
       message: 'Probe OK',
       detail: null,
     })
+    vi.spyOn(api, 'postAdminTestEmbedding').mockResolvedValue({
+      ok: true,
+      message: 'Emb OK',
+      detail: null,
+    })
 
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
@@ -335,8 +345,8 @@ describe('LlmSection', () => {
         'moonshot',
         expect.objectContaining({
           models: [
-            { id: 'alpha', context_metadata_source: 'unknown' },
-            { id: 'beta', context_metadata_source: 'unknown' },
+            { id: 'alpha', kind: 'chat', context_metadata_source: 'unknown' },
+            { id: 'beta', kind: 'chat', context_metadata_source: 'unknown' },
           ],
           api_base_url: 'https://api.moonshot.example/v1',
           disabled: false,
@@ -345,7 +355,7 @@ describe('LlmSection', () => {
       )
     })
 
-    await user.click(screen.getByRole('button', { name: 'Test' }))
+    await user.click(screen.getByRole('button', { name: /^test chat$/i }))
 
     await waitFor(() => {
       expect(probeSpy).toHaveBeenCalledWith({
@@ -546,6 +556,47 @@ describe('LlmSection', () => {
       'href',
       'https://docs.litellm.ai/docs/providers',
     )
+  })
+
+  it('disables Save routing when draft matches server routing', async () => {
+    const user = userEvent.setup()
+
+    vi.spyOn(api, 'listStudios').mockResolvedValue([
+      { id: 'studio-1', name: 'Studio One', description: null, logo_path: null, created_at: '' },
+    ])
+    vi.spyOn(api, 'getAdminLlmDeployment').mockResolvedValue({
+      has_providers: false,
+      providers: [],
+    })
+    vi.spyOn(api, 'getAdminLlmRouting').mockResolvedValue([
+      { use_case: 'chat', primary_model: 'gpt-4o-mini', fallback_model: null },
+    ])
+    vi.spyOn(api, 'getAdminStudioLlmPolicy').mockResolvedValue([])
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <LlmSection />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await screen.findByRole('heading', { name: /routing & fallback policy/i })
+    const saveBtn = await waitFor(() =>
+      screen.getByRole('button', { name: /save routing/i }),
+    )
+    await waitFor(() => {
+      expect(saveBtn).toBeDisabled()
+    })
+
+    const primaryInput = screen.getByLabelText(/^Primary model$/i)
+    await user.clear(primaryInput)
+    await user.type(primaryInput, 'gpt-4o-mini-other')
+
+    await waitFor(() => {
+      expect(saveBtn).not.toBeDisabled()
+    })
   })
 
   it('adds a routing rule from the modal and persists with putAdminLlmRouting', async () => {

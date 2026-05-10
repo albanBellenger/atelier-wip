@@ -8,7 +8,9 @@ from app.models import LlmProviderRegistry
 from app.schemas.llm_registry_model import LlmRegistryModelEntry
 from app.services.registry_models_json import (
     entry_for_litellm_model,
+    first_model_id_for_kind,
     first_model_id_from_json,
+    model_ids_for_kind,
     model_ids_from_json,
     parse_models_json,
     serialize_models_json,
@@ -27,6 +29,7 @@ def test_parse_skips_whitespace_only_strings() -> None:
     raw = json.dumps(["", "  ", "ok"])
     got = parse_models_json(raw)
     assert [e.id for e in got] == ["ok"]
+    assert all(e.kind == "chat" for e in got)
 
 
 def test_parse_invalid_dict_falls_back_to_id_when_present() -> None:
@@ -41,7 +44,57 @@ def test_parse_invalid_dict_skipped_when_no_id() -> None:
     assert parse_models_json(raw) == []
 
 
-def test_first_model_id_from_json() -> None:
+def test_model_ids_for_kind_filters() -> None:
+    raw = json.dumps(
+        [
+            {"id": "a", "kind": "chat"},
+            {"id": "e", "kind": "embedding"},
+        ]
+    )
+    assert model_ids_for_kind(raw, "chat") == ["a"]
+    assert model_ids_for_kind(raw, "embedding") == ["e"]
+
+
+def test_first_model_id_for_kind_order() -> None:
+    raw = json.dumps(
+        [
+            {"id": "e1", "kind": "embedding"},
+            {"id": "c1", "kind": "chat"},
+        ]
+    )
+    assert first_model_id_for_kind(raw, "chat") == "c1"
+    assert first_model_id_for_kind(raw, "embedding") == "e1"
+
+
+def test_entry_for_litellm_model_ignores_embedding_entries() -> None:
+    row = LlmProviderRegistry(
+        provider_id="openai",
+        litellm_provider_slug="openai",
+        models_json="[]",
+        api_base_url=None,
+        logo_url=None,
+        status="connected",
+        is_default=False,
+        sort_order=0,
+        api_key=None,
+    )
+    entries = [
+        LlmRegistryModelEntry(id="text-embedding-3-small", kind="embedding"),
+        LlmRegistryModelEntry(id="gpt-4o-mini", kind="chat"),
+    ]
+    hit = entry_for_litellm_model(
+        entries=entries, litellm_model="openai/gpt-4o-mini", registry_row=row
+    )
+    assert hit is not None and hit.id == "gpt-4o-mini"
+    assert (
+        entry_for_litellm_model(
+            entries=entries, litellm_model="openai/text-embedding-3-small", registry_row=row
+        )
+        is None
+    )
+
+
+def test_first_model_id_from_json_any_order() -> None:
     assert first_model_id_from_json(json.dumps(["a", "b"])) == "a"
     assert first_model_id_from_json("[]") is None
 
@@ -95,6 +148,7 @@ def test_parse_legacy_string_list() -> None:
     got = parse_models_json(raw)
     assert [e.id for e in got] == ["a", "b"]
     assert all(e.context_metadata_source == "unknown" for e in got)
+    assert all(e.kind == "chat" for e in got)
 
 
 def test_parse_rich_entries_round_trip() -> None:
@@ -109,6 +163,7 @@ def test_parse_rich_entries_round_trip() -> None:
     back = parse_models_json(s)
     assert len(back) == 1
     assert back[0].id == "gpt-4o"
+    assert back[0].kind == "chat"
     assert back[0].max_context_tokens == 128_000
     assert back[0].context_metadata_source == "litellm"
 

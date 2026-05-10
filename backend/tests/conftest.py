@@ -5,6 +5,16 @@ import os
 import sys
 from pathlib import Path
 
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover
+    load_dotenv = None
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if load_dotenv:
+    load_dotenv(_REPO_ROOT / ".env")
+    load_dotenv(_REPO_ROOT / "backend" / ".env", override=True)
+
 import pytest
 import pytest_asyncio
 from alembic import command

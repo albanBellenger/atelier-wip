@@ -75,3 +75,26 @@ def test_enrich_respects_manual_with_limit() -> None:
     fetch.assert_not_called()
     assert out[0].max_context_tokens == 50_000
     assert out[0].context_metadata_source == "manual"
+
+
+def test_enrich_preserves_embedding_kind_and_skips_catalog() -> None:
+    row = LlmProviderRegistry(
+        provider_id="openai",
+        litellm_provider_slug="openai",
+        models_json="[]",
+        api_base_url=None,
+        logo_url=None,
+        status="connected",
+        is_default=False,
+        sort_order=0,
+        api_key=None,
+    )
+    emb = LlmRegistryModelEntry(id="text-embedding-3-small", kind="embedding")
+    with patch(
+        "app.services.litellm_model_context.fetch_litellm_context_for_model_id",
+    ) as fetch:
+        out = enrich_model_entries_from_litellm([emb], draft_registry_row=row)
+    fetch.assert_not_called()
+    assert len(out) == 1
+    assert out[0].id == "text-embedding-3-small"
+    assert out[0].kind == "embedding"

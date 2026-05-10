@@ -536,8 +536,15 @@ export async function postAdminTestLlm(
   return request<AdminConnectivityResult>('POST', '/admin/test/llm', body)
 }
 
-export async function postAdminTestEmbedding(): Promise<AdminConnectivityResult> {
-  return request<AdminConnectivityResult>('POST', '/admin/test/embedding')
+export type AdminEmbeddingProbeBody = {
+  provider_id?: string | null
+  model?: string | null
+}
+
+export async function postAdminTestEmbedding(
+  body: AdminEmbeddingProbeBody = {},
+): Promise<AdminConnectivityResult> {
+  return request<AdminConnectivityResult>('POST', '/admin/test/embedding', body)
 }
 
 // --- Admin console (overview, directory) ---
@@ -662,8 +669,11 @@ export async function getAdminStudio(studioId: string): Promise<AdminStudioDetai
 
 export type LlmContextMetadataSource = 'litellm' | 'manual' | 'unknown'
 
+export type LlmRegistryModelKind = 'chat' | 'embedding'
+
 export interface LlmRegistryModelEntry {
   id: string
+  kind?: LlmRegistryModelKind
   max_context_tokens?: number | null
   context_metadata_source?: LlmContextMetadataSource
   /** ISO-8601 when context metadata was last refreshed from LiteLLM. */

@@ -55,6 +55,9 @@ def enrich_model_entries_from_litellm(
     now = datetime.now(timezone.utc)
     out: list[LlmRegistryModelEntry] = []
     for e in entries:
+        if e.kind == "embedding":
+            out.append(e.model_copy())
+            continue
         if (
             e.context_metadata_source == "manual"
             and e.max_context_tokens is not None
@@ -65,11 +68,12 @@ def enrich_model_entries_from_litellm(
         tokens, ok = fetch_litellm_context_for_model_id(e.id, draft_registry_row=draft_registry_row)
         if ok and tokens is not None:
             out.append(
-                LlmRegistryModelEntry(
-                    id=e.id,
-                    max_context_tokens=tokens,
-                    context_metadata_source="litellm",
-                    context_metadata_checked_at=now,
+                e.model_copy(
+                    update={
+                        "max_context_tokens": tokens,
+                        "context_metadata_source": "litellm",
+                        "context_metadata_checked_at": now,
+                    }
                 )
             )
         else:

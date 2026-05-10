@@ -16,7 +16,10 @@ export const LLM_CALL_SOURCE_LABELS: Record<string, string> = {
   builder_composer_hint: 'Builder composer hint',
 }
 
-export function llmCallSourceLabel(key: string): string {
+export function llmCallSourceLabel(key: string | null | undefined): string {
+  if (key == null || key === '') {
+    return ''
+  }
   return LLM_CALL_SOURCE_LABELS[key] ?? key
 }
 
