@@ -15,7 +15,7 @@ import {
   TRow,
   Avatar,
 } from '../../components/admin/adminPrimitives'
-import { DEPLOYMENT_WIDE_HARD_CAP_USD } from '../../data/adminConsoleMock'
+import { DEPLOYMENT_WIDE_HARD_CAP_USD } from '../../constants/deploymentWideBudgetCap'
 import { STUDIO_BUDGET_OVERAGE_OPTIONS } from '../../constants/studioBudgetOverage'
 import {
   getAdminConsoleOverview,

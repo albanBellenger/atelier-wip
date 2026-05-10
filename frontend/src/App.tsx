@@ -1,7 +1,6 @@
 import type { ReactElement } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AdminConsolePage } from './pages/admin/AdminConsolePage'
-import { AdminSettingsPage } from './pages/AdminSettingsPage'
 import { EmbeddingsSection } from './pages/admin/EmbeddingsSection'
 import { BudgetsSection } from './pages/admin/BudgetsSection'
 import { LlmSection } from './pages/admin/LlmSection'
@@ -56,7 +55,6 @@ function App(): ReactElement {
           <Route path="embeddings" element={<EmbeddingsSection />} />
           <Route path="users" element={<UsersSection />} />
         </Route>
-        <Route path="/admin/settings" element={<AdminSettingsPage />} />
         <Route path="/llm-usage" element={<LlmUsagePage />} />
         <Route path="/me/token-usage" element={<MeTokenUsagePage />} />
         <Route path="/studios" element={<StudiosListPage />} />

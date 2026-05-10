@@ -12,7 +12,6 @@ import {
   THead,
   TRow,
 } from '../../components/admin/adminPrimitives'
-import { BUILDERS, EMBED_COLLECTIONS, STUDIOS } from '../../data/adminConsoleMock'
 import { adminConsolePath, type AdminConsoleSection } from '../../lib/adminConsoleNav'
 import { getAdminConsoleOverview } from '../../services/api'
 
@@ -30,20 +29,16 @@ export function OverviewSection(): ReactElement {
 
   const live = overviewQ.isSuccess ? overviewQ.data : undefined
 
-  const totalSpendMock = STUDIOS.reduce((s, x) => s + x.monthSpend, 0)
-  const totalBudgetMock = STUDIOS.reduce((s, x) => s + x.budget, 0)
-  const activeUsersMock = BUILDERS.filter((b) => b.status === 'active').length
-
   const mtdTotal = live
     ? live.studios.reduce((s, r) => s + Number.parseFloat(r.mtd_spend_usd || '0'), 0)
-    : totalSpendMock
-  const studioCount = live ? live.studios.length : STUDIOS.length
+    : 0
+  const studioCount = live ? live.studios.length : 0
   const softwareTotal = live
     ? live.studios.reduce((acc, r) => acc + r.software_count, 0)
-    : STUDIOS.reduce((acc, s) => acc + s.software, 0)
+    : 0
   const budgetSum = live
     ? live.studios.reduce((acc, r) => acc + Number.parseFloat(r.budget_cap_monthly_usd || '0'), 0)
-    : totalBudgetMock
+    : 0
 
   const studioWord = studioCount === 1 ? 'studio' : 'studios'
 
@@ -55,7 +50,7 @@ export function OverviewSection(): ReactElement {
     },
     {
       label: 'Active builders',
-      value: live ? live.active_builders_count : activeUsersMock,
+      value: live ? live.active_builders_count : 0,
     },
     {
       label: 'Spend MTD',
@@ -63,14 +58,14 @@ export function OverviewSection(): ReactElement {
       sub:
         budgetSum > 0
           ? `sum across listed studios · caps $${budgetSum.toFixed(2)}`
-          : `sum across listed studios · $${totalBudgetMock} caps (demo)`,
+          : live
+            ? 'sum across listed studios · no studio caps set'
+            : 'sum across listed studios · no overview data',
     },
     {
       label: 'Embedding indexes',
-      value: live ? live.embedding_collection_count : EMBED_COLLECTIONS.length,
-      sub: live
-        ? 'chunk rows indexed'
-        : `${EMBED_COLLECTIONS.filter((e) => e.status === 'stale').length} stale · ${EMBED_COLLECTIONS.filter((e) => e.status === 'indexing').length} indexing`,
+      value: live ? live.embedding_collection_count : 0,
+      sub: live ? 'chunk rows indexed' : '—',
     },
   ]
 
@@ -83,7 +78,7 @@ export function OverviewSection(): ReactElement {
 
       {overviewQ.isError ? (
         <p className="text-[12px] text-amber-300/90">
-          Live metrics unavailable — showing demo fallbacks.{' '}
+          Could not load overview metrics. KPIs show zeros until a successful load.{' '}
           <span className="font-mono text-zinc-500">
             {(overviewQ.error as Error)?.message ?? 'request failed'}
           </span>
@@ -109,41 +104,37 @@ export function OverviewSection(): ReactElement {
             cols={['Studio', 'Software', 'Members', 'Spend / Budget', '']}
             grid="grid-cols-[1.8fr_0.7fr_0.7fr_1.5fr_0.4fr]"
           />
-          {live
-            ? live.studios.map((s) => {
-                const used = Number.parseFloat(s.mtd_spend_usd || '0')
-                const capNum = s.budget_cap_monthly_usd
-                  ? Number.parseFloat(s.budget_cap_monthly_usd)
-                  : Math.max(used, 1)
-                return (
-                  <TRow key={s.studio_id} grid="grid-cols-[1.8fr_0.7fr_0.7fr_1.5fr_0.4fr]">
-                    <span className="truncate text-[13px] text-zinc-100">{s.name}</span>
-                    <span className="font-mono text-[12px] tabular-nums text-zinc-300">
-                      {s.software_count}
-                    </span>
-                    <span className="font-mono text-[12px] tabular-nums text-zinc-300">
-                      {s.member_count}
-                    </span>
-                    <MoneyBar used={used} budget={capNum} accent={ADMIN_CONSOLE_ACCENT} />
-                    <Btn size="sm" type="button" onClick={() => go('studios')}>
-                      Open
-                    </Btn>
-                  </TRow>
-                )
-              })
-            : STUDIOS.map((s) => (
-                <TRow key={s.id} grid="grid-cols-[1.8fr_0.7fr_0.7fr_1.5fr_0.4fr]">
+          {overviewQ.isPending ? (
+            <p className="px-5 py-6 text-[13px] text-zinc-500">Loading overview…</p>
+          ) : live && live.studios.length > 0 ? (
+            live.studios.map((s) => {
+              const used = Number.parseFloat(s.mtd_spend_usd || '0')
+              const capNum = s.budget_cap_monthly_usd
+                ? Number.parseFloat(s.budget_cap_monthly_usd)
+                : Math.max(used, 1)
+              return (
+                <TRow key={s.studio_id} grid="grid-cols-[1.8fr_0.7fr_0.7fr_1.5fr_0.4fr]">
                   <span className="truncate text-[13px] text-zinc-100">{s.name}</span>
                   <span className="font-mono text-[12px] tabular-nums text-zinc-300">
-                    {s.software}
+                    {s.software_count}
                   </span>
-                  <span className="font-mono text-[12px] tabular-nums text-zinc-300">{s.members}</span>
-                  <MoneyBar used={s.monthSpend} budget={s.budget} accent={ADMIN_CONSOLE_ACCENT} />
+                  <span className="font-mono text-[12px] tabular-nums text-zinc-300">
+                    {s.member_count}
+                  </span>
+                  <MoneyBar used={used} budget={capNum} accent={ADMIN_CONSOLE_ACCENT} />
                   <Btn size="sm" type="button" onClick={() => go('studios')}>
                     Open
                   </Btn>
                 </TRow>
-              ))}
+              )
+            })
+          ) : live && live.studios.length === 0 ? (
+            <p className="px-5 py-6 text-[13px] text-zinc-500">No studios in this overview.</p>
+          ) : (
+            <p className="px-5 py-6 text-[13px] text-zinc-500">
+              No overview data. Unable to load the studio list — open Studios to browse tenants.
+            </p>
+          )}
         </Table>
       </Card>
 

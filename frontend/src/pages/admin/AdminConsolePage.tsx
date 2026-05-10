@@ -5,7 +5,6 @@ import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { Hairline, Pill, StatLabel } from '../../components/admin/adminPrimitives'
 import { InfoCircleHelpButton } from '../../components/ui/InfoCircleHelpButton'
 import { Tooltip } from '../../components/ui/Tooltip'
-import { BUILDERS, STUDIOS } from '../../data/adminConsoleMock'
 import { adminConsolePath, type AdminConsoleSection } from '../../lib/adminConsoleNav'
 import { getAdminConsoleOverview, me } from '../../services/api'
 
@@ -66,14 +65,12 @@ function SideNav(): ReactElement {
   })
 
   const live = overviewQ.isSuccess ? overviewQ.data : undefined
-  const totalSpendMock = STUDIOS.reduce((s, x) => s + x.monthSpend, 0)
-  const activeUsersMock = BUILDERS.filter((b) => b.status === 'active').length
 
   const mtdTotal = live
     ? live.studios.reduce((s, r) => s + Number.parseFloat(r.mtd_spend_usd || '0'), 0)
-    : totalSpendMock
-  const studioCount = live ? live.studios.length : STUDIOS.length
-  const activeBuilders = live ? live.active_builders_count : activeUsersMock
+    : 0
+  const studioCount = live ? live.studios.length : 0
+  const activeBuilders = live ? live.active_builders_count : 0
 
   const loading = overviewQ.isPending
   const studioLabel =

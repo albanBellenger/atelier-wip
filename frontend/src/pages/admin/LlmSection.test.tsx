@@ -82,11 +82,6 @@ describe('LlmSection', () => {
       }),
     ).toBeInTheDocument()
 
-    expect(screen.getByRole('link', { name: 'Embedding settings' })).toHaveAttribute(
-      'href',
-      '/admin/settings',
-    )
-
     await user.click(screen.getByRole('button', { name: /add provider/i }))
 
     const dialog = await screen.findByRole('dialog')

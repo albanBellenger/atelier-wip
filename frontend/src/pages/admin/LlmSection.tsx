@@ -1,7 +1,6 @@
 import type { ReactElement, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
 import {
   ADMIN_CONSOLE_ACCENT,
   Btn,
@@ -714,23 +713,15 @@ export function LlmSection(): ReactElement {
       <Card
         title="LLM deployment"
         right={
-          <div className="flex flex-wrap items-center gap-3">
-            <Link
-              className="text-[12px] font-medium text-violet-400 hover:underline"
-              to="/admin/settings"
-            >
-              Embedding settings
-            </Link>
-            <Btn
-              type="button"
-              tone="primary"
-              aria-label="Add provider"
-              style={{ background: ADMIN_CONSOLE_ACCENT }}
-              onClick={() => setAddOpen(true)}
-            >
-              + Add provider
-            </Btn>
-          </div>
+          <Btn
+            type="button"
+            tone="primary"
+            aria-label="Add provider"
+            style={{ background: ADMIN_CONSOLE_ACCENT }}
+            onClick={() => setAddOpen(true)}
+          >
+            + Add provider
+          </Btn>
         }
       >
         {deploymentQuery.isPending ? (

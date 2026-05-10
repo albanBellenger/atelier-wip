@@ -12,7 +12,7 @@ import { useStudioAccess } from '../hooks/useStudioAccess'
 import { APP_VERSION } from '../version'
 import { STUDIO_ROLE_OPTIONS, crossStudioAccessLabel, studioRoleLabel } from '../lib/roleLabels'
 import { STUDIO_BUDGET_OVERAGE_OPTIONS } from '../constants/studioBudgetOverage'
-import { DEPLOYMENT_WIDE_HARD_CAP_USD } from '../data/adminConsoleMock'
+import { DEPLOYMENT_WIDE_HARD_CAP_USD } from '../constants/deploymentWideBudgetCap'
 import {
   addMember,
   createSoftware,

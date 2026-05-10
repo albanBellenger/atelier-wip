@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import * as api from '../../services/api'
 import { AdminConsolePage } from './AdminConsolePage'
@@ -42,12 +42,24 @@ function renderConsoleAt(
   )
 }
 
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
 describe('AdminConsolePage', () => {
-  it('shows overview KPIs for platform admin', async () => {
+  it('shows overview shell for platform admin; table empty when overview fails', async () => {
     renderConsoleAt('/admin/console/overview', true)
     expect(await screen.findByRole('heading', { name: /^Overview$/ })).toBeInTheDocument()
     expect(await screen.findByText('Studios at a glance')).toBeInTheDocument()
-    expect(screen.getByText('Northwind Atelier')).toBeInTheDocument()
+    expect(
+      await screen.findByText(
+        'No overview data. Unable to load the studio list — open Studios to browse tenants.',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/Could not load overview metrics/i),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Northwind Atelier')).not.toBeInTheDocument()
   })
 
   it('denies access when user is not platform admin', async () => {
