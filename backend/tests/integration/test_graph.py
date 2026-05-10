@@ -4,15 +4,18 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.integration.test_work_orders import _studio_project_with_sections
 
 
 @pytest.mark.asyncio
-async def test_get_graph_requires_member(client: AsyncClient) -> None:
+async def test_get_graph_requires_member(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _sid, _sw, pid, _a, _b = await _studio_project_with_sections(
-        client, sfx
+        client, db_session, sfx
     )
     del token
     outsider = await client.post(
@@ -30,10 +33,12 @@ async def test_get_graph_requires_member(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_graph_dependency_edge(client: AsyncClient) -> None:
+async def test_get_graph_dependency_edge(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _sid, _sw, pid, sec_a, _sec_b = await _studio_project_with_sections(
-        client, sfx
+        client, db_session, sfx
     )
     client.cookies.set("atelier_token", token)
 

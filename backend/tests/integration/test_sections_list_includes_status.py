@@ -8,7 +8,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from tests.integration.test_projects import _studio_with_software
 
@@ -16,9 +16,12 @@ from tests.integration.test_projects import _studio_with_software
 @pytest.mark.asyncio
 async def test_project_detail_includes_section_status_shape(
     client: AsyncClient,
+    db_session: AsyncSession,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _studio_id, software_id = await _studio_with_software(client, sfx)
+    token, _studio_id, software_id = await _studio_with_software(
+        client, db_session, sfx
+    )
     client.cookies.set("atelier_token", token)
 
     pr = await client.post(
@@ -57,11 +60,14 @@ async def test_project_detail_includes_section_status_shape(
 @pytest.mark.asyncio
 async def test_project_detail_section_status_not_n_plus_one(
     client: AsyncClient,
+    db_session: AsyncSession,
     db_engine: AsyncEngine,
 ) -> None:
     """Many sections: status rollup must not issue one query per section."""
     sfx = uuid.uuid4().hex[:8]
-    token, _studio_id, software_id = await _studio_with_software(client, sfx)
+    token, _studio_id, software_id = await _studio_with_software(
+        client, db_session, sfx
+    )
     client.cookies.set("atelier_token", token)
 
     pr = await client.post(

@@ -16,6 +16,7 @@ from app.schemas.studio import (
     MemberInvite,
     MemberRoleUpdate,
     StudioCreate,
+    StudioListItemOut,
     StudioResponse,
     StudioUpdate,
 )
@@ -42,10 +43,16 @@ async def test_list_studios_tool_admin_queries_all() -> None:
         budget_cap_monthly_usd=None,
         budget_overage_action="pause_generations",
     )
-    result = MagicMock()
-    result.all.return_value = [row]
+    exec_main = MagicMock()
+    exec_main.all.return_value = [row]
+    exec_sw = MagicMock()
+    exec_sw.all.return_value = [(sid, 2)]
+    exec_pr = MagicMock()
+    exec_pr.all.return_value = [(sid, 4)]
+    exec_mem = MagicMock()
+    exec_mem.all.return_value = [(sid, 3)]
     db = MagicMock()
-    db.execute = AsyncMock(return_value=result)
+    db.execute = AsyncMock(side_effect=[exec_main, exec_sw, exec_pr, exec_mem])
 
     user = MagicMock(spec=User)
     user.id = uuid.uuid4()
@@ -53,9 +60,13 @@ async def test_list_studios_tool_admin_queries_all() -> None:
 
     out = await StudioService(db).list_studios(user)
     assert len(out) == 1
+    assert isinstance(out[0], StudioListItemOut)
     assert out[0].id == sid
     assert out[0].name == "Alpha"
-    db.execute.assert_awaited_once()
+    assert out[0].software_count == 2
+    assert out[0].project_count == 4
+    assert out[0].member_count == 3
+    assert db.execute.await_count == 4
 
 
 @pytest.mark.asyncio
@@ -70,10 +81,16 @@ async def test_list_studios_member_joins_membership() -> None:
         budget_cap_monthly_usd=None,
         budget_overage_action="pause_generations",
     )
-    result = MagicMock()
-    result.all.return_value = [row]
+    exec_main = MagicMock()
+    exec_main.all.return_value = [row]
+    exec_sw = MagicMock()
+    exec_sw.all.return_value = []
+    exec_pr = MagicMock()
+    exec_pr.all.return_value = []
+    exec_mem = MagicMock()
+    exec_mem.all.return_value = []
     db = MagicMock()
-    db.execute = AsyncMock(return_value=result)
+    db.execute = AsyncMock(side_effect=[exec_main, exec_sw, exec_pr, exec_mem])
 
     user = MagicMock(spec=User)
     user.id = uuid.uuid4()
@@ -81,7 +98,10 @@ async def test_list_studios_member_joins_membership() -> None:
 
     out = await StudioService(db).list_studios(user)
     assert out[0].logo_path == "/l.png"
-    db.execute.assert_awaited_once()
+    assert out[0].software_count == 0
+    assert out[0].project_count == 0
+    assert out[0].member_count == 0
+    assert db.execute.await_count == 4
 
 
 @pytest.mark.asyncio

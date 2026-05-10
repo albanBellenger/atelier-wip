@@ -4,6 +4,9 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tests.integration.studio_http_seed import post_admin_studio
 
 from tests.integration.embedding_mocks import patch_fake_embedding_transport
 
@@ -23,11 +26,18 @@ async def _register(client: AsyncClient, suffix: str, label: str) -> str:
     return token
 
 
-async def _studio_project(client: AsyncClient, sfx: str) -> tuple[str, str, str, str]:
+async def _studio_project(
+    client: AsyncClient, db_session: AsyncSession, sfx: str
+) -> tuple[str, str, str, str]:
     """token, studio_id, software_id, project_id."""
     token = await _register(client, sfx, "owner")
     client.cookies.set("atelier_token", token)
-    cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
+    cr = await post_admin_studio(
+        client,
+        db_session,
+        user_email=f"owner-{sfx}@example.com",
+        json_body={"name": f"S{sfx}", "description": "d"},
+    )
     assert cr.status_code == 200
     studio_id = cr.json()["id"]
     sw = await client.post(
@@ -104,7 +114,7 @@ async def test_artifacts_upload_list_download_delete(
     fake_embed: None,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, _sfid, pid = await _studio_project(client, sfx)
+    token, _sid, _sfid, pid = await _studio_project(client, db_session, sfx)
     client.cookies.set("atelier_token", token)
 
     md_bytes = b"# Hello\n\nworld"
@@ -147,7 +157,7 @@ async def test_artifacts_project_download_storage_read_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, _sfid, pid = await _studio_project(client, sfx)
+    token, _sid, _sfid, pid = await _studio_project(client, db_session, sfx)
     client.cookies.set("atelier_token", token)
     up = await client.post(
         f"/projects/{pid}/artifacts",
@@ -176,7 +186,7 @@ async def test_artifacts_md_create_and_rbac(
     fake_embed: None,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, studio_id, software_id, pid = await _studio_project(client, sfx)
+    token, studio_id, software_id, pid = await _studio_project(client, db_session, sfx)
     client.cookies.set("atelier_token", token)
 
     cr = await client.post(
@@ -214,7 +224,7 @@ async def test_artifacts_requires_embedding_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, _sfid, pid = await _studio_project(client, sfx)
+    token, _sid, _sfid, pid = await _studio_project(client, db_session, sfx)
     client.cookies.set("atelier_token", token)
 
     async def boom(_self: object, _studio_id: object) -> tuple[str, str, str, str]:
@@ -245,7 +255,7 @@ async def test_upload_storage_error_does_not_leave_orphan(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, _sfid, pid = await _studio_project(client, sfx)
+    token, _sid, _sfid, pid = await _studio_project(client, db_session, sfx)
     client.cookies.set("atelier_token", token)
 
     from app.storage.minio_storage import StorageClient
@@ -276,7 +286,7 @@ async def test_delete_artifact_minio_failure_still_returns_204(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, _sfid, pid = await _studio_project(client, sfx)
+    token, _sid, _sfid, pid = await _studio_project(client, db_session, sfx)
     client.cookies.set("atelier_token", token)
 
     md_bytes = b"# Hello\n\nworld"
@@ -317,7 +327,7 @@ async def test_cross_studio_viewer_can_download_artifact(
     sfx = u.uuid4().hex[:8]
     token_b = await _register(client, sfx, "ownerb")
     client.cookies.set("atelier_token", token_b)
-    sb = (await client.post("/studios", json={"name": f"SB{sfx}"})).json()
+    sb = (await post_admin_studio(client, db_session, user_email=f"ownerb-{sfx}@example.com", json_body={"name": f"SB{sfx}"})).json()
     studio_b_id = sb["id"]
     sw_b = (
         await client.post(
@@ -345,7 +355,7 @@ async def test_cross_studio_viewer_can_download_artifact(
 
     token_a = await _register(client, sfx, "ownera")
     client.cookies.set("atelier_token", token_a)
-    sa = (await client.post("/studios", json={"name": f"SA{sfx}"})).json()
+    sa = (await post_admin_studio(client, db_session, user_email=f"ownera-{sfx}@example.com", json_body={"name": f"SA{sfx}"})).json()
     studio_a_id = sa["id"]
     me_a = (await client.get("/auth/me")).json()
     user_a_id = u.UUID(me_a["user"]["id"])
@@ -386,7 +396,7 @@ async def test_delete_project_artifact_studio_member_forbidden(
     fake_embed: None,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, studio_id, _software_id, pid = await _studio_project(client, sfx)
+    token, studio_id, _software_id, pid = await _studio_project(client, db_session, sfx)
     client.cookies.set("atelier_token", token)
     up = await client.post(
         f"/projects/{pid}/artifacts/md",
@@ -423,7 +433,7 @@ async def test_cross_studio_viewer_cannot_delete_or_reindex_project_artifact(
     sfx = u.uuid4().hex[:8]
     token_b = await _register(client, sfx, "ownerbd")
     client.cookies.set("atelier_token", token_b)
-    sb = (await client.post("/studios", json={"name": f"SBD{sfx}"})).json()
+    sb = (await post_admin_studio(client, db_session, user_email=f"ownerbd-{sfx}@example.com", json_body={"name": f"SBD{sfx}"})).json()
     studio_b_id = sb["id"]
     sw_b = (
         await client.post(
@@ -449,7 +459,7 @@ async def test_cross_studio_viewer_cannot_delete_or_reindex_project_artifact(
 
     token_a = await _register(client, sfx, "ownerad")
     client.cookies.set("atelier_token", token_a)
-    sa = (await client.post("/studios", json={"name": f"SAD{sfx}"})).json()
+    sa = (await post_admin_studio(client, db_session, user_email=f"ownerad-{sfx}@example.com", json_body={"name": f"SAD{sfx}"})).json()
     studio_a_id = sa["id"]
     me_a = (await client.get("/auth/me")).json()
     user_a_id = u.UUID(me_a["user"]["id"])
@@ -494,7 +504,7 @@ async def test_reindex_project_artifact_studio_member_invokes_embed(
         called.append(artifact_id)
 
     sfx = uuid.uuid4().hex[:8]
-    token, studio_id, _sfid, pid = await _studio_project(client, sfx)
+    token, studio_id, _sfid, pid = await _studio_project(client, db_session, sfx)
     client.cookies.set("atelier_token", token)
     up = await client.post(
         f"/projects/{pid}/artifacts/md",
@@ -535,7 +545,7 @@ async def test_patch_chunking_strategy_studio_member_forbidden(
     fake_embed: None,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, studio_id, _sfid, pid = await _studio_project(client, sfx)
+    token, studio_id, _sfid, pid = await _studio_project(client, db_session, sfx)
     client.cookies.set("atelier_token", token)
     up = await client.post(
         f"/projects/{pid}/artifacts/md",
@@ -567,7 +577,7 @@ async def test_patch_chunking_strategy_owner_ok(
     fake_embed: None,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, _sfid, pid = await _studio_project(client, sfx)
+    token, _sid, _sfid, pid = await _studio_project(client, db_session, sfx)
     client.cookies.set("atelier_token", token)
     up = await client.post(
         f"/projects/{pid}/artifacts/md",

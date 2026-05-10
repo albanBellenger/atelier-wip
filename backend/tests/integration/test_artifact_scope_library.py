@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+from tests.integration.studio_http_seed import post_admin_studio
 from httpx import AsyncClient
 
 from tests.integration.embedding_mocks import patch_fake_embedding_transport
@@ -96,7 +97,7 @@ async def test_studio_software_upload_and_library_list(
     token = await _register(client, sfx, "owner")
     client.cookies.set("atelier_token", token)
 
-    cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
+    cr = await post_admin_studio(client, db_session, user_email=f"owner-{sfx}@example.com", json_body={"name": f"S{sfx}", "description": "d"})
     assert cr.status_code == 200
     studio_id = cr.json()["id"]
     sw = await client.post(
@@ -171,7 +172,7 @@ async def test_studio_upload_forbidden_non_member(
     sfx = uuid.uuid4().hex[:8]
     token = await _register(client, sfx, "owner")
     client.cookies.set("atelier_token", token)
-    cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
+    cr = await post_admin_studio(client, db_session, user_email=f"owner-{sfx}@example.com", json_body={"name": f"S{sfx}", "description": "d"})
     studio_id = cr.json()["id"]
 
     other_tok = await _register(client, sfx + "x", "stranger")
@@ -192,7 +193,7 @@ async def test_delete_library_artifact_by_id_studio_admin(
     sfx = uuid.uuid4().hex[:8]
     token = await _register(client, sfx, "ownlib")
     client.cookies.set("atelier_token", token)
-    cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
+    cr = await post_admin_studio(client, db_session, user_email=f"ownlib-{sfx}@example.com", json_body={"name": f"S{sfx}", "description": "d"})
     assert cr.status_code == 200
     studio_id = cr.json()["id"]
     st_md = await client.post(
@@ -218,7 +219,7 @@ async def test_delete_library_artifact_by_id_non_member_forbidden(
     sfx = uuid.uuid4().hex[:8]
     token = await _register(client, sfx, "ownlib2")
     client.cookies.set("atelier_token", token)
-    cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
+    cr = await post_admin_studio(client, db_session, user_email=f"ownlib2-{sfx}@example.com", json_body={"name": f"S{sfx}", "description": "d"})
     studio_id = cr.json()["id"]
     st_md = await client.post(
         f"/studios/{studio_id}/artifacts/md",
@@ -242,7 +243,7 @@ async def test_patch_artifact_scope_studio_then_project_download_ok(
     sfx = uuid.uuid4().hex[:8]
     token = await _register(client, sfx, "scopemv")
     client.cookies.set("atelier_token", token)
-    cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
+    cr = await post_admin_studio(client, db_session, user_email=f"scopemv-{sfx}@example.com", json_body={"name": f"S{sfx}", "description": "d"})
     studio_id = cr.json()["id"]
     sw = await client.post(
         f"/studios/{studio_id}/software",

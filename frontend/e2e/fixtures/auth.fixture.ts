@@ -60,7 +60,7 @@ export const test = base.extend<{ toolAdminPage: Page; nonAdminPage: Page }>({
 
     const apiSeed = await launchApiRequest.newContext({ baseURL: origin, storageState })
     const studioName = `E2E Admin ${crypto.randomUUID().slice(0, 8)}`
-    const cr = await apiSeed.post('/studios', {
+    const cr = await apiSeed.post('/admin/studios', {
       data: { name: studioName, description: 'Playwright admin console seed' },
     })
     if (!cr.ok()) {

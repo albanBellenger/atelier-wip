@@ -182,6 +182,31 @@ describe('BuilderHomeHeader', () => {
     expect(contosoRow.querySelector('.rounded-full.bg-violet-500')).toBeNull()
   })
 
+  it('studio switcher footer links Browse all studios to /studios', async () => {
+    vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
+      items: [],
+      next_cursor: null,
+    })
+    const user = userEvent.setup()
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <BuilderHomeHeader
+            profile={profileTwoStudios()}
+            studioId="s-active"
+            onStudioChange={vi.fn()}
+            onLogout={vi.fn()}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await user.click(screen.getByRole('button', { name: /switch studio/i }))
+    const browse = screen.getByRole('link', { name: /browse all studios/i })
+    expect(browse).toHaveAttribute('href', '/studios')
+  })
+
   it('renders project crumb without software segment when label is omitted', () => {
     vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
       items: [],

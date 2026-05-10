@@ -29,6 +29,15 @@ function studio(): Api.Studio {
   }
 }
 
+function studioListRow(): Api.StudioListItem {
+  return {
+    ...studio(),
+    software_count: 0,
+    project_count: 0,
+    member_count: 0,
+  }
+}
+
 function software(): Api.Software {
   return {
     id: 'sw1',
@@ -341,8 +350,8 @@ export function apiCoverageHandlers(): RequestHandler[] {
     http.get('http://api.test/studios/st1/me/capabilities', () =>
       HttpResponse.json(studioCaps),
     ),
-    http.get('http://api.test/studios', () => HttpResponse.json([studio()])),
-    http.post('http://api.test/studios', () => HttpResponse.json(studio())),
+    http.get('http://api.test/studios', () => HttpResponse.json([studioListRow()])),
+    http.post('http://api.test/admin/studios', () => HttpResponse.json(studio())),
     http.get('http://api.test/studios/st1', () => HttpResponse.json(studio())),
     http.patch('http://api.test/studios/st1', () => HttpResponse.json(studio())),
     http.delete('http://api.test/admin/studios/st1', () => new HttpResponse(null, { status: 204 })),

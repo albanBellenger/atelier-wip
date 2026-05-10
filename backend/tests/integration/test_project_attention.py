@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from tests.integration.studio_http_seed import post_admin_studio
 from httpx import AsyncClient
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,15 +22,15 @@ async def _promote_tool_admin(db_session: AsyncSession, email: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_attention_unauthorized(client: AsyncClient) -> None:
+async def test_attention_unauthorized(client: AsyncClient, db_session: AsyncSession) -> None:
     r = await client.get(f"/projects/{uuid.uuid4()}/attention")
     assert r.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_attention_outsider_forbidden(client: AsyncClient) -> None:
+async def test_attention_outsider_forbidden(client: AsyncClient, db_session: AsyncSession) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, _sw, pid, _a, _b = await _studio_project_with_sections(client, sfx)
+    token, _sid, _sw, pid, _a, _b = await _studio_project_with_sections(client, db_session, sfx)
     client.cookies.set("atelier_token", token)
     outsider = await _register(client, sfx, "outsider")
     client.cookies.set("atelier_token", outsider)
@@ -47,7 +48,7 @@ async def test_attention_cross_studio_viewer_forbidden(
     await _promote_tool_admin(db_session, f"taat-{sfx}@example.com")
     client.cookies.set("atelier_token", token_ta)
     studio_a = (
-        await client.post("/studios", json={"name": f"AAT{sfx}", "description": ""})
+        await post_admin_studio(client, db_session, user_email=f"taat-{sfx}@example.com", json_body={"name": f"AAT{sfx}", "description": ""})
     ).json()["id"]
     sw_id = (
         await client.post(
@@ -69,7 +70,7 @@ async def test_attention_cross_studio_viewer_forbidden(
     token_b = await _register(client, sfx, "adminat")
     client.cookies.set("atelier_token", token_b)
     studio_b = (
-        await client.post("/studios", json={"name": f"BAT{sfx}", "description": ""})
+        await post_admin_studio(client, db_session, user_email=f"adminat-{sfx}@example.com", json_body={"name": f"BAT{sfx}", "description": ""})
     ).json()["id"]
 
     token_m = await _register(client, sfx, "viewat")
@@ -108,7 +109,7 @@ async def test_attention_conflict_drift_update_counts(
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token_owner, studio_id, _sw, pid, sec_a, sec_b = (
-        await _studio_project_with_sections(client, sfx)
+        await _studio_project_with_sections(client, db_session, sfx)
     )
     member_token = await _register(client, sfx, "memat")
     client.cookies.set("atelier_token", token_owner)

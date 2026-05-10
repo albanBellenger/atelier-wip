@@ -309,7 +309,7 @@ export function BuilderHomeDashboard({
             <p className="mt-2 text-[13px] text-zinc-500">
               Ask a Studio Owner to invite you, or{' '}
               <Link to="/studios" className="text-violet-400 hover:underline">
-                browse studios
+                Browse all studios
               </Link>
               .
             </p>

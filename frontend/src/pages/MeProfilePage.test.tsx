@@ -151,7 +151,7 @@ describe('MeProfilePage', () => {
     expect(
       await screen.findByText(/you're not a member of any studio yet/i),
     ).toBeInTheDocument()
-    const browse = screen.getByRole('link', { name: /browse studios/i })
+    const browse = screen.getByRole('link', { name: /browse all studios/i })
     expect(browse).toHaveAttribute('href', '/studios')
   })
 

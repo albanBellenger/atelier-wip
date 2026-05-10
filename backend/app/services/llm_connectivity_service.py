@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import LlmProviderRegistry, LlmRoutingRule, StudioLlmProviderPolicy
@@ -33,6 +33,11 @@ def _mask_secret(s: str | None) -> bool:
 
 def _norm_status(s: str | None) -> str:
     return (s or "").strip().lower()
+
+
+_DEFAULT_STALE_WARNING = (
+    "Default was cleared: only a connected provider can be the platform default."
+)
 
 
 class LlmConnectivityService:
@@ -142,7 +147,11 @@ class LlmConnectivityService:
 
             if "disabled" in body.model_fields_set and body.disabled is True:
                 reg.status = "disabled"
-            elif "disabled" in body.model_fields_set and body.disabled is False:
+            elif (
+                "disabled" in body.model_fields_set
+                and body.disabled is False
+                and old_status == "disabled"
+            ):
                 reg.status = "needs-key"
             elif old_status == "disabled":
                 reg.status = "disabled"
@@ -188,6 +197,8 @@ class LlmConnectivityService:
             await self.db.flush()
             reg = ent
 
+        await self._sync_default_flag_with_status(reg, pk, save_warnings)
+
         probe_id = first_model_id_from_json(reg.models_json)
         status_after = _norm_status(reg.status)
         if (
@@ -207,6 +218,28 @@ class LlmConnectivityService:
                 )
 
         return self._row_to_out(reg, save_warnings=save_warnings)
+
+    async def _sync_default_flag_with_status(
+        self,
+        reg: LlmProviderRegistry,
+        pk: str,
+        save_warnings: list[str],
+    ) -> None:
+        """At most one ``is_default``; only ``connected`` rows may keep it."""
+        status_norm = _norm_status(reg.status)
+
+        if reg.is_default and status_norm != "connected":
+            reg.is_default = False
+            save_warnings.append(_DEFAULT_STALE_WARNING)
+            await self.db.flush()
+
+        if reg.is_default:
+            await self.db.execute(
+                update(LlmProviderRegistry)
+                .where(LlmProviderRegistry.provider_id != pk)
+                .values(is_default=False)
+            )
+            await self.db.flush()
 
     async def delete_provider(self, provider_id: str) -> None:
         await self.db.execute(

@@ -3,6 +3,7 @@ import type { ReactElement } from 'react'
 import { useEffect } from 'react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { Hairline, Pill, StatLabel } from '../../components/admin/adminPrimitives'
+import { InfoCircleHelpButton } from '../../components/ui/InfoCircleHelpButton'
 import { Tooltip } from '../../components/ui/Tooltip'
 import { BUILDERS, STUDIOS } from '../../data/adminConsoleMock'
 import { adminConsolePath, type AdminConsoleSection } from '../../lib/adminConsoleNav'
@@ -131,29 +132,10 @@ function SideNav(): ReactElement {
               </>
             }
           >
-            <button
-              type="button"
-              className="inline-flex cursor-help text-zinc-500 outline-none transition hover:text-zinc-300 focus-visible:ring-2 focus-visible:ring-violet-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900/40 rounded-full"
+            <InfoCircleHelpButton
               aria-label="Month summary details"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 14 14"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                aria-hidden
-              >
-                <circle cx="7" cy="7" r="5.75" stroke="currentColor" strokeWidth="1" />
-                <circle cx="7" cy="4.35" r="0.55" fill="currentColor" />
-                <path
-                  d="M7 6.1v4.15"
-                  stroke="currentColor"
-                  strokeWidth="1.05"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </button>
+              ringOffsetClass="focus-visible:ring-offset-zinc-900/40"
+            />
           </Tooltip>
         </div>
         <div className="mt-2 font-mono text-[18px] tabular-nums text-zinc-100">

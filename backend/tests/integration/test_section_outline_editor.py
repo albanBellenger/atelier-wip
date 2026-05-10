@@ -6,6 +6,7 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.integration.test_projects import _studio_with_software
 from tests.integration.test_work_orders import _studio_project_with_sections
@@ -13,11 +14,10 @@ from tests.integration.test_work_orders import _studio_project_with_sections
 
 @pytest.mark.asyncio
 async def test_list_sections_includes_open_issue_count(
-    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch, db_session: AsyncSession) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _studio_id, software_id, pid, sec_a, sec_b = (
-        await _studio_project_with_sections(client, sfx)
+        await _studio_project_with_sections(client, db_session, sfx)
     )
     client.cookies.set("atelier_token", token)
 
@@ -49,11 +49,10 @@ async def test_list_sections_includes_open_issue_count(
 
 @pytest.mark.asyncio
 async def test_list_sections_include_outline_health(
-    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch, db_session: AsyncSession) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _studio_id, software_id, pid, sec_a, sec_b = (
-        await _studio_project_with_sections(client, sfx)
+        await _studio_project_with_sections(client, db_session, sfx)
     )
     client.cookies.set("atelier_token", token)
 
@@ -98,10 +97,11 @@ async def test_list_sections_include_outline_health(
 
 @pytest.mark.asyncio
 async def test_section_health_uses_mocked_citation(
-    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch, db_session: AsyncSession) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _studio_id, software_id = await _studio_with_software(client, sfx)
+    token, _studio_id, software_id = await _studio_with_software(
+        client, db_session, sfx
+    )
     client.cookies.set("atelier_token", token)
     pr = await client.post(
         f"/software/{software_id}/projects",
@@ -149,9 +149,11 @@ async def test_section_health_uses_mocked_citation(
 
 
 @pytest.mark.asyncio
-async def test_context_preferences_patch_roundtrip(client: AsyncClient) -> None:
+async def test_context_preferences_patch_roundtrip(client: AsyncClient, db_session: AsyncSession) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _studio_id, software_id = await _studio_with_software(client, sfx)
+    token, _studio_id, software_id = await _studio_with_software(
+        client, db_session, sfx
+    )
     client.cookies.set("atelier_token", token)
     pr = await client.post(
         f"/software/{software_id}/projects",
@@ -176,9 +178,11 @@ async def test_context_preferences_patch_roundtrip(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_section_health_401(client: AsyncClient) -> None:
+async def test_section_health_401(client: AsyncClient, db_session: AsyncSession) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _studio_id, software_id = await _studio_with_software(client, sfx)
+    token, _studio_id, software_id = await _studio_with_software(
+        client, db_session, sfx
+    )
     client.cookies.set("atelier_token", token)
     pr = await client.post(
         f"/software/{software_id}/projects",

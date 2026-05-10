@@ -205,7 +205,7 @@ export function MeProfilePage(): ReactElement {
               <p className="mt-4 text-sm text-zinc-500">
                 You&apos;re not a member of any studio yet.{' '}
                 <Link to="/studios" className="font-medium text-violet-400 hover:underline">
-                  Browse studios
+                  Browse all studios
                 </Link>
               </p>
             ) : (

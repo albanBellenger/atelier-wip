@@ -11,14 +11,17 @@ from httpx import AsyncClient
 from app.database import engine
 from app.exceptions import ApiError
 from app.main import app
+from tests.integration.studio_http_seed import promote_platform_admin_sync
 from tests.integration.test_work_orders import _studio_project_with_sections
 
 
 @pytest.mark.asyncio
-async def test_chat_history_requires_editor(client: AsyncClient) -> None:
+async def test_chat_history_requires_editor(
+    client: AsyncClient, db_session
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _sid, _sw, pid, _a, _b = await _studio_project_with_sections(
-        client, sfx
+        client, db_session, sfx
     )
     del token
     outsider = await client.post(
@@ -36,10 +39,10 @@ async def test_chat_history_requires_editor(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_chat_history_empty(client: AsyncClient) -> None:
+async def test_chat_history_empty(client: AsyncClient, db_session) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _sid, _sw, pid, _a, _b = await _studio_project_with_sections(
-        client, sfx
+        client, db_session, sfx
     )
     client.cookies.set("atelier_token", token)
     r = await client.get(f"/projects/{pid}/chat")
@@ -85,7 +88,8 @@ async def test_project_chat_websocket_persists_messages() -> None:
             )
             tok = tc.cookies.get("atelier_token")
             assert tok
-            cr = tc.post("/studios", json={"name": f"Ws{sfx}", "description": "d"})
+            promote_platform_admin_sync(f"ws-{sfx}@example.com")
+            cr = tc.post("/admin/studios", json={"name": f"Ws{sfx}", "description": "d"})
             assert cr.status_code == 200
             studio_id = cr.json()["id"]
             sw = tc.post(
@@ -196,7 +200,8 @@ async def test_project_chat_websocket_assistant_done_includes_llm_outbound_when_
             )
             tok = tc.cookies.get("atelier_token")
             assert tok
-            cr = tc.post("/studios", json={"name": f"WsLog{sfx}", "description": "d"})
+            promote_platform_admin_sync(f"ws-log-{sfx}@example.com")
+            cr = tc.post("/admin/studios", json={"name": f"WsLog{sfx}", "description": "d"})
             assert cr.status_code == 200
             studio_id = cr.json()["id"]
             sw = tc.post(
@@ -295,7 +300,8 @@ async def test_project_chat_ws_rejects_disallowed_preferred_model() -> None:
             )
             tok = tc.cookies.get("atelier_token")
             assert tok
-            cr = tc.post("/studios", json={"name": f"PcWs{sfx}", "description": "d"})
+            promote_platform_admin_sync(f"pc-ws-{sfx}@example.com")
+            cr = tc.post("/admin/studios", json={"name": f"PcWs{sfx}", "description": "d"})
             assert cr.status_code == 200
             studio_id = cr.json()["id"]
             sw = tc.post(
@@ -400,7 +406,8 @@ async def test_project_chat_ws_stream_failure_emits_error_no_assistant_row() -> 
             )
             tok = tc.cookies.get("atelier_token")
             assert tok
-            cr = tc.post("/studios", json={"name": f"PcFail{sfx}", "description": "d"})
+            promote_platform_admin_sync(f"pc-fail-{sfx}@example.com")
+            cr = tc.post("/admin/studios", json={"name": f"PcFail{sfx}", "description": "d"})
             assert cr.status_code == 200
             studio_id = cr.json()["id"]
             sw = tc.post(

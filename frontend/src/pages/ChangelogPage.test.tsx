@@ -1,11 +1,15 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import * as api from '../services/api'
 import type { MeResponse } from '../services/api'
 import { ChangelogPage } from './ChangelogPage'
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 function mockProfile(role: 'studio_member' | 'viewer'): MeResponse {
   return {
@@ -23,33 +27,59 @@ function mockProfile(role: 'studio_member' | 'viewer'): MeResponse {
 }
 
 describe('ChangelogPage', () => {
-  it('shows mock releases and back link when authenticated', async () => {
+  it('shows mock releases and builder shell when authenticated', async () => {
+    vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
+      items: [],
+      next_cursor: null,
+    })
     vi.spyOn(api, 'me').mockResolvedValue(mockProfile('studio_member'))
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={['/changelog']}>
         <QueryClientProvider client={qc}>
-          <ChangelogPage />
+          <Routes>
+            <Route path="/changelog" element={<ChangelogPage />} />
+          </Routes>
         </QueryClientProvider>
       </MemoryRouter>,
     )
 
-    expect(await screen.findByRole('heading', { name: /^changelog$/i })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { name: /^changelog$/i }),
+      ).toBeInTheDocument()
+    })
+    expect(screen.getByRole('link', { name: /^atelier$/i })).toHaveAttribute(
+      'href',
+      '/',
+    )
+    expect(screen.getByRole('link', { name: /^Studio One$/i })).toHaveAttribute(
+      'href',
+      '/studios/s1',
+    )
+    expect(screen.getByRole('banner')).toHaveTextContent('Changelog')
+    expect(screen.getByText(/Atelier · Builder workspace/i)).toBeInTheDocument()
     expect(
-      screen.getByRole('link', { name: /back to home/i }),
-    ).toHaveAttribute('href', '/')
+      screen.queryByRole('link', { name: /back to home/i }),
+    ).not.toBeInTheDocument()
     expect(
       screen.getByText(/initial builder workspace/i),
     ).toBeInTheDocument()
   })
 
   it('viewer sees changelog and has no tool-admin entry points on this page', async () => {
+    vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
+      items: [],
+      next_cursor: null,
+    })
     vi.spyOn(api, 'me').mockResolvedValue(mockProfile('viewer'))
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={['/changelog']}>
         <QueryClientProvider client={qc}>
-          <ChangelogPage />
+          <Routes>
+            <Route path="/changelog" element={<ChangelogPage />} />
+          </Routes>
         </QueryClientProvider>
       </MemoryRouter>,
     )

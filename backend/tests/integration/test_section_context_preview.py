@@ -4,6 +4,9 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tests.integration.studio_http_seed import post_admin_studio
 
 
 async def _register(client: AsyncClient, suffix: str, label: str) -> str:
@@ -24,11 +27,12 @@ async def _register(client: AsyncClient, suffix: str, label: str) -> str:
 @pytest.mark.asyncio
 async def test_context_preview_happy_and_join_matches_rag_text(
     client: AsyncClient,
+    db_session: AsyncSession,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token = await _register(client, sfx, "owner")
     client.cookies.set("atelier_token", token)
-    cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
+    cr = await post_admin_studio(client, db_session, user_email=f"owner-{sfx}@example.com", json_body={"name": f"S{sfx}", "description": "d"})
     assert cr.status_code == 200
     studio_id = cr.json()["id"]
     sw = await client.post(
@@ -72,12 +76,13 @@ async def test_context_preview_happy_and_join_matches_rag_text(
 @pytest.mark.asyncio
 async def test_context_preview_debug_raw_rag_when_param(
     client: AsyncClient,
+    db_session: AsyncSession,
 ) -> None:
     """Non-production: debug_raw_rag=true returns the same text shape as build_context."""
     sfx = uuid.uuid4().hex[:8]
     token = await _register(client, sfx, "owner")
     client.cookies.set("atelier_token", token)
-    cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
+    cr = await post_admin_studio(client, db_session, user_email=f"owner-{sfx}@example.com", json_body={"name": f"S{sfx}", "description": "d"})
     assert cr.status_code == 200
     studio_id = cr.json()["id"]
     sw = await client.post(
@@ -112,6 +117,9 @@ async def test_context_preview_debug_raw_rag_when_param(
     assert "## Software definition" in raw
     assert "## Project outline" in raw
     assert "## Current section" in raw
+
+
+@pytest.mark.asyncio
 async def test_context_preview_401_without_auth(client: AsyncClient) -> None:
     r = await client.get(
         "/projects/00000000-0000-4000-8000-000000000001/"
@@ -121,11 +129,13 @@ async def test_context_preview_401_without_auth(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_context_preview_404_unknown_section(client: AsyncClient) -> None:
+async def test_context_preview_404_unknown_section(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     token = await _register(client, sfx, "owner")
     client.cookies.set("atelier_token", token)
-    cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
+    cr = await post_admin_studio(client, db_session, user_email=f"owner-{sfx}@example.com", json_body={"name": f"S{sfx}", "description": "d"})
     assert cr.status_code == 200
     studio_id = cr.json()["id"]
     sw = await client.post(
@@ -148,11 +158,13 @@ async def test_context_preview_404_unknown_section(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_context_preview_422_token_budget(client: AsyncClient) -> None:
+async def test_context_preview_422_token_budget(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     token = await _register(client, sfx, "owner")
     client.cookies.set("atelier_token", token)
-    cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
+    cr = await post_admin_studio(client, db_session, user_email=f"owner-{sfx}@example.com", json_body={"name": f"S{sfx}", "description": "d"})
     assert cr.status_code == 200
     studio_id = cr.json()["id"]
     sw = await client.post(

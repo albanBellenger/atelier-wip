@@ -5,15 +5,18 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.integration.test_work_orders import _studio_project_with_sections
 
 
 @pytest.mark.asyncio
-async def test_builder_composer_hint_ok(client: AsyncClient) -> None:
+async def test_builder_composer_hint_ok(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _sid, sw_id, pid, _a, _b = await _studio_project_with_sections(
-        client, sfx
+        client, db_session, sfx
     )
     client.cookies.set("atelier_token", token)
     fake = {
@@ -42,13 +45,14 @@ async def test_builder_composer_hint_ok(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_builder_composer_hint_project_not_under_software(
     client: AsyncClient,
+    db_session: AsyncSession,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token_a, _sid_a, sw_a, _pid_a, _a, _b = await _studio_project_with_sections(
-        client, sfx + "a"
+        client, db_session, sfx + "a"
     )
     _token_b, _sid_b, sw_b, pid_b, _a2, _b2 = await _studio_project_with_sections(
-        client, sfx + "b"
+        client, db_session, sfx + "b"
     )
     client.cookies.set("atelier_token", token_a)
     fake = {"headline": "x", "input_placeholder": "y"}

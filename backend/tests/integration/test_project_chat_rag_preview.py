@@ -4,6 +4,7 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.integration.test_work_orders import _studio_project_with_sections
 
@@ -26,9 +27,10 @@ async def _register(client: AsyncClient, suffix: str, label: str) -> str:
 @pytest.mark.asyncio
 async def test_project_chat_rag_preview_happy_no_current_section_block(
     client: AsyncClient,
+    db_session: AsyncSession,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, _sw, pid, _a, _b = await _studio_project_with_sections(client, sfx)
+    token, _sid, _sw, pid, _a, _b = await _studio_project_with_sections(client, db_session, sfx)
     client.cookies.set("atelier_token", token)
     r = await client.get(
         f"/projects/{pid}/chat/rag-preview",
@@ -44,17 +46,17 @@ async def test_project_chat_rag_preview_happy_no_current_section_block(
 
 
 @pytest.mark.asyncio
-async def test_project_chat_rag_preview_401_without_auth(client: AsyncClient) -> None:
+async def test_project_chat_rag_preview_401_without_auth(client: AsyncClient, db_session: AsyncSession) -> None:
     fake_pid = "00000000-0000-4000-8000-000000000001"
     r = await client.get(f"/projects/{fake_pid}/chat/rag-preview")
     assert r.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_project_chat_rag_preview_403_viewer(client: AsyncClient) -> None:
+async def test_project_chat_rag_preview_403_viewer(client: AsyncClient, db_session: AsyncSession) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, studio_id, _sw, pid, _a, _b = await _studio_project_with_sections(
-        client, sfx
+        client, db_session, sfx
     )
     viewer_tok = await _register(client, sfx, "viewer")
     client.cookies.set("atelier_token", token)
@@ -71,9 +73,10 @@ async def test_project_chat_rag_preview_403_viewer(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_project_chat_rag_preview_403_outsider_not_studio_member(
     client: AsyncClient,
+    db_session: AsyncSession,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, _sw, pid, _a, _b = await _studio_project_with_sections(client, sfx)
+    token, _sid, _sw, pid, _a, _b = await _studio_project_with_sections(client, db_session, sfx)
     del token
     outsider = await _register(client, sfx, "outsider")
     client.cookies.set("atelier_token", outsider)
@@ -82,9 +85,9 @@ async def test_project_chat_rag_preview_403_outsider_not_studio_member(
 
 
 @pytest.mark.asyncio
-async def test_project_chat_rag_preview_404_unknown_project(client: AsyncClient) -> None:
+async def test_project_chat_rag_preview_404_unknown_project(client: AsyncClient, db_session: AsyncSession) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, _sw, _pid, _a, _b = await _studio_project_with_sections(client, sfx)
+    token, _sid, _sw, _pid, _a, _b = await _studio_project_with_sections(client, db_session, sfx)
     client.cookies.set("atelier_token", token)
     bad = "00000000-0000-4000-8000-000000000099"
     r = await client.get(f"/projects/{bad}/chat/rag-preview")
@@ -92,9 +95,9 @@ async def test_project_chat_rag_preview_404_unknown_project(client: AsyncClient)
 
 
 @pytest.mark.asyncio
-async def test_project_chat_rag_preview_422_token_budget(client: AsyncClient) -> None:
+async def test_project_chat_rag_preview_422_token_budget(client: AsyncClient, db_session: AsyncSession) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, _sw, pid, _a, _b = await _studio_project_with_sections(client, sfx)
+    token, _sid, _sw, pid, _a, _b = await _studio_project_with_sections(client, db_session, sfx)
     client.cookies.set("atelier_token", token)
     r = await client.get(
         f"/projects/{pid}/chat/rag-preview",
@@ -106,14 +109,15 @@ async def test_project_chat_rag_preview_422_token_budget(client: AsyncClient) ->
 @pytest.mark.asyncio
 async def test_project_chat_rag_preview_cross_studio_other_studio_member_forbidden(
     client: AsyncClient,
+    db_session: AsyncSession,
 ) -> None:
     sfx_a = uuid.uuid4().hex[:8]
     tok_a, _s_a, _sw_a, pid_a, _a, _b = await _studio_project_with_sections(
-        client, sfx_a
+        client, db_session, sfx_a
     )
     sfx_b = uuid.uuid4().hex[:8]
     tok_b, _s_b, _sw_b, _pid_b, _c, _d = await _studio_project_with_sections(
-        client, sfx_b
+        client, db_session, sfx_b
     )
     _ = (_sw_b, _pid_b, _c, _d, tok_a)
     client.cookies.set("atelier_token", tok_b)

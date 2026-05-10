@@ -6,6 +6,7 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.integration.test_work_orders import _register, _studio_project_with_sections
 
@@ -14,10 +15,11 @@ from tests.integration.test_work_orders import _register, _studio_project_with_s
 async def test_analyze_creates_issues_and_lists(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _sid, _sw, pid, sec_a, sec_b = await _studio_project_with_sections(
-        client, sfx
+        client, db_session, sfx
     )
     client.cookies.set("atelier_token", token)
 
@@ -72,10 +74,11 @@ async def test_analyze_creates_issues_and_lists(
 async def test_member_cannot_update_issue_owned_by_another_actor(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token_owner, studio_id, _sw, pid, _a, _b = (
-        await _studio_project_with_sections(client, sfx)
+        await _studio_project_with_sections(client, db_session, sfx)
     )
     member_token = await _register(client, sfx, "member2")
     client.cookies.set("atelier_token", token_owner)
@@ -122,10 +125,11 @@ async def test_member_cannot_update_issue_owned_by_another_actor(
 async def test_non_admin_member_lists_only_own_actor_issues(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token_owner, studio_id, _sw, pid, _a, _b = await _studio_project_with_sections(
-        client, sfx
+        client, db_session, sfx
     )
     member_token = await _register(client, sfx, "list_member")
     client.cookies.set("atelier_token", token_owner)
@@ -168,9 +172,10 @@ async def test_non_admin_member_lists_only_own_actor_issues(
 async def test_put_issue_wrong_project_id_returns_404(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
+    db_session: AsyncSession,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, sw, pid1, _a, _b = await _studio_project_with_sections(client, sfx)
+    token, _sid, sw, pid1, _a, _b = await _studio_project_with_sections(client, db_session, sfx)
     client.cookies.set("atelier_token", token)
     pr2 = await client.post(
         f"/software/{sw}/projects",
@@ -207,10 +212,10 @@ async def test_put_issue_wrong_project_id_returns_404(
 
 
 @pytest.mark.asyncio
-async def test_put_issue_not_found(client: AsyncClient) -> None:
+async def test_put_issue_not_found(client: AsyncClient, db_session: AsyncSession) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _sid, _sw, pid, _a, _b = await _studio_project_with_sections(
-        client, sfx
+        client, db_session, sfx
     )
     client.cookies.set("atelier_token", token)
     bogus = uuid.uuid4()
@@ -222,7 +227,7 @@ async def test_put_issue_not_found(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_issues_routes_require_auth(client: AsyncClient) -> None:
+async def test_issues_routes_require_auth(client: AsyncClient, db_session: AsyncSession) -> None:
     pid = str(uuid.uuid4())
     r0 = await client.get(f"/projects/{pid}/issues")
     assert r0.status_code == 401

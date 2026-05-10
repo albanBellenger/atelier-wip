@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.security.field_encryption import encode_admin_stored_secret
 
+from tests.integration.studio_http_seed import post_admin_studio
+
 from app.models import (
     LlmProviderRegistry,
     LlmRoutingRule,
@@ -42,9 +44,11 @@ async def test_studio_llm_chat_models_member_ok_outsider_403(
     token_out = await _register(client, sfx, "llmout")
 
     client.cookies.set("atelier_token", token_owner)
-    cr = await client.post(
-        "/studios",
-        json={"name": f"LlmStudio{sfx}", "description": ""},
+    cr = await post_admin_studio(
+        client,
+        db_session,
+        user_email=f"llmown-{sfx}@example.com",
+        json_body={"name": f"LlmStudio{sfx}", "description": ""},
     )
     assert cr.status_code == 200
     studio_id = cr.json()["id"]

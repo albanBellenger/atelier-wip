@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from tests.integration.studio_http_seed import post_admin_studio
 from httpx import AsyncClient
 
 from tests.integration.embedding_mocks import patch_fake_embedding_transport
@@ -96,7 +97,7 @@ async def test_software_artifacts_outsider_forbidden(
     sfx = uuid.uuid4().hex[:8]
     token = await _register(client, sfx, "owner")
     client.cookies.set("atelier_token", token)
-    cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
+    cr = await post_admin_studio(client, db_session, user_email=f"owner-{sfx}@example.com", json_body={"name": f"S{sfx}", "description": "d"})
     assert cr.status_code == 200
     studio_id = cr.json()["id"]
     sw = await client.post(
@@ -122,7 +123,7 @@ async def test_software_artifacts_lists_across_projects(
     token = await _register(client, sfx, "owner")
     client.cookies.set("atelier_token", token)
 
-    cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
+    cr = await post_admin_studio(client, db_session, user_email=f"owner-{sfx}@example.com", json_body={"name": f"S{sfx}", "description": "d"})
     assert cr.status_code == 200
     studio_id = cr.json()["id"]
     sw = await client.post(

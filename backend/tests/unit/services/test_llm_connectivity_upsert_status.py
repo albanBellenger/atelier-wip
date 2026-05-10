@@ -14,6 +14,7 @@ from app.schemas.admin_console import LlmProviderRegistryUpdate
 from app.schemas.llm_registry_model import LlmRegistryModelEntry
 from app.security.field_encryption import encode_admin_stored_secret
 from app.services.llm_connectivity_service import LlmConnectivityService
+from app.services.registry_models_json import serialize_models_json
 
 
 @pytest.mark.asyncio
@@ -52,6 +53,118 @@ async def test_create_provider_always_needs_key(
         )
     ).scalar_one()
     assert row.status == "needs-key"
+
+
+@pytest.mark.asyncio
+async def test_is_default_cleared_when_status_not_connected(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await db_session.execute(delete(LlmProviderRegistry))
+    await db_session.flush()
+
+    async def _noop(self: object, **_k: object):
+        from app.schemas.auth import AdminConnectivityResult
+
+        return AdminConnectivityResult(ok=True, message="ok", detail=None)
+
+    monkeypatch.setattr(
+        "app.services.llm_connectivity_service.LLMService.admin_connectivity_probe",
+        _noop,
+    )
+    monkeypatch.setattr(
+        "app.services.llm_connectivity_service.enrich_model_entries_from_litellm",
+        lambda entries, draft_registry_row: list(entries),
+    )
+
+    body = LlmProviderRegistryUpdate(
+        models=[
+            LlmRegistryModelEntry(id="m1", context_metadata_source="unknown"),
+        ],
+        llm_api_key="sk-test",
+        is_default=True,
+    )
+    out = await LlmConnectivityService(db_session).upsert_provider("acme", body)
+    assert out.status == "needs-key"
+    assert out.is_default is False
+    assert any("connected" in w.lower() for w in out.save_warnings)
+
+
+@pytest.mark.asyncio
+async def test_setting_default_on_connected_clears_other_defaults(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await db_session.execute(delete(LlmProviderRegistry))
+    await db_session.flush()
+    same_models = serialize_models_json(
+        [LlmRegistryModelEntry(id="m", context_metadata_source="unknown")]
+    )
+    db_session.add(
+        LlmProviderRegistry(
+            id=uuid.uuid4(),
+            provider_id="alpha",
+            models_json=same_models,
+            api_base_url=None,
+            logo_url=None,
+            status="connected",
+            is_default=True,
+            sort_order=0,
+            api_key=encode_admin_stored_secret("sk-test"),
+            litellm_provider_slug=None,
+        )
+    )
+    db_session.add(
+        LlmProviderRegistry(
+            id=uuid.uuid4(),
+            provider_id="beta",
+            models_json=same_models,
+            api_base_url=None,
+            logo_url=None,
+            status="connected",
+            is_default=False,
+            sort_order=1,
+            api_key=encode_admin_stored_secret("sk-other"),
+            litellm_provider_slug=None,
+        )
+    )
+    await db_session.flush()
+
+    async def _noop(self: object, **_k: object):
+        from app.schemas.auth import AdminConnectivityResult
+
+        return AdminConnectivityResult(ok=True, message="ok", detail=None)
+
+    monkeypatch.setattr(
+        "app.services.llm_connectivity_service.LLMService.admin_connectivity_probe",
+        _noop,
+    )
+    monkeypatch.setattr(
+        "app.services.llm_connectivity_service.enrich_model_entries_from_litellm",
+        lambda entries, draft_registry_row: list(entries),
+    )
+
+    body = LlmProviderRegistryUpdate(
+        models=[
+            LlmRegistryModelEntry(id="m", context_metadata_source="unknown"),
+        ],
+        is_default=True,
+    )
+    out = await LlmConnectivityService(db_session).upsert_provider("beta", body)
+    assert out.is_default is True
+
+    alpha = (
+        await db_session.execute(
+            select(LlmProviderRegistry).where(LlmProviderRegistry.provider_id == "alpha")
+        )
+    ).scalar_one()
+    beta = (
+        await db_session.execute(
+            select(LlmProviderRegistry).where(LlmProviderRegistry.provider_id == "beta")
+        )
+    ).scalar_one()
+    assert alpha.is_default is False
+    assert beta.is_default is True
 
 
 @pytest.mark.asyncio
@@ -102,6 +215,55 @@ async def test_update_material_change_downgrades_connected(
 
 
 @pytest.mark.asyncio
+async def test_material_change_clears_default_when_downgrades_from_connected(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await db_session.execute(delete(LlmProviderRegistry))
+    await db_session.flush()
+    db_session.add(
+        LlmProviderRegistry(
+            id=uuid.uuid4(),
+            provider_id="acme",
+            models_json=json.dumps(["old"]),
+            api_base_url=None,
+            logo_url=None,
+            status="connected",
+            is_default=True,
+            sort_order=0,
+            api_key=encode_admin_stored_secret("sk-test"),
+            litellm_provider_slug=None,
+        )
+    )
+    await db_session.flush()
+
+    async def _noop(self: object, **_k: object):
+        from app.schemas.auth import AdminConnectivityResult
+
+        return AdminConnectivityResult(ok=True, message="ok", detail=None)
+
+    monkeypatch.setattr(
+        "app.services.llm_connectivity_service.LLMService.admin_connectivity_probe",
+        _noop,
+    )
+    monkeypatch.setattr(
+        "app.services.llm_connectivity_service.enrich_model_entries_from_litellm",
+        lambda entries, draft_registry_row: list(entries),
+    )
+
+    body = LlmProviderRegistryUpdate(
+        models=[
+            LlmRegistryModelEntry(id="new-model", context_metadata_source="unknown"),
+        ],
+        is_default=True,
+    )
+    out = await LlmConnectivityService(db_session).upsert_provider("acme", body)
+    assert out.status == "needs-key"
+    assert out.is_default is False
+    assert any("connected" in w.lower() for w in out.save_warnings)
+
+
+@pytest.mark.asyncio
 async def test_update_disabled_true_sets_disabled(
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -146,6 +308,57 @@ async def test_update_disabled_true_sets_disabled(
     )
     out = await LlmConnectivityService(db_session).upsert_provider("acme", body)
     assert out.status == "disabled"
+
+
+@pytest.mark.asyncio
+async def test_update_connected_keeps_connected_when_disabled_false_and_no_material_change(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Frontend sends disabled=false on every edit; only re-enable path resets status."""
+    await db_session.execute(delete(LlmProviderRegistry))
+    await db_session.flush()
+    same_models = serialize_models_json(
+        [LlmRegistryModelEntry(id="m", context_metadata_source="unknown")]
+    )
+    db_session.add(
+        LlmProviderRegistry(
+            id=uuid.uuid4(),
+            provider_id="acme",
+            models_json=same_models,
+            api_base_url=None,
+            logo_url=None,
+            status="connected",
+            is_default=False,
+            sort_order=0,
+            api_key=encode_admin_stored_secret("sk-test"),
+            litellm_provider_slug=None,
+        )
+    )
+    await db_session.flush()
+
+    async def _noop(self: object, **_k: object):
+        from app.schemas.auth import AdminConnectivityResult
+
+        return AdminConnectivityResult(ok=True, message="ok", detail=None)
+
+    monkeypatch.setattr(
+        "app.services.llm_connectivity_service.LLMService.admin_connectivity_probe",
+        _noop,
+    )
+    monkeypatch.setattr(
+        "app.services.llm_connectivity_service.enrich_model_entries_from_litellm",
+        lambda entries, draft_registry_row: list(entries),
+    )
+
+    body = LlmProviderRegistryUpdate(
+        models=[
+            LlmRegistryModelEntry(id="m", context_metadata_source="unknown"),
+        ],
+        disabled=False,
+    )
+    out = await LlmConnectivityService(db_session).upsert_provider("acme", body)
+    assert out.status == "connected"
 
 
 @pytest.mark.asyncio

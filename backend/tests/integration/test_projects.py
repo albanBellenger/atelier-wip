@@ -4,6 +4,9 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tests.integration.studio_http_seed import post_admin_studio
 
 
 async def _register(client: AsyncClient, suffix: str, label: str) -> str:
@@ -21,11 +24,18 @@ async def _register(client: AsyncClient, suffix: str, label: str) -> str:
     return token
 
 
-async def _studio_with_software(client: AsyncClient, sfx: str) -> tuple[str, str, str]:
+async def _studio_with_software(
+    client: AsyncClient, db_session: AsyncSession, sfx: str
+) -> tuple[str, str, str]:
     """Returns (token_admin, studio_id, software_id)."""
     token = await _register(client, sfx, "owner")
     client.cookies.set("atelier_token", token)
-    cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
+    cr = await post_admin_studio(
+        client,
+        db_session,
+        user_email=f"owner-{sfx}@example.com",
+        json_body={"name": f"S{sfx}", "description": "d"},
+    )
     assert cr.status_code == 200
     studio_id = cr.json()["id"]
     sw = await client.post(
@@ -38,9 +48,13 @@ async def _studio_with_software(client: AsyncClient, sfx: str) -> tuple[str, str
 
 
 @pytest.mark.asyncio
-async def test_projects_crud_and_rbac(client: AsyncClient) -> None:
+async def test_projects_crud_and_rbac(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token_admin, studio_id, software_id = await _studio_with_software(client, sfx)
+    token_admin, studio_id, software_id = await _studio_with_software(
+        client, db_session, sfx
+    )
 
     token_member = await _register(client, sfx, "member")
     client.cookies.set("atelier_token", token_admin)
@@ -101,10 +115,13 @@ async def test_projects_crud_and_rbac(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_list_projects_includes_dashboard_aggregates(
     client: AsyncClient,
+    db_session: AsyncSession,
 ) -> None:
     """List response includes work order and section rollups for the software dashboard."""
     sfx = uuid.uuid4().hex[:8]
-    token, _studio_id, software_id = await _studio_with_software(client, sfx)
+    token, _studio_id, software_id = await _studio_with_software(
+        client, db_session, sfx
+    )
     client.cookies.set("atelier_token", token)
 
     pr = await client.post(
@@ -164,10 +181,13 @@ async def test_list_projects_includes_dashboard_aggregates(
 @pytest.mark.asyncio
 async def test_publish_folder_slug_conflict_on_update(
     client: AsyncClient,
+    db_session: AsyncSession,
 ) -> None:
     """Cannot take another project's publish_folder_slug."""
     sfx = uuid.uuid4().hex[:8]
-    token, _studio_id, software_id = await _studio_with_software(client, sfx)
+    token, _studio_id, software_id = await _studio_with_software(
+        client, db_session, sfx
+    )
     client.cookies.set("atelier_token", token)
 
     p1 = await client.post(
@@ -195,10 +215,13 @@ async def test_publish_folder_slug_conflict_on_update(
 @pytest.mark.asyncio
 async def test_publish_folder_slug_rename_calls_git_when_configured(
     client: AsyncClient,
+    db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, studio_id, software_id = await _studio_with_software(client, sfx)
+    token, studio_id, software_id = await _studio_with_software(
+        client, db_session, sfx
+    )
     client.cookies.set("atelier_token", token)
 
     patch_git = await client.put(

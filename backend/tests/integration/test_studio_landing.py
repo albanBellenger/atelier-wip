@@ -4,6 +4,9 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tests.integration.studio_http_seed import post_admin_studio
 
 
 async def _register(client: AsyncClient, suffix: str, label: str) -> str:
@@ -22,9 +25,13 @@ async def _register(client: AsyncClient, suffix: str, label: str) -> str:
 
 
 @pytest.mark.asyncio
-async def test_studio_projects_activity_artifacts_and_rbac(client: AsyncClient) -> None:
+async def test_studio_projects_activity_artifacts_and_rbac(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, studio_id, software_id_a = await _two_software_studio(client, sfx)
+    token, studio_id, software_id_a = await _two_software_studio(
+        client, db_session, sfx
+    )
 
     client.cookies.clear()
     noauth = await client.get(f"/studios/{studio_id}/projects")
@@ -99,11 +106,16 @@ async def test_studio_projects_activity_artifacts_and_rbac(client: AsyncClient) 
 
 
 async def _two_software_studio(
-    client: AsyncClient, sfx: str
+    client: AsyncClient, db_session: AsyncSession, sfx: str
 ) -> tuple[str, str, str]:
     token = await _register(client, sfx, "owner")
     client.cookies.set("atelier_token", token)
-    cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
+    cr = await post_admin_studio(
+        client,
+        db_session,
+        user_email=f"owner-{sfx}@example.com",
+        json_body={"name": f"S{sfx}", "description": "d"},
+    )
     assert cr.status_code == 200
     studio_id = cr.json()["id"]
     sw = await client.post(

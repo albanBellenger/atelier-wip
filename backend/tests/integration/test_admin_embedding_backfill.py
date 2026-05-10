@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+from tests.integration.studio_http_seed import post_admin_studio
 from httpx import AsyncClient
 from sqlalchemy import update
 
@@ -43,7 +44,7 @@ async def test_admin_put_llm_routing_schedules_existing_sections_when_embedding_
     sfx = uuid.uuid4().hex[:8]
     token = await _register(client, sfx, "owner")
     client.cookies.set("atelier_token", token)
-    st = (await client.post("/studios", json={"name": f"S{sfx}"})).json()
+    st = (await post_admin_studio(client, db_session, user_email=f"owner-{sfx}@example.com", json_body={"name": f"S{sfx}"})).json()
     studio_id = st["id"]
     sw = (
         await client.post(

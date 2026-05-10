@@ -4,9 +4,9 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
-
-@pytest.mark.asyncio
+from tests.integration.studio_http_seed import post_admin_studio
 async def test_member_budgets_unauthenticated(client: AsyncClient) -> None:
     rid = uuid.uuid4()
     r = await client.get(f"/studios/{rid}/member-budgets")
@@ -14,7 +14,9 @@ async def test_member_budgets_unauthenticated(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_member_budgets_forbidden_for_builder(client: AsyncClient) -> None:
+async def test_member_budgets_forbidden_for_builder(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     owner_email = f"mb-own-{sfx}@example.com"
     mem_email = f"mb-bld-{sfx}@example.com"
@@ -35,7 +37,12 @@ async def test_member_budgets_forbidden_for_builder(client: AsyncClient) -> None
     assert owner_tok
     client.cookies.set("atelier_token", owner_tok)
 
-    cr = await client.post("/studios", json={"name": f"MBS{sfx}", "description": "d"})
+    cr = await post_admin_studio(
+        client,
+        db_session,
+        user_email=owner_email.lower(),
+        json_body={"name": f"MBS{sfx}", "description": "d"},
+    )
     assert cr.status_code == 200
     studio_id = cr.json()["id"]
 
@@ -67,6 +74,7 @@ async def test_member_budgets_forbidden_for_builder(client: AsyncClient) -> None
 @pytest.mark.asyncio
 async def test_member_budgets_studio_owner_list_patch(
     client: AsyncClient,
+    db_session: AsyncSession,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     owner_email = f"mb-own2-{sfx}@example.com"
@@ -91,7 +99,12 @@ async def test_member_budgets_studio_owner_list_patch(
     assert tok
     client.cookies.set("atelier_token", tok)
 
-    cr = await client.post("/studios", json={"name": f"MBX{sfx}", "description": "d"})
+    cr = await post_admin_studio(
+        client,
+        db_session,
+        user_email=owner_email.lower(),
+        json_body={"name": f"MBX{sfx}", "description": "d"},
+    )
     assert cr.status_code == 200
     studio_id = cr.json()["id"]
 

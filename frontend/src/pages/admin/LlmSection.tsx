@@ -18,6 +18,7 @@ import {
 } from '../../components/admin/adminPrimitives'
 import { LlmModelSuggestInput } from '../../components/admin/LlmModelSuggestInput'
 import { Tooltip } from '../../components/ui/Tooltip'
+import { InfoCircleHelpButton } from '../../components/ui/InfoCircleHelpButton'
 import {
   type AdminLlmProbeBody,
   type LlmProviderRegistryRow,
@@ -30,6 +31,7 @@ import {
   getAdminStudioLlmPolicy,
   listStudios,
   modelIdsFromEntries,
+  deleteAdminLlmProvider,
   postAdminTestLlm,
   putAdminLlmProvider,
   putAdminLlmRouting,
@@ -130,30 +132,11 @@ function LlmFormFieldHint(props: { ariaLabel: string; content: ReactNode }): Rea
       accessibleTrigger={false}
       content={content}
     >
-      <button
-        type="button"
-        className="inline-flex cursor-help text-zinc-500 outline-none transition hover:text-zinc-300 focus-visible:ring-2 focus-visible:ring-violet-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 rounded-full"
+      <InfoCircleHelpButton
         aria-label={ariaLabel}
         onClick={(e) => e.stopPropagation()}
-      >
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 14 14"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          aria-hidden
-        >
-          <circle cx="7" cy="7" r="5.75" stroke="currentColor" strokeWidth="1" />
-          <circle cx="7" cy="4.35" r="0.55" fill="currentColor" />
-          <path
-            d="M7 6.1v4.15"
-            stroke="currentColor"
-            strokeWidth="1.05"
-            strokeLinecap="round"
-          />
-        </svg>
-      </button>
+        ringOffsetClass="focus-visible:ring-offset-zinc-950"
+      />
     </Tooltip>
   )
 }
@@ -200,6 +183,43 @@ function formatContextTokensCsv(models: LlmRegistryModelEntry[]): string {
   return models.map((m) => (m.max_context_tokens != null ? String(m.max_context_tokens) : '')).join(', ')
 }
 
+/** Abbreviates token counts with K / M for the registry table (thousands / millions). */
+function abbreviateMaxContextTokens(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '—'
+  if (n >= 1_000_000) {
+    const x = n / 1_000_000
+    const rounded = x >= 10 ? Math.round(x) : Math.round(x * 10) / 10
+    const s =
+      rounded === Math.floor(rounded) ? String(rounded) : rounded.toFixed(1).replace(/\.?0+$/, '')
+    return `${s}M`
+  }
+  if (n >= 1_000) {
+    const x = n / 1_000
+    const rounded = x >= 100 ? Math.round(x) : Math.round(x * 10) / 10
+    const s =
+      rounded === Math.floor(rounded) ? String(rounded) : rounded.toFixed(1).replace(/\.?0+$/, '')
+    return `${s}K`
+  }
+  return String(Math.round(n))
+}
+
+function formatRegistryMaxContextAbbrev(models: LlmRegistryModelEntry[]): string {
+  if (!models.length) return '—'
+  return models
+    .map((m) =>
+      m.max_context_tokens != null ? abbreviateMaxContextTokens(m.max_context_tokens) : '—',
+    )
+    .join(', ')
+}
+
+function registryMaxContextTitle(models: LlmRegistryModelEntry[]): string | undefined {
+  const lines = models.flatMap((m) => {
+    const t = m.max_context_tokens
+    return t != null ? [`${m.id}: ${t.toLocaleString()}`] : []
+  })
+  return lines.length ? lines.join('\n') : undefined
+}
+
 function buildModelEntriesFromForm(
   modelsText: string,
   contextTokensText: string,
@@ -235,6 +255,16 @@ function appendUniqueModelId(currentText: string, id: string): string {
   const existing = parseModelIds(currentText)
   if (existing.includes(t)) return currentText
   return [...existing, t].join(', ')
+}
+
+/** Which LLM probe is in flight: default registry probe vs a specific provider row. */
+function probePendingTarget(vars: {
+  isPending: boolean
+  variables: AdminLlmProbeBody | undefined
+}): 'default' | string | null {
+  if (!vars.isPending || vars.variables === undefined) return null
+  const pid = vars.variables.provider_id
+  return pid != null && pid !== '' ? pid : 'default'
 }
 
 function formatProviderMutationErr(err: unknown): string {
@@ -460,8 +490,6 @@ function AddProviderModal({
   const [contextTokensText, setContextTokensText] = useState('')
   const [apiBaseUrl, setApiBaseUrl] = useState('')
   const [llmApiKey, setLlmApiKey] = useState('')
-  const [status, setStatus] = useState<'connected' | 'disabled' | 'needs-key'>('needs-key')
-  const [isDefault, setIsDefault] = useState(false)
   const [litellmSlug, setLitellmSlug] = useState('')
   const [suggestAppend, setSuggestAppend] = useState('')
 
@@ -472,8 +500,6 @@ function AddProviderModal({
     setContextTokensText('')
     setApiBaseUrl('')
     setLlmApiKey('')
-    setStatus('needs-key')
-    setIsDefault(false)
     setLitellmSlug('')
     setSuggestAppend('')
   }, [open])
@@ -491,8 +517,7 @@ function AddProviderModal({
     const body: LlmProviderUpsertBody = {
       models,
       api_base_url: apiBaseUrl.trim() || null,
-      status,
-      is_default: isDefault,
+      is_default: false,
       sort_order: 0,
       litellm_provider_slug: litellmSlug.trim() || null,
     }
@@ -671,29 +696,16 @@ function AddProviderModal({
               className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
             />
           </div>
-          <div>
-            <StatLabel>
-              <label htmlFor="llm-add-provider-status">Status</label>
-            </StatLabel>
-            <select
-              id="llm-add-provider-status"
-              value={status}
-              onChange={(e) =>
-                setStatus(e.target.value as 'connected' | 'disabled' | 'needs-key')
-              }
-              className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-[13px] text-zinc-100 outline-none focus:border-zinc-600"
-            >
-              <option value="needs-key">Needs key</option>
-              <option value="connected">Connected</option>
-              <option value="disabled">Disabled</option>
-            </select>
-          </div>
-          <label className="flex cursor-pointer items-center gap-2 text-[12px] text-zinc-300">
+          <label
+            className="flex items-center gap-2 text-[12px] text-zinc-400"
+            title="After registering, run Test on this row until it shows connected; then edit to mark as default."
+          >
             <input
               type="checkbox"
-              checked={isDefault}
-              onChange={(e) => setIsDefault(e.target.checked)}
-              className="rounded border-zinc-600 bg-zinc-950"
+              checked={false}
+              disabled
+              aria-disabled="true"
+              className="rounded border-zinc-600 bg-zinc-950 opacity-60"
             />
             Mark as default provider for routing hints
           </label>
@@ -749,25 +761,39 @@ function buildPolicyRows(
   })
 }
 
+function buildStudioPolicyRows(
+  connectedProviders: LlmProviderRegistryRow[],
+  existing: StudioLlmPolicyRow[] | undefined,
+): StudioLlmPolicyRow[] {
+  const built = buildPolicyRows(connectedProviders, existing)
+  const connIds = new Set(connectedProviders.map((p) => p.provider_id))
+  const preserved = (existing ?? []).filter((r) => !connIds.has(r.provider_id))
+  return [...built, ...preserved]
+}
+
 function EditProviderModal({
   provider,
   onClose,
   isPending,
+  isDeletePending,
   error,
   onSave,
+  onDelete,
 }: {
   provider: LlmProviderRegistryRow | null
   onClose: () => void
   isPending: boolean
+  isDeletePending: boolean
   error?: unknown
   onSave: (args: { providerId: string; body: LlmProviderUpsertBody }) => void
+  onDelete: (providerId: string) => void
 }): ReactElement | null {
   const [modelsText, setModelsText] = useState('')
   const [contextTokensText, setContextTokensText] = useState('')
   const [apiBaseUrl, setApiBaseUrl] = useState('')
   const [llmApiKey, setLlmApiKey] = useState('')
   const [clearLlmKey, setClearLlmKey] = useState(false)
-  const [status, setStatus] = useState<'connected' | 'disabled' | 'needs-key'>('needs-key')
+  const [disabled, setDisabled] = useState(false)
   const [isDefault, setIsDefault] = useState(false)
   const [litellmSlug, setLitellmSlug] = useState('')
   const [suggestAppend, setSuggestAppend] = useState('')
@@ -781,11 +807,7 @@ function EditProviderModal({
     setClearLlmKey(false)
     setLitellmSlug(provider.litellm_provider_slug ?? '')
     setSuggestAppend('')
-    setStatus(
-      provider.status === 'connected' || provider.status === 'disabled' || provider.status === 'needs-key'
-        ? provider.status
-        : 'needs-key',
-    )
+    setDisabled(provider.status === 'disabled')
     setIsDefault(provider.is_default)
   }, [provider])
 
@@ -801,10 +823,10 @@ function EditProviderModal({
     const body: LlmProviderUpsertBody = {
       models,
       api_base_url: apiBaseUrl.trim() || null,
-      status,
       is_default: isDefault,
       sort_order: provider.sort_order,
       litellm_provider_slug: litellmSlug.trim() || null,
+      disabled,
     }
     if (clearLlmKey) {
       body.llm_api_key = ''
@@ -812,6 +834,16 @@ function EditProviderModal({
       body.llm_api_key = llmApiKey.trim()
     }
     onSave({ providerId: provider.provider_id, body })
+  }
+
+  const handleDeleteClick = (): void => {
+    if (provider.status === 'connected') {
+      const ok = window.confirm(
+        'This provider is connected. Delete it from the registry? Studio LLM policy and routing may reference this row.',
+      )
+      if (!ok) return
+    }
+    onDelete(provider.provider_id)
   }
 
   const errText =
@@ -855,9 +887,17 @@ function EditProviderModal({
             />
           </div>
           <div>
-            <StatLabel>
-              <label htmlFor="llm-edit-provider-models">Model IDs</label>
-            </StatLabel>
+            <div className="flex items-center gap-1.5">
+              <div className="min-w-0 flex-1">
+                <StatLabel>
+                  <label htmlFor="llm-edit-provider-models">Model IDs</label>
+                </StatLabel>
+              </div>
+              <LlmFormFieldHint
+                ariaLabel="Model ID format and LiteLLM catalog"
+                content={ADD_PROVIDER_MODEL_IDS_HELP}
+              />
+            </div>
             <textarea
               id="llm-edit-provider-models"
               value={modelsText}
@@ -866,19 +906,6 @@ function EditProviderModal({
               spellCheck={false}
               className="mt-1.5 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
             />
-            <p className="mt-1 text-[11px] text-zinc-600">
-              Use <span className="font-mono text-zinc-500">provider/model</span> in the list when
-              needed, or set a LiteLLM slug below.{' '}
-              <a
-                href={LITELLM_PROVIDERS_DOCS}
-                target="_blank"
-                rel="noreferrer"
-                className="text-violet-400 hover:underline"
-                onClick={(e) => e.stopPropagation()}
-              >
-                LiteLLM providers
-              </a>
-            </p>
             <div className="mt-2 flex flex-wrap items-end gap-2">
               <div className="min-w-0 flex-1">
                 <StatLabel>
@@ -912,9 +939,17 @@ function EditProviderModal({
             </div>
           </div>
           <div>
-            <StatLabel>
-              <label htmlFor="llm-edit-context-tokens">Max context tokens (optional)</label>
-            </StatLabel>
+            <div className="flex items-center gap-1.5">
+              <div className="min-w-0 flex-1">
+                <StatLabel>
+                  <label htmlFor="llm-edit-context-tokens">Max context tokens (optional)</label>
+                </StatLabel>
+              </div>
+              <LlmFormFieldHint
+                ariaLabel="Max context tokens manual override"
+                content={ADD_PROVIDER_CONTEXT_TOKENS_HELP}
+              />
+            </div>
             <textarea
               id="llm-edit-context-tokens"
               value={contextTokensText}
@@ -924,15 +959,19 @@ function EditProviderModal({
               placeholder="Comma-aligned with model list; leave blank to let LiteLLM fill on save"
               className="mt-1.5 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
             />
-            <p className="mt-1 text-[11px] text-zinc-600">
-              Non-empty values mark that position as a manual override (skips LiteLLM lookup for that
-              model&apos;s context size).
-            </p>
           </div>
           <div>
-            <StatLabel>
-              <label htmlFor="llm-edit-provider-litellm-slug">LiteLLM provider slug (optional)</label>
-            </StatLabel>
+            <div className="flex items-center gap-1.5">
+              <div className="min-w-0 flex-1">
+                <StatLabel>
+                  <label htmlFor="llm-edit-provider-litellm-slug">LiteLLM provider slug (optional)</label>
+                </StatLabel>
+              </div>
+              <LlmFormFieldHint
+                ariaLabel="LiteLLM provider slug and prefix"
+                content={ADD_PROVIDER_LITELLM_SLUG_HELP}
+              />
+            </div>
             <input
               id="llm-edit-provider-litellm-slug"
               value={litellmSlug}
@@ -951,6 +990,7 @@ function EditProviderModal({
               value={apiBaseUrl}
               onChange={(e) => setApiBaseUrl(e.target.value)}
               autoComplete="off"
+              title="Optional. When set, chat completions use this host for this provider when a per-provider key is configured; otherwise falls back to Tool settings."
               className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
             />
           </div>
@@ -998,29 +1038,31 @@ function EditProviderModal({
               Remove stored API key for this provider
             </label>
           </div>
-          <div>
-            <StatLabel>
-              <label htmlFor="llm-edit-provider-status">Status</label>
-            </StatLabel>
-            <select
-              id="llm-edit-provider-status"
-              value={status}
-              onChange={(e) =>
-                setStatus(e.target.value as 'connected' | 'disabled' | 'needs-key')
-              }
-              className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-[13px] text-zinc-100 outline-none focus:border-zinc-600"
-            >
-              <option value="needs-key">Needs key</option>
-              <option value="connected">Connected</option>
-              <option value="disabled">Disabled</option>
-            </select>
-          </div>
           <label className="flex cursor-pointer items-center gap-2 text-[12px] text-zinc-300">
             <input
               type="checkbox"
-              checked={isDefault}
-              onChange={(e) => setIsDefault(e.target.checked)}
+              checked={disabled}
+              onChange={(e) => setDisabled(e.target.checked)}
               className="rounded border-zinc-600 bg-zinc-950"
+            />
+            Disable this provider (excluded from studio policy and routing until re-enabled)
+          </label>
+          <label
+            className={`flex items-center gap-2 text-[12px] text-zinc-300 ${
+              provider.status === 'connected' ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'
+            }`}
+            title={
+              provider.status === 'connected'
+                ? undefined
+                : 'Only a connected provider can be the platform default. Run Test until status is connected.'
+            }
+          >
+            <input
+              type="checkbox"
+              checked={isDefault}
+              disabled={provider.status !== 'connected'}
+              onChange={(e) => setIsDefault(e.target.checked)}
+              className="rounded border-zinc-600 bg-zinc-950 disabled:opacity-60"
             />
             Mark as default provider for routing hints
           </label>
@@ -1032,22 +1074,33 @@ function EditProviderModal({
               {errText}
             </p>
           ) : null}
-          <div className="flex justify-end gap-2">
-            <Btn type="button" onClick={onClose} disabled={isPending}>
-              Cancel
-            </Btn>
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <Btn
               type="button"
-              tone="primary"
-              style={{ background: ADMIN_CONSOLE_ACCENT }}
-              disabled={
-                isPending ||
-                parseModelIds(modelsText).length === 0
-              }
-              onClick={submit}
+              tone="danger"
+              disabled={isPending || isDeletePending}
+              onClick={handleDeleteClick}
             >
-              {isPending ? 'Saving…' : 'Save changes'}
+              {isDeletePending ? 'Deleting…' : 'Delete provider'}
             </Btn>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Btn type="button" onClick={onClose} disabled={isPending || isDeletePending}>
+                Cancel
+              </Btn>
+              <Btn
+                type="button"
+                tone="primary"
+                style={{ background: ADMIN_CONSOLE_ACCENT }}
+                disabled={
+                  isPending ||
+                  isDeletePending ||
+                  parseModelIds(modelsText).length === 0
+                }
+                onClick={submit}
+              >
+                {isPending ? 'Saving…' : 'Save changes'}
+              </Btn>
+            </div>
           </div>
         </div>
       </div>
@@ -1072,6 +1125,12 @@ export function LlmSection(): ReactElement {
     queryFn: () => getAdminLlmDeployment(),
   })
 
+  const providers = deploymentQ.data?.providers ?? EMPTY_LLM_PROVIDERS
+  const connectedProviders = useMemo(
+    () => providers.filter((p) => p.status === 'connected'),
+    [providers],
+  )
+
   const routingQ = useQuery({
     queryKey: ['admin', 'llm', 'routing'],
     queryFn: () => getAdminLlmRouting(),
@@ -1093,14 +1152,13 @@ export function LlmSection(): ReactElement {
   )
 
   const routingRegistryScopeOptions = useMemo(() => {
-    const list = deploymentQ.data?.providers ?? EMPTY_LLM_PROVIDERS
     const s = new Set<string>()
-    for (const p of list) {
+    for (const p of connectedProviders) {
       const slug = (p.litellm_provider_slug ?? p.provider_id).trim().toLowerCase()
       if (slug) s.add(slug)
     }
     return [...s].sort()
-  }, [deploymentQ.data?.providers])
+  }, [connectedProviders])
 
   const saveRouting = useMutation({
     mutationFn: (rules: LlmRoutingRuleRow[]) =>
@@ -1131,6 +1189,14 @@ export function LlmSection(): ReactElement {
 
   const testLlmMut = useMutation({
     mutationFn: (body: AdminLlmProbeBody = {}) => postAdminTestLlm(body),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['admin', 'llm', 'deployment'] })
+    },
+  })
+
+  const llmProbeTarget = probePendingTarget({
+    isPending: testLlmMut.isPending,
+    variables: testLlmMut.variables,
   })
 
   const policyQ = useQuery({
@@ -1168,8 +1234,6 @@ export function LlmSection(): ReactElement {
     },
   })
 
-  const providers = deploymentQ.data?.providers ?? EMPTY_LLM_PROVIDERS
-
   const updateRegistry = useMutation({
     mutationFn: ({ key, body }: { key: string; body: LlmProviderUpsertBody }) =>
       putAdminLlmProvider(key, body),
@@ -1182,9 +1246,18 @@ export function LlmSection(): ReactElement {
     },
   })
 
+  const deleteRegistry = useMutation({
+    mutationFn: (key: string) => deleteAdminLlmProvider(key),
+    onSuccess: async () => {
+      setEditingProvider(null)
+      await qc.invalidateQueries({ queryKey: ['admin', 'llm', 'deployment'] })
+      await qc.invalidateQueries({ queryKey: ['admin', 'llm', 'routing'] })
+    },
+  })
+
   const rowsForStudio = useMemo(
-    () => buildPolicyRows(providers, policyQ.data),
-    [providers, policyQ.data],
+    () => buildStudioPolicyRows(connectedProviders, policyQ.data),
+    [connectedProviders, policyQ.data],
   )
 
   const persistRows = useCallback(
@@ -1271,22 +1344,6 @@ export function LlmSection(): ReactElement {
                   as default so chat and probes can resolve credentials.
                 </p>
               ) : null}
-              <div className="mt-3 border-t border-zinc-800/60 pt-3">
-                <p className="text-[11px] text-zinc-500">
-                  Sends a minimal chat completion using the default registry row (or pass a
-                  provider from a row&apos;s <span className="text-zinc-400">Test</span> button).
-                </p>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <Btn
-                    type="button"
-                    size="sm"
-                    disabled={testLlmMut.isPending}
-                    onClick={() => testLlmMut.mutate({})}
-                  >
-                    {testLlmMut.isPending ? 'Testing…' : 'Test LLM (default)'}
-                  </Btn>
-                </div>
-              </div>
               {providers.length === 0 ? (
                 <p className="mt-4 px-0 py-2 text-[13px] text-zinc-500">
                   No rows yet. Use <span className="font-medium text-zinc-300">Add provider</span> or
@@ -1299,12 +1356,12 @@ export function LlmSection(): ReactElement {
                       cols={[
                         'Provider',
                         'Models',
+                        'Max context',
                         'API base',
-                        'API key',
                         'Status',
                         'Actions',
                       ]}
-                      grid="grid-cols-[1.05fr_1.5fr_1fr_0.55fr_0.65fr_0.9fr]"
+                      grid="grid-cols-[1.05fr_1.35fr_0.55fr_1fr_0.65fr_0.9fr]"
                     />
                     {providers.map((p) => {
                       const savingThis =
@@ -1312,7 +1369,7 @@ export function LlmSection(): ReactElement {
                       return (
                         <TRow
                           key={p.id}
-                          grid="grid-cols-[1.05fr_1.5fr_1fr_0.55fr_0.65fr_0.9fr]"
+                          grid="grid-cols-[1.05fr_1.35fr_0.55fr_1fr_0.65fr_0.9fr]"
                         >
                           <div className="flex min-w-0 items-start gap-2">
                             <ProviderGlyph name={p.provider_id} logoUrl={p.logo_url} />
@@ -1323,37 +1380,35 @@ export function LlmSection(): ReactElement {
                                 </span>
                                 {p.is_default ? <Pill tone="violet">default</Pill> : null}
                               </div>
-                              <div className="mt-0.5 font-mono text-[10px] text-zinc-500">
-                                LiteLLM prefix:{' '}
-                                <span className="text-zinc-400">
-                                  {(p.litellm_provider_slug ?? p.provider_id).trim() || '—'}
-                                </span>
-                              </div>
+                              {p.litellm_provider_slug?.trim() ? (
+                                <div className="mt-0.5 font-mono text-[10px] text-zinc-500">
+                                  LiteLLM prefix:{' '}
+                                  <span className="text-zinc-400">
+                                    {p.litellm_provider_slug.trim()}
+                                  </span>
+                                </div>
+                              ) : null}
                             </div>
                           </div>
                           <div className="min-w-0">
                             <p
                               className="font-mono text-[10.5px] leading-snug text-zinc-300 line-clamp-3 break-words"
-                              title={p.models.map(formatModelSummary).join(', ')}
+                              title={p.models.map((m) => m.id).join(', ')}
                             >
-                              {p.models.length ? p.models.map(formatModelSummary).join(', ') : '—'}
+                              {p.models.length ? p.models.map((m) => m.id).join(', ') : '—'}
                             </p>
                           </div>
+                          <p
+                            className="font-mono text-[10.5px] leading-snug text-zinc-400 line-clamp-3 break-words"
+                            title={registryMaxContextTitle(p.models)}
+                          >
+                            {formatRegistryMaxContextAbbrev(p.models)}
+                          </p>
                           <span
                             className="truncate font-mono text-[10px] text-zinc-400"
                             title={p.api_base_url ?? undefined}
                           >
                             {p.api_base_url ?? '—'}
-                          </span>
-                          <span
-                            className="truncate font-mono text-[10px] text-zinc-400"
-                            title={p.llm_api_key_hint ?? undefined}
-                          >
-                            {p.llm_api_key_set && p.llm_api_key_hint
-                              ? p.llm_api_key_hint
-                              : p.llm_api_key_set
-                                ? 'stored'
-                                : '—'}
                           </span>
                           <span>
                             {p.status === 'connected' ? (
@@ -1391,7 +1446,7 @@ export function LlmSection(): ReactElement {
                                 testLlmMut.mutate(body)
                               }}
                             >
-                              {testLlmMut.isPending ? 'Testing…' : 'Test'}
+                              {llmProbeTarget === p.provider_id ? 'Testing…' : 'Test'}
                             </Btn>
                           </div>
                         </TRow>
@@ -1433,6 +1488,22 @@ export function LlmSection(): ReactElement {
                 <p className="mt-2 text-[12px] text-zinc-600">No probe run yet.</p>
               ) : null}
             </div>
+            <div className="border-t border-zinc-800/60 px-5 py-4">
+              <p className="text-[11px] text-zinc-500">
+                Sends a minimal chat completion using the default registry row (or pass a
+                provider from a row&apos;s <span className="text-zinc-400">Test</span> button).
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Btn
+                  type="button"
+                  size="sm"
+                  disabled={testLlmMut.isPending}
+                  onClick={() => testLlmMut.mutate({})}
+                >
+                  {llmProbeTarget === 'default' ? 'Testing…' : 'Test LLM (default)'}
+                </Btn>
+              </div>
+            </div>
           </>
         ) : null}
       </Card>
@@ -1458,16 +1529,15 @@ export function LlmSection(): ReactElement {
             — toggle providers and pick the model ID used when this provider is selected.
           </span>
         </div>
-        {!studioId || !providers.length ? (
+        {!studioId || !connectedProviders.length ? (
           <p className="px-5 py-6 text-[13px] text-zinc-500">
-            Select a studio and configure deployment providers first.
+            Select a studio with at least one connected LLM provider (run Test on a registry row).
           </p>
         ) : (
           <ul>
-            {providers.map((p, i) => {
+            {connectedProviders.map((p, i) => {
               const row = rowsForStudio.find((r) => r.provider_id === p.provider_id)
               const enabled = Boolean(row?.enabled)
-              const blocked = p.status !== 'connected'
               const modelIds = modelIdsFromEntries(p.models)
               const modelVal =
                 row?.selected_model && modelIds.includes(row.selected_model)
@@ -1482,7 +1552,6 @@ export function LlmSection(): ReactElement {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="text-[13px] text-zinc-100">{p.provider_id}</span>
-                      {blocked ? <Pill tone="amber">{p.status}</Pill> : null}
                     </div>
                     <div className="mt-0.5 truncate font-mono text-[11px] text-zinc-500">
                       {p.models.map(formatModelSummary).join(' · ')}
@@ -1490,7 +1559,7 @@ export function LlmSection(): ReactElement {
                   </div>
                   <select
                     className="rounded-md border border-zinc-800 bg-zinc-950/60 px-2 py-1 text-[11.5px] text-zinc-300 disabled:opacity-50"
-                    disabled={!enabled || blocked || savePolicy.isPending}
+                    disabled={!enabled || savePolicy.isPending}
                     value={modelVal}
                     onChange={(e) =>
                       updateRow(p.provider_id, { selected_model: e.target.value })
@@ -1504,7 +1573,7 @@ export function LlmSection(): ReactElement {
                   </select>
                   <Toggle
                     checked={enabled}
-                    disabled={blocked || savePolicy.isPending}
+                    disabled={savePolicy.isPending}
                     onChange={(v) => updateRow(p.provider_id, { enabled: v })}
                   />
                 </li>
@@ -1708,20 +1777,29 @@ export function LlmSection(): ReactElement {
         onClose={() => {
           setEditingProvider(null)
           updateRegistry.reset()
+          deleteRegistry.reset()
         }}
         isPending={
           updateRegistry.isPending &&
           updateRegistry.variables?.key === editingProvider?.provider_id
         }
+        isDeletePending={
+          deleteRegistry.isPending &&
+          deleteRegistry.variables === editingProvider?.provider_id
+        }
         error={
           updateRegistry.isError &&
           updateRegistry.variables?.key === editingProvider?.provider_id
             ? updateRegistry.error
-            : undefined
+            : deleteRegistry.isError &&
+                deleteRegistry.variables === editingProvider?.provider_id
+              ? deleteRegistry.error
+              : undefined
         }
         onSave={({ providerId, body }) =>
           updateRegistry.mutate({ key: providerId, body })
         }
+        onDelete={(id) => deleteRegistry.mutate(id)}
       />
     </div>
   )

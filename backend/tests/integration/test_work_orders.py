@@ -5,8 +5,10 @@ import uuid
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import WorkOrder
+from tests.integration.studio_http_seed import post_admin_studio
 
 
 async def _register(client: AsyncClient, suffix: str, label: str) -> str:
@@ -25,12 +27,18 @@ async def _register(client: AsyncClient, suffix: str, label: str) -> str:
 
 
 async def _studio_project_with_sections(
-    client: AsyncClient, sfx: str
+    client: AsyncClient, db_session: AsyncSession, sfx: str
 ) -> tuple[str, str, str, str, str, str]:
     """Returns token_admin, studio_id, software_id, project_id, section_a_id, section_b_id."""
     token = await _register(client, sfx, "owner")
     client.cookies.set("atelier_token", token)
-    cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
+    owner_email = f"owner-{sfx}@example.com"
+    cr = await post_admin_studio(
+        client,
+        db_session,
+        user_email=owner_email,
+        json_body={"name": f"S{sfx}", "description": "d"},
+    )
     assert cr.status_code == 200
     studio_id = cr.json()["id"]
     sw = await client.post(
@@ -63,10 +71,11 @@ async def _studio_project_with_sections(
 @pytest.mark.asyncio
 async def test_work_orders_crud_notes_rbac(
     client: AsyncClient,
+    db_session: AsyncSession,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, studio_id, _software_id, pid, sec_a, _sec_b = (
-        await _studio_project_with_sections(client, sfx)
+        await _studio_project_with_sections(client, db_session, sfx)
     )
 
     member_token = await _register(client, sfx, "member")
@@ -128,7 +137,7 @@ async def test_work_orders_dismiss_stale(
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _studio_id, _software_id, pid, sec_a, _sec_b = (
-        await _studio_project_with_sections(client, sfx)
+        await _studio_project_with_sections(client, db_session, sfx)
     )
     client.cookies.set("atelier_token", token)
     cr = await client.post(
@@ -158,11 +167,12 @@ async def test_work_orders_dismiss_stale(
 @pytest.mark.asyncio
 async def test_work_orders_generate_mocked(
     client: AsyncClient,
+    db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _studio_id, _software_id, pid, sec_a, _sec_b = (
-        await _studio_project_with_sections(client, sfx)
+        await _studio_project_with_sections(client, db_session, sfx)
     )
     client.cookies.set("atelier_token", token)
 
@@ -199,10 +209,12 @@ async def test_work_orders_generate_mocked(
 
 
 @pytest.mark.asyncio
-async def test_create_work_order_requires_section(client: AsyncClient) -> None:
+async def test_create_work_order_requires_section(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _s, _sw, pid, sec_a, _sec_b = await _studio_project_with_sections(
-        client, sfx
+        client, db_session, sfx
     )
     client.cookies.set("atelier_token", token)
     r = await client.post(
@@ -219,11 +231,13 @@ async def test_create_work_order_requires_section(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_generate_skips_unknown_slug(
-    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _s, _sw, pid, sec_a, _sec_b = await _studio_project_with_sections(
-        client, sfx
+        client, db_session, sfx
     )
     client.cookies.set("atelier_token", token)
 
@@ -257,10 +271,11 @@ async def test_generate_skips_unknown_slug(
 @pytest.mark.asyncio
 async def test_update_work_order_rejects_empty_section_ids(
     client: AsyncClient,
+    db_session: AsyncSession,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _st, _sw, pid, sec_a, _sec_b = await _studio_project_with_sections(
-        client, sfx
+        client, db_session, sfx
     )
     client.cookies.set("atelier_token", token)
     c = await client.post(
@@ -278,10 +293,12 @@ async def test_update_work_order_rejects_empty_section_ids(
 
 
 @pytest.mark.asyncio
-async def test_viewer_cannot_mutate_work_orders(client: AsyncClient) -> None:
+async def test_viewer_cannot_mutate_work_orders(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, studio_id, _sw, pid, sec_a, _sec_b = await _studio_project_with_sections(
-        client, sfx
+        client, db_session, sfx
     )
     viewer_tok = await _register(client, sfx, "vieweru")
     client.cookies.set("atelier_token", token)
@@ -344,10 +361,12 @@ async def test_viewer_cannot_mutate_work_orders(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_all_valid_statuses_accepted(client: AsyncClient) -> None:
+async def test_all_valid_statuses_accepted(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, studio_id, _sw, pid, sec_a, _sec_b = await _studio_project_with_sections(
-        client, sfx
+        client, db_session, sfx
     )
     member_tok = await _register(client, sfx, "mstat")
     client.cookies.set("atelier_token", token)
@@ -377,10 +396,12 @@ async def test_all_valid_statuses_accepted(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_delete_removes_work_order_sections(client: AsyncClient) -> None:
+async def test_delete_removes_work_order_sections(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _st, _sw, pid, sec_a, _sec_b = await _studio_project_with_sections(
-        client, sfx
+        client, db_session, sfx
     )
     client.cookies.set("atelier_token", token)
     c = await client.post(
@@ -399,11 +420,12 @@ async def test_delete_removes_work_order_sections(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_dedupe_analyze_without_backlog_skips_llm(
     client: AsyncClient,
+    db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _studio_id, _software_id, pid, _sec_a, _sec_b = (
-        await _studio_project_with_sections(client, sfx)
+        await _studio_project_with_sections(client, db_session, sfx)
     )
     client.cookies.set("atelier_token", token)
 
@@ -423,11 +445,12 @@ async def test_dedupe_analyze_without_backlog_skips_llm(
 @pytest.mark.asyncio
 async def test_dedupe_analyze_mocked_and_apply_merge(
     client: AsyncClient,
+    db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _studio_id, _software_id, pid, sec_a, _sec_b = (
-        await _studio_project_with_sections(client, sfx)
+        await _studio_project_with_sections(client, db_session, sfx)
     )
     client.cookies.set("atelier_token", token)
 
@@ -510,10 +533,12 @@ async def test_dedupe_analyze_mocked_and_apply_merge(
 
 
 @pytest.mark.asyncio
-async def test_dedupe_analyze_requires_auth(client: AsyncClient) -> None:
+async def test_dedupe_analyze_requires_auth(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     _token, _studio_id, _software_id, pid, _sec_a, _sec_b = (
-        await _studio_project_with_sections(client, sfx)
+        await _studio_project_with_sections(client, db_session, sfx)
     )
     client.cookies.clear()
     r = await client.post(f"/projects/{pid}/work-orders/dedupe/analyze")
@@ -521,10 +546,12 @@ async def test_dedupe_analyze_requires_auth(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_dedupe_analyze_unknown_project(client: AsyncClient) -> None:
+async def test_dedupe_analyze_unknown_project(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _studio_id, _software_id, _pid, _sec_a, _sec_b = (
-        await _studio_project_with_sections(client, sfx)
+        await _studio_project_with_sections(client, db_session, sfx)
     )
     client.cookies.set("atelier_token", token)
     fake_pid = str(uuid.uuid4())
@@ -533,10 +560,12 @@ async def test_dedupe_analyze_unknown_project(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_dedupe_apply_invalid_keep_in_archive(client: AsyncClient) -> None:
+async def test_dedupe_apply_invalid_keep_in_archive(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _studio_id, _software_id, pid, sec_a, _sec_b = (
-        await _studio_project_with_sections(client, sfx)
+        await _studio_project_with_sections(client, db_session, sfx)
     )
     client.cookies.set("atelier_token", token)
     c1 = await client.post(
@@ -561,10 +590,12 @@ async def test_dedupe_apply_invalid_keep_in_archive(client: AsyncClient) -> None
 
 
 @pytest.mark.asyncio
-async def test_dedupe_apply_target_not_backlog(client: AsyncClient) -> None:
+async def test_dedupe_apply_target_not_backlog(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _studio_id, _software_id, pid, sec_a, _sec_b = (
-        await _studio_project_with_sections(client, sfx)
+        await _studio_project_with_sections(client, db_session, sfx)
     )
     client.cookies.set("atelier_token", token)
     c1 = await client.post(
@@ -603,10 +634,12 @@ async def test_dedupe_apply_target_not_backlog(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_outsider_dedupe_analyze_forbidden(client: AsyncClient) -> None:
+async def test_outsider_dedupe_analyze_forbidden(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _studio_id, _software_id, pid, _sec_a, _sec_b = (
-        await _studio_project_with_sections(client, sfx)
+        await _studio_project_with_sections(client, db_session, sfx)
     )
     client.cookies.set("atelier_token", token)
     outsider_tok = await _register(client, sfx, "outsiderd")

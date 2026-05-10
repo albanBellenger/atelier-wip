@@ -9,6 +9,7 @@ import uuid
 from typing import Any
 
 import pytest
+from tests.integration.studio_http_seed import post_admin_studio
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -94,7 +95,7 @@ async def _home_studio_graph(
 
     client.cookies.set("atelier_token", t_owner)
     studio_id = (
-        await client.post("/studios", json={"name": f"RBAC{sfx}", "description": ""})
+        await post_admin_studio(client, db_session, user_email=f"rbacviewer-{sfx}@example.com", json_body={"name": f"RBAC{sfx}", "description": ""})
     ).json()["id"]
 
     inv_b = await client.post(

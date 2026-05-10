@@ -4,6 +4,9 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tests.integration.studio_http_seed import post_admin_studio
 
 
 async def _register(client: AsyncClient, suffix: str, label: str) -> str:
@@ -23,12 +26,14 @@ async def _register(client: AsyncClient, suffix: str, label: str) -> str:
 
 @pytest.mark.asyncio
 async def test_section_improve_returns_markdown(
-    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token = await _register(client, sfx, "owner")
     client.cookies.set("atelier_token", token)
-    cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
+    cr = await post_admin_studio(client, db_session, user_email=f"owner-{sfx}@example.com", json_body={"name": f"S{sfx}", "description": "d"})
     assert cr.status_code == 200
     studio_id = cr.json()["id"]
     sw = await client.post(

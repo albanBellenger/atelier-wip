@@ -5,6 +5,9 @@ import uuid
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tests.integration.studio_http_seed import post_admin_studio
 
 from app.models import User
 from tests.integration.embedding_mocks import patch_fake_embedding_transport
@@ -25,10 +28,17 @@ async def _register(client: AsyncClient, suffix: str, label: str) -> str:
     return token
 
 
-async def _studio_software(client: AsyncClient, sfx: str) -> tuple[str, str, str]:
+async def _studio_software(
+    client: AsyncClient, db_session: AsyncSession, sfx: str
+) -> tuple[str, str, str]:
     token = await _register(client, sfx, "owner")
     client.cookies.set("atelier_token", token)
-    cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
+    cr = await post_admin_studio(
+        client,
+        db_session,
+        user_email=f"owner-{sfx}@example.com",
+        json_body={"name": f"S{sfx}", "description": "d"},
+    )
     assert cr.status_code == 200
     studio_id = cr.json()["id"]
     sw = await client.post(
@@ -104,9 +114,11 @@ def fake_embed(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_software_attention_activity_token_summary(client: AsyncClient) -> None:
+async def test_software_attention_activity_token_summary(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, studio_id, software_id = await _studio_software(client, sfx)
+    token, studio_id, software_id = await _studio_software(client, db_session, sfx)
 
     att = await client.get(f"/software/{software_id}/attention")
     assert att.status_code == 200
@@ -163,9 +175,11 @@ async def test_software_attention_activity_token_summary(client: AsyncClient) ->
 
 
 @pytest.mark.asyncio
-async def test_software_workspace_requires_auth(client: AsyncClient) -> None:
+async def test_software_workspace_requires_auth(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
-    _, _, software_id = await _studio_software(client, sfx)
+    _, _, software_id = await _studio_software(client, db_session, sfx)
     client.cookies.clear()
     r = await client.get(f"/software/{software_id}/attention")
     assert r.status_code == 401
@@ -174,12 +188,13 @@ async def test_software_workspace_requires_auth(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_cross_studio_viewer_cannot_access_attention_feed(
     client: AsyncClient,
+    db_session: AsyncSession,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token_ta = await _register(client, sfx, "sw_x_owner")
     client.cookies.set("atelier_token", token_ta)
     studio_a = (
-        await client.post("/studios", json={"name": f"SWX{sfx}", "description": ""})
+        await post_admin_studio(client, db_session, user_email=f"sw_x_owner-{sfx}@example.com", json_body={"name": f"SWX{sfx}", "description": ""})
     ).json()["id"]
     sw_id = (
         await client.post(
@@ -195,7 +210,7 @@ async def test_cross_studio_viewer_cannot_access_attention_feed(
     token_b = await _register(client, sfx, "sw_x_adminb")
     client.cookies.set("atelier_token", token_b)
     studio_b = (
-        await client.post("/studios", json={"name": f"SWXB{sfx}", "description": ""})
+        await post_admin_studio(client, db_session, user_email=f"sw_x_adminb-{sfx}@example.com", json_body={"name": f"SWXB{sfx}", "description": ""})
     ).json()["id"]
 
     token_m = await _register(client, sfx, "sw_x_memberb")
@@ -229,13 +244,14 @@ async def test_cross_studio_viewer_cannot_access_attention_feed(
 @pytest.mark.asyncio
 async def test_studio_viewer_cannot_see_activity_or_upload(
     client: AsyncClient,
+    db_session: AsyncSession,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token_viewer = await _register(client, sfx, "viewer")
     token_owner = await _register(client, sfx, "sw_owner_v")
     client.cookies.set("atelier_token", token_owner)
     studio_id = (
-        await client.post("/studios", json={"name": f"SV{sfx}", "description": ""})
+        await post_admin_studio(client, db_session, user_email=f"sw_owner_v-{sfx}@example.com", json_body={"name": f"SV{sfx}", "description": ""})
     ).json()["id"]
     add_v = await client.post(
         f"/studios/{studio_id}/members",
@@ -271,7 +287,7 @@ async def test_software_workspace_upload_empty_file_rejected(
     fake_embed: None,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _, software_id = await _studio_software(client, sfx)
+    token, _, software_id = await _studio_software(client, db_session, sfx)
     client.cookies.set("atelier_token", token)
     empty = await client.post(
         f"/software/{software_id}/artifacts",
@@ -290,7 +306,7 @@ async def test_software_workspace_upload_storage_error_multipart(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _, software_id = await _studio_software(client, sfx)
+    token, _, software_id = await _studio_software(client, db_session, sfx)
     client.cookies.set("atelier_token", token)
 
     from app.storage.minio_storage import StorageClient
@@ -317,7 +333,7 @@ async def test_software_workspace_markdown_storage_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _, software_id = await _studio_software(client, sfx)
+    token, _, software_id = await _studio_software(client, db_session, sfx)
     client.cookies.set("atelier_token", token)
 
     from app.storage.minio_storage import StorageClient

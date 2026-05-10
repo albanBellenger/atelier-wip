@@ -65,6 +65,16 @@ function buildPolicyRows(
   })
 }
 
+function buildStudioPolicyRows(
+  connectedProviders: LlmProviderRegistryRow[],
+  existing: StudioLlmPolicyRow[] | undefined,
+): StudioLlmPolicyRow[] {
+  const built = buildPolicyRows(connectedProviders, existing)
+  const connIds = new Set(connectedProviders.map((p) => p.provider_id))
+  const preserved = (existing ?? []).filter((r) => !connIds.has(r.provider_id))
+  return [...built, ...preserved]
+}
+
 export function StudiosSection(): ReactElement {
   const qc = useQueryClient()
   const [selectedId, setSelectedId] = useState('')
@@ -145,9 +155,13 @@ export function StudiosSection(): ReactElement {
   })
 
   const providers = deploymentQ.data?.providers ?? []
+  const connectedProviders = useMemo(
+    () => providers.filter((p) => p.status === 'connected'),
+    [providers],
+  )
   const rowsForStudio = useMemo(
-    () => buildPolicyRows(providers, policyQ.data),
-    [providers, policyQ.data],
+    () => buildStudioPolicyRows(connectedProviders, policyQ.data),
+    [connectedProviders, policyQ.data],
   )
 
   const persistRows = useCallback(
@@ -380,13 +394,13 @@ export function StudiosSection(): ReactElement {
               <Card title="Allowed providers (this studio)">
                 {deploymentQ.isPending ? (
                   <div className="px-5 py-4 text-sm text-zinc-500">Loading providers…</div>
-                ) : providers.length === 0 ? (
+                ) : connectedProviders.length === 0 ? (
                   <div className="px-5 py-4 text-sm text-zinc-500">
-                    No providers registered. Add one under LLM connectivity.
+                    No connected LLM providers yet. Connect a provider under LLM connectivity (run Test).
                   </div>
                 ) : (
                   <ul>
-                    {providers.map((p, i) => (
+                    {connectedProviders.map((p, i) => (
                       <li
                         key={p.provider_id}
                         className={`flex items-center justify-between px-5 py-3 ${i > 0 ? 'border-t border-zinc-800/60' : ''}`}
@@ -410,7 +424,7 @@ export function StudiosSection(): ReactElement {
                             if (!row) return
                             updatePolicyRow(p.provider_id, { enabled: !row.enabled })
                           }}
-                          disabled={p.status !== 'connected' || savePolicy.isPending}
+                          disabled={savePolicy.isPending}
                         />
                       </li>
                     ))}

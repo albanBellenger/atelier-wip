@@ -141,7 +141,7 @@ describe('request — shape', () => {
   it('sends JSON body with Content-Type and credentials: include', async () => {
     let captured: Request | null = null
     mswServer.use(
-      http.post('http://api.test/studios', async ({ request }) => {
+      http.post('http://api.test/admin/studios', async ({ request }) => {
         captured = request.clone()
         return HttpResponse.json({
           id: 's1',

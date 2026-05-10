@@ -5,6 +5,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
 import { Tooltip } from '../components/ui/Tooltip'
+import { InfoCircleHelpButton } from '../components/ui/InfoCircleHelpButton'
 import { LlmUsageReportPanel } from '../components/tokenUsage/LlmUsageReportPanel'
 import { resolveLlmUsageHeaderStudioId } from '../lib/homeStudioPreference'
 import {
@@ -79,13 +80,7 @@ export function LlmUsagePage(): ReactElement {
               content={LLM_USAGE_FILTERS_HELP}
               accessibleTrigger={false}
             >
-              <button
-                type="button"
-                className="inline-flex shrink-0 cursor-help items-baseline justify-center rounded px-0.5 text-[13px] font-semibold leading-none text-zinc-500 transition hover:text-zinc-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
-                aria-label={LLM_USAGE_FILTERS_HELP}
-              >
-                <span aria-hidden="true">?</span>
-              </button>
+              <InfoCircleHelpButton aria-label={LLM_USAGE_FILTERS_HELP} />
             </Tooltip>
           </div>
           <div className="mt-3">

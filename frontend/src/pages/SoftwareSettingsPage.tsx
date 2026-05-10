@@ -6,6 +6,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
 import { ArtifactExclusionPanel } from '../components/software/ArtifactExclusionPanel'
 import { Tooltip } from '../components/ui/Tooltip'
+import { InfoCircleHelpButton } from '../components/ui/InfoCircleHelpButton'
 import { useStudioAccess } from '../hooks/useStudioAccess'
 import {
   deleteSoftware,
@@ -250,13 +251,9 @@ export function SoftwareSettingsPage(): ReactElement {
                 content={softwareSettingsPageIntroHelp(swQ.data.name)}
                 accessibleTrigger={false}
               >
-                <button
-                  type="button"
-                  className="inline-flex shrink-0 cursor-help items-baseline justify-center rounded px-0.5 text-[13px] font-semibold leading-none text-zinc-500 transition hover:text-zinc-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
+                <InfoCircleHelpButton
                   aria-label={softwareSettingsPageIntroHelp(swQ.data.name)}
-                >
-                  <span aria-hidden="true">?</span>
-                </button>
+                />
               </Tooltip>
             </div>
 

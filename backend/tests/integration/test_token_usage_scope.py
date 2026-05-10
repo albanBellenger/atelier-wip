@@ -4,6 +4,7 @@ import uuid
 from decimal import Decimal
 
 import pytest
+from tests.integration.studio_http_seed import post_admin_studio
 import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy import text, update
@@ -43,7 +44,7 @@ async def test_token_usage_scope_member_studio_admin_tool_admin_csv(
     token_ta = await _register(client, sfx, "ta")
     client.cookies.set("atelier_token", token_ta)
     studio_a = (
-        await client.post("/studios", json={"name": f"S{sfx}", "description": ""})
+        await post_admin_studio(client, db_session, user_email=f"ta-{sfx}@example.com", json_body={"name": f"S{sfx}", "description": ""})
     ).json()["id"]
 
     token_sa = await _register(client, sfx, "sadmin")
@@ -142,8 +143,9 @@ async def test_token_usage_scope_member_studio_admin_tool_admin_csv(
     assert csv_r.status_code == 404
 
     # --- /me/token-usage?studio_id=... (member: filter rows; outsider: 403) ---
+    client.cookies.set("atelier_token", token_out)
     other = (
-        await client.post("/studios", json={"name": f"Other{sfx}", "description": ""})
+        await post_admin_studio(client, db_session, user_email=f"outsider-{sfx}@example.com", json_body={"name": f"Other{sfx}", "description": ""})
     ).json()["id"]
     client.cookies.set("atelier_token", token_m)
     me_studio = await client.get(
@@ -227,7 +229,7 @@ async def test_me_token_usage_project_and_work_order_filters_and_404s(
         project_id,
         section_a,
         _section_b,
-    ) = await _studio_project_with_sections(client, sfx)
+    ) = await _studio_project_with_sections(client, db_session, sfx)
 
     token_member = await _register(client, sfx, "pw_member")
     client.cookies.set("atelier_token", _token_admin)
@@ -333,7 +335,7 @@ async def test_me_token_usage_budget_studio_id_cap_and_spend(
     token_owner = await _register(client, sfx, "budown")
     client.cookies.set("atelier_token", token_owner)
     studio_a = (
-        await client.post("/studios", json={"name": f"Bud{sfx}", "description": ""})
+        await post_admin_studio(client, db_session, user_email=f"budown-{sfx}@example.com", json_body={"name": f"Bud{sfx}", "description": ""})
     ).json()["id"]
 
     token_m = await _register(client, sfx, "budmember")
@@ -412,6 +414,7 @@ async def test_me_token_usage_budget_studio_id_cap_and_spend(
 @pytest.mark.asyncio
 async def test_me_token_usage_requires_membership_or_platform_admin(
     client: AsyncClient,
+    db_session: AsyncSession,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     await _register(client, sfx, "bootstrap")
@@ -425,12 +428,13 @@ async def test_me_token_usage_requires_membership_or_platform_admin(
 @pytest.mark.asyncio
 async def test_me_token_usage_studio_filter_unknown_studio_404(
     client: AsyncClient,
+    db_session: AsyncSession,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     await _register(client, sfx, "bootstrap_mf")
     token = await _register(client, sfx, "mf")
     client.cookies.set("atelier_token", token)
-    await client.post("/studios", json={"name": f"M{sfx}", "description": ""})
+    await post_admin_studio(client, db_session, user_email=f"mf-{sfx}@example.com", json_body={"name": f"M{sfx}", "description": ""})
     r = await client.get(
         "/me/token-usage",
         params={"studio_id": str(uuid.uuid4()), "limit": 10},
@@ -442,19 +446,20 @@ async def test_me_token_usage_studio_filter_unknown_studio_404(
 @pytest.mark.asyncio
 async def test_me_token_usage_studio_filter_not_member_403(
     client: AsyncClient,
+    db_session: AsyncSession,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     await _register(client, sfx, "bootstrap_ab")
     token_a = await _register(client, sfx, "own_a")
     client.cookies.set("atelier_token", token_a)
     (
-        await client.post("/studios", json={"name": f"A{sfx}", "description": ""})
+        await post_admin_studio(client, db_session, user_email=f"own_a-{sfx}@example.com", json_body={"name": f"A{sfx}", "description": ""})
     ).json()["id"]
 
     token_b = await _register(client, sfx, "own_b")
     client.cookies.set("atelier_token", token_b)
     studio_b = (
-        await client.post("/studios", json={"name": f"B{sfx}", "description": ""})
+        await post_admin_studio(client, db_session, user_email=f"own_b-{sfx}@example.com", json_body={"name": f"B{sfx}", "description": ""})
     ).json()["id"]
 
     client.cookies.set("atelier_token", token_a)

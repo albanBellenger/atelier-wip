@@ -25,7 +25,7 @@ async def test_drift_service_marks_work_order_stale(
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _studio_id, _software_id, pid, sec_a, _sec_b = (
-        await _studio_project_with_sections(client, sfx)
+        await _studio_project_with_sections(client, db_session, sfx)
     )
     client.cookies.set("atelier_token", token)
 
@@ -76,7 +76,7 @@ async def test_drift_skips_done_work_orders(
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _studio_id, _software_id, pid, sec_a, _sec_b = (
-        await _studio_project_with_sections(client, sfx)
+        await _studio_project_with_sections(client, db_session, sfx)
     )
     client.cookies.set("atelier_token", token)
 
@@ -122,7 +122,7 @@ async def test_dismiss_stale_appends_audit_note(
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _studio_id, _software_id, pid, sec_a, _sec_b = (
-        await _studio_project_with_sections(client, sfx)
+        await _studio_project_with_sections(client, db_session, sfx)
     )
     client.cookies.set("atelier_token", token)
 

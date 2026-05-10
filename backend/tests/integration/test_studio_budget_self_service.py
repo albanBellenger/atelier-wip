@@ -4,11 +4,17 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models import User
+from tests.integration.studio_http_seed import post_admin_studio
 
 
 @pytest.mark.asyncio
 async def test_studio_owner_patch_budget_and_list_member_budgets_without_platform_admin(
     client: AsyncClient,
+    db_session: AsyncSession,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     owner_email = f"sbss-{sfx}@example.com"
@@ -27,7 +33,18 @@ async def test_studio_owner_patch_budget_and_list_member_budgets_without_platfor
     assert login.status_code == 200
     client.cookies.set("atelier_token", login.cookies.get("atelier_token"))
 
-    cr = await client.post("/studios", json={"name": f"SB{sfx}", "description": ""})
+    cr = await post_admin_studio(
+        client,
+        db_session,
+        user_email=owner_email.lower(),
+        json_body={"name": f"SB{sfx}", "description": ""},
+    )
+    await db_session.execute(
+        update(User)
+        .where(User.email == owner_email.lower())
+        .values(is_platform_admin=False)
+    )
+    await db_session.flush()
     assert cr.status_code == 200
     studio_id = cr.json()["id"]
 
@@ -42,7 +59,9 @@ async def test_studio_owner_patch_budget_and_list_member_budgets_without_platfor
 
 
 @pytest.mark.asyncio
-async def test_studio_builder_cannot_patch_studio_budget(client: AsyncClient) -> None:
+async def test_studio_builder_cannot_patch_studio_budget(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     owner_email = f"sbss-o-{sfx}@example.com"
     mem_email = f"sbss-m-{sfx}@example.com"
@@ -59,7 +78,19 @@ async def test_studio_builder_cannot_patch_studio_budget(client: AsyncClient) ->
         json={"email": owner_email, "password": "securepass123"},
     )
     client.cookies.set("atelier_token", ologin.cookies.get("atelier_token"))
-    cr = await client.post("/studios", json={"name": f"SBB{sfx}", "description": ""})
+    cr = await post_admin_studio(
+        client,
+        db_session,
+        user_email=owner_email.lower(),
+        json_body={"name": f"SBB{sfx}", "description": ""},
+    )
+    await db_session.execute(
+        update(User)
+        .where(User.email == owner_email.lower())
+        .values(is_platform_admin=False)
+    )
+    await db_session.flush()
+    assert cr.status_code == 200
     studio_id = cr.json()["id"]
 
     await client.post(

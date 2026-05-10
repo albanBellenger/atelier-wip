@@ -495,7 +495,7 @@ async def test_admin_patch_studio_budget_overage_action(
     assert tok
     client.cookies.set("atelier_token", tok)
 
-    cr = await client.post("/studios", json={"name": f"Bov{sfx}", "description": "d"})
+    cr = await client.post("/admin/studios", json={"name": f"Bov{sfx}", "description": "d"})
     assert cr.status_code == 200
     studio_id = cr.json()["id"]
 

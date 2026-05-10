@@ -3,8 +3,11 @@
 import uuid
 
 import pytest
-from fastapi.testclient import TestClient
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tests.integration.studio_http_seed import post_admin_studio
+from fastapi.testclient import TestClient
 
 from app.collab.server import collab_room_path, parse_collab_path
 from app.main import app
@@ -32,12 +35,17 @@ async def _register(client: AsyncClient, suffix: str, label: str) -> str:
 
 
 async def _studio_project_section(
-    client: AsyncClient, sfx: str
+    client: AsyncClient, db_session: AsyncSession, sfx: str
 ) -> tuple[str, str, str, str, str]:
     """Returns (token, studio_id, software_id, project_id, section_id)."""
     token = await _register(client, sfx, "owner")
     client.cookies.set("atelier_token", token)
-    cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
+    cr = await post_admin_studio(
+        client,
+        db_session,
+        user_email=f"owner-{sfx}@example.com",
+        json_body={"name": f"S{sfx}", "description": "d"},
+    )
     assert cr.status_code == 200
     studio_id = cr.json()["id"]
     sw = await client.post(
@@ -62,9 +70,13 @@ async def _studio_project_section(
 
 
 @pytest.mark.asyncio
-async def test_collab_websocket_requires_auth(client: AsyncClient) -> None:
+async def test_collab_websocket_requires_auth(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
-    _, _, _, project_id, section_id = await _studio_project_section(client, sfx)
+    _, _, _, project_id, section_id = await _studio_project_section(
+        client, db_session, sfx
+    )
 
     with TestClient(app) as tc:
         with pytest.raises(Exception):
@@ -77,10 +89,11 @@ async def test_collab_websocket_requires_auth(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_collab_websocket_rejects_non_studio_member(
     client: AsyncClient,
+    db_session: AsyncSession,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    _token_owner, _studio_id, _sw, project_id, section_id = await _studio_project_section(
-        client, sfx
+    _token_owner, _studio_id, _sw, project_id, section_id = (
+        await _studio_project_section(client, db_session, sfx)
     )
     outsider_tok = await _register(client, sfx, "outsider")
 

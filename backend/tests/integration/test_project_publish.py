@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.integration.test_work_orders import _studio_project_with_sections
 
@@ -14,11 +15,12 @@ from tests.integration.test_work_orders import _studio_project_with_sections
 @pytest.mark.asyncio
 async def test_publish_happy_path_mocked_commit(
     client: AsyncClient,
+    db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, studio_id, sw_id, pid, _a, _b = await _studio_project_with_sections(
-        client, sfx
+        client, db_session, sfx
     )
     client.cookies.set("atelier_token", token)
 
@@ -68,10 +70,12 @@ async def test_publish_happy_path_mocked_commit(
 
 
 @pytest.mark.asyncio
-async def test_publish_requires_git_configuration(client: AsyncClient) -> None:
+async def test_publish_requires_git_configuration(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, _sid, _sw, pid, _a, _b = await _studio_project_with_sections(
-        client, sfx
+        client, db_session, sfx
     )
     client.cookies.set("atelier_token", token)
     r = await client.post(f"/projects/{pid}/publish", json={})

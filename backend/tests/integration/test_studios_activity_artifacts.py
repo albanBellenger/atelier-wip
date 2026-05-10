@@ -4,6 +4,9 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tests.integration.studio_http_seed import post_admin_studio
 
 from tests.integration.embedding_mocks import patch_fake_embedding_transport
 
@@ -82,13 +85,14 @@ def fake_embed(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.asyncio
 async def test_studio_viewer_cannot_list_studio_activity(
     client: AsyncClient,
+    db_session: AsyncSession,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token_viewer = await _register(client, sfx, "viewer")
     token_owner = await _register(client, sfx, "st_owner")
     client.cookies.set("atelier_token", token_owner)
     studio_id = (
-        await client.post("/studios", json={"name": f"STA{sfx}", "description": ""})
+        await post_admin_studio(client, db_session, user_email=f"st_owner-{sfx}@example.com", json_body={"name": f"STA{sfx}", "description": ""})
     ).json()["id"]
     inv = await client.post(
         f"/studios/{studio_id}/members",
@@ -112,7 +116,7 @@ async def test_studio_artifact_upload_empty_file(
     token = await _register(client, sfx, "owner_e")
     client.cookies.set("atelier_token", token)
     studio_id = (
-        await client.post("/studios", json={"name": f"STE{sfx}", "description": ""})
+        await post_admin_studio(client, db_session, user_email=f"owner_e-{sfx}@example.com", json_body={"name": f"STE{sfx}", "description": ""})
     ).json()["id"]
 
     empty = await client.post(
@@ -135,7 +139,7 @@ async def test_studio_artifact_upload_storage_error(
     token = await _register(client, sfx, "owner_se")
     client.cookies.set("atelier_token", token)
     studio_id = (
-        await client.post("/studios", json={"name": f"STS{sfx}", "description": ""})
+        await post_admin_studio(client, db_session, user_email=f"owner_se-{sfx}@example.com", json_body={"name": f"STS{sfx}", "description": ""})
     ).json()["id"]
 
     from app.storage.minio_storage import StorageClient
@@ -165,7 +169,7 @@ async def test_studio_markdown_artifact_storage_error(
     token = await _register(client, sfx, "owner_md")
     client.cookies.set("atelier_token", token)
     studio_id = (
-        await client.post("/studios", json={"name": f"STM{sfx}", "description": ""})
+        await post_admin_studio(client, db_session, user_email=f"owner_md-{sfx}@example.com", json_body={"name": f"STM{sfx}", "description": ""})
     ).json()["id"]
 
     from app.storage.minio_storage import StorageClient

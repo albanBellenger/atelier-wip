@@ -31,6 +31,14 @@ class StudioResponse(BaseModel):
     budget_overage_action: str = "pause_generations"
 
 
+class StudioListItemOut(StudioResponse):
+    """GET /studios row with aggregate counts for the studio list UI."""
+
+    software_count: int = 0
+    project_count: int = 0
+    member_count: int = 0
+
+
 class StudioMemberResponse(BaseModel):
     user_id: UUID
     email: str

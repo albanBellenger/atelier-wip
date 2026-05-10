@@ -7,6 +7,9 @@ import uuid
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from tests.integration.studio_http_seed import post_admin_studio
 
 from app.models import Artifact, ArtifactChunk, CrossStudioAccess, User
 from tests.integration.embedding_mocks import patch_fake_embedding_transport
@@ -27,10 +30,17 @@ async def _register(client: AsyncClient, suffix: str, label: str) -> str:
     return token
 
 
-async def _studio_project(client: AsyncClient, sfx: str) -> tuple[str, str, str, str]:
+async def _studio_project(
+    client: AsyncClient, db_session: AsyncSession, sfx: str
+) -> tuple[str, str, str, str]:
     token = await _register(client, sfx, "owner")
     client.cookies.set("atelier_token", token)
-    cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
+    cr = await post_admin_studio(
+        client,
+        db_session,
+        user_email=f"owner-{sfx}@example.com",
+        json_body={"name": f"S{sfx}", "description": "d"},
+    )
     assert cr.status_code == 200
     studio_id = cr.json()["id"]
     sw = await client.post(
@@ -132,7 +142,7 @@ async def test_artifact_detail_member_sees_chunk_previews(
     fake_embed: None,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _studio_id, _sfid, pid = await _studio_project(client, sfx)
+    token, _studio_id, _sfid, pid = await _studio_project(client, db_session, sfx)
     client.cookies.set("atelier_token", token)
     up = await client.post(
         f"/projects/{pid}/artifacts",
@@ -161,7 +171,7 @@ async def test_artifact_detail_viewer_no_chunk_previews(
     fake_embed: None,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, studio_id, _sfid, pid = await _studio_project(client, sfx)
+    token, studio_id, _sfid, pid = await _studio_project(client, db_session, sfx)
     client.cookies.set("atelier_token", token)
     up = await client.post(
         f"/projects/{pid}/artifacts",
@@ -200,7 +210,7 @@ async def test_artifact_detail_unauthenticated_401(
     fake_embed: None,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, _sfid, pid = await _studio_project(client, sfx)
+    token, _sid, _sfid, pid = await _studio_project(client, db_session, sfx)
     client.cookies.set("atelier_token", token)
     up = await client.post(
         f"/projects/{pid}/artifacts",
@@ -220,7 +230,7 @@ async def test_artifact_detail_wrong_studio_forbidden(
     fake_embed: None,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token_a, _sa, _sfa, pid_a = await _studio_project(client, sfx)
+    token_a, _sa, _sfa, pid_a = await _studio_project(client, db_session, sfx)
     client.cookies.set("atelier_token", token_a)
     up = await client.post(
         f"/projects/{pid_a}/artifacts",
@@ -244,7 +254,7 @@ async def test_artifact_detail_cross_studio_stranger_forbidden(
     sfx = uuid.uuid4().hex[:8]
     token_b = await _register(client, sfx, "ownerb")
     client.cookies.set("atelier_token", token_b)
-    sb = (await client.post("/studios", json={"name": f"SB{sfx}"})).json()
+    sb = (await post_admin_studio(client, db_session, user_email=f"ownerb-{sfx}@example.com", json_body={"name": f"SB{sfx}"})).json()
     studio_b_id = sb["id"]
     sw_b = (
         await client.post(
@@ -282,7 +292,7 @@ async def test_artifact_detail_invalid_project_uuid_422(
     fake_embed: None,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, _sfid, pid = await _studio_project(client, sfx)
+    token, _sid, _sfid, pid = await _studio_project(client, db_session, sfx)
     client.cookies.set("atelier_token", token)
     up = await client.post(
         f"/projects/{pid}/artifacts",
@@ -301,7 +311,7 @@ async def test_artifact_detail_unknown_artifact_404(
     fake_embed: None,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, _sfid, pid = await _studio_project(client, sfx)
+    token, _sid, _sfid, pid = await _studio_project(client, db_session, sfx)
     client.cookies.set("atelier_token", token)
     bad = uuid.uuid4()
     r = await client.get(f"/projects/{pid}/artifacts/{bad}")
@@ -321,7 +331,7 @@ async def test_artifact_detail_by_id_cross_studio_viewer_no_previews(
     sfx = u.uuid4().hex[:8]
     token_b = await _register(client, sfx, "ownerb")
     client.cookies.set("atelier_token", token_b)
-    sb = (await client.post("/studios", json={"name": f"SB{sfx}"})).json()
+    sb = (await post_admin_studio(client, db_session, user_email=f"ownerb-{sfx}@example.com", json_body={"name": f"SB{sfx}"})).json()
     studio_b_id = sb["id"]
     sw_b = (
         await client.post(
@@ -349,7 +359,7 @@ async def test_artifact_detail_by_id_cross_studio_viewer_no_previews(
 
     token_a = await _register(client, sfx, "ownera")
     client.cookies.set("atelier_token", token_a)
-    sa = (await client.post("/studios", json={"name": f"SA{sfx}"})).json()
+    sa = (await post_admin_studio(client, db_session, user_email=f"ownera-{sfx}@example.com", json_body={"name": f"SA{sfx}"})).json()
     studio_a_id = sa["id"]
     me_a = (await client.get("/auth/me")).json()
     user_a_id = u.UUID(me_a["user"]["id"])
@@ -386,7 +396,7 @@ async def test_download_artifact_by_id_storage_read_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, _sfid, pid = await _studio_project(client, sfx)
+    token, _sid, _sfid, pid = await _studio_project(client, db_session, sfx)
     client.cookies.set("atelier_token", token)
     up = await client.post(
         f"/projects/{pid}/artifacts",

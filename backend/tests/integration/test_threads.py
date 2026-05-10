@@ -6,8 +6,10 @@ from collections.abc import AsyncIterator
 from unittest.mock import MagicMock
 
 import pytest
+from tests.integration.studio_http_seed import post_admin_studio
 from httpx import AsyncClient
 from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
 from app.models import (
@@ -35,13 +37,18 @@ async def _register(client: AsyncClient, suffix: str, label: str) -> str:
 
 
 async def _project_section(
-    client: AsyncClient, sfx: str
+    client: AsyncClient, db_session: AsyncSession, sfx: str
 ) -> tuple[str, str, str, str, str]:
     """token, studio_id, project_id, section_id, owner_email."""
     token = await _register(client, sfx, "owner")
     email = f"owner-{sfx}@example.com"
     client.cookies.set("atelier_token", token)
-    cr = await client.post("/studios", json={"name": f"S{sfx}", "description": "d"})
+    cr = await post_admin_studio(
+        client,
+        db_session,
+        user_email=f"owner-{sfx}@example.com",
+        json_body={"name": f"S{sfx}", "description": "d"},
+    )
     assert cr.status_code == 200
     studio_id = cr.json()["id"]
     sw = await client.post(
@@ -114,7 +121,7 @@ async def test_stream_sse_envelope_format(
     client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, pid, section_id, email = await _project_section(client, sfx)
+    token, _sid, pid, section_id, email = await _project_section(client, db_session, sfx)
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
@@ -177,7 +184,7 @@ async def test_stream_meta_includes_llm_outbound_when_log_prompts(
     client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, pid, section_id, email = await _project_section(client, sfx)
+    token, _sid, pid, section_id, email = await _project_section(client, db_session, sfx)
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
@@ -248,7 +255,7 @@ async def test_stream_llm_failure_persists_error_and_completes_sse(
     client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, pid, section_id, email = await _project_section(client, sfx)
+    token, _sid, pid, section_id, email = await _project_section(client, db_session, sfx)
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
@@ -296,7 +303,7 @@ async def test_stream_conflict_meta_populated(
     client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, pid, section_id, email = await _project_section(client, sfx)
+    token, _sid, pid, section_id, email = await _project_section(client, db_session, sfx)
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
@@ -363,7 +370,7 @@ async def test_thread_post_passes_plaintext_override_to_rag(
     client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, pid, section_id, email = await _project_section(client, sfx)
+    token, _sid, pid, section_id, email = await _project_section(client, db_session, sfx)
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
@@ -410,7 +417,7 @@ async def test_thread_post_passes_include_git_history_to_rag(
     client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, pid, section_id, email = await _project_section(client, sfx)
+    token, _sid, pid, section_id, email = await _project_section(client, db_session, sfx)
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
@@ -454,7 +461,7 @@ async def test_viewer_cannot_stream(
     client: AsyncClient, db_session,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, studio_id, pid, section_id, _email = await _project_section(client, sfx)
+    token, studio_id, pid, section_id, _email = await _project_section(client, db_session, sfx)
     vtok = await _register(client, sfx, "viewer")
     client.cookies.set("atelier_token", token)
     await client.post(
@@ -471,10 +478,10 @@ async def test_viewer_cannot_stream(
 
 @pytest.mark.asyncio
 async def test_unauthenticated_cannot_stream(
-    client: AsyncClient,
+    client: AsyncClient, db_session: AsyncSession
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, pid, section_id, _ = await _project_section(client, sfx)
+    token, _sid, pid, section_id, _ = await _project_section(client, db_session, sfx)
     client.cookies.clear()
     r = await client.post(
         f"/projects/{pid}/sections/{section_id}/thread/messages",
@@ -490,7 +497,7 @@ async def test_get_thread_returns_history(
     client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, pid, section_id, email = await _project_section(client, sfx)
+    token, _sid, pid, section_id, email = await _project_section(client, db_session, sfx)
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
@@ -541,7 +548,7 @@ async def test_llm_failure_writes_tombstone_message(
     client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, pid, section_id, email = await _project_section(client, sfx)
+    token, _sid, pid, section_id, email = await _project_section(client, db_session, sfx)
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
@@ -590,7 +597,7 @@ async def test_stream_meta_context_truncated_true_when_budget_tight(
     client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, pid, section_id, email = await _project_section(client, sfx)
+    token, _sid, pid, section_id, email = await _project_section(client, db_session, sfx)
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
@@ -651,7 +658,7 @@ async def test_reset_thread_clears_history(
     client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, pid, section_id, email = await _project_section(client, sfx)
+    token, _sid, pid, section_id, email = await _project_section(client, db_session, sfx)
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
@@ -703,7 +710,7 @@ async def test_viewer_cannot_reset_thread(
     client: AsyncClient, db_session,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, studio_id, pid, section_id, _email = await _project_section(client, sfx)
+    token, studio_id, pid, section_id, _email = await _project_section(client, db_session, sfx)
     vtok = await _register(client, sfx, "viewer")
     client.cookies.set("atelier_token", token)
     await client.post(
@@ -717,10 +724,10 @@ async def test_viewer_cannot_reset_thread(
 
 @pytest.mark.asyncio
 async def test_reset_thread_idempotent_204_when_missing(
-    client: AsyncClient,
+    client: AsyncClient, db_session: AsyncSession
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, pid, section_id, _ = await _project_section(client, sfx)
+    token, _sid, pid, section_id, _ = await _project_section(client, db_session, sfx)
     client.cookies.set("atelier_token", token)
     r = await client.delete(f"/projects/{pid}/sections/{section_id}/thread")
     assert r.status_code == 204
@@ -731,7 +738,7 @@ async def test_replace_selection_422_without_plaintext_override(
     client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, pid, section_id, email = await _project_section(client, sfx)
+    token, _sid, pid, section_id, email = await _project_section(client, db_session, sfx)
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
@@ -774,7 +781,7 @@ async def test_replace_selection_422_without_selection_bounds(
     client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, pid, section_id, email = await _project_section(client, sfx)
+    token, _sid, pid, section_id, email = await _project_section(client, db_session, sfx)
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
@@ -809,7 +816,7 @@ async def test_stream_meta_patch_proposal_append(
     client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, _sid, pid, section_id, email = await _project_section(client, sfx)
+    token, _sid, pid, section_id, email = await _project_section(client, db_session, sfx)
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
@@ -872,7 +879,7 @@ async def test_stream_rejects_disallowed_preferred_model(
     client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, studio_id_str, pid, section_id, email = await _project_section(client, sfx)
+    token, studio_id_str, pid, section_id, email = await _project_section(client, db_session, sfx)
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(
@@ -933,7 +940,7 @@ async def test_stream_accepts_allowed_preferred_model(
     client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    token, studio_id_str, pid, section_id, email = await _project_section(client, sfx)
+    token, studio_id_str, pid, section_id, email = await _project_section(client, db_session, sfx)
     await _promote_tool_admin(db_session, email)
     client.cookies.set("atelier_token", token)
     await client.put(

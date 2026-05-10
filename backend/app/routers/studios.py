@@ -15,6 +15,7 @@ from app.deps import (
     get_current_user,
     get_studio_access,
     get_studio_software_list_access,
+    require_platform_admin,
     require_studio_admin,
     require_studio_editor,
     resolve_studio_access,
@@ -45,6 +46,7 @@ from app.schemas.studio import (
     MemberInvite,
     MemberRoleUpdate,
     StudioCreate,
+    StudioListItemOut,
     StudioMemberResponse,
     StudioResponse,
     StudioUpdate,
@@ -78,11 +80,11 @@ def _studio_wants_csv(request: Request) -> bool:
     return "text/csv" in accept
 
 
-@router.get("", response_model=list[StudioResponse])
+@router.get("", response_model=list[StudioListItemOut])
 async def list_studios(
     session: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
-) -> list[StudioResponse]:
+) -> list[StudioListItemOut]:
     return await StudioService(session).list_studios(user)
 
 
@@ -90,8 +92,9 @@ async def list_studios(
 async def create_studio(
     body: StudioCreate,
     session: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_platform_admin),
 ) -> StudioResponse:
+    """Platform admins only; prefer ``POST /admin/studios`` from the admin console."""
     return await StudioService(session).create_studio(user, body)
 
 

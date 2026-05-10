@@ -28,7 +28,7 @@ async def test_mcp_list_with_project_filter_records_software_id(
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     _token, sid, _sw, pid, sec_a, _b = await _studio_project_with_sections(
-        client, sfx
+        client, db_session, sfx
     )
 
     client.cookies.set("atelier_token", _token)
@@ -70,10 +70,12 @@ async def test_mcp_list_with_project_filter_records_software_id(
 
 
 @pytest.mark.asyncio
-async def test_mcp_list_filters_status_and_phase(client: AsyncClient) -> None:
+async def test_mcp_list_filters_status_and_phase(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     _token, _sid, _sw, pid, sec_a, _b = await _studio_project_with_sections(
-        client, sfx
+        client, db_session, sfx
     )
 
     client.cookies.set("atelier_token", _token)
@@ -132,10 +134,12 @@ async def test_mcp_list_filters_status_and_phase(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_mcp_key_list_pull_patch_flow(client: AsyncClient) -> None:
+async def test_mcp_key_list_pull_patch_flow(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     token, sid, _sw, pid, sec_a, _b = await _studio_project_with_sections(
-        client, sfx
+        client, db_session, sfx
     )
 
     client.cookies.set("atelier_token", token)
@@ -214,11 +218,12 @@ async def test_mcp_key_list_pull_patch_flow(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_mcp_pull_includes_related_work_orders_after_dependency(
     client: AsyncClient,
+    db_session: AsyncSession,
 ) -> None:
     """MCP pull lists prerequisite WO when edge_type is depends_on (FR graph)."""
     sfx = uuid.uuid4().hex[:8]
     token, sid, _sw, pid, sec_a, _b = await _studio_project_with_sections(
-        client, sfx
+        client, db_session, sfx
     )
 
     client.cookies.set("atelier_token", token)

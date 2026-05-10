@@ -13,17 +13,19 @@ from app.schemas.studio import (
     MemberInvite,
     MemberRoleUpdate,
     StudioCreate,
+    StudioListItemOut,
     StudioMemberResponse,
     StudioResponse,
     StudioUpdate,
 )
+from app.services.studio_list_metrics import aggregate_studio_card_counts
 
 
 class StudioService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    async def list_studios(self, user: User) -> list[StudioResponse]:
+    async def list_studios(self, user: User) -> list[StudioListItemOut]:
         if user.is_platform_admin:
             q = (
                 select(
@@ -53,8 +55,12 @@ class StudioService:
                 .order_by(Studio.name)
             )
         rows = (await self.db.execute(q)).all()
+        studio_ids = [r.id for r in rows]
+        sw_map, proj_map, mem_map = await aggregate_studio_card_counts(
+            self.db, studio_ids
+        )
         return [
-            StudioResponse(
+            StudioListItemOut(
                 id=r.id,
                 name=r.name,
                 description=r.description,
@@ -64,6 +70,9 @@ class StudioService:
                 if user.is_platform_admin
                 else None,
                 budget_overage_action=r.budget_overage_action,
+                software_count=sw_map.get(r.id, 0),
+                project_count=proj_map.get(r.id, 0),
+                member_count=mem_map.get(r.id, 0),
             )
             for r in rows
         ]

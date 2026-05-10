@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+from tests.integration.studio_http_seed import post_admin_studio
 import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy import text
@@ -31,11 +32,13 @@ async def _register(client: AsyncClient, suffix: str, label: str) -> str:
 
 
 @pytest.mark.asyncio
-async def test_owner_put_definition_succeeds(client: AsyncClient) -> None:
+async def test_owner_put_definition_succeeds(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     token_owner = await _register(client, sfx, "owner")
     client.cookies.set("atelier_token", token_owner)
-    studio_id = (await client.post("/studios", json={"name": f"S{sfx}"})).json()["id"]
+    studio_id = (await post_admin_studio(client, db_session, user_email=f"owner-{sfx}@example.com", json_body={"name": f"S{sfx}"})).json()["id"]
     sw_id = (
         await client.post(
             f"/studios/{studio_id}/software",
@@ -52,12 +55,14 @@ async def test_owner_put_definition_succeeds(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_builder_put_definition_forbidden(client: AsyncClient) -> None:
+async def test_builder_put_definition_forbidden(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     token_owner = await _register(client, sfx, "owner2")
     token_builder = await _register(client, sfx, "builder2")
     client.cookies.set("atelier_token", token_owner)
-    studio_id = (await client.post("/studios", json={"name": f"S2{sfx}"})).json()["id"]
+    studio_id = (await post_admin_studio(client, db_session, user_email=f"builder2-{sfx}@example.com", json_body={"name": f"S2{sfx}"})).json()["id"]
     inv = await client.post(
         f"/studios/{studio_id}/members",
         json={"email": f"builder2-{sfx}@example.com", "role": "studio_member"},
@@ -80,12 +85,14 @@ async def test_builder_put_definition_forbidden(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_builder_put_name_succeeds(client: AsyncClient) -> None:
+async def test_builder_put_name_succeeds(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     token_owner = await _register(client, sfx, "owner3")
     token_builder = await _register(client, sfx, "builder3")
     client.cookies.set("atelier_token", token_owner)
-    studio_id = (await client.post("/studios", json={"name": f"S3{sfx}"})).json()["id"]
+    studio_id = (await post_admin_studio(client, db_session, user_email=f"builder3-{sfx}@example.com", json_body={"name": f"S3{sfx}"})).json()["id"]
     inv = await client.post(
         f"/studios/{studio_id}/members",
         json={"email": f"builder3-{sfx}@example.com", "role": "studio_member"},
@@ -110,12 +117,13 @@ async def test_builder_put_name_succeeds(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_cross_studio_external_editor_put_definition_forbidden(
     client: AsyncClient,
+    db_session: AsyncSession,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token_ta = await _register(client, sfx, "ta")
     client.cookies.set("atelier_token", token_ta)
     studio_a = (
-        await client.post("/studios", json={"name": f"A{sfx}", "description": ""})
+        await post_admin_studio(client, db_session, user_email=f"ta-{sfx}@example.com", json_body={"name": f"A{sfx}", "description": ""})
     ).json()["id"]
     sw_id = (
         await client.post(
@@ -127,7 +135,7 @@ async def test_cross_studio_external_editor_put_definition_forbidden(
     token_b = await _register(client, sfx, "adminb")
     client.cookies.set("atelier_token", token_b)
     studio_b = (
-        await client.post("/studios", json={"name": f"B{sfx}", "description": ""})
+        await post_admin_studio(client, db_session, user_email=f"adminb-{sfx}@example.com", json_body={"name": f"B{sfx}", "description": ""})
     ).json()["id"]
 
     token_ext = await _register(client, sfx, "exted")

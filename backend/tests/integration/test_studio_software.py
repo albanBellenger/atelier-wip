@@ -5,8 +5,10 @@ import uuid
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import User
+from tests.integration.studio_http_seed import post_admin_studio
 
 
 async def _register(client: AsyncClient, suffix: str, label: str) -> str:
@@ -26,7 +28,9 @@ async def _register(client: AsyncClient, suffix: str, label: str) -> str:
 
 @pytest.mark.asyncio
 async def test_studio_software_happy_path_and_rbac(
-    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+    client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
     token_admin = await _register(client, sfx, "owner")
@@ -34,9 +38,11 @@ async def test_studio_software_happy_path_and_rbac(
     token_out = await _register(client, sfx, "outsider")
 
     client.cookies.set("atelier_token", token_admin)
-    cr = await client.post(
-        "/studios",
-        json={"name": f"Studio {sfx}", "description": "d"},
+    cr = await post_admin_studio(
+        client,
+        db_session,
+        user_email=f"owner-{sfx}@example.com",
+        json_body={"name": f"Studio {sfx}", "description": "d"},
     )
     assert cr.status_code == 200
     studio_id = cr.json()["id"]
@@ -139,20 +145,24 @@ async def test_get_studio_not_found_returns_404(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_studio_name_empty_returns_422(client: AsyncClient) -> None:
+async def test_create_studio_name_empty_returns_422(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     token = await _register(client, sfx, "user")
     client.cookies.set("atelier_token", token)
-    r = await client.post("/studios", json={"name": ""})
+    r = await post_admin_studio(client, db_session, user_email=f"user-{sfx}@example.com", json_body={"name": ""})
     assert r.status_code == 422
 
 
 @pytest.mark.asyncio
-async def test_get_software_not_found_returns_404(client: AsyncClient) -> None:
+async def test_get_software_not_found_returns_404(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     token_admin = await _register(client, sfx, "admin")
     client.cookies.set("atelier_token", token_admin)
-    studio = (await client.post("/studios", json={"name": f"S{sfx}"})).json()
+    studio = (await post_admin_studio(client, db_session, user_email=f"admin-{sfx}@example.com", json_body={"name": f"S{sfx}"})).json()
     r = await client.get(f"/studios/{studio['id']}/software/{uuid.uuid4()}")
     assert r.status_code == 404
 
@@ -168,11 +178,13 @@ async def test_create_software_without_auth_returns_401(client: AsyncClient) -> 
 
 
 @pytest.mark.asyncio
-async def test_demote_last_admin_returns_400(client: AsyncClient) -> None:
+async def test_demote_last_admin_returns_400(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     token_admin = await _register(client, sfx, "admin")
     client.cookies.set("atelier_token", token_admin)
-    studio = (await client.post("/studios", json={"name": f"S{sfx}"})).json()
+    studio = (await post_admin_studio(client, db_session, user_email=f"admin-{sfx}@example.com", json_body={"name": f"S{sfx}"})).json()
     studio_id = studio["id"]
     me_r = await client.get("/auth/me")
     admin_user_id = me_r.json()["user"]["id"]
@@ -192,7 +204,7 @@ async def test_delete_studio_cascades_software(
     sfx = uuid.uuid4().hex[:8]
     token_admin = await _register(client, sfx, "admin")
     client.cookies.set("atelier_token", token_admin)
-    studio = (await client.post("/studios", json={"name": f"S{sfx}"})).json()
+    studio = (await post_admin_studio(client, db_session, user_email=f"admin-{sfx}@example.com", json_body={"name": f"S{sfx}"})).json()
     studio_id = studio["id"]
     sw = (
         await client.post(
@@ -214,12 +226,21 @@ async def test_delete_studio_cascades_software(
 
 
 @pytest.mark.asyncio
-async def test_studio_member_patch_definition_forbidden(client: AsyncClient) -> None:
+async def test_studio_member_patch_definition_forbidden(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     token_admin = await _register(client, sfx, "owner")
     token_member = await _register(client, sfx, "member")
     client.cookies.set("atelier_token", token_admin)
-    studio = (await client.post("/studios", json={"name": f"S{sfx}"})).json()
+    studio = (
+        await post_admin_studio(
+            client,
+            db_session,
+            user_email=f"owner-{sfx}@example.com",
+            json_body={"name": f"S{sfx}"},
+        )
+    ).json()
     studio_id = studio["id"]
     await client.post(
         f"/studios/{studio_id}/members",
@@ -241,11 +262,13 @@ async def test_studio_member_patch_definition_forbidden(client: AsyncClient) -> 
 
 
 @pytest.mark.asyncio
-async def test_studio_admin_patch_definition_ok(client: AsyncClient) -> None:
+async def test_studio_admin_patch_definition_ok(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
     sfx = uuid.uuid4().hex[:8]
     token_admin = await _register(client, sfx, "owner")
     client.cookies.set("atelier_token", token_admin)
-    studio = (await client.post("/studios", json={"name": f"S{sfx}"})).json()
+    studio = (await post_admin_studio(client, db_session, user_email=f"owner-{sfx}@example.com", json_body={"name": f"S{sfx}"})).json()
     studio_id = studio["id"]
     sw = (
         await client.post(

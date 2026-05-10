@@ -39,7 +39,7 @@ async def test_admin_embedding_library_overview_ok(
     assert tok
     client.cookies.set("atelier_token", tok)
 
-    st = (await client.post("/studios", json={"name": f"Lib Studio {sfx}"})).json()
+    st = (await client.post("/admin/studios", json={"name": f"Lib Studio {sfx}"})).json()
     studio_id = st["id"]
 
     lib = await client.get("/admin/embeddings/library")

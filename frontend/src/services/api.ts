@@ -692,11 +692,12 @@ export interface LlmProviderRegistryRow {
 export type LlmProviderUpsertBody = {
   models: LlmRegistryModelEntry[]
   api_base_url?: string | null
-  status?: string
   is_default?: boolean
   sort_order?: number
   llm_api_key?: string | null
   litellm_provider_slug?: string | null
+  /** Edit only: disable provider row (connected requires successful Test LLM). */
+  disabled?: boolean
 }
 
 /** LLM provider registry for the Admin Console LLM tab. */
@@ -976,6 +977,13 @@ export interface Studio {
   budget_overage_action?: string
 }
 
+/** Row from ``GET /studios`` including aggregate counts for the list UI. */
+export interface StudioListItem extends Studio {
+  software_count: number
+  project_count: number
+  member_count: number
+}
+
 export interface StudioChatLlmModels {
   effective_model: string | null
   workspace_default_model: string | null
@@ -984,15 +992,16 @@ export interface StudioChatLlmModels {
   model_max_context_tokens?: Record<string, number | null>
 }
 
-export async function listStudios(): Promise<Studio[]> {
-  return request<Studio[]>('GET', '/studios')
+export async function listStudios(): Promise<StudioListItem[]> {
+  return request<StudioListItem[]>('GET', '/studios')
 }
 
+/** @deprecated Use ``postAdminStudio`` — studio creation is platform-admin only. */
 export async function createStudio(body: StudioCreateBody): Promise<Studio> {
-  return request<Studio>('POST', '/studios', body)
+  return postAdminStudio(body)
 }
 
-/** Tool-admin create studio (same semantics as POST /studios). */
+/** Platform admin — create studio (admin console). */
 export async function postAdminStudio(body: StudioCreateBody): Promise<Studio> {
   return request<Studio>('POST', '/admin/studios', body)
 }

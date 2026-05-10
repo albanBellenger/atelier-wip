@@ -106,9 +106,126 @@ describe('LlmSection', () => {
             { id: 'model-b', context_metadata_source: 'unknown' },
           ],
           api_base_url: 'https://api.example.com/v1',
-          status: 'needs-key',
         }),
       )
+    })
+  })
+
+  it('shows abbreviated max context column after models in registry table', async () => {
+    vi.spyOn(api, 'listStudios').mockResolvedValue([
+      { id: 'studio-1', name: 'Studio One', description: null, logo_path: null, created_at: '' },
+    ])
+    vi.spyOn(api, 'getAdminLlmDeployment').mockResolvedValue({
+      has_providers: true,
+      providers: [
+        {
+          id: 'p1',
+          provider_id: 'acme',
+          models: [
+            { id: 'a', max_context_tokens: 128_000, context_metadata_source: 'manual' },
+            { id: 'b', max_context_tokens: 2_000_000, context_metadata_source: 'litellm' },
+            { id: 'c', context_metadata_source: 'unknown' },
+          ],
+          api_base_url: null,
+          logo_url: null,
+          status: 'connected',
+          is_default: false,
+          sort_order: 0,
+          llm_api_key_set: false,
+          llm_api_key_hint: null,
+          litellm_provider_slug: null,
+        },
+      ],
+    })
+    vi.spyOn(api, 'getAdminLlmRouting').mockResolvedValue([])
+    vi.spyOn(api, 'getAdminStudioLlmPolicy').mockResolvedValue([])
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <LlmSection />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText(/max context/i)).toBeInTheDocument()
+    expect(await screen.findByText('128K, 2M, —')).toBeInTheDocument()
+  })
+
+  it('shows Testing only on the registry row whose Test was clicked', async () => {
+    const user = userEvent.setup()
+
+    vi.spyOn(api, 'listStudios').mockResolvedValue([
+      { id: 'studio-1', name: 'Studio One', description: null, logo_path: null, created_at: '' },
+    ])
+    vi.spyOn(api, 'getAdminLlmDeployment').mockResolvedValue({
+      has_providers: true,
+      providers: [
+        {
+          id: 'p1',
+          provider_id: 'alpha',
+          models: [{ id: 'm1', context_metadata_source: 'unknown' }],
+          api_base_url: null,
+          logo_url: null,
+          status: 'connected',
+          is_default: false,
+          sort_order: 0,
+          llm_api_key_set: false,
+          llm_api_key_hint: null,
+          litellm_provider_slug: null,
+        },
+        {
+          id: 'p2',
+          provider_id: 'beta',
+          models: [{ id: 'm2', context_metadata_source: 'unknown' }],
+          api_base_url: null,
+          logo_url: null,
+          status: 'connected',
+          is_default: false,
+          sort_order: 1,
+          llm_api_key_set: false,
+          llm_api_key_hint: null,
+          litellm_provider_slug: null,
+        },
+      ],
+    })
+    vi.spyOn(api, 'getAdminLlmRouting').mockResolvedValue([])
+    vi.spyOn(api, 'getAdminStudioLlmPolicy').mockResolvedValue([])
+
+    let release!: () => void
+    const barrier = new Promise<void>((r) => {
+      release = r
+    })
+    vi.spyOn(api, 'postAdminTestLlm').mockImplementation(
+      () =>
+        barrier.then(() =>
+          Promise.resolve({ ok: true, message: 'Probe OK', detail: null }),
+        ),
+    )
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <LlmSection />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('button', { name: /^test$/i })).toHaveLength(2)
+    })
+    const rowTestButtons = screen.getAllByRole('button', { name: /^test$/i })
+    expect(rowTestButtons).toHaveLength(2)
+    await user.click(rowTestButtons[0])
+
+    expect(screen.getAllByRole('button', { name: /testing/i })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: /^test$/i })).toHaveLength(1)
+
+    release()
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /testing/i })).not.toBeInTheDocument()
     })
   })
 
@@ -153,7 +270,12 @@ describe('LlmSection', () => {
               ...p,
               models: body.models,
               api_base_url: body.api_base_url !== undefined ? body.api_base_url : p.api_base_url,
-              status: body.status !== undefined ? body.status : p.status,
+              status:
+                body.disabled === true
+                  ? 'disabled'
+                  : body.disabled === false
+                    ? 'needs-key'
+                    : 'needs-key',
               is_default: body.is_default !== undefined ? body.is_default : p.is_default,
               sort_order: body.sort_order !== undefined ? body.sort_order : p.sort_order,
               litellm_provider_slug:
@@ -170,7 +292,7 @@ describe('LlmSection', () => {
         models: body.models,
         api_base_url: body.api_base_url ?? null,
         logo_url: row?.logo_url ?? null,
-        status: body.status ?? 'needs-key',
+        status: row?.status ?? 'needs-key',
         is_default: body.is_default ?? false,
         sort_order: body.sort_order ?? 0,
         llm_api_key_set: row?.llm_api_key_set ?? false,
@@ -217,7 +339,7 @@ describe('LlmSection', () => {
             { id: 'beta', context_metadata_source: 'unknown' },
           ],
           api_base_url: 'https://api.moonshot.example/v1',
-          status: 'connected',
+          disabled: false,
           litellm_provider_slug: null,
         }),
       )
@@ -234,6 +356,160 @@ describe('LlmSection', () => {
     })
 
     expect(await screen.findByText('Probe OK')).toBeInTheDocument()
+  })
+
+  it('deletes provider from edit modal without confirm when status is not connected', async () => {
+    const user = userEvent.setup()
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+    vi.spyOn(api, 'listStudios').mockResolvedValue([
+      { id: 'studio-1', name: 'Studio One', description: null, logo_path: null, created_at: '' },
+    ])
+    vi.spyOn(api, 'getAdminLlmDeployment').mockResolvedValue({
+      has_providers: true,
+      providers: [
+        {
+          id: 'prov-x',
+          provider_id: 'needs-key-co',
+          models: [{ id: 'm1', context_metadata_source: 'unknown' }],
+          api_base_url: null,
+          logo_url: null,
+          status: 'needs-key',
+          is_default: false,
+          sort_order: 0,
+          llm_api_key_set: false,
+          llm_api_key_hint: null,
+          litellm_provider_slug: null,
+        },
+      ],
+    })
+    vi.spyOn(api, 'getAdminLlmRouting').mockResolvedValue([])
+    vi.spyOn(api, 'getAdminStudioLlmPolicy').mockResolvedValue([])
+
+    const deleteSpy = vi.spyOn(api, 'deleteAdminLlmProvider').mockResolvedValue(undefined)
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <LlmSection />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('needs-key-co')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /^edit$/i }))
+
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: /delete provider/i }))
+
+    await waitFor(() => {
+      expect(deleteSpy).toHaveBeenCalledWith('needs-key-co')
+    })
+    expect(confirmSpy).not.toHaveBeenCalled()
+  })
+
+  it('confirms before deleting when provider status is connected', async () => {
+    const user = userEvent.setup()
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    vi.spyOn(api, 'listStudios').mockResolvedValue([
+      { id: 'studio-1', name: 'Studio One', description: null, logo_path: null, created_at: '' },
+    ])
+    vi.spyOn(api, 'getAdminLlmDeployment').mockResolvedValue({
+      has_providers: true,
+      providers: [
+        {
+          id: 'prov-1',
+          provider_id: 'moonshot',
+          models: [{ id: 'old-model', context_metadata_source: 'unknown' }],
+          api_base_url: 'https://api.moonshot.example/v1',
+          logo_url: null,
+          status: 'connected',
+          is_default: false,
+          sort_order: 0,
+          llm_api_key_set: false,
+          llm_api_key_hint: null,
+          litellm_provider_slug: null,
+        },
+      ],
+    })
+    vi.spyOn(api, 'getAdminLlmRouting').mockResolvedValue([])
+    vi.spyOn(api, 'getAdminStudioLlmPolicy').mockResolvedValue([])
+
+    const deleteSpy = vi.spyOn(api, 'deleteAdminLlmProvider').mockResolvedValue(undefined)
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <LlmSection />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    expect((await screen.findAllByText('moonshot')).length).toBeGreaterThan(0)
+    await user.click(screen.getByRole('button', { name: /^edit$/i }))
+
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: /delete provider/i }))
+
+    expect(confirmSpy).toHaveBeenCalledWith(
+      'This provider is connected. Delete it from the registry? Studio LLM policy and routing may reference this row.',
+    )
+    await waitFor(() => {
+      expect(deleteSpy).toHaveBeenCalledWith('moonshot')
+    })
+  })
+
+  it('does not delete connected provider when confirmation is dismissed', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+    vi.spyOn(api, 'listStudios').mockResolvedValue([
+      { id: 'studio-1', name: 'Studio One', description: null, logo_path: null, created_at: '' },
+    ])
+    vi.spyOn(api, 'getAdminLlmDeployment').mockResolvedValue({
+      has_providers: true,
+      providers: [
+        {
+          id: 'prov-1',
+          provider_id: 'moonshot',
+          models: [{ id: 'old-model', context_metadata_source: 'unknown' }],
+          api_base_url: null,
+          logo_url: null,
+          status: 'connected',
+          is_default: false,
+          sort_order: 0,
+          llm_api_key_set: false,
+          llm_api_key_hint: null,
+          litellm_provider_slug: null,
+        },
+      ],
+    })
+    vi.spyOn(api, 'getAdminLlmRouting').mockResolvedValue([])
+    vi.spyOn(api, 'getAdminStudioLlmPolicy').mockResolvedValue([])
+
+    const deleteSpy = vi.spyOn(api, 'deleteAdminLlmProvider').mockResolvedValue(undefined)
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <LlmSection />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    expect((await screen.findAllByText('moonshot')).length).toBeGreaterThan(0)
+    await user.click(screen.getByRole('button', { name: /^edit$/i }))
+
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: /delete provider/i }))
+
+    await waitFor(() => {
+      expect(deleteSpy).not.toHaveBeenCalled()
+    })
   })
 
   it('shows routing policy help in tooltip, not inline', async () => {
