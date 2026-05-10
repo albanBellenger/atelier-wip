@@ -492,6 +492,7 @@ function AddProviderModal({
   const [llmApiKey, setLlmApiKey] = useState('')
   const [litellmSlug, setLitellmSlug] = useState('')
   const [suggestAppend, setSuggestAppend] = useState('')
+  const [liteCatalogMode, setLiteCatalogMode] = useState<'chat' | 'embedding'>('chat')
 
   useEffect(() => {
     if (!open) return
@@ -502,6 +503,7 @@ function AddProviderModal({
     setLlmApiKey('')
     setLitellmSlug('')
     setSuggestAppend('')
+    setLiteCatalogMode('chat')
   }, [open])
 
   if (!open) {
@@ -595,9 +597,25 @@ function AddProviderModal({
             />
             <div className="mt-2 flex flex-wrap items-end gap-2">
               <div className="min-w-0 flex-1">
-                <StatLabel>
-                  <label htmlFor="llm-add-suggest-append">Add from LiteLLM catalog</label>
-                </StatLabel>
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatLabel>
+                    <label htmlFor="llm-add-suggest-append">Add from LiteLLM catalog</label>
+                  </StatLabel>
+                  <label className="sr-only" htmlFor="llm-add-catalog-mode">
+                    LiteLLM catalog scope
+                  </label>
+                  <select
+                    id="llm-add-catalog-mode"
+                    value={liteCatalogMode}
+                    onChange={(e) =>
+                      setLiteCatalogMode(e.target.value as 'chat' | 'embedding')
+                    }
+                    className="rounded-md border border-zinc-800 bg-zinc-950/60 px-2 py-1 font-mono text-[11px] text-zinc-200 outline-none focus:border-zinc-600"
+                  >
+                    <option value="chat">Chat models</option>
+                    <option value="embedding">Embedding models</option>
+                  </select>
+                </div>
                 <LlmModelSuggestInput
                   id="llm-add-suggest-append"
                   listId="llm-add-suggest-append-dl"
@@ -607,6 +625,7 @@ function AddProviderModal({
                   litellmProvider={
                     litellmSlug.trim() || normalizeProviderId(providerId) || undefined
                   }
+                  mode={liteCatalogMode}
                   prefetch={open}
                   minChars={0}
                   placeholder="Search models, then append"
@@ -797,6 +816,7 @@ function EditProviderModal({
   const [isDefault, setIsDefault] = useState(false)
   const [litellmSlug, setLitellmSlug] = useState('')
   const [suggestAppend, setSuggestAppend] = useState('')
+  const [liteCatalogMode, setLiteCatalogMode] = useState<'chat' | 'embedding'>('chat')
 
   useEffect(() => {
     if (!provider) return
@@ -807,6 +827,7 @@ function EditProviderModal({
     setClearLlmKey(false)
     setLitellmSlug(provider.litellm_provider_slug ?? '')
     setSuggestAppend('')
+    setLiteCatalogMode('chat')
     setDisabled(provider.status === 'disabled')
     setIsDefault(provider.is_default)
   }, [provider])
@@ -908,9 +929,25 @@ function EditProviderModal({
             />
             <div className="mt-2 flex flex-wrap items-end gap-2">
               <div className="min-w-0 flex-1">
-                <StatLabel>
-                  <label htmlFor="llm-edit-suggest-append">Add from LiteLLM catalog</label>
-                </StatLabel>
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatLabel>
+                    <label htmlFor="llm-edit-suggest-append">Add from LiteLLM catalog</label>
+                  </StatLabel>
+                  <label className="sr-only" htmlFor="llm-edit-catalog-mode">
+                    LiteLLM catalog scope
+                  </label>
+                  <select
+                    id="llm-edit-catalog-mode"
+                    value={liteCatalogMode}
+                    onChange={(e) =>
+                      setLiteCatalogMode(e.target.value as 'chat' | 'embedding')
+                    }
+                    className="rounded-md border border-zinc-800 bg-zinc-950/60 px-2 py-1 font-mono text-[11px] text-zinc-200 outline-none focus:border-zinc-600"
+                  >
+                    <option value="chat">Chat models</option>
+                    <option value="embedding">Embedding models</option>
+                  </select>
+                </div>
                 <LlmModelSuggestInput
                   id="llm-edit-suggest-append"
                   listId="llm-edit-suggest-append-dl"
@@ -920,6 +957,7 @@ function EditProviderModal({
                   litellmProvider={
                     litellmSlug.trim() || provider.provider_id || undefined
                   }
+                  mode={liteCatalogMode}
                   prefetch
                   minChars={0}
                   placeholder="Search models, then append"
@@ -1666,6 +1704,16 @@ export function LlmSection(): ReactElement {
                       {routingBucketAgentsSummary(r.use_case)}
                     </p>
                     <div className="mt-0.5 font-mono text-[10.5px] text-zinc-500">{r.use_case}</div>
+                    {r.use_case === 'embeddings' ? (
+                      <p className="mt-2 text-[11px] leading-snug text-zinc-500">
+                        Primary and fallback must be model IDs already listed on a connected provider in{' '}
+                        <span className="font-medium text-zinc-400">Model registry</span> above. Append
+                        embedding model ids via <span className="font-medium text-zinc-400">Register provider</span>{' '}
+                        or <span className="font-medium text-zinc-400">Edit</span>, using{' '}
+                        <span className="font-mono text-zinc-500">Add from LiteLLM catalog</span> with{' '}
+                        <span className="font-mono text-zinc-500">Embedding models</span>, then save routing here.
+                      </p>
+                    ) : null}
                   </div>
                   <div>
                     <StatLabel>

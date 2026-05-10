@@ -7,7 +7,7 @@ import * as api from '../../services/api'
 import { EmbeddingsSection } from './EmbeddingsSection'
 
 describe('EmbeddingsSection', () => {
-  it('loads library table and model registry from admin APIs', async () => {
+  it('loads library table and reindex policy from admin APIs', async () => {
     vi.spyOn(api, 'getAdminConsoleOverview').mockResolvedValue({
       studios: [],
       active_builders_count: 0,
@@ -22,17 +22,6 @@ describe('EmbeddingsSection', () => {
         embedded_artifact_count: 2,
         artifact_vector_chunks: 10,
         section_vector_chunks: 20,
-      },
-    ])
-    vi.spyOn(api, 'getAdminEmbeddingModels').mockResolvedValue([
-      {
-        id: 'rid',
-        model_id: 'text-embedding-3-small',
-        provider_name: 'openai',
-        dim: 1536,
-        cost_per_million_usd: '0.020000',
-        region: 'US',
-        default_role: 'default',
       },
     ])
     vi.spyOn(api, 'getAdminEmbeddingReindexPolicy').mockResolvedValue({
@@ -53,8 +42,8 @@ describe('EmbeddingsSection', () => {
     )
 
     expect(await screen.findByText('Studio One')).toBeInTheDocument()
-    expect(screen.getByText('text-embedding-3-small')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /Artifact library \(by studio\)/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /Reindex policy/i })).toBeInTheDocument()
     await waitFor(() => {
       expect(screen.getByRole('link', { name: /open library/i })).toHaveAttribute(
         'href',

@@ -8,7 +8,7 @@ test.describe('Admin console — embeddings', () => {
     const emb = new AdminEmbeddingsPage(toolAdminPage)
     await console_.goto('embeddings')
     await emb.expectHeadingVisible()
-    await emb.expectModelRegistryVisible()
+    await emb.expectReindexPolicyVisible()
     await emb.expectLibraryTableVisible()
   })
 

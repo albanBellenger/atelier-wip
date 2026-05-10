@@ -20,6 +20,7 @@ from tests.factories import (
 
 pytestmark = [pytest.mark.llm, pytest.mark.asyncio]
 
+
 async def test_section_improve_output_contains_fixture_keyword(
     db_session: AsyncSession,
 ) -> None:

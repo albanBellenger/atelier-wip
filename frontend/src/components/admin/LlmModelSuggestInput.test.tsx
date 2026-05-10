@@ -12,6 +12,7 @@ function Harness(props: {
   minChars?: number
   prefetch?: boolean
   source?: 'auto' | 'catalog' | 'upstream' | 'registry'
+  mode?: 'chat' | 'embedding'
 }): ReactElement {
   const [value, setValue] = useState('')
   return (
@@ -24,6 +25,7 @@ function Harness(props: {
       minChars={props.minChars}
       prefetch={props.prefetch}
       source={props.source}
+      mode={props.mode}
     />
   )
 }
@@ -76,6 +78,21 @@ describe('LlmModelSuggestInput', () => {
     expect(last.litellm_provider).toBe('moonshot')
     expect(last.source).toBe('catalog')
     expect(String(last.q ?? '')).toContain('kc')
+  })
+
+  it('passes mode embedding to the catalog API when set', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={qc}>
+        <Harness litellmProvider="openai" minChars={0} prefetch mode="embedding" />
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => {
+      expect(suggestSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ mode: 'embedding', source: 'catalog', litellm_provider: 'openai' }),
+      )
+    })
   })
 
   it('uses deployment registry source when configured', async () => {

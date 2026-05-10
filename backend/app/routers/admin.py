@@ -326,6 +326,8 @@ async def list_embedding_library_overview(
     return await EmbeddingAdminService(session).library_overview()
 
 
+# Optional metadata catalog only (no runtime embedding resolution). Admin UI retired;
+# configure production embedding model IDs via LLM provider registry + embeddings routing rule.
 @router.get("/embeddings/models", response_model=list[EmbeddingModelRegistryResponse])
 async def list_embedding_models(
     session: AsyncSession = Depends(get_db),

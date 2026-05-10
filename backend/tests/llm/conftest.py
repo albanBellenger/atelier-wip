@@ -218,3 +218,27 @@ async def project_with_contradictory_sections(
         "section_b_id": sec_b.id,
         "headers": studio_member["headers"],
     }
+
+
+@pytest_asyncio.fixture
+async def studio_member_software_project(
+    db_session: AsyncSession,
+    studio_member: dict[str, object],
+) -> dict[str, object]:
+    """Software + project under the LLM studio_member studio (for /me/* routes)."""
+    studio_id = studio_member["studio_id"]
+    assert isinstance(studio_id, uuid.UUID)
+    software = await create_software(
+        db_session,
+        studio_id,
+        name="Builder composer LLM software",
+        definition="Collaborative specification workspace.",
+    )
+    project = await create_project(
+        db_session, software.id, name="Builder composer LLM project"
+    )
+    return {
+        "software_id": software.id,
+        "project_id": project.id,
+        "headers": studio_member["headers"],
+    }

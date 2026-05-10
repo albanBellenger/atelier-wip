@@ -107,7 +107,7 @@ export function AdminSettingsPage(): ReactElement {
             Open Admin Console — Embeddings
           </Link>
           <p className="text-zinc-500">
-            Library coverage, embedding model catalog metadata, reindex policy, and probe.
+            Library coverage, reindex policy, and connectivity probe.
           </p>
         </div>
 

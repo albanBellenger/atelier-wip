@@ -16,7 +16,7 @@ const NAV: { id: AdminConsoleSection; label: string; hint: string }[] = [
   { id: 'studios', label: 'Studios', hint: 'Directory (read-only)' },
   { id: 'llm', label: 'LLM connectivity', hint: 'Providers & routing' },
   { id: 'budgets', label: 'Budgets', hint: 'Caps & overage' },
-  { id: 'embeddings', label: 'Embeddings', hint: 'Indexes & models' },
+  { id: 'embeddings', label: 'Embeddings', hint: 'Indexes & policy' },
   { id: 'users', label: 'Users', hint: 'Directory & roles' },
 ]
 

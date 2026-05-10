@@ -11,9 +11,9 @@ export class AdminEmbeddingsPage {
     await expect(this.page.getByRole('heading', { name: 'Embeddings', exact: true })).toBeVisible()
   }
 
-  async expectModelRegistryVisible(): Promise<void> {
+  async expectReindexPolicyVisible(): Promise<void> {
     await expect(
-      this.page.getByRole('heading', { name: 'Embedding models', exact: true }),
+      this.page.getByRole('heading', { name: 'Reindex policy', exact: true }),
     ).toBeVisible()
   }
 

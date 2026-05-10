@@ -601,4 +601,45 @@ describe('LlmSection', () => {
       })
     })
   })
+
+  it('requests LiteLLM catalog with mode embedding when add-provider catalog scope is Embedding models', async () => {
+    const user = userEvent.setup()
+    const suggestSpy = vi
+      .spyOn(api, 'getAdminLlmModelSuggestions')
+      .mockResolvedValue({ models: [], warning: null })
+
+    vi.spyOn(api, 'listStudios').mockResolvedValue([
+      { id: 'studio-1', name: 'Studio One', description: null, logo_path: null, created_at: '' },
+    ])
+    vi.spyOn(api, 'getAdminLlmDeployment').mockResolvedValue({
+      has_providers: false,
+      providers: [],
+    })
+    vi.spyOn(api, 'getAdminLlmRouting').mockResolvedValue([])
+    vi.spyOn(api, 'getAdminStudioLlmPolicy').mockResolvedValue([])
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <LlmSection />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await screen.findByText(/Model registry/i)
+    await user.click(screen.getByRole('button', { name: /add provider/i }))
+
+    const dialog = await screen.findByRole('dialog')
+    await user.selectOptions(
+      within(dialog).getByLabelText(/LiteLLM catalog scope/i),
+      'embedding',
+    )
+    const catalogInput = within(dialog).getByPlaceholderText(/Search models, then append/i)
+    await user.type(catalogInput, 'te')
+
+    await waitFor(() => {
+      expect(suggestSpy).toHaveBeenCalledWith(expect.objectContaining({ mode: 'embedding' }))
+    })
+  })
 })
