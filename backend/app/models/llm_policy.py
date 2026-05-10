@@ -29,6 +29,18 @@ class LlmProviderRegistry(Base):
 
 
 class StudioLlmProviderPolicy(Base):
+    """Per-studio enablement and model pin for a registry provider.
+
+    When a studio has rows in this table, :meth:`~app.services.llm_policy_service.LlmPolicyService.resolve_effective_llm_route`
+    enforces ``enabled`` and ``selected_model`` for **non-embedding** effective routing
+    (``use_case != "embeddings"``).
+
+    The embedding model is chosen from the **embeddings** routing rule plus provider registry
+    configuration (``LlmProviderRegistry`` / ``models_json``). :meth:`~app.services.llm_policy_service.LlmPolicyService.resolve_embedding_route`
+    ignores ``selected_model``; when policy rows exist it only gates on ``enabled`` for the
+    embedding provider.
+    """
+
     __tablename__ = "studio_llm_provider_policy"
 
     studio_id: Mapped[uuid.UUID] = mapped_column(
@@ -36,7 +48,14 @@ class StudioLlmProviderPolicy(Base):
     )
     provider_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    selected_model: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    selected_model: Mapped[str | None] = mapped_column(
+        String(256),
+        nullable=True,
+        doc=(
+            "Used by resolve_effective_llm_route for non-embedding use cases when studio "
+            "policies exist; resolve_embedding_route ignores this (see class docstring)."
+        ),
+    )
 
 
 class LlmRoutingRule(Base):

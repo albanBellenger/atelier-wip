@@ -51,6 +51,11 @@ def test_chat_slug_overrides_provider_id() -> None:
     assert normalize_litellm_chat_model("kimi-x", registry_row=r) == "moonshot/kimi-x"
 
 
+def test_chat_registry_preserves_mixed_case_provider_id_when_no_litellm_slug() -> None:
+    r = _reg(provider_id="MyOpenAI")
+    assert normalize_litellm_chat_model("gpt-4o-mini", registry_row=r) == "MyOpenAI/gpt-4o-mini"
+
+
 def test_chat_slug_whitespace_trimmed() -> None:
     r = _reg(provider_id="p", litellm_provider_slug="  openai  ")
     assert normalize_litellm_chat_model("gpt-4o-mini", registry_row=r) == "openai/gpt-4o-mini"

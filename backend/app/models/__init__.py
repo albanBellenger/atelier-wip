@@ -4,7 +4,7 @@ from app.models.base import Base
 from app.models.cross_studio import CrossStudioAccess
 from app.models.deployment_activity import DeploymentActivity
 from app.models.embedding_dimension_state import EmbeddingDimensionState
-from app.models.embedding_registry import EmbeddingModelRegistry, EmbeddingReindexPolicy
+from app.models.embedding_registry import EmbeddingReindexPolicy
 from app.models.graph import GraphEdge
 from app.models.llm_policy import (
     LlmProviderRegistry,
@@ -41,7 +41,6 @@ __all__ = [
     "ChatMessage",
     "SoftwareChatMessage",
     "DeploymentActivity",
-    "EmbeddingModelRegistry",
     "EmbeddingReindexPolicy",
     "LlmProviderRegistry",
     "LlmRoutingRule",

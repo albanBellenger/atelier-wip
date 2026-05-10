@@ -260,7 +260,8 @@ Auth ([`auth.py`](../backend/app/routers/auth.py)): `register`, `login`, `logout
 | admin | GET/PUT | `/admin/config` | **404** (removed) |
 | admin | GET/PUT | `/admin/cross-studio`, `/admin/cross-studio/{grant_id}` | **404** (removed) |
 | admin | GET | `/admin/token-usage` | **404** (removed) |
-| admin | GET/POST/PUT | `/admin/users`, `/admin/users/{id}/admin-status` | **404** (removed) |
+| admin | GET/POST | `/admin/users` | `require_platform_admin` |
+| admin | PUT | `/admin/users/{user_id}/admin-status` | `require_platform_admin` |
 | studios | GET | `/studios` | `get_current_user` |
 | studios | POST | `/studios` | `get_current_user` |
 | studios | GET/PATCH/DELETE | `/studios/{studio_id}` | `get_studio_access` / `require_studio_admin` |

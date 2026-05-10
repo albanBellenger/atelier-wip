@@ -303,6 +303,87 @@ async def test_admin_llm_routing_get_unauthenticated_401(client: AsyncClient) ->
 
 
 @pytest.mark.asyncio
+async def test_admin_llm_routing_buckets_ok(client: AsyncClient, db_session: AsyncSession) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    admin_email = f"rb-ok-{sfx}@example.com"
+    await client.post(
+        "/auth/register",
+        json={
+            "email": admin_email,
+            "password": "securepass123",
+            "display_name": "TA",
+        },
+    )
+    from sqlalchemy import update
+
+    from app.models import User
+
+    await db_session.execute(
+        update(User).where(User.email == admin_email.lower()).values(is_platform_admin=True)
+    )
+    await db_session.flush()
+
+    r_login = await client.post(
+        "/auth/login",
+        json={"email": admin_email, "password": "securepass123"},
+    )
+    assert r_login.status_code == 200
+    tok = r_login.cookies.get("atelier_token")
+    assert tok
+    client.cookies.set("atelier_token", tok)
+
+    r = await client.get("/admin/llm/routing/buckets")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["bucket_order"] == ["chat", "code_gen", "classification", "embeddings"]
+    assert body["embeddings_match"] == "substring"
+    assert body["embeddings_substring"] == "embed"
+    by_uc = {x["use_case"]: x for x in body["buckets"]}
+    assert "chat" in by_uc
+    assert "embedding" in by_uc["embeddings"]["call_sources"]
+
+
+@pytest.mark.asyncio
+async def test_admin_llm_routing_buckets_forbidden_for_member(client: AsyncClient) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    admin_email = f"rb-ad-{sfx}@example.com"
+    member_email = f"rb-mem-{sfx}@example.com"
+    await client.post(
+        "/auth/register",
+        json={
+            "email": admin_email,
+            "password": "securepass123",
+            "display_name": "TA",
+        },
+    )
+    await client.post(
+        "/auth/register",
+        json={
+            "email": member_email,
+            "password": "securepass123",
+            "display_name": "Mem",
+        },
+    )
+    r_login = await client.post(
+        "/auth/login",
+        json={"email": member_email, "password": "securepass123"},
+    )
+    assert r_login.status_code == 200
+    tok = r_login.cookies.get("atelier_token")
+    assert tok
+    client.cookies.set("atelier_token", tok)
+    denied = await client.get("/admin/llm/routing/buckets")
+    assert denied.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_admin_llm_routing_buckets_unauthenticated_401(client: AsyncClient) -> None:
+    client.cookies.clear()
+    r = await client.get("/admin/llm/routing/buckets")
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_admin_llm_deployment_forbidden_for_member(client: AsyncClient) -> None:
     sfx = uuid.uuid4().hex[:8]
     admin_email = f"dep-admin-{sfx}@example.com"

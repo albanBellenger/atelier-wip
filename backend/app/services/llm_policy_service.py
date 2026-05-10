@@ -29,18 +29,7 @@ from app.services.registry_models_json import (
     parse_models_json,
 )
 from app.services.budget_month_status import studio_overage_soft_allow
-
-
-def use_case_for_call_source(call_source: str) -> str:
-    """Map token_usage.call_source to a routing use_case key."""
-    ct = (call_source or "chat").lower()
-    if ct in ("work_order_gen", "work_order_dedupe", "work_order", "mcp", "mcp_wo"):
-        return "code_gen"
-    if ct in ("drift", "section_drift"):
-        return "classification"
-    if "embed" in ct:
-        return "embeddings"
-    return "chat"
+from app.services.llm_routing_buckets import use_case_for_call_source
 
 
 def _registry_connected(pr: LlmProviderRegistry) -> bool:
@@ -82,14 +71,15 @@ class LlmPolicyService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    async def resolve_effective_llm_route(
+    async def _resolve_routed_model_for_use_case(
         self,
         *,
-        studio_id: UUID,
-        call_source: str,
+        use_case: str,
+        routing_fallback_use_case: str | None,
+        studio_id: UUID | None,
+        require_selected_model_match: bool,
     ) -> tuple[str | None, str | None]:
-        """Return (effective_model_override, provider_id) or (None, None) for registry defaults."""
-        use_case = use_case_for_call_source(call_source)
+        """Pick first routing candidate satisfied by registry + optional studio policy."""
         reg_count = await self.db.scalar(
             select(func.count()).select_from(LlmProviderRegistry)
         )
@@ -98,90 +88,11 @@ class LlmPolicyService:
 
         routing = await self.db.get(LlmRoutingRule, use_case)
         if routing is None:
+            if routing_fallback_use_case is None:
+                return None, None
             if use_case == "embeddings":
                 return None, None
-            routing = await self.db.get(LlmRoutingRule, "chat")
-        if routing is None:
-            return None, None
-
-        candidates: list[str] = []
-        if routing.primary_model.strip():
-            candidates.append(routing.primary_model.strip())
-        if routing.fallback_model and routing.fallback_model.strip():
-            candidates.append(routing.fallback_model.strip())
-
-        providers = list(
-            (
-                await self.db.execute(
-                    select(LlmProviderRegistry).order_by(
-                        LlmProviderRegistry.sort_order,
-                        LlmProviderRegistry.provider_id,
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        policy_rows = list(
-            (
-                await self.db.execute(
-                    select(StudioLlmProviderPolicy).where(
-                        StudioLlmProviderPolicy.studio_id == studio_id
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        policy_map = {p.provider_id: p for p in policy_rows}
-        has_any_policy = len(policy_rows) > 0
-
-        def provider_for_model(model_name: str) -> str | None:
-            for pr in providers:
-                if not _registry_connected(pr):
-                    continue
-                if model_name in _registry_model_ids_for_use_case(pr, use_case):
-                    return pr.provider_id
-            return None
-
-        for cand in candidates:
-            pk = provider_for_model(cand)
-            if pk is None:
-                continue
-            pol = policy_map.get(pk)
-            if has_any_policy:
-                if pol is None or not pol.enabled:
-                    continue
-                if use_case != "embeddings" and pol.selected_model != cand:
-                    continue
-            else:
-                # Registry populated but studio not configured yet — allow routing candidate.
-                pass
-            return cand, pk
-        return None, None
-
-    async def resolve_embedding_route(
-        self,
-        *,
-        studio_id: UUID | None,
-    ) -> tuple[str | None, str | None]:
-        """Resolve (registry model id, provider_id) for embeddings via routing + catalog.
-
-        Uses **only** ``LlmRoutingRule.use_case == \"embeddings\"`` — no fallback to chat.
-
-        * ``studio_id is None`` (platform): first routing candidate hosted on a connected
-          provider with that model in ``models_json``.
-        * ``studio_id`` set: same scan; if the studio has any ``StudioLlmProviderPolicy``
-          rows, the embedding provider must be **enabled** there. Chat ``selected_model``
-          is **not** compared (embedding model ids differ from chat picks).
-        """
-        reg_count = await self.db.scalar(
-            select(func.count()).select_from(LlmProviderRegistry)
-        )
-        if not reg_count:
-            return None, None
-
-        routing = await self.db.get(LlmRoutingRule, "embeddings")
+            routing = await self.db.get(LlmRoutingRule, routing_fallback_use_case)
         if routing is None:
             return None, None
 
@@ -226,7 +137,7 @@ class LlmPolicyService:
             for pr in providers:
                 if not _registry_connected(pr):
                     continue
-                if model_name in _embedding_model_ids_from_registry_row(pr):
+                if model_name in _registry_model_ids_for_use_case(pr, use_case):
                     return pr.provider_id
             return None
 
@@ -235,11 +146,53 @@ class LlmPolicyService:
             if pk is None:
                 continue
             pol = policy_map.get(pk)
-            if studio_id is not None and has_any_policy:
+            if has_any_policy:
                 if pol is None or not pol.enabled:
                     continue
+                if require_selected_model_match and pol.selected_model != cand:
+                    continue
+            else:
+                # Registry populated but studio not configured yet — allow routing candidate.
+                pass
             return cand, pk
         return None, None
+
+    async def resolve_effective_llm_route(
+        self,
+        *,
+        studio_id: UUID,
+        call_source: str,
+    ) -> tuple[str | None, str | None]:
+        """Return (effective_model_override, provider_id) or (None, None) for registry defaults."""
+        use_case = use_case_for_call_source(call_source)
+        return await self._resolve_routed_model_for_use_case(
+            use_case=use_case,
+            routing_fallback_use_case="chat",
+            studio_id=studio_id,
+            require_selected_model_match=(use_case != "embeddings"),
+        )
+
+    async def resolve_embedding_route(
+        self,
+        *,
+        studio_id: UUID | None,
+    ) -> tuple[str | None, str | None]:
+        """Resolve (registry model id, provider_id) for embeddings via routing + catalog.
+
+        Uses **only** ``LlmRoutingRule.use_case == \"embeddings\"`` — no fallback to chat.
+
+        * ``studio_id is None`` (platform): first routing candidate hosted on a connected
+          provider with that model in ``models_json``.
+        * ``studio_id`` set: same scan; if the studio has any ``StudioLlmProviderPolicy``
+          rows, the embedding provider must be **enabled** there. Chat ``selected_model``
+          is **not** compared (embedding model ids differ from chat picks).
+        """
+        return await self._resolve_routed_model_for_use_case(
+            use_case="embeddings",
+            routing_fallback_use_case=None,
+            studio_id=studio_id,
+            require_selected_model_match=False,
+        )
 
     async def resolve_effective_model(
         self,

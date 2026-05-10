@@ -23,6 +23,7 @@ import {
   listWorkOrders,
   type MeResponse,
 } from '../../services/api'
+import { adminConsolePath } from '../../lib/adminConsoleNav'
 import { formatRelativeTimeUtc } from '../../lib/formatRelativeTime'
 import { HOME_STUDIO_ID_LS_KEY } from '../../lib/homeStudioPreference'
 import {
@@ -429,10 +430,18 @@ export function BuilderHomeDashboard({
                       </li>
                       <li>
                         <Link
-                          to="/admin/settings"
+                          to={adminConsolePath('llm')}
                           className="text-violet-400 hover:underline"
                         >
-                          LLM &amp; embedding settings
+                          LLM registry &amp; connectivity
+                        </Link>
+                      </li>
+                      <li>
+                        <Link
+                          to={adminConsolePath('embeddings')}
+                          className="text-violet-400 hover:underline"
+                        >
+                          Embedding configuration
                         </Link>
                       </li>
                       <li>

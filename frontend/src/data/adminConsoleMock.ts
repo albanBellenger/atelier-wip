@@ -1,4 +1,8 @@
-/** Demo content for the platform-admin console UI until backend APIs exist. */
+/** Demo content for the platform-admin console UI until backend APIs exist.
+ * Overview/side-nav fall back to these rows when live overview requests fail.
+ * Activity feed lines and provider snapshots are illustrative only—they may not
+ * match implemented backend events (e.g. key-rotation audit trails).
+ */
 
 export const ADMIN_USER = {
   name: 'Sasha Wren',
@@ -478,6 +482,3 @@ export const AUDIT_LOG: AuditEntry[] = [
 export const ADMIN_CONSOLE_MONTH_TOTAL = '643.78'
 
 export const DEPLOYMENT_WIDE_HARD_CAP_USD = 2000
-
-/** @deprecated */
-export const ORG_WIDE_HARD_CAP_USD = DEPLOYMENT_WIDE_HARD_CAP_USD

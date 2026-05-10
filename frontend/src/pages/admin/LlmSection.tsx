@@ -22,6 +22,7 @@ import { InfoCircleHelpButton } from '../../components/ui/InfoCircleHelpButton'
 import {
   type AdminLlmProbeBody,
   type AdminEmbeddingProbeBody,
+  type AdminLlmRoutingBucketsResponse,
   type LlmProviderRegistryRow,
   type LlmProviderUpsertBody,
   type LlmRegistryModelEntry,
@@ -30,6 +31,7 @@ import {
   type StudioLlmPolicyRow,
   getAdminLlmDeployment,
   getAdminLlmRouting,
+  getAdminLlmRoutingBuckets,
   getAdminStudioLlmPolicy,
   listStudios,
   modelIdsFromEntries,
@@ -46,6 +48,7 @@ import {
   routingBucketAgentsSummary,
   routingBucketTitle,
 } from '../../lib/llmRoutingBuckets'
+import { ProviderUpsertModal } from './ProviderUpsertModal'
 
 const EMPTY_LLM_PROVIDERS: LlmProviderRegistryRow[] = []
 
@@ -364,6 +367,7 @@ function AddRoutingModal({
   onClose,
   blockedUseCasesCsv,
   registryScopeSlug,
+  bucketsPayload,
   onAdd,
 }: {
   open: boolean
@@ -371,6 +375,7 @@ function AddRoutingModal({
   blockedUseCasesCsv: string
   /** Registry row scope: match ``litellm_provider_slug`` or ``provider_id`` (lowercase). */
   registryScopeSlug: string
+  bucketsPayload: AdminLlmRoutingBucketsResponse | undefined
   onAdd: (row: LlmRoutingRuleRow) => void
 }): ReactElement | null {
   const existingKeys = blockedUseCasesCsv
@@ -477,7 +482,7 @@ function AddRoutingModal({
                 </select>
                 {useCase ? (
                   <p className="mt-1.5 text-[11px] leading-snug text-zinc-500">
-                    Includes: {routingBucketAgentsSummary(useCase)}
+                    Includes: {routingBucketAgentsSummary(useCase, bucketsPayload)}
                   </p>
                 ) : null}
               </div>
@@ -539,326 +544,6 @@ function AddRoutingModal({
   )
 }
 
-function AddProviderModal({
-  open,
-  onClose,
-  isPending,
-  error,
-  onRegister,
-}: {
-  open: boolean
-  onClose: () => void
-  isPending: boolean
-  error?: unknown
-  onRegister: (args: { providerId: string; body: LlmProviderUpsertBody }) => void
-}): ReactElement | null {
-  const [providerId, setProviderId] = useState('')
-  const [modelsText, setModelsText] = useState('')
-  const [contextTokensText, setContextTokensText] = useState('')
-  const [modelKindsText, setModelKindsText] = useState('')
-  const [apiBaseUrl, setApiBaseUrl] = useState('')
-  const [llmApiKey, setLlmApiKey] = useState('')
-  const [litellmSlug, setLitellmSlug] = useState('')
-  const [suggestAppend, setSuggestAppend] = useState('')
-  const [liteCatalogMode, setLiteCatalogMode] = useState<'chat' | 'embedding'>('chat')
-
-  useEffect(() => {
-    if (!open) return
-    setProviderId('')
-    setModelsText('')
-    setContextTokensText('')
-    setModelKindsText('')
-    setApiBaseUrl('')
-    setLlmApiKey('')
-    setLitellmSlug('')
-    setSuggestAppend('')
-    setLiteCatalogMode('chat')
-  }, [open])
-
-  if (!open) {
-    return null
-  }
-
-  const submit = (): void => {
-    const pk = normalizeProviderId(providerId)
-    const models = buildModelEntriesFromForm(modelsText, contextTokensText, modelKindsText)
-    if (!pk || models.length === 0) {
-      return
-    }
-    const body: LlmProviderUpsertBody = {
-      models,
-      api_base_url: apiBaseUrl.trim() || null,
-      is_default: false,
-      sort_order: 0,
-      litellm_provider_slug: litellmSlug.trim() || null,
-    }
-    if (llmApiKey.trim()) {
-      body.llm_api_key = llmApiKey.trim()
-    }
-    onRegister({ providerId: pk, body })
-  }
-
-  const errText =
-    error !== undefined && error !== null ? formatProviderMutationErr(error) : null
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-      role="presentation"
-      onClick={onClose}
-    >
-      <div
-        role="dialog"
-        aria-modal
-        aria-labelledby="llm-add-provider-title"
-        className="flex max-h-[min(90vh,calc(100dvh-2rem))] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="shrink-0 px-5 pt-5">
-          <h2 id="llm-add-provider-title" className="text-[15px] font-medium text-zinc-100">
-            Register LLM provider
-          </h2>
-          <p className="mt-1 text-[12px] text-zinc-500">
-            Adds a row to the routing registry (model allow-list for policy). Optional per-provider
-            OpenAI-compatible API key (encrypted at rest when{' '}
-            <span className="font-mono text-zinc-400">ENCRYPTION_KEY</span> is set). If omitted,
-            inference falls back to the key from{' '}
-            <Link className="text-violet-400 hover:underline" to="/admin/settings">
-              Platform settings · LLM keys
-            </Link>
-            .
-          </p>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">
-          <div className="space-y-3">
-          <div>
-            <StatLabel>
-              <label htmlFor="llm-add-provider-id">Provider ID</label>
-            </StatLabel>
-            <input
-              id="llm-add-provider-id"
-              value={providerId}
-              onChange={(e) => setProviderId(normalizeProviderId(e.target.value))}
-              autoComplete="off"
-              placeholder="e.g. anthropic_eu"
-              className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[12px] text-zinc-100 outline-none focus:border-zinc-600"
-            />
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <div className="min-w-0 flex-1">
-                <StatLabel>
-                  <label htmlFor="llm-add-provider-models">Model IDs</label>
-                </StatLabel>
-              </div>
-              <LlmFormFieldHint
-                ariaLabel="Model ID format and LiteLLM catalog"
-                content={ADD_PROVIDER_MODEL_IDS_HELP}
-              />
-            </div>
-            <textarea
-              id="llm-add-provider-models"
-              value={modelsText}
-              onChange={(e) => setModelsText(e.target.value)}
-              rows={2}
-              placeholder="Comma-separated, e.g. claude-sonnet-4.5, claude-haiku-4.5"
-              className="mt-1.5 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
-            />
-            <div className="mt-2 flex flex-wrap items-end gap-2">
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <StatLabel>
-                    <label htmlFor="llm-add-suggest-append">Add from LiteLLM catalog</label>
-                  </StatLabel>
-                  <label className="sr-only" htmlFor="llm-add-catalog-mode">
-                    LiteLLM catalog scope
-                  </label>
-                  <select
-                    id="llm-add-catalog-mode"
-                    value={liteCatalogMode}
-                    onChange={(e) =>
-                      setLiteCatalogMode(e.target.value as 'chat' | 'embedding')
-                    }
-                    className="rounded-md border border-zinc-800 bg-zinc-950/60 px-2 py-1 font-mono text-[11px] text-zinc-200 outline-none focus:border-zinc-600"
-                  >
-                    <option value="chat">Chat models</option>
-                    <option value="embedding">Embedding models</option>
-                  </select>
-                </div>
-                <LlmModelSuggestInput
-                  id="llm-add-suggest-append"
-                  listId="llm-add-suggest-append-dl"
-                  value={suggestAppend}
-                  onChange={setSuggestAppend}
-                  providerId={normalizeProviderId(providerId) || undefined}
-                  litellmProvider={
-                    litellmSlug.trim() || normalizeProviderId(providerId) || undefined
-                  }
-                  mode={liteCatalogMode}
-                  prefetch={open}
-                  minChars={0}
-                  placeholder="Search models, then append"
-                  className="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
-                />
-              </div>
-              <Btn
-                type="button"
-                className="mb-0.5 shrink-0"
-                onClick={() => {
-                  const id = suggestAppend.trim()
-                  if (!id) return
-                  setModelsText((t) => appendUniqueModelId(t, id))
-                  setModelKindsText((k) => {
-                    const nextModels = appendUniqueModelId(modelsText, id)
-                    const modelCount = parseModelIds(nextModels).length
-                    const parts = k.split(/[,\n]+/).map((s) => s.trim()).filter(Boolean)
-                    while (parts.length < modelCount - 1) {
-                      parts.push('chat')
-                    }
-                    parts.push(liteCatalogMode === 'embedding' ? 'embedding' : 'chat')
-                    return parts.join(', ')
-                  })
-                  setSuggestAppend('')
-                }}
-              >
-                Append
-              </Btn>
-            </div>
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <div className="min-w-0 flex-1">
-                <StatLabel>
-                  <label htmlFor="llm-add-context-tokens">Max context tokens (optional)</label>
-                </StatLabel>
-              </div>
-              <LlmFormFieldHint
-                ariaLabel="Max context tokens manual override"
-                content={ADD_PROVIDER_CONTEXT_TOKENS_HELP}
-              />
-            </div>
-            <textarea
-              id="llm-add-context-tokens"
-              value={contextTokensText}
-              onChange={(e) => setContextTokensText(e.target.value)}
-              rows={2}
-              spellCheck={false}
-              placeholder="Comma-aligned with model list; leave blank to let LiteLLM fill on save"
-              className="mt-1.5 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
-            />
-          </div>
-          <div>
-            <StatLabel>
-              <label htmlFor="llm-add-model-kinds">Model kinds (optional)</label>
-            </StatLabel>
-            <p className="mt-0.5 text-[10px] text-zinc-500">
-              Comma-aligned with model list: <span className="font-mono text-zinc-400">chat</span> or{' '}
-              <span className="font-mono text-zinc-400">embedding</span>. Leave empty for all chat.
-            </p>
-            <textarea
-              id="llm-add-model-kinds"
-              value={modelKindsText}
-              onChange={(e) => setModelKindsText(e.target.value)}
-              rows={2}
-              spellCheck={false}
-              placeholder="e.g. chat, chat, embedding"
-              className="mt-1.5 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
-            />
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <div className="min-w-0 flex-1">
-                <StatLabel>
-                  <label htmlFor="llm-add-provider-litellm-slug">LiteLLM provider slug (optional)</label>
-                </StatLabel>
-              </div>
-              <LlmFormFieldHint
-                ariaLabel="LiteLLM provider slug and prefix"
-                content={ADD_PROVIDER_LITELLM_SLUG_HELP}
-              />
-            </div>
-            <input
-              id="llm-add-provider-litellm-slug"
-              value={litellmSlug}
-              onChange={(e) => setLitellmSlug(e.target.value)}
-              autoComplete="off"
-              placeholder="e.g. moonshot (when model list uses short ids)"
-              className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
-            />
-          </div>
-          <div>
-            <StatLabel>
-              <label htmlFor="llm-add-provider-api-base">API base URL (optional)</label>
-            </StatLabel>
-            <input
-              id="llm-add-provider-api-base"
-              value={apiBaseUrl}
-              onChange={(e) => setApiBaseUrl(e.target.value)}
-              autoComplete="off"
-              placeholder="https://api.example.com/v1"
-              title="Optional. When set, chat completions use this host for this provider when a per-provider key is configured; otherwise falls back to Tool settings."
-              className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
-            />
-          </div>
-          <div>
-            <StatLabel>
-              <label htmlFor="llm-add-provider-llm-key">API key (optional)</label>
-            </StatLabel>
-            <input
-              id="llm-add-provider-llm-key"
-              type="password"
-              value={llmApiKey}
-              onChange={(e) => setLlmApiKey(e.target.value)}
-              autoComplete="off"
-              placeholder="Per-provider OpenAI-compatible secret"
-              className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
-            />
-          </div>
-          <label
-            className="flex items-center gap-2 text-[12px] text-zinc-400"
-            title="After registering, run Test on this row until it shows connected; then edit to mark as default."
-          >
-            <input
-              type="checkbox"
-              checked={false}
-              disabled
-              aria-disabled="true"
-              className="rounded border-zinc-600 bg-zinc-950 opacity-60"
-            />
-            Mark as default provider for routing hints
-          </label>
-          </div>
-        </div>
-        <div className="shrink-0 border-t border-zinc-800/80 px-5 pb-5 pt-4">
-          {errText ? (
-            <p className="mb-3 text-[12px] text-rose-300" role="alert">
-              {errText}
-            </p>
-          ) : null}
-          <div className="flex justify-end gap-2">
-            <Btn type="button" onClick={onClose} disabled={isPending}>
-              Cancel
-            </Btn>
-            <Btn
-              type="button"
-              tone="primary"
-              style={{ background: ADMIN_CONSOLE_ACCENT }}
-              disabled={
-                isPending ||
-                !normalizeProviderId(providerId) ||
-                parseModelIds(modelsText).length === 0
-              }
-              onClick={submit}
-            >
-              {isPending ? 'Saving…' : 'Register provider'}
-            </Btn>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function buildPolicyRows(
   providers: LlmProviderRegistryRow[],
   existing: StudioLlmPolicyRow[] | undefined,
@@ -889,394 +574,6 @@ function buildStudioPolicyRows(
   return [...built, ...preserved]
 }
 
-function EditProviderModal({
-  provider,
-  onClose,
-  isPending,
-  isDeletePending,
-  error,
-  onSave,
-  onDelete,
-}: {
-  provider: LlmProviderRegistryRow | null
-  onClose: () => void
-  isPending: boolean
-  isDeletePending: boolean
-  error?: unknown
-  onSave: (args: { providerId: string; body: LlmProviderUpsertBody }) => void
-  onDelete: (providerId: string) => void
-}): ReactElement | null {
-  const [modelsText, setModelsText] = useState('')
-  const [contextTokensText, setContextTokensText] = useState('')
-  const [modelKindsText, setModelKindsText] = useState('')
-  const [apiBaseUrl, setApiBaseUrl] = useState('')
-  const [llmApiKey, setLlmApiKey] = useState('')
-  const [clearLlmKey, setClearLlmKey] = useState(false)
-  const [disabled, setDisabled] = useState(false)
-  const [isDefault, setIsDefault] = useState(false)
-  const [litellmSlug, setLitellmSlug] = useState('')
-  const [suggestAppend, setSuggestAppend] = useState('')
-  const [liteCatalogMode, setLiteCatalogMode] = useState<'chat' | 'embedding'>('chat')
-
-  useEffect(() => {
-    if (!provider) return
-    setModelsText(modelIdsFromEntries(provider.models).join(', '))
-    setContextTokensText(formatContextTokensCsv(provider.models))
-    setModelKindsText(formatModelKindsCsv(provider.models))
-    setApiBaseUrl(provider.api_base_url ?? '')
-    setLlmApiKey('')
-    setClearLlmKey(false)
-    setLitellmSlug(provider.litellm_provider_slug ?? '')
-    setSuggestAppend('')
-    setLiteCatalogMode('chat')
-    setDisabled(provider.status === 'disabled')
-    setIsDefault(provider.is_default)
-  }, [provider])
-
-  if (!provider) {
-    return null
-  }
-
-  const submit = (): void => {
-    const models = buildModelEntriesFromForm(modelsText, contextTokensText, modelKindsText)
-    if (models.length === 0) {
-      return
-    }
-    const body: LlmProviderUpsertBody = {
-      models,
-      api_base_url: apiBaseUrl.trim() || null,
-      is_default: isDefault,
-      sort_order: provider.sort_order,
-      litellm_provider_slug: litellmSlug.trim() || null,
-      disabled,
-    }
-    if (clearLlmKey) {
-      body.llm_api_key = ''
-    } else if (llmApiKey.trim()) {
-      body.llm_api_key = llmApiKey.trim()
-    }
-    onSave({ providerId: provider.provider_id, body })
-  }
-
-  const handleDeleteClick = (): void => {
-    if (provider.status === 'connected') {
-      const ok = window.confirm(
-        'This provider is connected. Delete it from the registry? Studio LLM policy and routing may reference this row.',
-      )
-      if (!ok) return
-    }
-    onDelete(provider.provider_id)
-  }
-
-  const errText =
-    error !== undefined && error !== null ? formatProviderMutationErr(error) : null
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-      role="presentation"
-      onClick={onClose}
-    >
-      <div
-        role="dialog"
-        aria-modal
-        aria-labelledby="llm-edit-provider-title"
-        className="flex max-h-[min(90vh,calc(100dvh-2rem))] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="shrink-0 px-5 pt-5">
-          <h2 id="llm-edit-provider-title" className="text-[15px] font-medium text-zinc-100">
-            Edit LLM provider
-          </h2>
-          <p className="mt-1 text-[12px] text-zinc-500">
-            Update registry metadata for{' '}
-            <span className="font-mono text-zinc-400">{provider.provider_id}</span>. Per-provider API
-            keys are optional; leave blank to keep the stored key, or use remove to fall back to{' '}
-            <Link className="text-violet-400 hover:underline" to="/admin/settings">
-              Platform settings · LLM keys
-            </Link>
-            .
-          </p>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">
-          <div className="space-y-3">
-          <div>
-            <StatLabel>Provider ID</StatLabel>
-            <input
-              readOnly
-              value={provider.provider_id}
-              className="mt-1.5 w-full cursor-not-allowed rounded-md border border-zinc-800 bg-zinc-900/50 px-3 py-2 font-mono text-[12px] text-zinc-400 outline-none"
-            />
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <div className="min-w-0 flex-1">
-                <StatLabel>
-                  <label htmlFor="llm-edit-provider-models">Model IDs</label>
-                </StatLabel>
-              </div>
-              <LlmFormFieldHint
-                ariaLabel="Model ID format and LiteLLM catalog"
-                content={ADD_PROVIDER_MODEL_IDS_HELP}
-              />
-            </div>
-            <textarea
-              id="llm-edit-provider-models"
-              value={modelsText}
-              onChange={(e) => setModelsText(e.target.value)}
-              rows={2}
-              spellCheck={false}
-              className="mt-1.5 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
-            />
-            <div className="mt-2 flex flex-wrap items-end gap-2">
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <StatLabel>
-                    <label htmlFor="llm-edit-suggest-append">Add from LiteLLM catalog</label>
-                  </StatLabel>
-                  <label className="sr-only" htmlFor="llm-edit-catalog-mode">
-                    LiteLLM catalog scope
-                  </label>
-                  <select
-                    id="llm-edit-catalog-mode"
-                    value={liteCatalogMode}
-                    onChange={(e) =>
-                      setLiteCatalogMode(e.target.value as 'chat' | 'embedding')
-                    }
-                    className="rounded-md border border-zinc-800 bg-zinc-950/60 px-2 py-1 font-mono text-[11px] text-zinc-200 outline-none focus:border-zinc-600"
-                  >
-                    <option value="chat">Chat models</option>
-                    <option value="embedding">Embedding models</option>
-                  </select>
-                </div>
-                <LlmModelSuggestInput
-                  id="llm-edit-suggest-append"
-                  listId="llm-edit-suggest-append-dl"
-                  value={suggestAppend}
-                  onChange={setSuggestAppend}
-                  providerId={provider.provider_id}
-                  litellmProvider={
-                    litellmSlug.trim() || provider.provider_id || undefined
-                  }
-                  mode={liteCatalogMode}
-                  prefetch
-                  minChars={0}
-                  placeholder="Search models, then append"
-                  className="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
-                />
-              </div>
-              <Btn
-                type="button"
-                className="mb-0.5 shrink-0"
-                onClick={() => {
-                  const id = suggestAppend.trim()
-                  if (!id) return
-                  setModelsText((t) => appendUniqueModelId(t, id))
-                  setModelKindsText((k) => {
-                    const nextModels = appendUniqueModelId(modelsText, id)
-                    const modelCount = parseModelIds(nextModels).length
-                    const parts = k.split(/[,\n]+/).map((s) => s.trim()).filter(Boolean)
-                    while (parts.length < modelCount - 1) {
-                      parts.push('chat')
-                    }
-                    parts.push(liteCatalogMode === 'embedding' ? 'embedding' : 'chat')
-                    return parts.join(', ')
-                  })
-                  setSuggestAppend('')
-                }}
-              >
-                Append
-              </Btn>
-            </div>
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <div className="min-w-0 flex-1">
-                <StatLabel>
-                  <label htmlFor="llm-edit-context-tokens">Max context tokens (optional)</label>
-                </StatLabel>
-              </div>
-              <LlmFormFieldHint
-                ariaLabel="Max context tokens manual override"
-                content={ADD_PROVIDER_CONTEXT_TOKENS_HELP}
-              />
-            </div>
-            <textarea
-              id="llm-edit-context-tokens"
-              value={contextTokensText}
-              onChange={(e) => setContextTokensText(e.target.value)}
-              rows={2}
-              spellCheck={false}
-              placeholder="Comma-aligned with model list; leave blank to let LiteLLM fill on save"
-              className="mt-1.5 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
-            />
-          </div>
-          <div>
-            <StatLabel>
-              <label htmlFor="llm-edit-model-kinds">Model kinds (optional)</label>
-            </StatLabel>
-            <p className="mt-0.5 text-[10px] text-zinc-500">
-              Comma-aligned: <span className="font-mono text-zinc-400">chat</span> or{' '}
-              <span className="font-mono text-zinc-400">embedding</span>. Leave empty for all chat.
-            </p>
-            <textarea
-              id="llm-edit-model-kinds"
-              value={modelKindsText}
-              onChange={(e) => setModelKindsText(e.target.value)}
-              rows={2}
-              spellCheck={false}
-              placeholder="e.g. chat, embedding"
-              className="mt-1.5 w-full resize-y rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
-            />
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <div className="min-w-0 flex-1">
-                <StatLabel>
-                  <label htmlFor="llm-edit-provider-litellm-slug">LiteLLM provider slug (optional)</label>
-                </StatLabel>
-              </div>
-              <LlmFormFieldHint
-                ariaLabel="LiteLLM provider slug and prefix"
-                content={ADD_PROVIDER_LITELLM_SLUG_HELP}
-              />
-            </div>
-            <input
-              id="llm-edit-provider-litellm-slug"
-              value={litellmSlug}
-              onChange={(e) => setLitellmSlug(e.target.value)}
-              autoComplete="off"
-              placeholder="e.g. moonshot"
-              className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
-            />
-          </div>
-          <div>
-            <StatLabel>
-              <label htmlFor="llm-edit-provider-api-base">API base URL (optional)</label>
-            </StatLabel>
-            <input
-              id="llm-edit-provider-api-base"
-              value={apiBaseUrl}
-              onChange={(e) => setApiBaseUrl(e.target.value)}
-              autoComplete="off"
-              title="Optional. When set, chat completions use this host for this provider when a per-provider key is configured; otherwise falls back to Tool settings."
-              className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
-            />
-          </div>
-          <div>
-            <StatLabel>Stored API key</StatLabel>
-            <p className="mt-1 text-[12px] text-zinc-400">
-              {provider.llm_api_key_set ? (
-                <>
-                  <span className="text-emerald-400/90">Stored</span>
-                  {provider.llm_api_key_hint ? (
-                    <span className="ml-1 font-mono text-zinc-300">{provider.llm_api_key_hint}</span>
-                  ) : null}
-                </>
-              ) : (
-                <span className="text-zinc-500">None — uses Tool settings fallback</span>
-              )}
-            </p>
-            <div className="mt-3">
-              <StatLabel>
-                <label htmlFor="llm-edit-provider-llm-key">New API key (optional)</label>
-              </StatLabel>
-            </div>
-            <input
-              id="llm-edit-provider-llm-key"
-              type="password"
-              value={llmApiKey}
-              onChange={(e) => {
-                setLlmApiKey(e.target.value)
-                setClearLlmKey(false)
-              }}
-              autoComplete="off"
-              placeholder="Leave blank to keep current key"
-              className="mt-1.5 w-full rounded-md border border-zinc-800 bg-zinc-950/60 px-3 py-2 font-mono text-[11.5px] text-zinc-100 outline-none focus:border-zinc-600"
-            />
-            <label className="mt-2 flex cursor-pointer items-center gap-2 text-[12px] text-zinc-400">
-              <input
-                type="checkbox"
-                checked={clearLlmKey}
-                onChange={(e) => {
-                  setClearLlmKey(e.target.checked)
-                  if (e.target.checked) setLlmApiKey('')
-                }}
-                className="rounded border-zinc-600 bg-zinc-950"
-              />
-              Remove stored API key for this provider
-            </label>
-          </div>
-          <label className="flex cursor-pointer items-center gap-2 text-[12px] text-zinc-300">
-            <input
-              type="checkbox"
-              checked={disabled}
-              onChange={(e) => setDisabled(e.target.checked)}
-              className="rounded border-zinc-600 bg-zinc-950"
-            />
-            Disable this provider (excluded from studio policy and routing until re-enabled)
-          </label>
-          <label
-            className={`flex items-center gap-2 text-[12px] text-zinc-300 ${
-              provider.status === 'connected' ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'
-            }`}
-            title={
-              provider.status === 'connected'
-                ? undefined
-                : 'Only a connected provider can be the platform default. Run Test until status is connected.'
-            }
-          >
-            <input
-              type="checkbox"
-              checked={isDefault}
-              disabled={provider.status !== 'connected'}
-              onChange={(e) => setIsDefault(e.target.checked)}
-              className="rounded border-zinc-600 bg-zinc-950 disabled:opacity-60"
-            />
-            Mark as default provider for routing hints
-          </label>
-          </div>
-        </div>
-        <div className="shrink-0 border-t border-zinc-800/80 px-5 pb-5 pt-4">
-          {errText ? (
-            <p className="mb-3 text-[12px] text-rose-300" role="alert">
-              {errText}
-            </p>
-          ) : null}
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <Btn
-              type="button"
-              tone="danger"
-              disabled={isPending || isDeletePending}
-              onClick={handleDeleteClick}
-            >
-              {isDeletePending ? 'Deleting…' : 'Delete provider'}
-            </Btn>
-            <div className="flex flex-wrap justify-end gap-2">
-              <Btn type="button" onClick={onClose} disabled={isPending || isDeletePending}>
-                Cancel
-              </Btn>
-              <Btn
-                type="button"
-                tone="primary"
-                style={{ background: ADMIN_CONSOLE_ACCENT }}
-                disabled={
-                  isPending ||
-                  isDeletePending ||
-                  parseModelIds(modelsText).length === 0
-                }
-                onClick={submit}
-              >
-                {isPending ? 'Saving…' : 'Save changes'}
-              </Btn>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 export function LlmSection(): ReactElement {
   const qc = useQueryClient()
   const [studioId, setStudioId] = useState('')
@@ -1303,6 +600,11 @@ export function LlmSection(): ReactElement {
   const routingQ = useQuery({
     queryKey: ['admin', 'llm', 'routing'],
     queryFn: () => getAdminLlmRouting(),
+  })
+
+  const routingBucketsQ = useQuery({
+    queryKey: ['admin', 'llm', 'routing-buckets'],
+    queryFn: () => getAdminLlmRoutingBuckets(),
   })
 
   const [routingDraft, setRoutingDraft] = useState<LlmRoutingRuleRow[]>([])
@@ -1905,7 +1207,10 @@ export function LlmSection(): ReactElement {
             <>
               {sortRoutingRules(routingDraft).map((r) => {
                 const rowCatalogMode = r.use_case === 'embeddings' ? 'embedding' : 'chat'
-                const agentsSummary = routingBucketAgentsSummary(r.use_case)
+                const agentsSummary = routingBucketAgentsSummary(
+                  r.use_case,
+                  routingBucketsQ.data,
+                )
                 const bucketTitle = routingBucketTitle(r.use_case)
                 return (
                 <div
@@ -2030,13 +1335,15 @@ export function LlmSection(): ReactElement {
         onClose={() => setRoutingModalOpen(false)}
         blockedUseCasesCsv={blockedRoutingUseCasesCsv}
         registryScopeSlug={routingRegistryScope}
+        bucketsPayload={routingBucketsQ.data}
         onAdd={(row) => {
           setRoutingDraft((prev) =>
             sortRoutingRules([...prev.filter((x) => x.use_case !== row.use_case), row]),
           )
         }}
       />
-      <AddProviderModal
+      <ProviderUpsertModal
+        mode="create"
         open={addOpen}
         onClose={() => {
           setAddOpen(false)
@@ -2045,8 +1352,12 @@ export function LlmSection(): ReactElement {
         isPending={addProvider.isPending}
         error={addProvider.isError ? addProvider.error : undefined}
         onRegister={(args) => addProvider.mutate(args)}
+        modelIdsHelp={ADD_PROVIDER_MODEL_IDS_HELP}
+        contextTokensHelp={ADD_PROVIDER_CONTEXT_TOKENS_HELP}
+        litellmSlugHelp={ADD_PROVIDER_LITELLM_SLUG_HELP}
       />
-      <EditProviderModal
+      <ProviderUpsertModal
+        mode="edit"
         provider={editingProvider}
         onClose={() => {
           setEditingProvider(null)
@@ -2074,6 +1385,9 @@ export function LlmSection(): ReactElement {
           updateRegistry.mutate({ key: providerId, body })
         }
         onDelete={(id) => deleteRegistry.mutate(id)}
+        modelIdsHelp={ADD_PROVIDER_MODEL_IDS_HELP}
+        contextTokensHelp={ADD_PROVIDER_CONTEXT_TOKENS_HELP}
+        litellmSlugHelp={ADD_PROVIDER_LITELLM_SLUG_HELP}
       />
     </div>
   )

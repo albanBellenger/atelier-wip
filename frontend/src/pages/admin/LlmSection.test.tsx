@@ -7,12 +7,27 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as api from '../../services/api'
 import { LlmSection } from './LlmSection'
 
+const MOCK_ROUTING_BUCKETS: api.AdminLlmRoutingBucketsResponse = {
+  bucket_order: ['chat', 'code_gen', 'classification', 'embeddings'],
+  buckets: [
+    { use_case: 'chat', call_sources: ['chat'] },
+    { use_case: 'code_gen', call_sources: ['work_order_gen'] },
+    { use_case: 'classification', call_sources: ['drift'] },
+    { use_case: 'embeddings', call_sources: ['embedding'] },
+  ],
+  embeddings_match: 'substring',
+  embeddings_substring: 'embed',
+  embeddings_routing_note: 'Substring routing.',
+  chat_default_note: 'Other agents default to chat.',
+}
+
 describe('LlmSection', () => {
   beforeEach(() => {
     vi.spyOn(api, 'getAdminLlmModelSuggestions').mockResolvedValue({
       models: [],
       warning: null,
     })
+    vi.spyOn(api, 'getAdminLlmRoutingBuckets').mockResolvedValue(MOCK_ROUTING_BUCKETS)
   })
 
   afterEach(() => {
@@ -75,6 +90,11 @@ describe('LlmSection', () => {
     await user.click(screen.getByRole('button', { name: /add provider/i }))
 
     const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getAllByText(/LLM_NOT_CONFIGURED/i).length).toBeGreaterThan(0)
+    expect(within(dialog).getByLabelText(/^API base URL \(optional\)/i)).toHaveAttribute(
+      'title',
+      expect.stringContaining('https://api.openai.com/v1'),
+    )
     expect(within(dialog).queryByText(/Short ids are fine if LiteLLM/i)).not.toBeInTheDocument()
     expect(within(dialog).queryByText(/Non-empty values mark that position/i)).not.toBeInTheDocument()
     expect(within(dialog).queryByText(/If empty, the provider ID is used/i)).not.toBeInTheDocument()
@@ -88,14 +108,14 @@ describe('LlmSection', () => {
       }),
     ).toBeInTheDocument()
 
-    await user.type(screen.getByLabelText(/^Provider ID/i), 'acme')
-    await user.type(screen.getByLabelText(/^Model IDs/i), 'model-a, model-b')
+    await user.type(within(dialog).getByLabelText(/^Provider ID/i), 'acme')
+    await user.type(within(dialog).getByLabelText(/^Model IDs/i), 'model-a, model-b')
     await user.type(
-      screen.getByLabelText(/^API base URL \(optional\)/i),
+      within(dialog).getByLabelText(/^API base URL \(optional\)/i),
       'https://api.example.com/v1',
     )
 
-    await user.click(screen.getByRole('button', { name: /^Register provider$/i }))
+    await user.click(within(dialog).getByRole('button', { name: /^Register provider$/i }))
 
     await waitFor(() => {
       expect(putSpy).toHaveBeenCalledWith(
@@ -411,6 +431,7 @@ describe('LlmSection', () => {
     await user.click(screen.getByRole('button', { name: /^edit$/i }))
 
     const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getAllByText(/None — requests that use this row fail with/i).length).toBeGreaterThan(0)
     await user.click(within(dialog).getByRole('button', { name: /delete provider/i }))
 
     await waitFor(() => {

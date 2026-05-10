@@ -18,6 +18,7 @@ import {
   getHostedEnvironment,
   hostedEnvironmentLabel,
 } from '../lib/hostedEnvironment'
+import { adminConsolePath } from '../lib/adminConsoleNav'
 import { useStudioAccess } from '../hooks/useStudioAccess'
 import { APP_VERSION } from '../version'
 import {
@@ -944,14 +945,14 @@ export function WorkOrdersPage(): ReactElement {
                   {apiErrorCode(genMut.error) === 'LLM_NOT_CONFIGURED' ||
                   apiErrorCode(genMut.error) === 'LLM_PROVIDER_UNSUPPORTED' ? (
                     <p className="mt-2 text-xs text-zinc-400">
-                      Configure the LLM (provider, model, API key) in{' '}
+                      Add LLM provider credentials and models in{' '}
                       <Link
-                        to="/admin/settings"
+                        to={adminConsolePath('llm')}
                         className="text-violet-400 underline"
                       >
-                        Admin settings
-                      </Link>
-                      . For generation, use{' '}
+                        Admin Console · LLM
+                      </Link>{' '}
+                      (registry rows only). For generation, use{' '}
                       <span className="font-mono">openai</span> or leave provider
                       empty.
                     </p>
@@ -1018,14 +1019,14 @@ export function WorkOrdersPage(): ReactElement {
                   {apiErrorCode(dedupeAnalyzeMut.error) === 'LLM_NOT_CONFIGURED' ||
                   apiErrorCode(dedupeAnalyzeMut.error) === 'LLM_PROVIDER_UNSUPPORTED' ? (
                     <p className="mt-2 text-xs text-zinc-400">
-                      Configure the LLM in{' '}
+                      Add LLM provider credentials in{' '}
                       <Link
-                        to="/admin/settings"
+                        to={adminConsolePath('llm')}
                         className="text-violet-400 underline"
                       >
-                        Admin settings
-                      </Link>
-                      .
+                        Admin Console · LLM
+                      </Link>{' '}
+                      (registry rows only).
                     </p>
                   ) : null}
                 </div>

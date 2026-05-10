@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -122,6 +123,24 @@ class LlmRoutingRuleUpdate(BaseModel):
     rules: list[LlmRoutingRuleResponse]
 
 
+class LlmRoutingBucketInventoryRow(BaseModel):
+    """Known call_source strings routed into one routing bucket (plus metadata below)."""
+
+    use_case: str
+    call_sources: list[str]
+
+
+class LlmRoutingBucketsResponse(BaseModel):
+    """Canonical routing bucket inventory for the Tool Admin LLM UI."""
+
+    bucket_order: list[str]
+    buckets: list[LlmRoutingBucketInventoryRow]
+    embeddings_match: Literal["substring"]
+    embeddings_substring: str
+    embeddings_routing_note: str
+    chat_default_note: str
+
+
 class LlmModelSuggestionItem(BaseModel):
     """Single model id suggestion for Tool Admin pickers (no secrets)."""
 
@@ -196,29 +215,6 @@ class AdminEmbeddingLibraryStudioResponse(BaseModel):
     embedded_artifact_count: int
     artifact_vector_chunks: int
     section_vector_chunks: int
-
-
-class EmbeddingModelRegistryResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    model_id: str
-    provider_name: str
-    dim: int
-    cost_per_million_usd: Decimal | None
-    region: str | None
-    default_role: str | None
-    litellm_provider_slug: str | None = None
-
-
-class EmbeddingModelRegistryUpdate(BaseModel):
-    model_id: str = Field(min_length=1, max_length=256)
-    provider_name: str = Field(min_length=1, max_length=128)
-    dim: int = Field(ge=1, le=16384)
-    cost_per_million_usd: Decimal | None = None
-    region: str | None = None
-    default_role: str | None = None
-    litellm_provider_slug: str | None = Field(default=None, max_length=64)
 
 
 class EmbeddingReindexPolicyResponse(BaseModel):

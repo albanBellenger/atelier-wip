@@ -195,8 +195,11 @@ export function AdminConsolePage(): ReactElement {
             <Outlet />
             <footer className="mt-16 flex flex-wrap items-center justify-between gap-2 border-t border-zinc-800/60 pt-6 text-[11px] text-zinc-600">
               <span>Atelier · Admin console</span>
-              <Link className="font-mono text-zinc-400 hover:text-zinc-200" to="/admin/settings">
-                Tool settings · LLM keys
+              <Link
+                className="font-mono text-zinc-400 hover:text-zinc-200"
+                to={adminConsolePath('llm')}
+              >
+                Admin Console · LLM
               </Link>
             </footer>
           </div>

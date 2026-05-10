@@ -70,11 +70,11 @@ export function AdminSettingsPage(): ReactElement {
           <Link to="/admin/console" className="text-zinc-400 hover:text-zinc-200">
             Admin console
           </Link>
-          <Link to="/admin/cross-studio" className="text-zinc-400 hover:text-zinc-200">
-            Cross-studio
+          <Link to={adminConsolePath('studios')} className="text-zinc-400 hover:text-zinc-200">
+            Studios
           </Link>
-          <Link to="/admin/token-usage" className="text-zinc-400 hover:text-zinc-200">
-            Token usage
+          <Link to="/me/token-usage" className="text-zinc-400 hover:text-zinc-200">
+            My token usage
           </Link>
         </div>
         <h1 className="text-2xl font-semibold">Platform admin shortcuts</h1>

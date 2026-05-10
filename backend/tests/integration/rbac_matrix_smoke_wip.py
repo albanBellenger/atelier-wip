@@ -149,7 +149,7 @@ async def _home_studio_graph(
 
 
 @pytest.mark.asyncio
-async def test_tool_admin_only_embedding_config(
+async def test_tool_admin_only_embedding_library(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
     """Tool admin gate does not depend on registration ordering."""
@@ -162,11 +162,11 @@ async def test_tool_admin_only_embedding_config(
     await db_session.flush()
 
     client.cookies.set("atelier_token", create_access_token(admin.id))
-    ok = await client.get("/admin/embedding-config")
+    ok = await client.get("/admin/embeddings/library")
     assert ok.status_code == 200
 
     client.cookies.set("atelier_token", create_access_token(member.id))
-    denied = await client.get("/admin/embedding-config")
+    denied = await client.get("/admin/embeddings/library")
     assert denied.status_code == 403
 
 

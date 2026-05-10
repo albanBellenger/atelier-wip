@@ -488,34 +488,7 @@ export async function putStudioCrossStudioIncoming(
   )
 }
 
-// --- Platform admin embedding singleton (/admin/embedding-config) ---
-
-export interface EmbeddingAdminConfigPublic {
-  embedding_provider: string | null
-  embedding_model: string | null
-  embedding_api_base_url: string | null
-  embedding_api_key_set: boolean
-  embedding_api_key_hint?: string | null
-  embedding_dim?: number | null
-}
-
-/** Only include fields you intend to change; omitted keys are left unchanged on the server. */
-export type EmbeddingAdminConfigUpdateBody = {
-  embedding_provider?: string | null
-  embedding_model?: string | null
-  embedding_api_key?: string | null
-  embedding_api_base_url?: string | null
-}
-
-export async function getAdminEmbeddingConfig(): Promise<EmbeddingAdminConfigPublic> {
-  return request<EmbeddingAdminConfigPublic>('GET', '/admin/embedding-config')
-}
-
-export async function putAdminEmbeddingConfig(
-  body: EmbeddingAdminConfigUpdateBody,
-): Promise<EmbeddingAdminConfigPublic> {
-  return request<EmbeddingAdminConfigPublic>('PUT', '/admin/embedding-config', body)
-}
+// --- Platform admin embedding probes ---
 
 export interface AdminConnectivityResult {
   ok: boolean
@@ -749,6 +722,25 @@ export async function getAdminLlmRouting(): Promise<LlmRoutingRuleRow[]> {
   return request<LlmRoutingRuleRow[]>('GET', '/admin/llm/routing')
 }
 
+/** Canonical routing bucket inventory (aligned with backend ``llm_routing_buckets``). */
+export interface LlmRoutingBucketInventoryRow {
+  use_case: string
+  call_sources: string[]
+}
+
+export interface AdminLlmRoutingBucketsResponse {
+  bucket_order: string[]
+  buckets: LlmRoutingBucketInventoryRow[]
+  embeddings_match: 'substring'
+  embeddings_substring: string
+  embeddings_routing_note: string
+  chat_default_note: string
+}
+
+export async function getAdminLlmRoutingBuckets(): Promise<AdminLlmRoutingBucketsResponse> {
+  return request<AdminLlmRoutingBucketsResponse>('GET', '/admin/llm/routing/buckets')
+}
+
 export async function putAdminLlmRouting(body: {
   rules: LlmRoutingRuleRow[]
 }): Promise<LlmRoutingRuleRow[]> {
@@ -814,50 +806,7 @@ export async function putAdminStudioLlmPolicy(
   )
 }
 
-// --- Admin embeddings registry ---
-
-export interface EmbeddingModelRegistryRow {
-  id: string
-  model_id: string
-  provider_name: string
-  dim: number
-  cost_per_million_usd: string | null
-  region: string | null
-  default_role: string | null
-  litellm_provider_slug: string | null
-}
-
-export type EmbeddingModelUpsertBody = {
-  model_id: string
-  provider_name: string
-  dim: number
-  cost_per_million_usd?: string | null
-  region?: string | null
-  default_role?: string | null
-  litellm_provider_slug?: string | null
-}
-
-export async function getAdminEmbeddingModels(): Promise<EmbeddingModelRegistryRow[]> {
-  return request<EmbeddingModelRegistryRow[]>('GET', '/admin/embeddings/models')
-}
-
-export async function putAdminEmbeddingModel(
-  modelId: string,
-  body: EmbeddingModelUpsertBody,
-): Promise<EmbeddingModelRegistryRow> {
-  return request<EmbeddingModelRegistryRow>(
-    'PUT',
-    `/admin/embeddings/models/${encodeURIComponent(modelId)}`,
-    body,
-  )
-}
-
-export async function deleteAdminEmbeddingModel(modelId: string): Promise<void> {
-  return request<void>(
-    'DELETE',
-    `/admin/embeddings/models/${encodeURIComponent(modelId)}`,
-  )
-}
+// --- Admin embeddings (library + reindex policy) ---
 
 export interface AdminEmbeddingLibraryStudioRow {
   studio_id: string

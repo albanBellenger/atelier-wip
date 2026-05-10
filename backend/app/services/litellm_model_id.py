@@ -5,6 +5,26 @@ from __future__ import annotations
 from app.models import LlmProviderRegistry
 
 
+def _normalize_litellm_model(
+    model: str,
+    *,
+    litellm_provider_slug: str | None,
+    provider_id_fallback: str,
+    lowercase_provider_id_fallback: bool,
+) -> str:
+    """Shared prefix logic: slug from ``litellm_provider_slug``, else provider id fallback."""
+    m = (model or "").strip()
+    if not m or "/" in m:
+        return m
+    slug = (litellm_provider_slug or "").strip()
+    if not slug:
+        raw = (provider_id_fallback or "").strip()
+        slug = raw.lower() if lowercase_provider_id_fallback else raw
+    if not slug:
+        return m
+    return f"{slug}/{m}"
+
+
 def normalize_litellm_chat_model(
     model: str, *, registry_row: LlmProviderRegistry | None
 ) -> str:
@@ -20,12 +40,13 @@ def normalize_litellm_chat_model(
         return m
     if registry_row is None:
         return m
-    slug = (getattr(registry_row, "litellm_provider_slug", None) or "").strip()
-    if not slug:
-        slug = (registry_row.provider_id or "").strip()
-    if not slug:
-        return m
-    return f"{slug}/{m}"
+    slug_attr = getattr(registry_row, "litellm_provider_slug", None)
+    return _normalize_litellm_model(
+        m,
+        litellm_provider_slug=slug_attr,
+        provider_id_fallback=registry_row.provider_id or "",
+        lowercase_provider_id_fallback=False,
+    )
 
 
 def normalize_litellm_embedding_model(
@@ -35,12 +56,9 @@ def normalize_litellm_embedding_model(
     provider_name_fallback: str,
 ) -> str:
     """Prefix embedding ``model_id`` for LiteLLM when unqualified and slug/fallback exists."""
-    m = (model or "").strip()
-    if not m or "/" in m:
-        return m
-    slug = (litellm_provider_slug or "").strip()
-    if not slug:
-        slug = (provider_name_fallback or "").strip().lower()
-    if not slug:
-        return m
-    return f"{slug}/{m}"
+    return _normalize_litellm_model(
+        model,
+        litellm_provider_slug=litellm_provider_slug,
+        provider_id_fallback=provider_name_fallback,
+        lowercase_provider_id_fallback=True,
+    )

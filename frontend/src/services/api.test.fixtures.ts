@@ -152,12 +152,23 @@ function attentionCounts(): Api.AttentionCounts {
 
 /** MSW handlers for fixed ids st1 / sw1 / p1 / sec1 / art1 / wo1 / iss1 / grant1 / key1 */
 export function apiCoverageHandlers(): RequestHandler[] {
-  const adminEmb: Api.EmbeddingAdminConfigPublic = {
-    embedding_provider: null,
-    embedding_model: null,
-    embedding_api_base_url: null,
-    embedding_api_key_set: false,
-    embedding_api_key_hint: null,
+  const embeddingLibrary: Api.AdminEmbeddingLibraryStudioRow[] = [
+    {
+      studio_id: 'st-lib',
+      studio_name: 'Demo Studio',
+      artifact_count: 0,
+      embedded_artifact_count: 0,
+      artifact_vector_chunks: 0,
+      section_vector_chunks: 0,
+    },
+  ]
+
+  const reindexPolicy: Api.EmbeddingReindexPolicy = {
+    id: 1,
+    auto_reindex_trigger: 'manual',
+    debounce_seconds: 60,
+    drift_threshold_pct: '10.00',
+    retention_days: 30,
   }
 
   const connectivity: Api.AdminConnectivityResult = {
@@ -322,8 +333,15 @@ export function apiCoverageHandlers(): RequestHandler[] {
     http.get('http://api.test/auth/llm-runtime', () =>
       HttpResponse.json({ llm_provider: null, llm_model: null }),
     ),
-    http.get('http://api.test/admin/embedding-config', () => HttpResponse.json(adminEmb)),
-    http.put('http://api.test/admin/embedding-config', () => HttpResponse.json(adminEmb)),
+    http.get('http://api.test/admin/embeddings/library', () =>
+      HttpResponse.json(embeddingLibrary),
+    ),
+    http.get('http://api.test/admin/embeddings/reindex-policy', () =>
+      HttpResponse.json(reindexPolicy),
+    ),
+    http.patch('http://api.test/admin/embeddings/reindex-policy', () =>
+      HttpResponse.json(reindexPolicy),
+    ),
     http.post('http://api.test/admin/test/llm', () => HttpResponse.json(connectivity)),
     http.post('http://api.test/admin/test/embedding', () =>
       HttpResponse.json(connectivity),
@@ -562,8 +580,9 @@ export async function invokeThinApiCoverage(api: typeof import('./api')): Promis
   await api.login({ email: 'n@e.com', password: 'pw' })
   await api.logout()
   await api.getLlmRuntimeInfo()
-  await api.getAdminEmbeddingConfig()
-  await api.putAdminEmbeddingConfig({ embedding_model: null })
+  await api.getAdminEmbeddingLibrary()
+  await api.getAdminEmbeddingReindexPolicy()
+  await api.patchAdminEmbeddingReindexPolicy({})
   await api.postAdminTestLlm()
   await api.postAdminTestEmbedding()
   await api.getStudioCrossStudioIncoming('st1')

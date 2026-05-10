@@ -24,14 +24,13 @@ from app.schemas.admin_console import (
     AdminEmbeddingLibraryStudioResponse,
     AdminStudioDetailResponse,
     AdminUserDirectoryRowResponse,
-    EmbeddingModelRegistryResponse,
-    EmbeddingModelRegistryUpdate,
     EmbeddingReindexPolicyResponse,
     EmbeddingReindexPolicyUpdate,
     LlmDeploymentResponse,
     LlmModelSuggestionsResponse,
     LlmProviderRegistryResponse,
     LlmProviderRegistryUpdate,
+    LlmRoutingBucketsResponse,
     LlmRoutingRuleResponse,
     LlmRoutingRuleUpdate,
     StudioGitLabResponse,
@@ -52,6 +51,7 @@ from app.services.embedding_pipeline import (
 from app.services.embedding_service import embedding_platform_resolvable
 from app.services.llm_connectivity_service import LlmConnectivityService
 from app.services.llm_model_suggestions_service import LlmModelSuggestionsService
+from app.services.llm_routing_buckets import build_llm_routing_buckets_response
 from app.services.studio_service import StudioService
 from app.services.studio_tool_admin_service import StudioToolAdminService
 
@@ -257,6 +257,13 @@ async def get_llm_model_suggestions(
     )
 
 
+@router.get("/llm/routing/buckets", response_model=LlmRoutingBucketsResponse)
+async def get_llm_routing_buckets(
+    _: User = Depends(require_platform_admin),
+) -> LlmRoutingBucketsResponse:
+    return build_llm_routing_buckets_response()
+
+
 @router.get("/llm/routing", response_model=list[LlmRoutingRuleResponse])
 async def get_llm_routing(
     session: AsyncSession = Depends(get_db),
@@ -326,36 +333,6 @@ async def list_embedding_library_overview(
     _: User = Depends(require_platform_admin),
 ) -> list[AdminEmbeddingLibraryStudioResponse]:
     return await EmbeddingAdminService(session).library_overview()
-
-
-# Optional metadata catalog only (no runtime embedding resolution). Admin UI retired;
-# configure production embedding model IDs via LLM provider registry + embeddings routing rule.
-@router.get("/embeddings/models", response_model=list[EmbeddingModelRegistryResponse])
-async def list_embedding_models(
-    session: AsyncSession = Depends(get_db),
-    _: User = Depends(require_platform_admin),
-) -> list[EmbeddingModelRegistryResponse]:
-    return await EmbeddingAdminService(session).list_models()
-
-
-@router.put("/embeddings/models/{model_id}", response_model=EmbeddingModelRegistryResponse)
-async def upsert_embedding_model(
-    model_id: str,
-    body: EmbeddingModelRegistryUpdate,
-    session: AsyncSession = Depends(get_db),
-    _: User = Depends(require_platform_admin),
-) -> EmbeddingModelRegistryResponse:
-    return await EmbeddingAdminService(session).upsert_model(body, model_id=model_id)
-
-
-@router.delete("/embeddings/models/{model_id}", status_code=204)
-async def delete_embedding_model(
-    model_id: str,
-    session: AsyncSession = Depends(get_db),
-    _: User = Depends(require_platform_admin),
-) -> Response:
-    await EmbeddingAdminService(session).delete_model(model_id)
-    return Response(status_code=204)
 
 
 @router.get("/embeddings/reindex-policy", response_model=EmbeddingReindexPolicyResponse)
