@@ -25,3 +25,4 @@ dist-ssr
 
 # Vitest / v8 coverage output
 coverage
+vitest-out.txt

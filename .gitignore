@@ -41,6 +41,10 @@ coverage/
 junit*.xml
 llm-test-results.xml
 
+# Captured local pytest CLI output (PowerShell redirects, etc.; do not commit)
+pytest_out.txt
+pytest_err.txt
+
 # IDE / OS
 .idea/
 .vscode/
