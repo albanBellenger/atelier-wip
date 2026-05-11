@@ -7,6 +7,11 @@ type MeJson = {
   user: { id: string; email: string; display_name: string; is_platform_admin: boolean }
 }
 
+/** POST /admin/studios response shape (subset). */
+type AdminStudioCreateResponse = {
+  id: string
+}
+
 async function readMe(api: APIRequestContext): Promise<MeJson> {
   const r = await api.get('/auth/me')
   if (!r.ok()) {
@@ -58,22 +63,44 @@ export const test = base.extend<{ toolAdminPage: Page; nonAdminPage: Page }>({
       storageState = await request.storageState()
     }
 
+    // One studio per test so budgets (per-studio cap table) has a row; tear down so shared DBs do not accumulate junk.
+    let seededStudioId: string | null = null
     const apiSeed = await launchApiRequest.newContext({ baseURL: origin, storageState })
-    const studioName = `E2E Admin ${crypto.randomUUID().slice(0, 8)}`
-    const cr = await apiSeed.post('/admin/studios', {
-      data: { name: studioName, description: 'Playwright admin console seed' },
-    })
-    if (!cr.ok()) {
+    try {
+      const studioName = `E2E Admin ${crypto.randomUUID().slice(0, 8)}`
+      const cr = await apiSeed.post('/admin/studios', {
+        data: { name: studioName, description: 'Playwright admin console seed' },
+      })
+      if (!cr.ok()) {
+        throw new Error(`Could not seed studio for platform admin: ${cr.status()} ${await cr.text()}`)
+      }
+      const created = (await cr.json()) as AdminStudioCreateResponse
+      if (!created.id) {
+        throw new Error('Seed studio response missing id')
+      }
+      seededStudioId = created.id
+    } finally {
       await apiSeed.dispose()
-      throw new Error(`Could not seed studio for platform admin: ${cr.status()} ${await cr.text()}`)
     }
-    await apiSeed.dispose()
 
     const ctx = await browser.newContext({ storageState })
     const page = await ctx.newPage()
     try {
       await use(page)
     } finally {
+      if (seededStudioId !== null) {
+        const cleanupApi = await launchApiRequest.newContext({ baseURL: origin, storageState })
+        try {
+          const del = await cleanupApi.delete(`/admin/studios/${seededStudioId}`)
+          if (!del.ok() && del.status() !== 404) {
+            throw new Error(
+              `E2E fixture teardown: DELETE /admin/studios/${seededStudioId} failed: ${del.status()} ${await del.text()}`,
+            )
+          }
+        } finally {
+          await cleanupApi.dispose()
+        }
+      }
       await ctx.close()
     }
   },
