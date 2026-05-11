@@ -559,11 +559,45 @@ async def test_delete_room_by_room_instance(monkeypatch: pytest.MonkeyPatch) -> 
         pid, sec_id = uuid.uuid4(), uuid.uuid4()
         path = collab_room_path(pid, sec_id)
         room = await server.get_room(path)
-        monkeypatch.setattr(server, "get_room_name", lambda r: path)
         super_del = AsyncMock()
         monkeypatch.setattr(srv.WebsocketServer, "delete_room", super_del)
         await server.delete_room(room=room)
-        super_del.assert_awaited_once_with(name=None, room=room)
+        super_del.assert_awaited_once_with(name=path, room=None)
+    finally:
+        srv._collab_server = old
+
+
+@pytest.mark.asyncio
+async def test_delete_room_by_room_noop_when_room_not_registered(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    factory = MagicMock()
+    old = srv._collab_server
+    srv._collab_server = None
+    try:
+        server = srv.init_collab_server(factory, debounce_s=0.01)
+        super_del = AsyncMock()
+        monkeypatch.setattr(srv.WebsocketServer, "delete_room", super_del)
+        await server.delete_room(room=MagicMock())
+        super_del.assert_not_called()
+    finally:
+        srv._collab_server = old
+
+
+@pytest.mark.asyncio
+async def test_delete_room_by_name_noop_when_path_not_in_registry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    factory = MagicMock()
+    old = srv._collab_server
+    srv._collab_server = None
+    try:
+        server = srv.init_collab_server(factory, debounce_s=0.01)
+        super_del = AsyncMock()
+        monkeypatch.setattr(srv.WebsocketServer, "delete_room", super_del)
+        path = collab_room_path(uuid.uuid4(), uuid.uuid4())
+        await server.delete_room(name=path)
+        super_del.assert_not_called()
     finally:
         srv._collab_server = old
 

@@ -84,6 +84,8 @@ class DriftAgent:
         sec = await self.db.get(Section, section_id)
         if sec is None:
             return
+        if sec.project_id is None:
+            return
 
         project = await self.db.get(Project, sec.project_id)
         if project is None:

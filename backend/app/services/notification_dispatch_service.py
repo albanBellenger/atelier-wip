@@ -253,6 +253,33 @@ class NotificationDispatchService:
             section_id=section_id,
         )
 
+    async def software_doc_section_updated_by_other(
+        self,
+        *,
+        software_id: UUID,
+        section_id: UUID,
+        section_title: str,
+        actor_user_id: UUID,
+    ) -> int:
+        recipients = await list_software_editor_user_ids(self.db, software_id)
+        sw = await self.db.get(Software, software_id)
+        if sw is None:
+            return 0
+        studio = sw.studio_id
+        title = f"Software doc updated: {section_title}"
+        body = "Another editor changed software documentation in this section."
+        return await self.insert_many(
+            user_ids=recipients,
+            kind=NK.SECTION_UPDATED,
+            title=title,
+            body=body,
+            actor_user_id=actor_user_id,
+            studio_id=studio,
+            software_id=software_id,
+            project_id=None,
+            section_id=section_id,
+        )
+
     async def publish_commit(
         self,
         *,

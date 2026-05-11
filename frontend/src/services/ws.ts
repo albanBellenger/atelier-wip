@@ -46,6 +46,14 @@ export function collabRoomName(projectId: string, sectionId: string): string {
   return `projects/${projectId}/sections/${sectionId}/collab`
 }
 
+/** Room segment for software-wide Markdown docs (matches ``software_docs_collab_room_path`` without ``/ws`` prefix). */
+export function softwareDocCollabRoomName(
+  softwareId: string,
+  sectionId: string,
+): string {
+  return `software/${softwareId}/docs/${sectionId}/collab`
+}
+
 /** JWT for y-websocket query fallback; null if cookie unset (tests / SSR). */
 export function atelierTokenForWebSocket(): string | null {
   return readAtelierTokenFromDocument()

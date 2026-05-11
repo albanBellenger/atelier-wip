@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
 import { ArtifactExclusionPanel } from '../components/software/ArtifactExclusionPanel'
+import { CodebaseSettingsPanel } from '../components/software/CodebaseSettingsPanel'
 import { Tooltip } from '../components/ui/Tooltip'
 import { InfoCircleHelpButton } from '../components/ui/InfoCircleHelpButton'
 import { useStudioAccess } from '../hooks/useStudioAccess'
@@ -405,6 +406,11 @@ export function SoftwareSettingsPage(): ReactElement {
                 <p className="mt-3 text-sm text-zinc-400">{gitMsg}</p>
               )}
             </section>
+
+            <CodebaseSettingsPanel
+              softwareId={sfid}
+              canRequestReindex={access.canCreateProject && access.isStudioEditor}
+            />
 
             {access.isStudioAdmin && (
               <div className="mt-12 border-t border-zinc-800 pt-8">

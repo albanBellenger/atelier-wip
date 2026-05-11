@@ -23,3 +23,5 @@ minio>=7.2.0
 pypdf>=5.0.0
 llama-index-core==0.14.21
 litellm>=1.55.0,<2
+tree-sitter-languages>=1.9.0; python_version < "3.13"
+networkx>=3.2

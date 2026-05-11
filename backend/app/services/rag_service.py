@@ -68,6 +68,8 @@ class _RAGAssembly:
     rag_extra: list[str]
     outline_plain: str
     outline_trimmed: bool
+    software_docs_outline_plain: str
+    software_docs_trimmed: bool
     current_section_id: uuid.UUID | None
 
 
@@ -93,26 +95,66 @@ def _unified_chunk_fill(
     return rag_extra
 
 
-def _mandatory_parts_with_overflow(
-    def_section: str,
-    outline_section: str,
+def _mandatory_blocks_and_current_overflow(
+    mandatory_before_current: list[str],
     current_header: str,
     current_body: str,
     budget_chars: int,
 ) -> tuple[list[str], bool]:
-    """
-    If mandatory text exceeds budget, truncate current_body with a 20% prefix floor.
-    """
+    """If mandatory text exceeds budget, truncate current_body with a 20% prefix floor."""
     current_part = current_header + current_body
-    parts: list[str] = [def_section, outline_section, current_part]
+    parts: list[str] = [*mandatory_before_current, current_part]
     if sum(len(p) for p in parts) <= budget_chars:
         return parts, False
     floor = max(1, len(current_body) // 5)
-    allowed = budget_chars - len(parts[0]) - len(parts[1])
+    fixed = sum(len(p) for p in mandatory_before_current)
+    allowed = budget_chars - fixed
     allowed = max(floor, allowed)
     new_body = current_body[:allowed]
-    parts[2] = current_header + new_body
+    parts[-1] = current_header + new_body
     return parts, True
+
+
+def _trim_software_docs_and_project_outlines(
+    *,
+    def_section: str,
+    software_docs_plain: str,
+    project_outline_plain: str,
+    budget_chars: int,
+) -> tuple[str, str, bool, bool, bool]:
+    """Fit definition + software-docs outline + project outline within budget."""
+    soft_hdr = "## Software docs outline\n"
+    proj_hdr = "## Project outline\n"
+    soft_body = software_docs_plain
+    proj_body = project_outline_plain
+    parts_len = (
+        len(def_section)
+        + len(soft_hdr + soft_body)
+        + len(proj_hdr + proj_body)
+    )
+    if parts_len <= budget_chars:
+        return (
+            soft_hdr + soft_body,
+            proj_hdr + proj_body,
+            False,
+            False,
+            False,
+        )
+    remaining_pair = max(0, budget_chars - len(def_section))
+    soft_trimmed = False
+    proj_trimmed = False
+    while len(soft_hdr + soft_body) + len(proj_hdr + proj_body) > remaining_pair:
+        if len(proj_body) > 0:
+            proj_body = proj_body[:-1]
+            proj_trimmed = True
+        elif len(soft_body) > 0:
+            soft_body = soft_body[:-1]
+            soft_trimmed = True
+        else:
+            break
+    soft_block = soft_hdr + soft_body + ("\n…" if soft_trimmed else "")
+    proj_block = proj_hdr + proj_body + ("\n…" if proj_trimmed else "")
+    return soft_block, proj_block, True, soft_trimmed, proj_trimmed
 
 
 class RAGService:
@@ -236,6 +278,21 @@ class RAGService:
             .all()
         )
 
+        doc_section_rows = (
+            (
+                await self.db.execute(
+                    select(Section)
+                    .where(Section.software_id == software.id)
+                    .order_by(Section.order)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        software_docs_outline_plain = "\n".join(
+            f"- {s.title} ({s.slug})" for s in doc_section_rows
+        )
         outline = "\n".join(f"- {s.title} ({s.slug})" for s in section_rows)
 
         current_body = ""
@@ -261,32 +318,36 @@ class RAGService:
 
         def_block = await self._definition_block_for_rag(software, ctx)
         def_section = "## Software definition\n" + def_block
-        outline_section = "## Project outline\n" + outline
 
         outline_trimmed = False
+        software_docs_trimmed = False
         mandatory_truncated = False
 
+        soft_sec: str
+        proj_sec: str
+        context_was_truncated = False
+
+        soft_sec, proj_sec, pair_trunc, software_docs_trimmed, outline_trimmed = (
+            _trim_software_docs_and_project_outlines(
+                def_section=def_section,
+                software_docs_plain=software_docs_outline_plain,
+                project_outline_plain=outline,
+                budget_chars=budget_chars,
+            )
+        )
+        context_was_truncated = pair_trunc
+
         if current_section_id is None:
-            parts = [def_section, outline_section]
-            context_was_truncated = False
-            total = sum(len(p) for p in parts)
-            if total > budget_chars:
-                allowed_outline = max(0, budget_chars - len(parts[0]) - 32)
-                parts[1] = "## Project outline\n" + outline[:allowed_outline] + (
-                    "\n…" if allowed_outline < len(outline) else ""
-                )
-                context_was_truncated = True
-                outline_trimmed = allowed_outline < len(outline)
+            parts = [def_section, soft_sec, proj_sec]
         else:
             current_header = "## Current section\n"
-            parts, mandatory_truncated = _mandatory_parts_with_overflow(
-                def_section,
-                outline_section,
+            parts, mandatory_truncated = _mandatory_blocks_and_current_overflow(
+                [def_section, soft_sec, proj_sec],
                 current_header,
                 current_body,
                 budget_chars,
             )
-            context_was_truncated = mandatory_truncated
+            context_was_truncated = context_was_truncated or mandatory_truncated
 
         if include_git_history:
             remaining = budget_chars - sum(len(p) for p in parts)
@@ -332,7 +393,12 @@ class RAGService:
             sec_stmt = (
                 select(SectionChunk, Section.title, d_sec.label("d"))
                 .join(Section, SectionChunk.section_id == Section.id)
-                .where(Section.project_id == project_id)
+                .where(
+                    or_(
+                        Section.project_id == project_id,
+                        Section.software_id == software.id,
+                    )
+                )
             )
             if current_section_id:
                 sec_stmt = sec_stmt.where(
@@ -342,6 +408,26 @@ class RAGService:
             for chunk, title, d in (await self.db.execute(sec_stmt)).all():
                 chunks_meta.append(
                     (float(d), f"section:{title}:{chunk.chunk_index}", chunk.content)
+                )
+
+            d_sdoc = SectionChunk.embedding.cosine_distance(qvec)
+            sdoc_stmt = (
+                select(SectionChunk, Section.title, d_sdoc.label("d"))
+                .join(Section, SectionChunk.section_id == Section.id)
+                .where(
+                    Section.software_id == software.id,
+                    Section.project_id.is_(None),
+                )
+                .order_by(d_sdoc)
+                .limit(5)
+            )
+            for chunk, title, d in (await self.db.execute(sdoc_stmt)).all():
+                chunks_meta.append(
+                    (
+                        float(d),
+                        f"software_doc:{title}:{chunk.chunk_index}",
+                        chunk.content,
+                    )
                 )
 
             d_art = ArtifactChunk.embedding.cosine_distance(qvec)
@@ -403,6 +489,8 @@ class RAGService:
             rag_extra=rag_extra,
             outline_plain=outline,
             outline_trimmed=outline_trimmed,
+            software_docs_outline_plain=software_docs_outline_plain,
+            software_docs_trimmed=software_docs_trimmed,
             current_section_id=current_section_id,
         )
 
@@ -424,18 +512,28 @@ class RAGService:
                 truncated=soft_def_trunc,
             )
         )
+        blocks.append(
+            ContextBlockOut(
+                label="Software docs outline",
+                kind="software_docs_outline",
+                body=parts[1],
+                tokens=self._approx_tokens(parts[1]),
+                relevance=None,
+                truncated=asm.software_docs_trimmed,
+            )
+        )
         outline_trunc = asm.outline_trimmed
         blocks.append(
             ContextBlockOut(
                 label="Project outline",
                 kind="outline",
-                body=parts[1],
-                tokens=self._approx_tokens(parts[1]),
+                body=parts[2],
+                tokens=self._approx_tokens(parts[2]),
                 relevance=None,
                 truncated=outline_trunc,
             )
         )
-        idx = 2
+        idx = 3
         if asm.current_section_id is not None:
             cur_body = parts[idx]
             blocks.append(

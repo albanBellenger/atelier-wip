@@ -39,6 +39,21 @@ class Settings(BaseSettings):
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
+    codebase_index_max_files: int = Field(
+        default=5000,
+        validation_alias="ATELIER_CODEBASE_INDEX_MAX_FILES",
+    )
+    codebase_index_max_total_bytes: int = Field(
+        default=52_428_800,
+        validation_alias="ATELIER_CODEBASE_INDEX_MAX_TOTAL_BYTES",
+        description="Soft cap on total raw bytes indexed per snapshot (~50 MiB default).",
+    )
+    codebase_index_max_file_bytes: int = Field(
+        default=1_048_576,
+        validation_alias="ATELIER_CODEBASE_INDEX_MAX_FILE_BYTES",
+        description="Skip individual blobs larger than this (default 1 MiB).",
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -21,6 +21,7 @@ from app.agents.section_relationship_agent import SectionRelationshipAgent
 from app.services.git_service import commit_files
 from app.services.llm_service import LLMService
 from app.services.notification_dispatch_service import NotificationDispatchService
+from app.services.section_service import effective_section_plaintext
 
 log = structlog.get_logger("atelier.publish")
 
@@ -38,6 +39,15 @@ def _safe_section_path(root: str, s: Section) -> str:
             :80
         ] or "section"
     return f"{root}/sections/{raw}.md"
+
+
+def _safe_doc_path(root: str, s: Section) -> str:
+    raw = (s.slug or "").strip()
+    if not raw or not re.match(r"^[\w\-]+$", raw):
+        raw = re.sub(r"[^\w\-]+", "-", (s.title or "section").lower()).strip("-")[
+            :80
+        ] or "section"
+    return f"{root}/docs/{raw}.md"
 
 
 def _wo_markdown(w: WorkOrder) -> str:
@@ -105,6 +115,40 @@ class PublishService:
                 continue
             path = f"{root}/work-orders/{w.id}.md"
             files[path] = _wo_markdown(w)
+
+        docs_rows = (
+            await self.db.execute(
+                select(Section)
+                .where(
+                    Section.software_id == project.software_id,
+                    Section.project_id.is_(None),
+                )
+                .order_by(Section.order)
+            )
+        ).scalars().all()
+        if docs_rows:
+            doc_toc: list[str] = []
+            for s in docs_rows:
+                rel = _safe_doc_path(root, s)
+                files[rel] = (
+                    effective_section_plaintext(s.content, s.yjs_state).rstrip() + "\n"
+                )
+                doc_toc.append(f"| {s.title} | `{rel}` |")
+            files[f"{root}/docs/README.md"] = (
+                "\n".join(
+                    [
+                        "# Software documentation",
+                        "",
+                        "Pages published with the product specification.",
+                        "",
+                        "| Title | File |",
+                        "| --- | --- |",
+                        *doc_toc,
+                        "",
+                    ]
+                )
+                + "\n"
+            )
 
         readme = [
             f"# {project.name}",

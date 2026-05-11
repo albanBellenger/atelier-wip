@@ -24,6 +24,7 @@ import { ProjectPage } from './pages/ProjectPage'
 import { ProjectSettingsPage } from './pages/ProjectSettingsPage'
 import { SectionCopilotAliasRedirect } from './pages/SectionCopilotAliasRedirect'
 import { SectionPage } from './pages/SectionPage'
+import { SoftwareDocEditorPage } from './pages/SoftwareDocEditorPage'
 import { SoftwarePage } from './pages/SoftwarePage'
 import { SoftwareSettingsPage } from './pages/SoftwareSettingsPage'
 import { StudioPage } from './pages/StudioPage'
@@ -79,6 +80,10 @@ function App(): ReactElement {
         <Route
           path="/studios/:studioId/software/:softwareId"
           element={<SoftwarePage />}
+        />
+        <Route
+          path="/studios/:studioId/software/:softwareId/docs/:sectionId"
+          element={<SoftwareDocEditorPage />}
         />
         <Route
           path="/studios/:studioId/software/:softwareId/projects/:projectId/sections/:sectionId/copilot"

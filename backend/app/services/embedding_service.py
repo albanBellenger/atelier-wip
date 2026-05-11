@@ -175,6 +175,7 @@ class EmbeddingService:
         studio_id: UUID | None,
         usage_scope: TokenUsageScope | None = None,
         connectivity_probe: bool = False,
+        embedding_call_source: str = "embedding",
     ) -> list[list[float]]:
         """Embed ``texts`` using routing + registry credentials.
 
@@ -197,6 +198,7 @@ class EmbeddingService:
                 batch,
                 usage_scope=usage_scope,
                 enforce_platform_dimension=not connectivity_probe,
+                embedding_call_source=embedding_call_source,
             )
             out.extend(vectors)
         return out
@@ -210,6 +212,7 @@ class EmbeddingService:
         *,
         usage_scope: TokenUsageScope | None,
         enforce_platform_dimension: bool = True,
+        embedding_call_source: str = "embedding",
     ) -> list[list[float]]:
         dim_row: EmbeddingDimensionState | None = None
         if enforce_platform_dimension:
@@ -301,7 +304,7 @@ class EmbeddingService:
                 await record_usage(
                     self.db,
                     usage_scope,
-                    call_source="embedding",
+                    call_source=embedding_call_source,
                     model=model,
                     input_tokens=inp_tok,
                     output_tokens=0,

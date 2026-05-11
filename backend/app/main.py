@@ -30,6 +30,7 @@ from app.routers import (
     artifacts_by_id,
     auth,
     collab,
+    codebase,
     me_builder_composer,
     me_notifications,
     me_token_usage,
@@ -44,6 +45,7 @@ from app.routers import (
     sections,
     software,
     software_chat,
+    software_docs_sections,
     software_workspace,
     studios,
     work_orders,
@@ -188,6 +190,8 @@ def create_app() -> FastAPI:
     app.include_router(studios.router)
     app.include_router(mcp_api.router)
     app.include_router(software.router)
+    app.include_router(software_docs_sections.router)
+    app.include_router(codebase.router)
     app.include_router(software_workspace.router)
     app.include_router(projects.router)
     app.include_router(project_graph.router)

@@ -5,6 +5,7 @@ import {
   atelierTokenForWebSocket,
   collabRoomName,
   collabWebSocketBaseUrl,
+  softwareDocCollabRoomName,
   YDOC_TEXT_FIELD,
 } from '../services/ws'
 
@@ -77,6 +78,63 @@ export function useYjsCollab(
       setBundle(null)
     }
   }, [projectId, sectionId, baseUrl])
+
+  const userName = user?.name
+  const userColor = user?.color
+  const userColorLight = user?.colorLight
+
+  useEffect(() => {
+    if (!bundle || userName == null || !userColor || !userColorLight) {
+      return
+    }
+    bundle.awareness.setLocalStateField('user', {
+      name: userName,
+      color: userColor,
+      colorLight: userColorLight,
+    })
+  }, [bundle, userName, userColor, userColorLight])
+
+  return bundle
+}
+
+export function useSoftwareDocYjsCollab(
+  softwareId: string | undefined,
+  sectionId: string | undefined,
+  user: CollabUserStyle | null,
+): YjsCollab | null {
+  const [bundle, setBundle] = useState<YjsCollab | null>(null)
+
+  const baseUrl = useMemo(() => collabWebSocketBaseUrl(), [])
+
+  useEffect(() => {
+    if (!softwareId || !sectionId) {
+      setBundle(null)
+      return
+    }
+
+    const roomName = softwareDocCollabRoomName(softwareId, sectionId)
+    const ydoc = new Y.Doc()
+    const token = atelierTokenForWebSocket()
+    const provider = new WebsocketProvider(
+      baseUrl,
+      roomName,
+      ydoc,
+      {
+        connect: true,
+        ...(token ? { params: { token } } : {}),
+      },
+    )
+    const ytext = ydoc.getText(YDOC_TEXT_FIELD)
+    const { awareness } = provider
+
+    setBundle({ ydoc, provider, ytext, awareness })
+
+    return () => {
+      provider.destroy()
+      ydoc.destroy()
+      setBundle(null)
+    }
+  }, [softwareId, sectionId, baseUrl])
 
   const userName = user?.name
   const userColor = user?.color

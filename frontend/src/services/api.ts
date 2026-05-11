@@ -1812,7 +1812,8 @@ export interface SectionOutlineHealthLite {
 
 export interface Section {
   id: string
-  project_id: string
+  project_id: string | null
+  software_id: string | null
   title: string
   slug: string
   order: number
@@ -1826,6 +1827,7 @@ export interface Section {
 
 export type ContextBlockKind =
   | 'software_def'
+  | 'software_docs_outline'
   | 'outline'
   | 'current_section'
   | 'other_section'
@@ -2083,6 +2085,110 @@ export async function reorderSections(
     'POST',
     `/projects/${projectId}/sections/reorder`,
     { section_ids: sectionIds },
+  )
+}
+
+export async function listSoftwareDocsSections(
+  softwareId: string,
+): Promise<Section[]> {
+  return request<Section[]>(
+    'GET',
+    `/software/${softwareId}/docs`,
+  )
+}
+
+export async function createSoftwareDocsSection(
+  softwareId: string,
+  body: SectionCreateBody,
+): Promise<Section> {
+  return request<Section>(
+    'POST',
+    `/software/${softwareId}/docs`,
+    body,
+  )
+}
+
+export async function getSoftwareDocsSection(
+  softwareId: string,
+  sectionId: string,
+): Promise<Section> {
+  return request<Section>(
+    'GET',
+    `/software/${softwareId}/docs/${sectionId}`,
+  )
+}
+
+export async function updateSoftwareDocsSection(
+  softwareId: string,
+  sectionId: string,
+  body: SectionUpdateBody,
+): Promise<Section> {
+  return request<Section>(
+    'PATCH',
+    `/software/${softwareId}/docs/${sectionId}`,
+    body,
+  )
+}
+
+export async function deleteSoftwareDocsSection(
+  softwareId: string,
+  sectionId: string,
+): Promise<void> {
+  return request<void>(
+    'DELETE',
+    `/software/${softwareId}/docs/${sectionId}`,
+  )
+}
+
+export async function reorderSoftwareDocsSections(
+  softwareId: string,
+  sectionIds: string[],
+): Promise<Section[]> {
+  return request<Section[]>(
+    'POST',
+    `/software/${softwareId}/docs/reorder`,
+    { section_ids: sectionIds },
+  )
+}
+
+export interface CodebaseSnapshot {
+  id: string
+  software_id: string
+  commit_sha: string
+  branch: string
+  status: string
+  error_message: string | null
+  created_at: string
+  ready_at: string | null
+  file_count: number
+  chunk_count: number
+}
+
+export async function listCodebaseSnapshots(
+  softwareId: string,
+): Promise<CodebaseSnapshot[]> {
+  return request<CodebaseSnapshot[]>(
+    'GET',
+    `/software/${softwareId}/codebase/snapshots`,
+  )
+}
+
+export async function requestCodebaseReindex(
+  softwareId: string,
+): Promise<CodebaseSnapshot> {
+  return request<CodebaseSnapshot>(
+    'POST',
+    `/software/${softwareId}/codebase/reindex`,
+  )
+}
+
+export async function getCodebaseSnapshot(
+  softwareId: string,
+  snapshotId: string,
+): Promise<CodebaseSnapshot> {
+  return request<CodebaseSnapshot>(
+    'GET',
+    `/software/${softwareId}/codebase/snapshots/${snapshotId}`,
   )
 }
 

@@ -12,6 +12,8 @@ from app.collab.server import (
     get_collab_server,
     init_collab_server,
     parse_collab_path,
+    parse_collab_room,
+    software_docs_collab_room_path,
     _is_client_disconnect,
 )
 
@@ -23,6 +25,25 @@ def test_collab_room_path_and_parse_roundtrip() -> None:
     path = collab_room_path(pid, sid)
     p2, s2 = parse_collab_path(path)
     assert p2 == pid and s2 == sid
+
+
+def test_software_docs_collab_room_parse_roundtrip() -> None:
+    from uuid import uuid4
+
+    sfid, sid = uuid4(), uuid4()
+    path = software_docs_collab_room_path(sfid, sid)
+    t = parse_collab_room(path)
+    assert t.project_id is None
+    assert t.software_id == sfid
+    assert t.section_id == sid
+
+
+def test_parse_collab_path_rejects_software_doc_room() -> None:
+    from uuid import uuid4
+
+    path = software_docs_collab_room_path(uuid4(), uuid4())
+    with pytest.raises(ValueError, match="invalid collab path"):
+        parse_collab_path(path)
 
 
 def test_parse_collab_path_invalid() -> None:

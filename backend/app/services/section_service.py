@@ -112,6 +112,7 @@ class SectionService:
         return SectionResponse(
             id=s.id,
             project_id=s.project_id,
+            software_id=s.software_id,
             title=s.title,
             slug=s.slug,
             order=s.order,
@@ -225,6 +226,14 @@ class SectionService:
                 code="NOT_FOUND",
                 message="Section not found",
             )
+        if s.project_id is None:
+            snap = effective_section_plaintext(s.content, s.yjs_state)
+            return rollup_section_status(
+                effective_plaintext=snap,
+                has_open_pair_conflict=False,
+                has_open_section_gap=False,
+                has_stale_linked_work_order=False,
+            )
         m = await self.batch_section_statuses(s.project_id, [s])
         return m[section_id]
 
@@ -307,6 +316,7 @@ class SectionService:
         sec = Section(
             id=uuid.uuid4(),
             project_id=project_id,
+            software_id=None,
             title=title,
             slug=slug,
             order=order,

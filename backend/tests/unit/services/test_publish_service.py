@@ -57,7 +57,9 @@ async def test_build_file_map_includes_sections_readme_and_exported_wos() -> Non
     ex1.scalars.return_value.all.return_value = [sec]
     ex2 = MagicMock()
     ex2.scalars.return_value.unique.return_value.all.return_value = [wo]
-    db.execute = AsyncMock(side_effect=[ex1, ex2])
+    ex3 = MagicMock()
+    ex3.scalars.return_value.all.return_value = []
+    db.execute = AsyncMock(side_effect=[ex1, ex2, ex3])
 
     files = await PublishService(db).build_file_map(pid)
     assert files["alpha/sections/intro.md"].strip() == "spec body"
@@ -93,7 +95,9 @@ async def test_build_file_map_skips_done_work_orders() -> None:
     ex1.scalars.return_value.all.return_value = []
     ex2 = MagicMock()
     ex2.scalars.return_value.unique.return_value.all.return_value = [wo]
-    db.execute = AsyncMock(side_effect=[ex1, ex2])
+    ex3 = MagicMock()
+    ex3.scalars.return_value.all.return_value = []
+    db.execute = AsyncMock(side_effect=[ex1, ex2, ex3])
     files = await PublishService(db).build_file_map(pid)
     assert not any(k.startswith("p/work-orders/") for k in files)
 

@@ -125,6 +125,7 @@ async def create_section(
     sec = Section(
         id=uuid.uuid4(),
         project_id=project_id,
+        software_id=None,
         title=title,
         slug=slug,
         order=order,

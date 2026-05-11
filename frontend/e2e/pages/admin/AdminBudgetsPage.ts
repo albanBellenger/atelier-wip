@@ -9,11 +9,14 @@ export class AdminBudgetsPage {
     this.page = page
   }
 
-  /** Intercepts PATCH /admin/studios/:id/budget (fulfills 204) and counts matching requests. */
+  /**
+   * Intercepts PATCH /studios/:id/budget (fulfills 204) and counts matching requests.
+   * Must stay aligned with `patchStudioBudget` in `src/services/api.ts`.
+   */
   async beginCapturePatchBudget(): Promise<void> {
     this.budgetPatchCount = 0
-    await this.page.unroute('**/admin/studios/*/budget')
-    await this.page.route('**/admin/studios/*/budget', async (route) => {
+    await this.page.unroute('**/studios/*/budget')
+    await this.page.route('**/studios/*/budget', async (route) => {
       if (route.request().method() !== 'PATCH') {
         await route.continue()
         return
@@ -28,15 +31,34 @@ export class AdminBudgetsPage {
   }
 
   async endCapturePatchBudget(): Promise<void> {
-    await this.page.unroute('**/admin/studios/*/budget')
+    await this.page.unroute('**/studios/*/budget')
   }
 
   firstStudioBudgetRow(): Locator {
     const section = this.page.locator('section').filter({
       has: this.page.getByRole('heading', { name: 'Per-studio monthly cap', exact: true }),
     })
+    // header row is first grid; data rows follow
     return section.locator('div.grid').nth(1)
   }
+
+  /**
+   * Visible studio name from the first data row under Per-studio monthly cap.
+   */
+  async firstPerStudioBudgetStudioName(): Promise<string> {
+    const row = this.firstStudioBudgetRow()
+    const firstCell = row.locator('span').first()
+    const t = (await firstCell.textContent())?.trim() ?? ''
+    if (!t) {
+      throw new Error('Could not read studio name from first budget row')
+    }
+    return t
+  }
+
+  firstStudioOverageSelect(): Locator {
+    return this.firstStudioBudgetRow().locator('select').first()
+  }
+
 
   async incrementFirstStudioCap(): Promise<void> {
     await this.firstStudioBudgetRow().getByRole('button', { name: '+' }).click()
@@ -67,5 +89,36 @@ export class AdminBudgetsPage {
   async decrementCap(studioName: string): Promise<void> {
     const row = this.studioBudgetRow(studioName)
     await row.getByRole('button', { name: '−' }).click()
+  }
+
+  async expectPerStudioBudgetEmptyStateNoStudios(): Promise<void> {
+    const section = this.page.locator('section').filter({
+      has: this.page.getByRole('heading', { name: 'Per-studio monthly cap', exact: true }),
+    })
+    await expect(section.getByText('No studios yet.', { exact: true })).toBeVisible()
+  }
+
+  async beginStubAdminConsoleOverviewEmptyStudios(): Promise<void> {
+    await this.page.unroute('**/admin/console/overview')
+    await this.page.route('**/admin/console/overview', async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.continue()
+        return
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          studios: [],
+          active_builders_count: 0,
+          embedding_collection_count: 0,
+          recent_activity: [],
+        }),
+      })
+    })
+  }
+
+  async endStubAdminConsoleOverview(): Promise<void> {
+    await this.page.unroute('**/admin/console/overview')
   }
 }

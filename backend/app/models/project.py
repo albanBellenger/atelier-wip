@@ -6,14 +6,17 @@ from datetime import datetime
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Integer,
+    Index,
     LargeBinary,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -69,13 +72,36 @@ class Project(Base):
 
 class Section(Base):
     __tablename__ = "sections"
-    __table_args__ = (UniqueConstraint("project_id", "slug", name="uq_sections_project_slug"),)
+    __table_args__ = (
+        CheckConstraint(
+            "(project_id IS NOT NULL AND software_id IS NULL) OR "
+            "(project_id IS NULL AND software_id IS NOT NULL)",
+            name="ck_sections_project_xor_software",
+        ),
+        Index(
+            "uq_sections_project_id_slug",
+            "project_id",
+            "slug",
+            unique=True,
+            postgresql_where=text("project_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_sections_software_id_slug",
+            "software_id",
+            "slug",
+            unique=True,
+            postgresql_where=text("software_id IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    project_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
+    )
+    software_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("software.id", ondelete="CASCADE"), nullable=True
     )
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     slug: Mapped[str] = mapped_column(String(256), nullable=False)
@@ -96,6 +122,7 @@ class Section(Base):
     )
 
     project = relationship("Project", back_populates="sections")
+    software = relationship("Software", back_populates="docs_sections")
     section_chunks = relationship("SectionChunk", back_populates="section", cascade="all, delete-orphan")
     private_threads = relationship("PrivateThread", back_populates="section", cascade="all, delete-orphan")
     work_orders = relationship(

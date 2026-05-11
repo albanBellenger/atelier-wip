@@ -195,6 +195,52 @@ content     TEXT NOT NULL,
 embedding   vector(1536)
 ```
 
+### Codebase index (`codebase_snapshots`, `codebase_files`, `codebase_chunks`, `codebase_symbols`)
+Software-scoped mirror of the linked GitLab repository for embedding-backed retrieval (Slice 16b–c).
+
+```sql
+-- codebase_snapshots: one row per indexing attempt
+id UUID PRIMARY KEY,
+software_id UUID REFERENCES software(id) ON DELETE CASCADE,
+commit_sha TEXT NOT NULL,
+branch TEXT NOT NULL,
+status TEXT NOT NULL,   -- pending | indexing | ready | failed | superseded
+error_message TEXT,
+created_at TIMESTAMPTZ DEFAULT NOW(),
+ready_at TIMESTAMPTZ,
+triggered_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL
+
+-- codebase_files: blobs selected under caps (max files / bytes per snapshot)
+id UUID PRIMARY KEY,
+snapshot_id UUID REFERENCES codebase_snapshots(id) ON DELETE CASCADE,
+path TEXT NOT NULL,
+blob_sha TEXT NOT NULL,
+size_bytes INTEGER NOT NULL,
+language TEXT,
+UNIQUE (snapshot_id, path)
+
+-- codebase_chunks: embedded fragments (HNSW index on embedding)
+id UUID PRIMARY KEY,
+snapshot_id UUID REFERENCES codebase_snapshots(id) ON DELETE CASCADE,
+file_id UUID REFERENCES codebase_files(id) ON DELETE CASCADE,
+chunk_index INTEGER NOT NULL,
+content TEXT NOT NULL,
+embedding vector(1536) NOT NULL,
+start_line INTEGER,
+end_line INTEGER
+
+-- codebase_symbols: optional AST symbol rows for navigation / graph heuristics
+id UUID PRIMARY KEY,
+snapshot_id UUID REFERENCES codebase_snapshots(id) ON DELETE CASCADE,
+file_id UUID REFERENCES codebase_files(id) ON DELETE CASCADE,
+name TEXT NOT NULL,
+kind TEXT NOT NULL,
+start_line INTEGER NOT NULL,
+end_line INTEGER NOT NULL
+```
+
+Indexing honours `ATELIER_CODEBASE_INDEX_MAX_FILES`, `ATELIER_CODEBASE_INDEX_MAX_TOTAL_BYTES`, and `ATELIER_CODEBASE_INDEX_MAX_FILE_BYTES` (see `Settings` in backend). Vector similarity uses HNSW on `codebase_chunks.embedding` (`vector_cosine_ops`), consistent with other chunk tables. Diagnostics combine **networkx** PageRank over a lightweight file adjacency graph (LRU-scoped per `(snapshot_id, token_budget)` fingerprint) with pgvector hits.
+
 ### `work_orders`
 ```sql
 id                   UUID PRIMARY KEY,

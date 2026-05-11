@@ -287,6 +287,13 @@ Artifacts can be uploaded at three different scopes. The scope determines where 
 - Studio-scope upload/delete: Studio Builder or Studio Owner of the owning studio
 - Cross-studio Externals and cross-studio Viewers cannot upload at studio or software scope
 
+### 9b Codebase index (linked GitLab repository)
+- Each Software with a configured GitLab URL, branch, and token may maintain **codebase snapshots**: a point-in-time tree of repository blobs on a resolved commit SHA.
+- Studio Builders who belong to the owning studio (not cross-studio-only grants) can request **Re-index** from Software settings; indexing runs asynchronously, chunking sources with tree-sitter where supported (Python, TypeScript/JavaScript, Rust, Go, Java, C/C++, C#, Ruby, PHP, Swift, Kotlin, Scala, etc.) and falling back to newline-aware splits otherwise.
+- Snapshots progress through `pending` → `indexing` → `ready` (or `failed`). At most one snapshot remains **`ready`** per software; older ready snapshots are marked **`superseded`** and their chunk rows are deleted to bound storage.
+- Embeddings are stored in `codebase_chunks` with **HNSW** (`vector_cosine_ops`), mirroring `section_chunks` / `artifact_chunks`. Usage is recorded with embedding `call_source` values `codebase_index` (bulk index) and `codebase_rag` (query embedding).
+- Tool Admins may call diagnostics (`GET /software/{id}/codebase/diagnostics?q=`) to inspect an LRU-cached **repository map** (PageRank over a co-directory graph) plus vector hits against the current ready snapshot.
+
 ---
 
 ## 10. LLM Interaction
@@ -317,6 +324,11 @@ In addition to per-project chat, each Software has a chat room scoped to the who
 - Chat history is persistent and paginated
 - A workspace composer on the Software dashboard sends a message into this room; members can also seed a draft from the dashboard and continue in the chat tab
 
+### 10.6 Software-wide documentation (context and publish)
+- Each Software may have shared Markdown documentation pages that are **not** tied to a single Project (see the Software **Docs** tab).
+- Pages use the same collaborative editing model as specification sections and are **included in embedding/RAG** for that Software so retrieval can surface `software_doc:*` chunks alongside project sections and artifacts.
+- When a Project is **published** to GitLab, the export includes a `docs/` folder under that project’s publish root containing these shared pages (and `docs/README.md` when any pages exist).
+
 ### 10.4 Slash Commands (Private Thread Composer)
 The private-thread composer recognises slash-prefixed commands that change how the user's message is interpreted by the assistant. Plain text without a leading slash is treated as a free-form question.
 
@@ -339,19 +351,20 @@ Every LLM message assembles context within a configurable token budget:
 | Priority | Content | Rule |
 |---|---|---|
 | 1 | Software Definition | Always included — summarised if over 500 tokens |
-| 2 | Project outline (section titles only) | Always included as a brief summary |
-| 3 | Current section (full content) | Always included — truncated as last resort (see below) |
-| 4 | Other spec sections | Retrieved by semantic relevance to the user's message |
-| 5 | Artifact chunks | Retrieved by semantic relevance to the user's message |
-| 6 | Git history | Only included when explicitly requested by the user |
+| 2 | Software documentation outline (shared doc page titles) | Always included as a brief summary when the software has doc pages |
+| 3 | Project outline (section titles only) | Always included as a brief summary |
+| 4 | Current section (full content) | Always included — truncated as last resort (see below) |
+| 5 | Other spec sections & software doc pages | Retrieved by semantic relevance to the user's message |
+| 6 | Artifact chunks | Retrieved by semantic relevance to the user's message |
+| 7 | Git history | Only included when explicitly requested by the user |
 
 Sections and artifact chunks beyond the token budget are trimmed by relevance score. Users never manage this manually.
 
-**Overflow fallback strategy** — applied in order if mandatory items (1–3) alone exceed the token budget:
+**Overflow fallback strategy** — applied in order if mandatory items (software definition, outlines, and current section) alone exceed the token budget:
 
 1. **Summarise the Software Definition** — if the Software Definition exceeds 500 tokens, the LLM generates a compressed summary to use in its place (cached per session)
 2. **Truncate the current section from the bottom** — the current section is trimmed from the end, preserving at least the first 20% of its content (the opening context is most important for the LLM)
-3. **UI warning banner** — if priorities 1–3 still exceed the budget after steps 1 and 2, a warning banner is shown to the user: "This section is very large — some content was trimmed from context. Consider splitting this section into smaller parts."
+3. **UI warning banner** — if the software definition, outline blocks, and current section still exceed the budget after steps 1 and 2, a warning banner is shown to the user: "This section is very large — some content was trimmed from context. Consider splitting this section into smaller parts."
 4. The LLM call always proceeds — the system never silently fails or blocks the user
 
 ---
@@ -662,7 +675,6 @@ Activity entries are retained indefinitely.
 
 ## 20. Future Scope (Not in Current Version)
 - Unit and regression testing plans
-- Reverse-engineering spec from existing codebase ("Backprop")
 - SSO / OAuth (Google, GitLab login)
 - GitHub git integration (current version: self-hosted GitLab only)
 - Pre-built outline templates (REST API, microservices, etc.)
@@ -675,3 +687,5 @@ Activity entries are retained indefinitely.
 - AI-generated commit messages
 - Rollback UI within the tool
 - Work Order dependency graph (manual edges between work orders)
+
+**Slice 16 follow-ups (planned / partial):** Backprop agents (outline + section drafts from code), automated code–doc drift issues with graph linkage, doc ↔ WO sync with suggested patches — see technical architecture for tables and routes as they land.

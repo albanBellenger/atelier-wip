@@ -40,4 +40,21 @@ export class AdminConsolePage {
   async clickSideNav(section: AdminConsoleSection): Promise<void> {
     await this.sideNavLink(section).click()
   }
+
+  /** Header link back to the builder app (`/`). */
+  async clickBuilderWorkspaceLink(): Promise<void> {
+    await this.page.getByRole('link', { name: '← Builder workspace' }).click()
+  }
+
+  async expectSideNavLinkAriaCurrent(
+    section: AdminConsoleSection,
+    expected: 'page' | null,
+  ): Promise<void> {
+    const link = this.sideNavLink(section)
+    if (expected === null) {
+      await expect(link).not.toHaveAttribute('aria-current', 'page')
+      return
+    }
+    await expect(link).toHaveAttribute('aria-current', 'page')
+  }
 }

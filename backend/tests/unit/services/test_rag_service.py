@@ -12,7 +12,11 @@ from app.models import (
     SoftwareArtifactExclusion,
 )
 from app.services.embedding_service import EmbeddingService
-from app.services.rag_service import RAGService, _mandatory_parts_with_overflow, _unified_chunk_fill
+from app.services.rag_service import (
+    RAGService,
+    _mandatory_blocks_and_current_overflow,
+    _unified_chunk_fill,
+)
 from tests.factories import create_project, create_section, create_software, create_studio
 
 
@@ -38,24 +42,27 @@ def test_chunk_ranking_unified() -> None:
 
 
 def test_overflow_truncates_current_section_with_floor() -> None:
-    """def 200 + outline 100 + current 600 (raw, without section headers in spec) — use real headers."""
+    """def + software docs + project outline + current — truncate current with 20% floor."""
     h_def = "## Software definition\n" + "A" * 200
+    h_soft = "## Software docs outline\n"
     h_out = "## Project outline\n" + "B" * 100
     h_cur = "## Current section\n"
     current_body = "C" * 600
-    parts, tr = _mandatory_parts_with_overflow(
-        h_def, h_out, h_cur, current_body, 400
+    parts, tr = _mandatory_blocks_and_current_overflow(
+        [h_def, h_soft, h_out], h_cur, current_body, 400
     )
-    out_body = parts[2][len(h_cur) :]
+    out_body = parts[3][len(h_cur) :]
     assert tr
     assert out_body == "C" * 120
     assert not out_body.startswith("C" * 121)
 
 
 def test_no_truncation_when_within_budget() -> None:
-    p, tr = _mandatory_parts_with_overflow("a", "b", "c", "d", 1000)
+    p, tr = _mandatory_blocks_and_current_overflow(
+        ["a", "b", "c"], "d", "e", 1000
+    )
     assert tr is False
-    assert p == ["a", "b", "cd"]
+    assert p == ["a", "b", "c", "de"]
 
 
 @pytest.mark.asyncio
@@ -89,7 +96,8 @@ async def test_rag_build_context_matches_joined_preview_blocks(
     assert ctx.text == joined
     assert prev.budget_tokens == 6000
     assert prev.blocks[0].kind == "software_def"
-    assert prev.blocks[1].kind == "outline"
+    assert prev.blocks[1].kind == "software_docs_outline"
+    assert prev.blocks[2].kind == "outline"
     assert any(b.kind == "current_section" for b in prev.blocks)
 
 

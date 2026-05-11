@@ -1,0 +1,9 @@
+[project]
+name = "atelier-backend"
+version = "0"
+requires-python = ">=3.12"
+description = "Pinned optional tooling deps for CI parity (primary deps remain in requirements.txt)."
+dependencies = []
+
+[project.optional-dependencies]
+codebase-ast = ["tree-sitter-languages>=1.9.0"]

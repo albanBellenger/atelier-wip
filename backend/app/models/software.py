@@ -35,6 +35,13 @@ class Software(Base):
 
     studio = relationship("Studio", back_populates="software_list")
     projects = relationship("Project", back_populates="software", cascade="all, delete-orphan")
+    docs_sections = relationship(
+        "Section",
+        back_populates="software",
+        foreign_keys="Section.software_id",
+        order_by="Section.order",
+        cascade="all, delete-orphan",
+    )
     activity_events = relationship(
         "SoftwareActivityEvent",
         back_populates="software",
@@ -47,6 +54,11 @@ class Software(Base):
     )
     software_chat_messages = relationship(
         "SoftwareChatMessage",
+        back_populates="software",
+        cascade="all, delete-orphan",
+    )
+    codebase_snapshots = relationship(
+        "CodebaseSnapshot",
         back_populates="software",
         cascade="all, delete-orphan",
     )

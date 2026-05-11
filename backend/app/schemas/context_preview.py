@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 ContextBlockKind = Literal[
     "software_def",
+    "software_docs_outline",
     "outline",
     "current_section",
     "other_section",

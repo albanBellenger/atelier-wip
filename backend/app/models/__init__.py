@@ -24,6 +24,7 @@ from app.models.artifact_exclusion import (
     ProjectArtifactExclusion,
     SoftwareArtifactExclusion,
 )
+from app.models.codebase import CodebaseChunk, CodebaseFile, CodebaseSnapshot, CodebaseSymbol
 from app.models.artifact import Artifact, ArtifactChunk
 from app.models.project import Project, Section, SectionChunk
 from app.models.section_context_preference import SectionContextPreference
@@ -38,6 +39,10 @@ __all__ = [
     "EmbeddingDimensionState",
     "Artifact",
     "ArtifactChunk",
+    "CodebaseChunk",
+    "CodebaseFile",
+    "CodebaseSnapshot",
+    "CodebaseSymbol",
     "ChatMessage",
     "SoftwareChatMessage",
     "DeploymentActivity",

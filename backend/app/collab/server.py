@@ -6,7 +6,7 @@ import asyncio
 import logging
 import os
 import re
-from typing import Any
+from typing import Any, NamedTuple
 from uuid import UUID
 
 from pycrdt import Doc, Text, TransactionEvent
@@ -26,20 +26,55 @@ YDOC_TEXT_FIELD = SECTION_YJS_TEXT_FIELD
 
 _collab_server: WebsocketServer | None = None
 
-_PATH_RE = re.compile(
-    r"^/ws/projects/(?P<pid>[0-9a-fA-F-]{36})/sections/(?P<sid>[0-9a-fA-F-]{36})/collab$"
+_UUID = r"[0-9a-fA-F-]{36}"
+_PATH_PROJECT = re.compile(
+    rf"^/ws/projects/(?P<pid>{_UUID})/sections/(?P<sid>{_UUID})/collab$"
 )
+_PATH_SOFTWARE_DOC = re.compile(
+    rf"^/ws/software/(?P<sfid>{_UUID})/docs/(?P<sid>{_UUID})/collab$"
+)
+
+
+class CollabRoomTarget(NamedTuple):
+    """Resolved collab room: either a project spec section or a software doc section."""
+
+    section_id: UUID
+    project_id: UUID | None
+    software_id: UUID | None
 
 
 def collab_room_path(project_id: UUID, section_id: UUID) -> str:
     return f"/ws/projects/{project_id}/sections/{section_id}/collab"
 
 
+def software_docs_collab_room_path(software_id: UUID, section_id: UUID) -> str:
+    return f"/ws/software/{software_id}/docs/{section_id}/collab"
+
+
+def parse_collab_room(path: str) -> CollabRoomTarget:
+    m = _PATH_PROJECT.match(path)
+    if m:
+        return CollabRoomTarget(
+            section_id=UUID(m.group("sid")),
+            project_id=UUID(m.group("pid")),
+            software_id=None,
+        )
+    m2 = _PATH_SOFTWARE_DOC.match(path)
+    if m2:
+        return CollabRoomTarget(
+            section_id=UUID(m2.group("sid")),
+            project_id=None,
+            software_id=UUID(m2.group("sfid")),
+        )
+    raise ValueError(f"invalid collab path: {path!r}")
+
+
 def parse_collab_path(path: str) -> tuple[UUID, UUID]:
-    m = _PATH_RE.match(path)
-    if not m:
+    """Backward-compatible parser for project section rooms only."""
+    t = parse_collab_room(path)
+    if t.project_id is None:
         raise ValueError(f"invalid collab path: {path!r}")
-    return UUID(m.group("pid")), UUID(m.group("sid"))
+    return t.project_id, t.section_id
 
 
 def get_collab_server() -> WebsocketServer:
@@ -146,17 +181,38 @@ class AtelierWebsocketServer(WebsocketServer):
         key = name
         if key is None:
             assert room is not None
-            key = self.get_room_name(room)
+            key = next((k for k, v in self.rooms.items() if v is room), None)
+            if key is None:
+                # Already removed (e.g. concurrent auto_clean / double delete).
+                log.debug("collab: delete_room skipped, room not in registry")
+                return
+        if key not in self.rooms:
+            t = self._persist_tasks.pop(key, None)
+            if t is not None and not t.done():
+                t.cancel()
+            log.debug("collab: delete_room skipped, %r not in registry", key)
+            return
         t = self._persist_tasks.pop(key, None)
         if t is not None and not t.done():
             t.cancel()
-        await super().delete_room(name=name, room=room)
+        await super().delete_room(name=key, room=None)
+
+    def _validate_section_for_room(
+        self, sec: Section, target: CollabRoomTarget
+    ) -> bool:
+        if target.project_id is not None:
+            return sec.project_id == target.project_id
+        return (
+            sec.software_id == target.software_id
+            and sec.project_id is None
+            and target.software_id is not None
+        )
 
     async def _load_doc(self, room_path: str) -> Doc:
-        project_id, section_id = parse_collab_path(room_path)
+        target = parse_collab_room(room_path)
         async with self._session_factory() as session:
-            sec = await session.get(Section, section_id)
-            if sec is None or sec.project_id != project_id:
+            sec = await session.get(Section, target.section_id)
+            if sec is None or not self._validate_section_for_room(sec, target):
                 raise ValueError("Section not found for collab room")
             doc = Doc()
             if sec.yjs_state:
@@ -167,7 +223,7 @@ class AtelierWebsocketServer(WebsocketServer):
                     log.warning(
                         "collab: invalid yjs_state for section %s (wrong encoding or "
                         "legacy get_state blob); falling back to plain content",
-                        section_id,
+                        target.section_id,
                     )
                     doc = Doc()
                     if sec.content:
@@ -179,14 +235,14 @@ class AtelierWebsocketServer(WebsocketServer):
             return doc
 
     def _attach_persist_observer(self, room: YRoom, room_name: str) -> None:
-        project_id, section_id = parse_collab_path(room_name)
+        target = parse_collab_room(room_name)
 
         def on_change(_event: TransactionEvent) -> None:
             t = self._persist_tasks.get(room_name)
             if t is not None and not t.done():
                 t.cancel()
             self._persist_tasks[room_name] = asyncio.create_task(
-                self._debounced_persist(room_name, project_id, section_id, room)
+                self._debounced_persist(room_name, target, room)
             )
 
         room.ydoc.observe(on_change)
@@ -194,19 +250,17 @@ class AtelierWebsocketServer(WebsocketServer):
     async def _debounced_persist(
         self,
         room_name: str,
-        project_id: UUID,
-        section_id: UUID,
+        target: CollabRoomTarget,
         room: YRoom,
     ) -> None:
         await asyncio.sleep(self._debounce_s)
         if room_name not in self.rooms:
             return
-        await self._persist_to_db(project_id, section_id, room.ydoc)
+        await self._persist_to_db(target, room.ydoc)
 
     async def _persist_to_db(
         self,
-        project_id: UUID,
-        section_id: UUID,
+        target: CollabRoomTarget,
         doc: Doc,
     ) -> None:
         # Must store Yjs *update* bytes (full snapshot from empty), not get_state().
@@ -231,8 +285,8 @@ class AtelierWebsocketServer(WebsocketServer):
         changed = False
         section_title = ""
         async with self._session_factory() as session:
-            sec = await session.get(Section, section_id)
-            if sec is None or sec.project_id != project_id:
+            sec = await session.get(Section, target.section_id)
+            if sec is None or not self._validate_section_for_room(sec, target):
                 return
             old_content = sec.content or ""
             section_title = sec.title
@@ -249,19 +303,27 @@ class AtelierWebsocketServer(WebsocketServer):
         from app.services.drift_pipeline import schedule_drift_check
         from app.services.embedding_pipeline import schedule_section_embedding
 
-        schedule_section_embedding(section_id)
-        schedule_drift_check(section_id)
+        schedule_section_embedding(target.section_id)
+        schedule_drift_check(target.section_id)
         if editor is None:
             return
         try:
             async with self._session_factory() as session2:
-                await NotificationDispatchService(session2).section_updated_by_other(
-                    project_id=project_id,
-                    section_id=section_id,
-                    section_title=section_title,
-                    actor_user_id=editor,
-                )
+                nd = NotificationDispatchService(session2)
+                if target.project_id is not None:
+                    await nd.section_updated_by_other(
+                        project_id=target.project_id,
+                        section_id=target.section_id,
+                        section_title=section_title,
+                        actor_user_id=editor,
+                    )
+                elif target.software_id is not None:
+                    await nd.software_doc_section_updated_by_other(
+                        software_id=target.software_id,
+                        section_id=target.section_id,
+                        section_title=section_title,
+                        actor_user_id=editor,
+                    )
                 await session2.commit()
         except Exception:
             log.warning("collab_section_notification_failed", exc_info=True)
-

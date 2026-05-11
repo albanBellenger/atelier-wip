@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import { SoftwareChatRoom } from '../components/chat/SoftwareChatRoom'
+import { SoftwareDocsTab } from '../components/software/SoftwareDocsTab'
 
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
 import { BuilderTokenStrip } from '../components/home/BuilderTokenStrip'
@@ -115,11 +116,11 @@ export function SoftwarePage(): ReactElement {
   }, [swQ.data, studioSoftwareListQ.data, sfid, sid, navigate])
 
   const tabRaw = searchParams.get('tab')
-  const softwareView: 'overview' | 'chat' =
-    tabRaw === 'chat' ? 'chat' : 'overview'
+  const softwareView: 'overview' | 'chat' | 'docs' =
+    tabRaw === 'chat' ? 'chat' : tabRaw === 'docs' ? 'docs' : 'overview'
 
   const setSoftwareTab = useCallback(
-    (next: 'overview' | 'chat') => {
+    (next: 'overview' | 'chat' | 'docs') => {
       const nextParams = new URLSearchParams(searchParams)
       if (next === 'overview') {
         nextParams.delete('tab')
@@ -476,6 +477,17 @@ export function SoftwarePage(): ReactElement {
               >
                 Overview
               </button>
+              <button
+                type="button"
+                onClick={() => setSoftwareTab('docs')}
+                className={`rounded-md px-3 py-1.5 text-[12px] font-medium ${
+                  softwareView === 'docs'
+                    ? 'bg-zinc-800 text-zinc-100'
+                    : 'text-zinc-500 hover:text-zinc-200'
+                }`}
+              >
+                Docs
+              </button>
               {access.isStudioEditor ? (
                 <button
                   type="button"
@@ -495,6 +507,12 @@ export function SoftwarePage(): ReactElement {
               <div className="mt-8">
                 <SoftwareChatRoom softwareId={sfid} studioId={sid} />
               </div>
+            ) : softwareView === 'docs' ? (
+              <SoftwareDocsTab
+                studioId={sid}
+                softwareId={sfid}
+                canManageOutline={access.isStudioAdmin}
+              />
             ) : (
               <>
             <SoftwareDefinitionPreviewCard

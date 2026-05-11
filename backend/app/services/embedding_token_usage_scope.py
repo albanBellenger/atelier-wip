@@ -59,20 +59,31 @@ async def usage_scope_for_section(
     if sec is None:
         return None
     spid = getattr(sec, "project_id", None)
-    if spid is None:
-        return None
-    proj = await session.get(Project, spid)
-    if proj is None:
-        return None
-    sw = await session.get(Software, proj.software_id)
-    if sw is None:
-        return None
-    return TokenUsageScope(
-        studio_id=sw.studio_id,
-        software_id=sw.id,
-        project_id=proj.id,
-        user_id=None,
-    )
+    if spid is not None:
+        proj = await session.get(Project, spid)
+        if proj is None:
+            return None
+        sw = await session.get(Software, proj.software_id)
+        if sw is None:
+            return None
+        return TokenUsageScope(
+            studio_id=sw.studio_id,
+            software_id=sw.id,
+            project_id=proj.id,
+            user_id=None,
+        )
+    swid = getattr(sec, "software_id", None)
+    if swid is not None:
+        sw = await session.get(Software, swid)
+        if sw is None:
+            return None
+        return TokenUsageScope(
+            studio_id=sw.studio_id,
+            software_id=sw.id,
+            project_id=None,
+            user_id=None,
+        )
+    return None
 
 
 async def usage_scope_for_project(
@@ -88,5 +99,19 @@ async def usage_scope_for_project(
         studio_id=sw.studio_id,
         software_id=sw.id,
         project_id=proj.id,
+        user_id=None,
+    )
+
+
+async def usage_scope_for_software(
+    session: AsyncSession, software_id: uuid.UUID
+) -> TokenUsageScope | None:
+    sw = await session.get(Software, software_id)
+    if sw is None:
+        return None
+    return TokenUsageScope(
+        studio_id=sw.studio_id,
+        software_id=sw.id,
+        project_id=None,
         user_id=None,
     )
