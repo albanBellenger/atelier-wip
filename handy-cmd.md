@@ -9,3 +9,6 @@ $env:PLAYWRIGHT_TOOL_ADMIN_EMAIL = "admin-4c571c4e@example.com"
 $env:PLAYWRIGHT_TOOL_ADMIN_PASSWORD = "ChangeMe!123"   
 npm run test:e2e
 npx playwright show-report
+
+## Playwith with one workker
+npm run test:e2e -- --workers=1
