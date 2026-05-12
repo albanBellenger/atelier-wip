@@ -17,11 +17,14 @@ from app.deps import (
 )
 from app.exceptions import ApiError
 from app.models import CodebaseFile, Software, User
+from app.schemas.code_drift import CodeDriftRunResult
 from app.schemas.codebase import CodebaseDiagnosticsResponse, CodebaseSnapshotResponse
+from app.services.code_drift_service import CodeDriftService
 from app.services.codebase_pipeline import enqueue_codebase_index
 from app.services.codebase_rag_service import CodebaseRagService
 from app.services.codebase_repo_map import repo_map_lru
 from app.services.codebase_service import CodebaseService
+from app.services.llm_service import LLMService
 
 router = APIRouter(
     prefix="/software/{software_id}/codebase",
@@ -52,6 +55,21 @@ async def request_codebase_reindex(
 
     background_tasks.add_task(_run)
     return detail
+
+
+@router.post("/code-drift/run", response_model=CodeDriftRunResult)
+async def run_code_drift(
+    software_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    sa: SoftwareAccess = Depends(require_software_home_editor),
+) -> CodeDriftRunResult:
+    llm = LLMService(session)
+    result = await CodeDriftService(session, llm).run_for_software(
+        software_id,
+        sa.studio_access.user.id,
+    )
+    await session.commit()
+    return result
 
 
 @router.get("/snapshots", response_model=list[CodebaseSnapshotResponse])

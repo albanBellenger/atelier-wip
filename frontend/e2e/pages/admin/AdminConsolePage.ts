@@ -8,6 +8,7 @@ const SIDE_NAV_LINK: Record<AdminConsoleSection, RegExp> = {
   llm: /LLM connectivity/i,
   budgets: /Budgets/i,
   embeddings: /Embeddings/i,
+  codebase: /Codebase/i,
   users: /^Users$/i,
 }
 

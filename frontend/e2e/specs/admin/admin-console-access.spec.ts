@@ -8,6 +8,7 @@ const SECTIONS: AdminConsoleSection[] = [
   'llm',
   'budgets',
   'embeddings',
+  'codebase',
   'users',
 ]
 

@@ -5,8 +5,10 @@ import { Link, useNavigate } from 'react-router-dom'
 
 import {
   createSoftwareDocsSection,
+  listCodebaseSnapshots,
   listSoftwareDocsSections,
 } from '../../services/api'
+import { BackpropOutlineFromCodebaseModal } from './BackpropOutlineFromCodebaseModal'
 
 export interface SoftwareDocsTabProps {
   studioId: string
@@ -20,12 +22,23 @@ export function SoftwareDocsTab(props: SoftwareDocsTabProps): ReactElement {
   const navigate = useNavigate()
   const [name, setName] = useState('')
   const [showCreate, setShowCreate] = useState(false)
+  const [showBackpropOutline, setShowBackpropOutline] = useState(false)
 
   const docsQ = useQuery({
     queryKey: ['softwareDocs', softwareId],
     queryFn: () => listSoftwareDocsSections(softwareId),
     enabled: Boolean(softwareId),
   })
+
+  const snapshotsQ = useQuery({
+    queryKey: ['codebaseSnapshots', softwareId],
+    queryFn: () => listCodebaseSnapshots(softwareId),
+    enabled: Boolean(softwareId && canManageOutline),
+  })
+
+  const hasReadyCodebase = Boolean(
+    snapshotsQ.data?.some((s) => s.status === 'ready'),
+  )
 
   const createMut = useMutation({
     mutationFn: () =>
@@ -51,38 +64,51 @@ export function SoftwareDocsTab(props: SoftwareDocsTabProps): ReactElement {
         <h2 className="text-[15px] font-semibold tracking-tight text-zinc-100">
           Software documentation
         </h2>
-        {canManageOutline ? (
-          showCreate ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                className="rounded-lg border border-zinc-600 px-3 py-2 text-[12px] text-zinc-300 hover:bg-zinc-800"
-                onClick={() => {
-                  setShowCreate(false)
-                  setName('')
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="rounded-lg bg-violet-600 px-3 py-2 text-[12px] font-semibold text-white hover:bg-violet-500 disabled:opacity-50"
-                onClick={() => createMut.mutate()}
-                disabled={createMut.isPending}
-              >
-                Create page
-              </button>
-            </div>
-          ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          {canManageOutline ? (
             <button
               type="button"
-              className="rounded-lg bg-violet-600 px-3 py-2 text-[12px] font-semibold text-white hover:bg-violet-500"
-              onClick={() => startCreate()}
+              title={hasReadyCodebase ? undefined : 'Index the codebase first'}
+              className="rounded-lg border border-zinc-600 px-3 py-2 text-[12px] text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={!hasReadyCodebase}
+              onClick={() => setShowBackpropOutline(true)}
             >
-              + New doc
+              Draft outline from codebase
             </button>
-          )
-        ) : null}
+          ) : null}
+          {canManageOutline ? (
+            showCreate ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className="rounded-lg border border-zinc-600 px-3 py-2 text-[12px] text-zinc-300 hover:bg-zinc-800"
+                  onClick={() => {
+                    setShowCreate(false)
+                    setName('')
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg bg-violet-600 px-3 py-2 text-[12px] font-semibold text-white hover:bg-violet-500 disabled:opacity-50"
+                  onClick={() => createMut.mutate()}
+                  disabled={createMut.isPending}
+                >
+                  Create page
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="rounded-lg bg-violet-600 px-3 py-2 text-[12px] font-semibold text-white hover:bg-violet-500"
+                onClick={() => startCreate()}
+              >
+                + New doc
+              </button>
+            )
+          ) : null}
+        </div>
       </div>
       {canManageOutline && showCreate ? (
         <div className="flex flex-wrap gap-2 border-b border-zinc-800 bg-zinc-900/40 px-5 py-3">
@@ -124,6 +150,15 @@ export function SoftwareDocsTab(props: SoftwareDocsTabProps): ReactElement {
           ))}
         </ul>
       ) : null}
+      <BackpropOutlineFromCodebaseModal
+        softwareId={softwareId}
+        isOpen={showBackpropOutline}
+        onClose={() => setShowBackpropOutline(false)}
+        onSectionsCreated={() => {
+          void qc.invalidateQueries({ queryKey: ['softwareDocs', softwareId] })
+          void qc.invalidateQueries({ queryKey: ['software', softwareId, 'activity'] })
+        }}
+      />
     </section>
   )
 }

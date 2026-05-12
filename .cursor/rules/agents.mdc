@@ -24,6 +24,11 @@ Current agents:
 - `builder_composer_agent.py` — builder home composer hint strings
 - `section_improve_agent.py` — revises section markdown from RAG + instruction
 - `private_thread_agent.py` — private section thread streaming, findings scan, patch proposals
+- `backprop_outline_agent.py` — proposes Software Docs outline from codebase context
+- `backprop_section_agent.py` — proposes Markdown for one Software Docs section from codebase context
+- `code_drift_section_agent.py` — section vs codebase drift (`call_source='code_drift_section'`)
+- `code_drift_work_order_agent.py` — work order vs codebase completeness (`call_source='code_drift_work_order'`)
+- `doc_sync_agent.py` — Software Docs patch proposals after a work order ships (`call_source='doc_sync'`)
 
 ---
 

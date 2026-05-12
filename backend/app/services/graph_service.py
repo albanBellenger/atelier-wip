@@ -5,10 +5,10 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Artifact, GraphEdge, Issue, Section, WorkOrder
+from app.models import Artifact, GraphEdge, Issue, Project, Section, WorkOrder
 
 
 def node_id(entity_type: str, entity_uuid: uuid.UUID) -> str:
@@ -59,6 +59,11 @@ class GraphService:
         """Nodes + edges for react-force-graph (string ids)."""
         nodes: list[dict[str, Any]] = []
 
+        proj = await self.db.get(Project, project_id)
+        if proj is None:
+            return {"nodes": [], "edges": []}
+        software_id = proj.software_id
+
         secs = (
             (
                 await self.db.execute(
@@ -73,6 +78,29 @@ class GraphService:
                 {
                     "id": node_id("section", s.id),
                     "entity_type": "section",
+                    "entity_id": str(s.id),
+                    "label": s.title[:200],
+                    "stale": False,
+                }
+            )
+
+        doc_secs = (
+            (
+                await self.db.execute(
+                    select(Section).where(
+                        Section.software_id == software_id,
+                        Section.project_id.is_(None),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for s in doc_secs:
+            nodes.append(
+                {
+                    "id": node_id("software_doc_section", s.id),
+                    "entity_type": "software_doc_section",
                     "entity_id": str(s.id),
                     "label": s.title[:200],
                     "stale": False,
@@ -121,7 +149,18 @@ class GraphService:
         issues = (
             (
                 await self.db.execute(
-                    select(Issue).where(Issue.project_id == project_id)
+                    select(Issue).where(
+                        or_(
+                            Issue.project_id == project_id,
+                            and_(
+                                Issue.software_id == software_id,
+                                or_(
+                                    Issue.project_id.is_(None),
+                                    Issue.project_id == project_id,
+                                ),
+                            ),
+                        )
+                    )
                 )
             )
             .scalars()
@@ -136,6 +175,7 @@ class GraphService:
                     "entity_id": str(issue_row.id),
                     "label": (desc[:50] + "…") if len(desc) > 50 else desc or "Issue",
                     "status": issue_row.status,
+                    "issue_kind": issue_row.kind,
                 }
             )
 

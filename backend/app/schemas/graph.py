@@ -12,6 +12,7 @@ class GraphNode(BaseModel):
     label: str
     stale: bool | None = None
     status: str | None = None
+    issue_kind: str | None = None
 
 
 class GraphEdgeOut(BaseModel):

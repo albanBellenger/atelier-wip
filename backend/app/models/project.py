@@ -62,7 +62,12 @@ class Project(Base):
     work_orders = relationship("WorkOrder", back_populates="project", cascade="all, delete-orphan")
     graph_edges = relationship("GraphEdge", back_populates="project", cascade="all, delete-orphan")
     chat_messages = relationship("ChatMessage", back_populates="project", cascade="all, delete-orphan")
-    issues = relationship("Issue", back_populates="project", cascade="all, delete-orphan")
+    issues = relationship(
+        "Issue",
+        back_populates="project",
+        foreign_keys="Issue.project_id",
+        passive_deletes=True,
+    )
     artifact_exclusions = relationship(
         "ProjectArtifactExclusion",
         back_populates="project",

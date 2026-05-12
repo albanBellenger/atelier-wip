@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
@@ -63,9 +63,26 @@ class AttentionService:
         ).scalars().all()
         section_by_id: dict[uuid.UUID, Section] = {s.id: s for s in sec_rows}
 
+        doc_sec_rows = (
+            await self.db.execute(
+                select(Section).where(
+                    Section.software_id == software_id,
+                    Section.project_id.is_(None),
+                )
+            )
+        ).scalars().all()
+        for s in doc_sec_rows:
+            section_by_id[s.id] = s
+
         issue_stmt = select(Issue).where(
-            Issue.project_id == project_id,
             Issue.status == "open",
+            or_(
+                Issue.project_id == project_id,
+                and_(
+                    Issue.software_id == software_id,
+                    or_(Issue.project_id.is_(None), Issue.project_id == project_id),
+                ),
+            ),
         )
         if not is_studio_admin:
             issue_stmt = issue_stmt.where(
@@ -120,17 +137,27 @@ class AttentionService:
         items_raw: list[tuple[AttentionKind, datetime, AttentionItemOut]] = []
 
         for iss in issues:
-            kind: AttentionKind = "conflict" if iss.section_b_id is not None else "gap"
+            if iss.kind in ("code_drift_section", "code_drift_work_order"):
+                att_kind: AttentionKind = "drift"
+            elif iss.kind == "conflict_or_gap":
+                att_kind = "conflict" if iss.section_b_id is not None else "gap"
+            else:
+                att_kind = "update"
             sec_a = (
                 section_by_id.get(iss.section_a_id)
                 if iss.section_a_id is not None
                 else None
             )
             title = _slug_file(sec_a.slug) if sec_a else "Issue"
-            if kind == "conflict" and iss.section_b_id is not None:
+            if att_kind == "conflict" and iss.section_b_id is not None:
                 sec_b = section_by_id.get(iss.section_b_id)
                 if sec_a is not None and sec_b is not None:
                     title = f"{_slug_file(sec_a.slug)} ↔ {_slug_file(sec_b.slug)}"
+            elif att_kind == "drift" and iss.kind == "code_drift_work_order":
+                short = str(iss.work_order_id or "").replace("-", "")[:6].upper()
+                title = f"WO-{short} · code drift" if iss.work_order_id else "Work order code drift"
+            elif att_kind == "drift" and iss.kind == "code_drift_section" and sec_a is not None:
+                title = f"Docs · {_slug_file(sec_a.slug)}"
 
             if iss.origin == "auto":
                 subtitle = "Auto-detected on publish"
@@ -139,20 +166,24 @@ class AttentionService:
                 disp = names.get(uid, "Unknown") if uid else "Unknown"
                 subtitle = f"Manual analysis · {disp}"
 
+            wo_link = iss.work_order_id if iss.kind == "code_drift_work_order" else None
+            sec_link = None if iss.kind == "code_drift_work_order" else iss.section_a_id
+
             items_raw.append(
                 (
-                    kind,
+                    att_kind,
                     iss.created_at,
                     AttentionItemOut(
                         id=f"issue:{iss.id}",
-                        kind=kind,
+                        kind=att_kind,
                         title=title,
                         subtitle=subtitle,
                         description=iss.description,
                         occurred_at=iss.created_at,
                         links=AttentionLinksOut(
                             issue_id=iss.id,
-                            section_id=iss.section_a_id,
+                            section_id=sec_link,
+                            work_order_id=wo_link,
                         ),
                     ),
                 )

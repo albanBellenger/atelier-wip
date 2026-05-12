@@ -3,12 +3,18 @@
 from typing import cast
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.deps import ProjectAccess, get_project_access, require_project_member
+from app.deps import (
+    ProjectAccess,
+    get_project_access,
+    require_project_home_editor_nested,
+    require_project_member,
+)
 from app.exceptions import ApiError
+from app.schemas.doc_sync import DocSyncRunResult
 from app.schemas.work_order import (
     GenerateWorkOrdersBody,
     WorkOrderCreate,
@@ -20,6 +26,9 @@ from app.schemas.work_order import (
     WorkOrderResponse,
     WorkOrderUpdate,
 )
+from app.services.doc_sync_pipeline import enqueue_doc_sync_for_work_order
+from app.services.doc_sync_service import DocSyncService
+from app.services.llm_service import LLMService
 from app.services.work_order_service import WorkOrderService
 
 router = APIRouter(prefix="/projects/{project_id}/work-orders", tags=["work-orders"])
@@ -176,16 +185,48 @@ async def update_work_order(
     project_id: UUID,
     work_order_id: UUID,
     body: WorkOrderUpdate,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db),
     pa: ProjectAccess = Depends(require_project_member),
 ) -> WorkOrderResponse:
     _ensure_project(pa, project_id)
-    return await WorkOrderService(session).update(
+    outcome = await WorkOrderService(session).update(
         project_id,
         work_order_id,
         body,
         actor_id=pa.studio_access.user.id,
     )
+    if outcome.transitioned_to_done:
+        await session.commit()
+
+        async def _run() -> None:
+            await enqueue_doc_sync_for_work_order(
+                work_order_id,
+                run_actor_id=pa.studio_access.user.id,
+            )
+
+        background_tasks.add_task(_run)
+    return outcome.response
+
+
+@router.post("/{work_order_id}/doc-sync/run", response_model=DocSyncRunResult)
+async def run_doc_sync_for_work_order(
+    project_id: UUID,
+    work_order_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    pa: ProjectAccess = Depends(require_project_home_editor_nested),
+) -> DocSyncRunResult:
+    _ensure_project(pa, project_id)
+    await WorkOrderService(session).get_work_order(
+        project_id, work_order_id, detail=False
+    )
+    llm = LLMService(session)
+    result = await DocSyncService(session, llm).propose_for_work_order(
+        work_order_id,
+        run_actor_id=pa.studio_access.user.id,
+    )
+    await session.commit()
+    return result
 
 
 @router.delete("/{work_order_id}", status_code=204)

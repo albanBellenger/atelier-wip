@@ -3,8 +3,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -94,12 +94,27 @@ class SoftwareChatMessage(Base):
 
 class Issue(Base):
     __tablename__ = "issues"
+    __table_args__ = (
+        CheckConstraint(
+            "project_id IS NOT NULL OR software_id IS NOT NULL",
+            name="ck_issues_project_or_software",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    project_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
+    )
+    software_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("software.id", ondelete="CASCADE"), nullable=True
+    )
+    work_order_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("work_orders.id", ondelete="CASCADE"), nullable=True
+    )
+    kind: Mapped[str] = mapped_column(
+        String(32), server_default="conflict_or_gap", nullable=False
     )
     triggered_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
@@ -116,8 +131,12 @@ class Issue(Base):
     run_actor_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
+    payload_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    resolution_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    project = relationship("Project", back_populates="issues")
+    project = relationship("Project", back_populates="issues", foreign_keys=[project_id])
+    software = relationship("Software", foreign_keys=[software_id])
+    work_order = relationship("WorkOrder", foreign_keys=[work_order_id])

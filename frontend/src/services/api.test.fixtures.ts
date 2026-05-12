@@ -163,6 +163,27 @@ export function apiCoverageHandlers(): RequestHandler[] {
     },
   ]
 
+  const codebaseOverview: Api.AdminCodebaseStudioRow[] = [
+    {
+      studio_id: 'st1',
+      studio_name: 'Studio One',
+      software: [
+        {
+          software_id: 'sw1',
+          software_name: 'Product',
+          git_configured: true,
+          ready_file_count: 2,
+          ready_chunk_count: 5,
+          ready_symbol_count: 1,
+          commit_sha: 'abcdef0123456789abcdef0123456789abcdef01',
+          branch: 'main',
+          ready_at: '2026-01-01T00:00:00Z',
+          newest_snapshot_status: 'ready',
+        },
+      ],
+    },
+  ]
+
   const reindexPolicy: Api.EmbeddingReindexPolicy = {
     id: 1,
     auto_reindex_trigger: 'manual',
@@ -254,6 +275,9 @@ export function apiCoverageHandlers(): RequestHandler[] {
   const issue: Api.IssueRow = {
     id: 'iss1',
     project_id: 'p1',
+    software_id: 'sw1',
+    work_order_id: null,
+    kind: 'conflict_or_gap',
     triggered_by: null,
     section_a_id: null,
     section_b_id: null,
@@ -261,6 +285,8 @@ export function apiCoverageHandlers(): RequestHandler[] {
     status: 'open',
     origin: 'test',
     run_actor_id: null,
+    payload_json: null,
+    resolution_reason: null,
     created_at: '',
   }
 
@@ -342,6 +368,23 @@ export function apiCoverageHandlers(): RequestHandler[] {
     http.patch('http://api.test/admin/embeddings/reindex-policy', () =>
       HttpResponse.json(reindexPolicy),
     ),
+    http.get('http://api.test/admin/codebase/overview', () =>
+      HttpResponse.json(codebaseOverview),
+    ),
+    http.post('http://api.test/admin/codebase/software/:softwareId/reindex', () =>
+      HttpResponse.json({
+        id: 'snap-new',
+        software_id: 'sw1',
+        commit_sha: 'c0ffeec0ffeec0ffeec0ffeec0ffeec0ffeec0ff',
+        branch: 'main',
+        status: 'pending',
+        error_message: null,
+        created_at: '2026-01-02T00:00:00Z',
+        ready_at: null,
+        file_count: 0,
+        chunk_count: 0,
+      }),
+    ),
     http.post('http://api.test/admin/test/llm', () => HttpResponse.json(connectivity)),
     http.post('http://api.test/admin/test/embedding', () =>
       HttpResponse.json(connectivity),
@@ -399,6 +442,31 @@ export function apiCoverageHandlers(): RequestHandler[] {
     http.get('http://api.test/software/sw1/projects', () => HttpResponse.json([project()])),
     http.post('http://api.test/software/sw1/projects', () => HttpResponse.json(project())),
     http.get('http://api.test/software/sw1/projects/p1', () => HttpResponse.json(project())),
+    http.get('http://api.test/software/sw1/codebase/snapshots', () =>
+      HttpResponse.json([
+        {
+          id: 'snap1',
+          software_id: 'sw1',
+          commit_sha: 'a'.repeat(40),
+          branch: 'main',
+          status: 'ready',
+          error_message: null,
+          created_at: '',
+          ready_at: '',
+          file_count: 1,
+          chunk_count: 1,
+        },
+      ]),
+    ),
+    http.post('http://api.test/software/sw1/codebase/code-drift/run', () =>
+      HttpResponse.json({
+        skipped_reason: null,
+        sections_evaluated: 1,
+        sections_flagged: 0,
+        work_orders_evaluated: 0,
+        work_orders_flagged: 0,
+      }),
+    ),
     http.put('http://api.test/software/sw1/projects/p1', () =>
       HttpResponse.json(project()),
     ),
@@ -583,6 +651,8 @@ export async function invokeThinApiCoverage(api: typeof import('./api')): Promis
   await api.getAdminEmbeddingLibrary()
   await api.getAdminEmbeddingReindexPolicy()
   await api.patchAdminEmbeddingReindexPolicy({})
+  await api.getAdminCodebaseOverview()
+  await api.postAdminCodebaseReindex('sw1')
   await api.postAdminTestLlm()
   await api.postAdminTestEmbedding()
   await api.getStudioCrossStudioIncoming('st1')

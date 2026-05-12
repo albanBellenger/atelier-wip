@@ -1379,7 +1379,10 @@ export async function publishProject(
 
 export interface IssueRow {
   id: string
-  project_id: string
+  project_id: string | null
+  software_id: string | null
+  work_order_id: string | null
+  kind: string
   triggered_by: string | null
   section_a_id: string | null
   section_b_id: string | null
@@ -1387,6 +1390,8 @@ export interface IssueRow {
   status: string
   origin: string
   run_actor_id: string | null
+  payload_json: Record<string, unknown> | null
+  resolution_reason: string | null
   created_at: string
 }
 
@@ -1409,10 +1414,13 @@ export async function updateIssue(
   projectId: string,
   issueId: string,
   status: 'open' | 'resolved',
+  opts?: { resolution_reason?: string | null },
 ): Promise<IssueRow> {
-  return request<IssueRow>('PUT', `/projects/${projectId}/issues/${issueId}`, {
-    status,
-  })
+  const body: { status: string; resolution_reason?: string | null } = { status }
+  if (opts?.resolution_reason != null) {
+    body.resolution_reason = opts.resolution_reason
+  }
+  return request<IssueRow>('PUT', `/projects/${projectId}/issues/${issueId}`, body)
 }
 
 export async function runProjectAnalyze(
@@ -2151,6 +2159,43 @@ export async function reorderSoftwareDocsSections(
   )
 }
 
+export interface BackpropOutlineSectionProposal {
+  title: string
+  slug: string
+  summary: string
+}
+
+export interface BackpropOutlineProposal {
+  sections: BackpropOutlineSectionProposal[]
+}
+
+export async function proposeSoftwareDocsOutline(
+  softwareId: string,
+  body: { hint?: string | null },
+): Promise<BackpropOutlineProposal> {
+  return request<BackpropOutlineProposal>(
+    'POST',
+    `/software/${softwareId}/docs/propose-outline`,
+    body,
+  )
+}
+
+export interface BackpropSectionDraftProposal {
+  markdown: string
+  source_files: string[]
+}
+
+export async function proposeSoftwareDocSectionDraft(
+  softwareId: string,
+  sectionId: string,
+): Promise<BackpropSectionDraftProposal> {
+  return request<BackpropSectionDraftProposal>(
+    'POST',
+    `/software/${softwareId}/docs/${sectionId}/propose-draft`,
+    {},
+  )
+}
+
 export interface CodebaseSnapshot {
   id: string
   software_id: string
@@ -2189,6 +2234,73 @@ export async function getCodebaseSnapshot(
   return request<CodebaseSnapshot>(
     'GET',
     `/software/${softwareId}/codebase/snapshots/${snapshotId}`,
+  )
+}
+
+export interface CodeDriftRunResult {
+  skipped_reason: string | null
+  sections_evaluated: number
+  sections_flagged: number
+  work_orders_evaluated: number
+  work_orders_flagged: number
+}
+
+export async function runSoftwareCodeDrift(
+  softwareId: string,
+): Promise<CodeDriftRunResult> {
+  return request<CodeDriftRunResult>(
+    'POST',
+    `/software/${softwareId}/codebase/code-drift/run`,
+  )
+}
+
+export interface DocSyncRunResult {
+  proposals_total: number
+  proposals_kept: number
+  proposals_dropped: number
+  skipped_reason: string | null
+}
+
+export async function runDocSyncForWorkOrder(
+  projectId: string,
+  workOrderId: string,
+): Promise<DocSyncRunResult> {
+  return request<DocSyncRunResult>(
+    'POST',
+    `/projects/${projectId}/work-orders/${workOrderId}/doc-sync/run`,
+    {},
+  )
+}
+
+// --- Admin codebase (platform admin, GitLab index per software) ---
+
+export interface AdminCodebaseSoftwareRow {
+  software_id: string
+  software_name: string
+  git_configured: boolean
+  ready_file_count: number
+  ready_chunk_count: number
+  ready_symbol_count: number
+  commit_sha: string | null
+  branch: string | null
+  ready_at: string | null
+  newest_snapshot_status: string
+}
+
+export interface AdminCodebaseStudioRow {
+  studio_id: string
+  studio_name: string
+  software: AdminCodebaseSoftwareRow[]
+}
+
+export async function getAdminCodebaseOverview(): Promise<AdminCodebaseStudioRow[]> {
+  return request<AdminCodebaseStudioRow[]>('GET', '/admin/codebase/overview')
+}
+
+export async function postAdminCodebaseReindex(softwareId: string): Promise<CodebaseSnapshot> {
+  return request<CodebaseSnapshot>(
+    'POST',
+    `/admin/codebase/software/${encodeURIComponent(softwareId)}/reindex`,
   )
 }
 

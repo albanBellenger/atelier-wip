@@ -37,6 +37,7 @@ import {
   listWorkOrders,
   logout as logoutApi,
   me,
+  runDocSyncForWorkOrder,
   updateWorkOrder,
   type AuthErrorBody,
   type Section,
@@ -254,6 +255,19 @@ export function WorkOrdersPage(): ReactElement {
   })
 
   useEffect(() => {
+    if (!profileQ.isSuccess) {
+      return
+    }
+    const wo = searchParams.get('wo')
+    if (wo && /^[0-9a-f-]{36}$/i.test(wo)) {
+      setSelectedId(wo)
+      const next = new URLSearchParams(searchParams)
+      next.delete('wo')
+      setSearchParams(next, { replace: true })
+    }
+  }, [profileQ.isSuccess, searchParams, setSearchParams])
+
+  useEffect(() => {
     if (profileQ.isError) {
       void navigate('/auth', { replace: true })
     }
@@ -395,6 +409,13 @@ export function WorkOrdersPage(): ReactElement {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['workOrders', pid] })
       void qc.invalidateQueries({ queryKey: ['workOrder', pid, selectedId] })
+    },
+  })
+
+  const docSyncMut = useMutation({
+    mutationFn: (workOrderId: string) => runDocSyncForWorkOrder(pid, workOrderId),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['issues', pid] })
     },
   })
 
@@ -575,6 +596,7 @@ export function WorkOrdersPage(): ReactElement {
           sections={sectionsFilterQ.data ?? []}
           onClose={() => setSelectedId(null)}
           updateMut={updateMut}
+          docSyncMut={docSyncMut}
           noteDraft={noteDraft}
           setNoteDraft={setNoteDraft}
           noteMut={noteMut}
@@ -1211,6 +1233,7 @@ function DetailForm(props: {
     }) => void
     isPending: boolean
   }
+  docSyncMut: { mutate: (workOrderId: string) => void; isPending: boolean }
   noteDraft: string
   setNoteDraft: (s: string) => void
   noteMut: { mutate: (args: { content: string }) => void; isPending: boolean }
@@ -1223,6 +1246,7 @@ function DetailForm(props: {
     sections,
     onClose,
     updateMut,
+    docSyncMut,
     noteDraft,
     setNoteDraft,
     noteMut,
@@ -1380,6 +1404,16 @@ function DetailForm(props: {
       >
         Save changes
       </button>
+      ) : null}
+      {!readOnly ? (
+        <button
+          type="button"
+          className="w-full rounded-lg border border-zinc-600 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-800 disabled:opacity-50"
+          disabled={docSyncMut.isPending}
+          onClick={() => docSyncMut.mutate(detail.id)}
+        >
+          {docSyncMut.isPending ? 'Suggesting…' : 'Suggest doc updates'}
+        </button>
       ) : null}
       {detail.section_ids.length > 0 && (
         <div>

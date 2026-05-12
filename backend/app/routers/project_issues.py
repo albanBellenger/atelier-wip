@@ -3,7 +3,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -47,7 +47,15 @@ async def list_project_issues(
             code="FORBIDDEN",
             message="Not a member of this studio.",
         )
-    stmt = select(Issue).where(Issue.project_id == project_id)
+    stmt = select(Issue).where(
+        or_(
+            Issue.project_id == project_id,
+            and_(
+                Issue.software_id == pa.project.software_id,
+                or_(Issue.project_id.is_(None), Issue.project_id == project_id),
+            ),
+        )
+    )
     if section_id is not None:
         stmt = stmt.where(
             or_(Issue.section_a_id == section_id, Issue.section_b_id == section_id)
@@ -72,7 +80,17 @@ async def update_issue(
 ) -> IssueResponse:
     _ensure_project(pa, project_id)
     row = await session.get(Issue, issue_id)
-    if row is None or row.project_id != project_id:
+    if row is None:
+        raise ApiError(
+            status_code=404,
+            code="NOT_FOUND",
+            message="Issue not found.",
+        )
+    visible = row.project_id == project_id or (
+        row.software_id == pa.project.software_id
+        and row.project_id is None
+    )
+    if not visible:
         raise ApiError(
             status_code=404,
             code="NOT_FOUND",
@@ -88,6 +106,10 @@ async def update_issue(
                 message="You cannot update this issue.",
             )
     row.status = body.status
+    if body.status == "resolved" and body.resolution_reason is not None:
+        row.resolution_reason = body.resolution_reason[:64]
+    elif body.status == "open":
+        row.resolution_reason = None
     await session.commit()
     await session.refresh(row)
     return IssueResponse.model_validate(row)

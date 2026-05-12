@@ -10,9 +10,16 @@ from app.deps import (
     SoftwareAccess,
     get_software_access,
     require_software_admin,
+    require_software_home_editor,
     require_software_member,
 )
 from app.schemas.section import SectionCreate, SectionReorder, SectionResponse, SectionUpdate
+from app.schemas.software_docs_backprop import (
+    BackpropOutlineProposalResponse,
+    BackpropOutlineRequest,
+    BackpropSectionProposalResponse,
+)
+from app.services.codebase_service import CodebaseService
 from app.services.software_docs_section_service import SoftwareDocsSectionService
 
 router = APIRouter(
@@ -60,6 +67,21 @@ async def reorder_software_docs_sections(
     )
 
 
+@router.post("/propose-outline", response_model=BackpropOutlineProposalResponse)
+async def propose_software_docs_outline(
+    software_id: UUID,
+    body: BackpropOutlineRequest,
+    session: AsyncSession = Depends(get_db),
+    sa: SoftwareAccess = Depends(require_software_home_editor),
+) -> BackpropOutlineProposalResponse:
+    raw = await CodebaseService(session).propose_software_docs_outline(
+        software_id,
+        body.hint,
+        actor_user_id=sa.studio_access.user.id,
+    )
+    return BackpropOutlineProposalResponse.model_validate(raw)
+
+
 @router.get("/{section_id}", response_model=SectionResponse)
 async def get_software_docs_section(
     software_id: UUID,
@@ -70,6 +92,24 @@ async def get_software_docs_section(
     return await SoftwareDocsSectionService(session).get_section(
         software_id, section_id
     )
+
+
+@router.post(
+    "/{section_id}/propose-draft",
+    response_model=BackpropSectionProposalResponse,
+)
+async def propose_software_doc_section_draft(
+    software_id: UUID,
+    section_id: UUID,
+    session: AsyncSession = Depends(get_db),
+    sa: SoftwareAccess = Depends(require_software_home_editor),
+) -> BackpropSectionProposalResponse:
+    raw = await CodebaseService(session).propose_software_doc_section_draft(
+        software_id,
+        section_id,
+        actor_user_id=sa.studio_access.user.id,
+    )
+    return BackpropSectionProposalResponse.model_validate(raw)
 
 
 @router.patch("/{section_id}", response_model=SectionResponse)

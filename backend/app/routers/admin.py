@@ -19,6 +19,7 @@ from app.schemas.auth import (
     UserPublic,
 )
 from app.schemas.admin_console import (
+    AdminCodebaseStudioResponse,
     AdminConsoleOverviewResponse,
     AdminEmbeddingLibraryStudioResponse,
     AdminStudioDetailResponse,
@@ -37,12 +38,16 @@ from app.schemas.admin_console import (
     StudioLlmPolicyRowResponse,
     StudioOverviewRowResponse,
 )
+from app.schemas.codebase import CodebaseSnapshotResponse
 from app.schemas.studio import StudioCreate, StudioResponse
 from app.services.admin_overview_service import AdminOverviewService
 from app.services.admin_service import AdminService
 from app.services.admin_studio_console_service import AdminStudioConsoleService
 from app.services.admin_user_directory_service import AdminUserDirectoryService
 from app.services.auth_service import AuthService
+from app.services.codebase_admin_service import CodebaseAdminService
+from app.services.codebase_pipeline import enqueue_codebase_index
+from app.services.codebase_service import CodebaseService
 from app.services.embedding_admin_service import EmbeddingAdminService
 from app.services.embedding_pipeline import (
     enqueue_sections_missing_embeddings_after_config,
@@ -300,6 +305,39 @@ async def get_studio_gitlab(
 ) -> StudioGitLabResponse:
     assert studio.id == studio_id
     return await StudioToolAdminService(session).get_gitlab(studio)
+
+
+@router.get("/codebase/overview", response_model=list[AdminCodebaseStudioResponse])
+async def list_codebase_overview(
+    session: AsyncSession = Depends(get_db),
+    _: User = Depends(require_platform_admin),
+) -> list[AdminCodebaseStudioResponse]:
+    return await CodebaseAdminService(session).overview()
+
+
+@router.post("/codebase/software/{software_id}/reindex", response_model=CodebaseSnapshotResponse)
+async def admin_request_codebase_reindex(
+    software_id: UUID,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_platform_admin),
+) -> CodebaseSnapshotResponse:
+    svc = CodebaseService(session)
+    snap = await svc.create_pending_snapshot(
+        software_id=software_id,
+        triggered_by_user_id=current_user.id,
+    )
+    detail = await svc.get_snapshot_detail(software_id, snap.id)
+    # BackgroundTasks run after the response is sent, before the request-scoped
+    # session commits. enqueue_codebase_index opens a new session and must see
+    # this row, so persist the pending snapshot before scheduling the task.
+    await session.commit()
+
+    async def _run() -> None:
+        await enqueue_codebase_index(snap.id)
+
+    background_tasks.add_task(_run)
+    return detail
 
 
 @router.get("/embeddings/library", response_model=list[AdminEmbeddingLibraryStudioResponse])

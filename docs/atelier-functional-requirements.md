@@ -185,6 +185,74 @@ Git integration is configured at two levels: Studio defaults and Software-specif
 
 Git provider scope: **self-hosted GitLab only** (GitHub support planned for a future phase).
 
+## 6b. Software Docs
+
+### 6b.1 What Software Docs Are
+
+Software Docs are a software-scoped outline of structured Markdown sections that hold durable documentation about the software itself — functional requirements, technical architecture, ADRs, data model overviews, runbooks, glossary. They are distinct from:
+
+- The **Software Definition** (§6.2) — a short free-text instruction that steers LLM behaviour, edited by Studio Owners only.
+- **Project Sections** (§7.3) — scoped to one project (a workstream), edited by all Studio Builders.
+- The **Artifact Library** (§9.3) — upload-only reference material.
+
+Software Docs fill the gap between these three: structured Markdown that describes the whole software, editable by the team, kept in the tool rather than uploaded as an artifact.
+
+Software Docs are deliberately not a wiki — there are no free-form pages, no `[[internal links]]`, no nested page hierarchies. The outline is a flat, ordered list of sections, identical in structure to a Project outline but one level up in the hierarchy.
+
+### 6b.2 Outline Management
+
+- Studio Owner defines the Software Docs outline from scratch (an ordered list of named sections).
+- Each section maps to one `.md` file in the published git output.
+- Studio Owner can add, rename, reorder (drag and drop), and delete sections.
+- All Studio Builders of the owning Studio can navigate and edit section content.
+- Cross-studio Externals granted to the Software can read Software Docs and edit content under the same rules that apply to Project Sections in that Software.
+- Studio Viewers and cross-studio Viewers have read-only access.
+
+### 6b.3 Editing
+
+Software Docs sections use the same split-view CodeMirror editor and Yjs real-time collaboration as Project Sections (§8). The collaboration room key is distinct from Project Section rooms, so two users editing the same Software Docs section see each other, while a user editing a Project Section is not pulled into the docs room.
+
+Section saves are persisted with the same debounce behaviour as Project Sections, and trigger the same re-embedding pipeline (§6b.5).
+
+### 6b.4 Activity Log
+
+Every Software Docs create, rename, reorder, content edit, and delete writes an entry to the existing Software Activity Log (§19) under verbs `software_doc_section_created`, `software_doc_section_updated`, `software_doc_sections_reordered`, and `software_doc_section_deleted`.
+
+### 6b.5 Software Docs in LLM Context
+
+Software Docs are first-class RAG context for every LLM call within the owning Software:
+
+- On every edit, the section is chunked and embedded into the same `section_chunks` table that holds Project Section chunks.
+- The smart context assembler (§10.5) treats Software Docs as a dedicated block, placed after the Software Definition and before the Project outline. The order is: Software Definition → Software Docs outline → Project outline → Current section → Retrieved chunks.
+- When the budget tightens, the Project outline is trimmed first, then Software Docs, then the current section — same overflow rules as the existing assembler.
+- Software Docs participate in similarity-based retrieval the same way Project Sections do, so a private thread on a Project Section can pull in relevant passages from Software Docs automatically when they are the best match.
+
+### 6b.6 Publish Layout
+
+Software Docs publish to a single location at the software root of the connected GitLab repository, alongside (not inside) project folders:
+
+```
+<repo_root>/
+├── docs/
+│   ├── README.md                       # Software Docs outline as a table of contents
+│   ├── <docs-section-slug-1>.md
+│   ├── <docs-section-slug-2>.md
+│   └── …
+├── <project-publish-folder-slug-1>/    # one folder per Project (§16.1)
+│   └── …
+├── <project-publish-folder-slug-2>/
+│   └── …
+└── …
+```
+
+Software Docs are republished whenever any project under the software is published. The docs files are idempotent — they reflect the current section content at publish time.
+
+> **Implementation note (not a user-facing requirement):** the current implementation publishes Software Docs under each project's publish folder (`<project_publish_folder_slug>/docs/`) rather than at the software root. The intended behaviour is described above; the current behaviour will be corrected in a follow-up. Until then, treat the file paths shown in this section as the target state, not the live state.
+
+### 6b.7 Knowledge Graph
+
+Software Docs sections appear in the Knowledge Graph (§12) as nodes of a new type `Software Doc Section` (visual treatment: a blue node with a docs glyph). Cross-section relationships detected by the conflict/gap analyser (§15) and code drift detection (§14b) link to these nodes. Software Docs do not participate in Work Order generation today (§11.2) — that remains Project-Section-only.
+
 ---
 
 ## 7. Projects
@@ -293,6 +361,53 @@ Artifacts can be uploaded at three different scopes. The scope determines where 
 - Snapshots progress through `pending` → `indexing` → `ready` (or `failed`). At most one snapshot remains **`ready`** per software; older ready snapshots are marked **`superseded`** and their chunk rows are deleted to bound storage.
 - Embeddings are stored in `codebase_chunks` with **HNSW** (`vector_cosine_ops`), mirroring `section_chunks` / `artifact_chunks`. Usage is recorded with embedding `call_source` values `codebase_index` (bulk index) and `codebase_rag` (query embedding).
 - Tool Admins may call diagnostics (`GET /software/{id}/codebase/diagnostics?q=`) to inspect an LRU-cached **repository map** (PageRank over a co-directory graph) plus vector hits against the current ready snapshot.
+
+## 9b. Codebase Index
+
+### 9b.1 What It Is
+
+A Codebase Index is a snapshot of the source code in a Software's connected GitLab repository, indexed for retrieval and analysis by the LLM. The index lets Atelier compare the spec to what was actually built, draft documentation from existing code, and propose documentation updates after work ships.
+
+A Software must have a configured GitLab URL, branch, and token (§6.3) before it can be indexed.
+
+### 9b.2 Snapshots
+
+The index is built as **snapshots** — a snapshot is a point-in-time view of the repository at a specific commit SHA.
+
+- **Lifecycle:** `pending` → `indexing` → `ready` (or `failed`).
+- **At most one ready snapshot** per Software. When a new snapshot reaches `ready`, the previous ready snapshot is marked `superseded` and its embedded chunk rows are deleted to bound storage. The snapshot record itself is retained for audit.
+- Snapshots that fail (network error, permission denied, repo too large) keep their row with an error message; the next reindex attempt creates a new snapshot rather than retrying the failed one.
+
+### 9b.3 Triggering a Reindex
+
+- Studio Builders of the owning Studio can request a reindex from the Software settings page ("Codebase" panel).
+- Cross-studio Externals cannot trigger a reindex even if they have edit access to the Software, since the operation consumes the owning studio's embedding budget.
+- Reindex runs asynchronously. The UI shows the current snapshot's status, file count, chunk count, last-indexed SHA, last-indexed timestamp, and the last five snapshots in history.
+
+### 9b.4 Indexing Behaviour
+
+- The indexer walks the repository tree at the resolved commit SHA and selects source files for indexing.
+- **Skipped paths:** `node_modules/`, `dist/`, `build/`, `.next/`, `__pycache__/`, `.git/`, `coverage/`, files matching `*.min.js`, and common binary extensions (images, archives, fonts, audio, video, compiled libraries).
+- **Per-language chunking:** the indexer uses tree-sitter to split source files at function, method, class, interface, and module boundaries for the languages it recognises (Python, TypeScript, JavaScript, Rust, Go, Java, C, C++, C#, Ruby, PHP, Swift, Kotlin, Scala, Markdown). Files in unrecognised languages are split at line boundaries with a configurable maximum chunk size.
+- **Embedded base64 payloads** (e.g. inline images in Markdown) are stripped before embedding so they cannot exceed provider input limits.
+- **Caps:** indexing honours administrative caps on the maximum number of files per snapshot, the total bytes per snapshot, and the maximum bytes per file. Snapshots that hit a cap stop cleanly rather than failing — the snapshot is marked `ready` with whatever was indexed and the limit is noted in the snapshot record.
+
+### 9b.5 Codebase Chunks and Symbols
+
+- Code chunks are stored with their file path, language, byte range, line range, and embedding. Chunk embeddings live in their own table separate from artifact chunks and section chunks, and are queried only by codebase-aware features (Backprop, code drift, doc sync) — never mixed into normal chat or thread context.
+- Top-level symbols (functions, methods, classes) extracted by tree-sitter are stored separately as a lightweight symbol index, used for name-based grounding when retrieval by similarity is sparse.
+
+### 9b.6 Repository Map
+
+For each ready snapshot, the system computes a **repository map** — a ranked summary of files in the repository, ordered by structural centrality. The map is used by codebase-aware agents to give the LLM a one-page overview of "what's important in this codebase" alongside specific retrieved chunks.
+
+### 9b.7 Diagnostics
+
+Tool Admins have a diagnostic endpoint to inspect the repository map and to run a vector search against the current ready snapshot for a free-text query. This is used to validate retrieval quality before exposing a feature to builders; it is not a user-facing capability.
+
+### 9b.8 Token Usage Attribution
+
+Every embedding call made by the indexer records token usage against the owning studio with `call_source = "codebase_index"`. Every retrieval query that uses the index records `call_source = "codebase_rag"`. These appear in the Token Usage Dashboard (§13) as normal embedding charges.
 
 ---
 
@@ -519,6 +634,67 @@ When a spec section changes, the system automatically checks whether any linked 
 - Or edit the Work Order to bring it back into alignment with the updated spec
 - Dismissals are logged for audit (who dismissed, when)
 
+## 14b. Code Drift Detection
+
+### 14b.1 What It Does
+
+When a Software has a ready codebase snapshot (§9b), Atelier can detect divergence between the written specification and what the code actually does. Two kinds of drift are detected:
+
+- **Section drift** — a Project Section or Software Docs section makes claims that the code no longer supports (or never supported).
+- **Work Order drift** — an active Work Order describes work that does not appear to be present in the code.
+
+Detected drift surfaces as Issues in the existing Issues Panel (§15) alongside conflict and gap issues, with distinct visual treatment.
+
+### 14b.2 When It Runs
+
+- **Automatically:** after every successful publish (§16.1), code drift detection runs as a background task for the published software. The user who triggered the publish does not wait on it.
+- **Manually:** any Studio Builder can run code drift detection on demand from the Issues Panel header ("Run code drift analysis"). The button is disabled when the Software has no ready codebase snapshot, with a tooltip directing the user to index the codebase first.
+
+### 14b.3 What Is Checked
+
+Per run:
+
+- **Sections:** all Software Docs sections under the Software, plus all Project Sections from non-archived Projects under the Software, bounded to the most-recently-updated 50 sections.
+- **Work Orders:** all Work Orders with status `Backlog`, `In Progress`, or `In Review` in non-archived Projects under the Software, bounded to the most-recently-updated 50.
+
+Done and Archived Work Orders are never checked.
+
+Each section and each work order is compared individually against a small set of code chunks retrieved by similarity from the ready snapshot, plus the repository map. The LLM is instructed to be conservative — it flags only divergences a careful reader would call out, not stylistic differences or missing how-to detail.
+
+### 14b.4 What the Results Look Like
+
+**Section drift Issues** carry:
+- The affected section (link).
+- A severity rating: `low`, `medium`, or `high`.
+- A short human-readable reason.
+- A list of referenced code locations (file path with line range, read-only — the user opens the file in their own editor).
+
+**Work Order drift Issues** carry:
+- The affected Work Order (link).
+- A verdict: `partial` or `missing` (`complete` work orders do not produce an issue).
+- A short reason.
+- Referenced code locations.
+
+### 14b.5 De-duplication and Re-runs
+
+Before each run, all previous **open, auto-generated** code drift issues for the Software are cleared. Pre-existing conflict and gap issues from the spec-vs-spec analyser (§15) are **not** affected.
+
+Manually opened code drift issues (created via the manual trigger) follow the same audit rules as other manually-created issues — they are retained until resolved.
+
+### 14b.6 Resolution
+
+Code drift issues use the existing Open / Resolved lifecycle and are resolved by any user who can see them. There is no auto-fix — the user updates the spec, edits the code, or marks the issue resolved if they decide the divergence is intentional.
+
+### 14b.7 Knowledge Graph
+
+Code drift issues appear as Issue nodes in the Knowledge Graph (§12) linked to the affected Section or Work Order via a new edge type `drifts_from_code`.
+
+### 14b.8 What This Does Not Do
+
+- Code drift never auto-edits a section, a Work Order, or any code. It only opens Issues.
+- It does not analyse the entire codebase against a single Issue — it analyses each section / work order against the code chunks most likely to be relevant.
+- It does not detect drift inside artifact content (PDFs, Markdown uploads). Drift detection applies to authored specs only.
+
 ---
 
 ## 15. Conflict & Gap Detection (Issues Panel)
@@ -544,6 +720,103 @@ When a spec section changes, the system automatically checks whether any linked 
 - Any member who can see an issue can mark it Resolved
 - Resolved issues remain in history for audit purposes
 - Issues appear as nodes in the Knowledge Graph linked to their affected sections
+
+## 15b. Documentation Sync (Suggestions from Work Orders)
+
+### 15b.1 What It Does
+
+When a Work Order is marked `Done`, Atelier can suggest updates to the Software Docs to reflect the work that just shipped. Each suggestion proposes a **replacement** for one Software Docs section, alongside a rationale. The Builder reviews, applies (or applies with edits), or dismisses.
+
+Documentation Sync never edits a section directly — the proposed replacement is loaded into the editor as a pending change, and the user must save explicitly.
+
+Suggestions target **Software Docs only**. Project Sections are out of scope for sync — they describe a workstream that is itself in flight, so auto-suggested edits create more confusion than they resolve.
+
+### 15b.2 When It Runs
+
+- **Automatically:** every time a Work Order transitions to `Done`, a background sync task is scheduled. The user who set the status does not wait on it. Failure is silent.
+- **Manually:** any Studio Builder can run sync on demand from the Work Order detail page ("Suggest doc updates"). The button is disabled when the Software has no ready codebase snapshot.
+
+### 15b.3 What Is Considered
+
+The sync agent receives:
+
+- The Work Order's title, description, and acceptance criteria.
+- A short list of candidate Software Docs sections that look topically relevant to the Work Order (typically 5 candidates).
+- A short list of code chunks retrieved by similarity from the ready snapshot, oriented around what the Work Order describes (typically 8 chunks).
+
+It returns zero, one, or more proposals, each targeting exactly one of the candidate sections.
+
+### 15b.4 What the Suggestions Look Like
+
+Each suggestion surfaces as an Issue of kind `doc_update_suggested` in the existing Issues Panel, with:
+
+- The target Software Docs section (link).
+- A rationale (the agent's reasoning).
+- A side-by-side diff between the section's current Markdown and the proposed replacement Markdown.
+- Three actions: **Apply**, **Apply with edits**, **Dismiss**.
+
+**Apply** and **Apply with edits** both navigate to the Software Docs editor for the target section, with the proposed replacement loaded as a pending Yjs change. The section is not saved until the user explicitly saves. On save, the Issue is moved to Resolved with reason `applied`.
+
+**Dismiss** moves the Issue to Resolved with reason `dismissed`. No edit is made.
+
+### 15b.5 Knowledge Graph
+
+Doc sync issues appear in the Knowledge Graph (§12) linked to both the originating Work Order (via a new edge type `suggests_doc_update`) and to the target Software Docs section.
+
+### 15b.6 What This Does Not Do
+
+- Doc sync never writes to a section without explicit user save.
+- Doc sync does not propose changes to Project Sections, Work Orders, artifacts, the Software Definition, or code.
+- There is no auto-apply toggle in the current version. (Tracked under §20 Future Scope.)
+- Doc sync is not retrospective — it runs on Work Orders that newly transition to `Done`, not on Work Orders that were Done before the feature shipped.
+
+## 15c. Backprop (Drafting Software Docs from Code)
+
+### 15c.1 What It Does
+
+When a Software has a ready codebase snapshot (§9b), Atelier can draft Software Docs content from the code. Two drafting flows are available:
+
+- **Outline draft** — propose an initial outline of Software Docs sections (titles, slugs, one-sentence summaries) for a Software whose docs are empty (or sparse).
+- **Section draft** — for one existing Software Docs section, propose the section's Markdown content from the code.
+
+Both flows produce **proposals**. The Builder reviews, accepts the parts they want, and the tool inserts them. Backprop never writes content to the docs without an explicit accept.
+
+### 15c.2 Outline Draft
+
+- Available on the Software Docs page (§6b) to **Studio Owners only** — outline structure changes are owner-scoped.
+- Click "Draft outline from codebase" to open a modal with an optional free-text hint ("emphasise the API surface", "we ship a CLI and a library, cover both").
+- The system returns a proposed list of 5–12 sections. Each row shows the title, slug, and one-line summary, with a checkbox.
+- The owner selects which proposed sections to accept and clicks "Accept selected". Selected sections are created in the order returned. Existing sections are not touched.
+
+### 15c.3 Section Draft
+
+- Available on each Software Docs section page to **Studio Builders and above**.
+- Click "Draft from codebase" to request a draft for this specific section.
+- The result is shown in a side-by-side diff modal: the section's current content on the left, the proposed Markdown on the right, with the list of source files the agent grounded its draft in below.
+- "Insert into editor" loads the proposed Markdown into the live editor as a pending Yjs change. The section is not saved until the user explicitly saves.
+- "Dismiss" closes the modal without changing anything.
+
+### 15c.4 How the Draft Is Grounded
+
+Backprop's section drafter receives:
+
+- The section's current title and content (the content is treated as a summary of intent, not a constraint to preserve verbatim).
+- The repository map (§9b.6).
+- A short list of code chunks retrieved by similarity to the section's title and current content.
+- The Software Definition.
+
+The agent is instructed to cite source files inline using backticked paths so the Builder can spot-check the draft.
+
+### 15c.5 Pre-conditions and Failure Modes
+
+- Both flows require a `ready` codebase snapshot. The buttons are disabled (tooltip: "Index the codebase first") when no snapshot is ready.
+- If the agent returns an empty outline or an empty section draft, the modal shows a "No draft produced" message rather than an error — this is normal for sparse or unusual codebases and not a system failure.
+
+### 15c.6 What This Does Not Do
+
+- Backprop never writes content without explicit accept.
+- Backprop does not draft Project Sections, Work Orders, or artifact content. It targets Software Docs only.
+- Backprop does not modify code.
 
 ---
 
@@ -687,5 +960,4 @@ Activity entries are retained indefinitely.
 - AI-generated commit messages
 - Rollback UI within the tool
 - Work Order dependency graph (manual edges between work orders)
-
-**Slice 16 follow-ups (planned / partial):** Backprop agents (outline + section drafts from code), automated code–doc drift issues with graph linkage, doc ↔ WO sync with suggested patches — see technical architecture for tables and routes as they land.
+- Auto-apply policy for doc sync (per-section opt-in to skip review)

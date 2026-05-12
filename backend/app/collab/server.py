@@ -15,8 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.websockets import WebSocketDisconnect
 
 from app.collab.editor_context import collab_acting_user_id
-from app.models import Section
+from app.models import Section, Software
 from app.services.notification_dispatch_service import NotificationDispatchService
+from app.services.software_activity_service import SoftwareActivityService
 from app.services.section_service import SECTION_YJS_TEXT_FIELD
 
 log = logging.getLogger("atelier.collab")
@@ -318,6 +319,17 @@ class AtelierWebsocketServer(WebsocketServer):
                         actor_user_id=editor,
                     )
                 elif target.software_id is not None:
+                    sw = await session2.get(Software, target.software_id)
+                    if sw is not None:
+                        await SoftwareActivityService(session2).record(
+                            software_id=target.software_id,
+                            studio_id=sw.studio_id,
+                            actor_user_id=editor,
+                            verb="software_doc_section_updated",
+                            summary=f"Updated software doc «{section_title}»",
+                            entity_type="software_doc_section",
+                            entity_id=target.section_id,
+                        )
                     await nd.software_doc_section_updated_by_other(
                         software_id=target.software_id,
                         section_id=target.section_id,

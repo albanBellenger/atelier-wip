@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
+import { IssuesPanel } from '../components/issues/IssuesPanel'
 import {
   getHostedEnvironment,
   hostedEnvironmentLabel,
@@ -13,12 +14,14 @@ import { APP_VERSION } from '../version'
 import {
   getProject,
   getSoftware,
+  listCodebaseSnapshots,
   listProjectIssues,
   listProjects,
   listSoftware,
   logout as logoutApi,
   me,
   runProjectAnalyze,
+  runSoftwareCodeDrift,
   updateIssue,
 } from '../services/api'
 
@@ -146,9 +149,35 @@ export function IssuesPage(): ReactElement {
     },
   })
 
+  const snapshotsQ = useQuery({
+    queryKey: ['codebaseSnapshots', sfid],
+    queryFn: () => listCodebaseSnapshots(sfid),
+    enabled: Boolean(sfid && access.isMember && access.isStudioEditor),
+  })
+
+  const hasReadySnapshot = useMemo(() => {
+    const rows = snapshotsQ.data ?? []
+    return rows.some((s) => s.status === 'ready')
+  }, [snapshotsQ.data])
+
+  const codeDriftDisabledReason = access.isStudioEditor
+    ? hasReadySnapshot
+      ? null
+      : 'Index the codebase first to enable this check'
+    : null
+
+  const codeDriftMut = useMutation({
+    mutationFn: () => runSoftwareCodeDrift(sfid),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['issues', pid] })
+    },
+  })
+
   const resolveMut = useMutation({
-    mutationFn: (issueId: string) =>
-      updateIssue(pid, issueId, 'resolved'),
+    mutationFn: (args: { issueId: string; resolution_reason?: string }) =>
+      updateIssue(pid, args.issueId, 'resolved', {
+        resolution_reason: args.resolution_reason,
+      }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['issues', pid] })
     },
@@ -236,21 +265,20 @@ export function IssuesPage(): ReactElement {
           trailingCrumb={headerTrailingCrumb}
         />
 
-        <div className="mx-auto max-w-3xl space-y-6">
+        <div className="mx-auto max-w-6xl space-y-6">
           <h1 className="text-2xl font-semibold">Issues</h1>
-          {access.isStudioEditor ? (
-            <button
-              type="button"
-              disabled={analyzeMut.isPending}
-              className="rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-100 hover:bg-zinc-700 disabled:opacity-50"
-              onClick={() => analyzeMut.mutate()}
-            >
-              Run analysis
-            </button>
-          ) : null}
           {analyzeMut.isSuccess && (
             <p className="text-sm text-emerald-400">
               Created {analyzeMut.data.issues_created} issue(s).
+            </p>
+          )}
+          {codeDriftMut.isSuccess && (
+            <p className="text-sm text-emerald-400">
+              Code drift run complete
+              {codeDriftMut.data.skipped_reason
+                ? ` (${codeDriftMut.data.skipped_reason})`
+                : `: ${codeDriftMut.data.sections_flagged} section(s), ${codeDriftMut.data.work_orders_flagged} work order(s) flagged`}
+              .
             </p>
           )}
           {issuesQ.isPending && (
@@ -259,34 +287,24 @@ export function IssuesPage(): ReactElement {
           {issuesQ.isError && (
             <p className="text-red-400">Could not load issues.</p>
           )}
-          <ul className="space-y-4">
-            {(issuesQ.data ?? []).map((issue) => (
-              <li
-                key={issue.id}
-                className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
-              >
-                <p className="text-sm text-zinc-300 whitespace-pre-wrap">
-                  {issue.description}
-                </p>
-                <p className="mt-2 text-xs text-zinc-500">
-                  Status: {issue.status} · origin: {issue.origin}
-                </p>
-                {issue.status === 'open' && access.isStudioEditor ? (
-                  <button
-                    type="button"
-                    className="mt-3 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500"
-                    onClick={() => resolveMut.mutate(issue.id)}
-                    disabled={resolveMut.isPending}
-                  >
-                    Mark resolved
-                  </button>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-          {!issuesQ.isPending && (issuesQ.data?.length ?? 0) === 0 && (
-            <p className="text-zinc-500">No issues yet.</p>
-          )}
+          <IssuesPanel
+            studioId={sid}
+            softwareId={sfid}
+            projectId={pid}
+            issues={issuesQ.data ?? []}
+            canRunAnalysis={access.isStudioEditor}
+            canRunCodeDrift={access.isStudioEditor}
+            canManageIssues={access.isStudioEditor}
+            codeDriftDisabledReason={codeDriftDisabledReason}
+            analyzePending={analyzeMut.isPending}
+            codeDriftPending={codeDriftMut.isPending}
+            resolvePending={resolveMut.isPending}
+            onRunAnalysis={() => analyzeMut.mutate()}
+            onRunCodeDrift={() => codeDriftMut.mutate()}
+            onResolve={(issueId, opts) =>
+              resolveMut.mutate({ issueId, resolution_reason: opts?.resolution_reason })
+            }
+          />
         </div>
 
         <footer className="mt-16 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-zinc-800/60 pt-6 text-[11px] text-zinc-600">

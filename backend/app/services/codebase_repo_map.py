@@ -12,6 +12,38 @@ _CACHE_MAX = 64
 _repo_map_cache: OrderedDict[tuple[str, int, tuple[str, ...]], dict[str, Any]] = OrderedDict()
 
 
+def _pagerank_power_iteration(
+    G: nx.Graph, *, alpha: float = 0.85, max_iter: int = 100, tol: float = 1e-6
+) -> dict[str, float]:
+    """PageRank without SciPy (NetworkX 3.4+ defaults ``nx.pagerank`` to SciPy)."""
+    nodes = list(G.nodes())
+    n = len(nodes)
+    if n == 0:
+        return {}
+    r: dict[str, float] = {v: 1.0 / n for v in nodes}
+    for _ in range(max_iter):
+        r_next: dict[str, float] = {v: (1.0 - alpha) / n for v in nodes}
+        dangling = 0.0
+        for v in nodes:
+            d = int(G.degree(v))
+            share = r[v]
+            if d == 0:
+                dangling += share
+            else:
+                step = alpha * share / d
+                for u in G.neighbors(v):
+                    r_next[u] += step
+        if dangling > 0:
+            add = alpha * dangling / n
+            for v in nodes:
+                r_next[v] += add
+        diff = sum(abs(r_next[v] - r[v]) for v in nodes)
+        r = r_next
+        if diff < tol:
+            break
+    return r
+
+
 def build_repo_map(file_paths: list[str], token_budget: int) -> dict[str, Any]:
     """Undirected co-directory graph; PageRank highlights central modules."""
     paths = sorted({p.replace("\\", "/").strip("/") for p in file_paths if p.strip()})
@@ -29,7 +61,7 @@ def build_repo_map(file_paths: list[str], token_budget: int) -> dict[str, Any]:
     if G.number_of_nodes() == 0:
         return {"nodes": [], "ranked_paths": [], "scores": {}}
 
-    pr = nx.pagerank(G, alpha=0.85)
+    pr = _pagerank_power_iteration(G, alpha=0.85)
     ranked = sorted(pr.items(), key=lambda x: (-x[1], x[0]))
     picked: list[str] = []
     cost = 0

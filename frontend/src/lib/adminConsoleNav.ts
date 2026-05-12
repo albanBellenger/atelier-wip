@@ -5,6 +5,7 @@ export type AdminConsoleSection =
   | 'llm'
   | 'budgets'
   | 'embeddings'
+  | 'codebase'
   | 'users'
 
 export const ADMIN_CONSOLE_BASE = '/admin/console'

@@ -217,6 +217,29 @@ class AdminEmbeddingLibraryStudioResponse(BaseModel):
     section_vector_chunks: int
 
 
+class AdminCodebaseSoftwareRow(BaseModel):
+    """Per-software codebase index row for platform admin console."""
+
+    software_id: UUID
+    software_name: str
+    git_configured: bool
+    ready_file_count: int
+    ready_chunk_count: int
+    ready_symbol_count: int
+    commit_sha: str | None = None
+    branch: str | None = None
+    ready_at: datetime | None = None
+    newest_snapshot_status: str
+
+
+class AdminCodebaseStudioResponse(BaseModel):
+    """Studio grouping of software codebase index rows."""
+
+    studio_id: UUID
+    studio_name: str
+    software: list[AdminCodebaseSoftwareRow]
+
+
 class EmbeddingReindexPolicyResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

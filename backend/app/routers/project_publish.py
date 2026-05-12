@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -26,13 +26,18 @@ def _ensure_project(pa: ProjectAccess, project_id: UUID) -> None:
 @router.post("/publish", response_model=PublishResponse)
 async def publish_project(
     project_id: UUID,
+    background_tasks: BackgroundTasks,
     body: PublishRequest | None = None,
     session: AsyncSession = Depends(get_db),
     pa: ProjectAccess = Depends(require_can_publish),
 ) -> PublishResponse:
     _ensure_project(pa, project_id)
     msg = body.commit_message if body else None
-    result = await PublishService(session).publish(access=pa, commit_message=msg)
+    result = await PublishService(session).publish(
+        access=pa,
+        commit_message=msg,
+        background_tasks=background_tasks,
+    )
     return PublishResponse(
         commit_url=result.commit_url,
         commit_sha=result.commit_sha,

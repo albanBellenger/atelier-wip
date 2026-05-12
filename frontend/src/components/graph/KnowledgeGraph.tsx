@@ -24,6 +24,7 @@ export interface KnowledgeGraphProps {
 
 const COLORS: Record<string, string> = {
   section: '#60a5fa',
+  software_doc_section: '#38bdf8',
   work_order: '#fb923c',
   artifact: '#4ade80',
   issue: '#f87171',
@@ -31,6 +32,7 @@ const COLORS: Record<string, string> = {
 
 export function KnowledgeGraph(props: KnowledgeGraphProps): ReactElement {
   const [showSection, setShowSection] = useState(true)
+  const [showSoftwareDocSection, setShowSoftwareDocSection] = useState(true)
   const [showWo, setShowWo] = useState(true)
   const [showArtifact, setShowArtifact] = useState(true)
   const [showIssue, setShowIssue] = useState(true)
@@ -39,6 +41,8 @@ export function KnowledgeGraph(props: KnowledgeGraphProps): ReactElement {
   const graphData = useMemo(() => {
     const nodes = props.nodes.filter((n) => {
       if (n.entity_type === 'section' && !showSection) return false
+      if (n.entity_type === 'software_doc_section' && !showSoftwareDocSection)
+        return false
       if (n.entity_type === 'work_order' && !showWo) return false
       if (n.entity_type === 'artifact' && !showArtifact) return false
       if (n.entity_type === 'issue' && !showIssue) return false
@@ -57,6 +61,7 @@ export function KnowledgeGraph(props: KnowledgeGraphProps): ReactElement {
     props.nodes,
     props.edges,
     showSection,
+    showSoftwareDocSection,
     showWo,
     showArtifact,
     showIssue,
@@ -73,6 +78,14 @@ export function KnowledgeGraph(props: KnowledgeGraphProps): ReactElement {
             onChange={(e) => setShowSection(e.target.checked)}
           />
           Sections
+        </label>
+        <label className="flex cursor-pointer items-center gap-2">
+          <input
+            type="checkbox"
+            checked={showSoftwareDocSection}
+            onChange={(e) => setShowSoftwareDocSection(e.target.checked)}
+          />
+          Software docs
         </label>
         <label className="flex cursor-pointer items-center gap-2">
           <input
@@ -127,7 +140,8 @@ export function KnowledgeGraph(props: KnowledgeGraphProps): ReactElement {
               const r =
                 n.entity_type === 'work_order'
                   ? 7
-                  : n.entity_type === 'section'
+                  : n.entity_type === 'section' ||
+                      n.entity_type === 'software_doc_section'
                     ? 6
                     : 5
               ctx.beginPath()
@@ -150,8 +164,8 @@ export function KnowledgeGraph(props: KnowledgeGraphProps): ReactElement {
         )}
       </div>
       <p className="text-xs text-zinc-500">
-        Blue = section, orange = work order, green = artifact, red = issue. Gold ring =
-        potentially stale work order.
+        Blue = project section, cyan = software doc section, orange = work order, green =
+        artifact, red = issue. Gold ring = potentially stale work order.
       </p>
     </div>
   )

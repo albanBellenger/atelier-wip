@@ -354,7 +354,7 @@ async def test_update_all_scalar_fields() -> None:
         section_ids=[sid],
     )
     actor = uuid.uuid4()
-    out = await WorkOrderService(db).update(pid, wid, body, actor_id=actor)
+    out = (await WorkOrderService(db).update(pid, wid, body, actor_id=actor)).response
     assert out.title == "new"
     assert wo.implementation_guide is None
     assert wo.acceptance_criteria is None

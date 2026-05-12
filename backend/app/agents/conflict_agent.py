@@ -83,6 +83,7 @@ class ConflictAgent:
                 Issue.project_id == project_id,
                 Issue.status == "open",
                 Issue.origin == "auto",
+                Issue.kind == "conflict_or_gap",
             )
         )
 
@@ -184,6 +185,8 @@ class ConflictAgent:
             issue = Issue(
                 id=uuid.uuid4(),
                 project_id=project_id,
+                software_id=software_id,
+                kind="conflict_or_gap",
                 triggered_by=None,
                 section_a_id=sec_a,
                 section_b_id=sec_b_uuid,

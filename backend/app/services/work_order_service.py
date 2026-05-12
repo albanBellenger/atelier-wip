@@ -70,6 +70,12 @@ class _WorkOrderPatchApply:
     status_changed: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class WorkOrderUpdateOutcome:
+    response: WorkOrderResponse
+    transitioned_to_done: bool
+
+
 def _normalize_work_order_patch(data: dict[str, Any]) -> dict[str, Any]:
     """Map raw ``model_dump(exclude_unset=True)`` entries to normalized assignable values."""
     norm: dict[str, Any] = {}
@@ -306,18 +312,21 @@ class WorkOrderService:
         body: WorkOrderUpdate,
         *,
         actor_id: uuid.UUID,
-    ) -> WorkOrderResponse:
+    ) -> WorkOrderUpdateOutcome:
         wo = await self._get_wo(project_id, work_order_id)
         prev_status = wo.status
         data = body.model_dump(exclude_unset=True)
         if not data:
             sec_map = await self._section_ids_for_work_orders([wo.id])
             names = await self._user_display_names(self._user_ids_for_work_orders([wo]))
-            return self._to_response(
-                wo,
-                section_ids=sec_map.get(wo.id, []),
-                assignee_name=names.get(wo.assignee_id) if wo.assignee_id else None,
-                updated_by_name=names.get(wo.updated_by_id) if wo.updated_by_id else None,
+            return WorkOrderUpdateOutcome(
+                response=self._to_response(
+                    wo,
+                    section_ids=sec_map.get(wo.id, []),
+                    assignee_name=names.get(wo.assignee_id) if wo.assignee_id else None,
+                    updated_by_name=names.get(wo.updated_by_id) if wo.updated_by_id else None,
+                ),
+                transitioned_to_done=False,
             )
         norm = _normalize_work_order_patch(data)
         state = _WorkOrderPatchApply()
@@ -343,6 +352,9 @@ class WorkOrderService:
             wo.updated_by_id = actor_id
         await self.db.flush()
         await self.db.refresh(wo)
+        transitioned_to_done = (
+            state.status_changed and prev_status != "done" and wo.status == "done"
+        )
         if state.status_changed:
             await self._maybe_dispatch_status_notifications(
                 wo,
@@ -352,11 +364,14 @@ class WorkOrderService:
             )
         sec_map = await self._section_ids_for_work_orders([wo.id])
         names = await self._user_display_names(self._user_ids_for_work_orders([wo]))
-        return self._to_response(
-            wo,
-            section_ids=sec_map.get(wo.id, []),
-            assignee_name=names.get(wo.assignee_id) if wo.assignee_id else None,
-            updated_by_name=names.get(wo.updated_by_id) if wo.updated_by_id else None,
+        return WorkOrderUpdateOutcome(
+            response=self._to_response(
+                wo,
+                section_ids=sec_map.get(wo.id, []),
+                assignee_name=names.get(wo.assignee_id) if wo.assignee_id else None,
+                updated_by_name=names.get(wo.updated_by_id) if wo.updated_by_id else None,
+            ),
+            transitioned_to_done=transitioned_to_done,
         )
 
     async def _maybe_dispatch_status_notifications(

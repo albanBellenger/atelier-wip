@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import structlog
+from fastapi import BackgroundTasks
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -172,6 +173,7 @@ class PublishService:
         *,
         access: ProjectAccess,
         commit_message: str | None,
+        background_tasks: BackgroundTasks | None = None,
     ) -> PublishResult:
         if not access.studio_access.is_studio_editor:
             raise ApiError(
@@ -269,6 +271,11 @@ class PublishService:
                 "post_publish_analysis_failed",
                 project_id=str(project.id),
             )
+
+        if background_tasks is not None:
+            from app.services.code_drift_pipeline import enqueue_code_drift_run
+
+            background_tasks.add_task(enqueue_code_drift_run, software.id, actor)
 
         return PublishResult(
             commit_url=web_url or software.git_repo_url,

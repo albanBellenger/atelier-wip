@@ -147,16 +147,19 @@ updated_at  TIMESTAMPTZ DEFAULT NOW()
 
 ### `sections`
 ```sql
-id          UUID PRIMARY KEY,
-project_id  UUID REFERENCES projects(id) ON DELETE CASCADE,
-title       TEXT NOT NULL,
-slug        TEXT NOT NULL,
-"order"     INTEGER NOT NULL,
-content     TEXT DEFAULT '',        -- plain text Markdown, extracted from Yjs doc (used by RAG)
-yjs_state   BYTEA,                  -- binary Yjs document state (Uint8Array); preserves CRDT vector clocks, tombstones, and operational history for correct offline merge on reconnect
-created_at  TIMESTAMPTZ DEFAULT NOW(),
-updated_at  TIMESTAMPTZ DEFAULT NOW(),
-UNIQUE (project_id, slug)
+id           UUID PRIMARY KEY,
+project_id   UUID REFERENCES projects(id) ON DELETE CASCADE,    -- nullable; set when section belongs to a Project
+software_id  UUID REFERENCES software(id) ON DELETE CASCADE,    -- nullable; set when section belongs to Software Docs
+title        TEXT NOT NULL,
+slug         TEXT NOT NULL,
+"order"      INTEGER NOT NULL,
+content      TEXT DEFAULT '',                                    -- plain text Markdown, extracted from Yjs doc (used by RAG)
+yjs_state    BYTEA,                                              -- binary Yjs document state
+created_at   TIMESTAMPTZ DEFAULT NOW(),
+updated_at   TIMESTAMPTZ DEFAULT NOW(),
+CHECK ((project_id IS NOT NULL AND software_id IS NULL)
+    OR (project_id IS NULL AND software_id IS NOT NULL))         -- exactly one owner
+    
 ```
 
 ### `artifacts`
@@ -286,7 +289,7 @@ source_type  TEXT NOT NULL,   -- section | artifact | work_order | issue
 source_id    UUID NOT NULL,
 target_type  TEXT NOT NULL,
 target_id    UUID NOT NULL,
-edge_type    TEXT NOT NULL,   -- generates | involves | references | informed_by | depends_on
+edge_type    TEXT NOT NULL,   -- generates | involves | references | informed_by | depends_on | drifts_from_code | suggests_doc_update
 created_at   TIMESTAMPTZ DEFAULT NOW(),
 UNIQUE (source_type, source_id, target_type, target_id, edge_type)
 ```
@@ -321,14 +324,22 @@ created_at TIMESTAMPTZ DEFAULT NOW()
 
 ### `issues`
 ```sql
-id             UUID PRIMARY KEY,
-project_id     UUID REFERENCES projects(id) ON DELETE CASCADE,
-triggered_by   UUID REFERENCES users(id),   -- NULL = auto on publish
-section_a_id   UUID REFERENCES sections(id),
-section_b_id   UUID REFERENCES sections(id),
-description    TEXT NOT NULL,
-status         TEXT DEFAULT 'open',          -- open | resolved
-created_at     TIMESTAMPTZ DEFAULT NOW()
+id              UUID PRIMARY KEY,
+project_id      UUID REFERENCES projects(id) ON DELETE CASCADE,    -- nullable; NULL when the issue is software-scoped (e.g. drift on a Software Doc section)
+software_id     UUID REFERENCES software(id) ON DELETE CASCADE,    -- nullable; set on every code-drift and doc-sync row
+work_order_id   UUID REFERENCES work_orders(id) ON DELETE CASCADE, -- nullable; set on code_drift_work_order and doc_update_suggested rows
+kind            TEXT NOT NULL DEFAULT 'conflict_or_gap',
+                -- conflict_or_gap | code_drift_section | code_drift_work_order | doc_update_suggested
+section_a_id    UUID REFERENCES sections(id),
+section_b_id    UUID REFERENCES sections(id),
+description     TEXT NOT NULL,
+status          TEXT DEFAULT 'open',                                -- open | resolved
+origin          TEXT DEFAULT 'manual',                              -- manual | auto
+run_actor_id    UUID REFERENCES users(id),
+payload_json    JSONB,                                              -- per-kind extra data; see below
+resolution_reason TEXT,                                             -- nullable; e.g. 'applied' | 'dismissed' | NULL
+created_at      TIMESTAMPTZ DEFAULT NOW(),
+CHECK (project_id IS NOT NULL OR software_id IS NOT NULL)
 ```
 
 ### `mcp_keys`
@@ -359,6 +370,56 @@ estimated_cost_usd NUMERIC(10,6),
 created_at   TIMESTAMPTZ DEFAULT NOW()
 ```
 
+### `codebase_snapshots`  
+
+```sql
+id                     UUID PRIMARY KEY,
+software_id            UUID REFERENCES software(id) ON DELETE CASCADE,
+commit_sha             TEXT NOT NULL,
+branch                 TEXT NOT NULL,
+status                 TEXT NOT NULL,                       -- pending | indexing | ready | failed | superseded
+error_message          TEXT,
+triggered_by_user_id   UUID REFERENCES users(id) ON DELETE SET NULL,
+created_at             TIMESTAMPTZ DEFAULT NOW(),
+ready_at               TIMESTAMPTZ
+```
+
+### `codebase_files` 
+
+```sql
+id           UUID PRIMARY KEY,
+snapshot_id  UUID REFERENCES codebase_snapshots(id) ON DELETE CASCADE,
+path         TEXT NOT NULL,
+blob_sha     TEXT NOT NULL,
+size_bytes   INTEGER NOT NULL,
+language     TEXT,                                          -- tree-sitter language key, or NULL for fallback chunker
+UNIQUE (snapshot_id, path)
+```
+
+### `codebase_chunks` 
+
+```sql
+id            UUID PRIMARY KEY,
+snapshot_id   UUID REFERENCES codebase_snapshots(id) ON DELETE CASCADE,
+file_id       UUID REFERENCES codebase_files(id) ON DELETE CASCADE,
+chunk_index   INTEGER NOT NULL,
+content       TEXT NOT NULL,
+embedding     vector(N) NOT NULL,                           -- N = current embedding dimension
+start_line    INTEGER,
+end_line      INTEGER
+```
+
+### `codebase_symbols` 
+
+```sql
+id            UUID PRIMARY KEY,
+snapshot_id   UUID REFERENCES codebase_snapshots(id) ON DELETE CASCADE,
+file_id       UUID REFERENCES codebase_files(id) ON DELETE CASCADE,
+name          TEXT NOT NULL,
+kind          TEXT NOT NULL,                                -- function | method | class | interface | module
+start_line    INTEGER NOT NULL,
+end_line      INTEGER NOT NULL
+```
 ### Database Indexes
 ```sql
 -- Vector similarity search
@@ -383,6 +444,28 @@ CREATE INDEX ON graph_edges    (project_id, target_type, target_id);
 CREATE INDEX ON token_usage    (studio_id,  created_at);
 CREATE INDEX ON token_usage    (user_id,    created_at);
 CREATE INDEX ON mcp_keys       (studio_id,  revoked_at);
+CREATE INDEX ix_codebase_chunks_snapshot ON codebase_chunks (snapshot_id);
+CREATE INDEX ix_codebase_chunks_embedding_hnsw
+  ON codebase_chunks USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX ix_codebase_snapshots_software_status
+  ON codebase_snapshots (software_id, status);
+CREATE UNIQUE INDEX uq_sections_project_id_slug
+  ON sections (project_id, slug)
+  WHERE project_id IS NOT NULL;
+
+CREATE UNIQUE INDEX uq_sections_software_id_slug
+  ON sections (software_id, slug)
+  WHERE software_id IS NOT NULL;
+
+CREATE INDEX ix_sections_software_order
+  ON sections (software_id, "order")
+  WHERE software_id IS NOT NULL;
+CREATE INDEX ix_issues_kind_status ON issues (kind, status);
+CREATE INDEX ix_issues_software_kind_status ON issues (software_id, kind, status)
+  WHERE software_id IS NOT NULL;
+CREATE INDEX ix_codebase_symbols_snapshot_name ON codebase_symbols (snapshot_id, name);
+CREATE INDEX ix_codebase_symbols_snapshot_kind ON codebase_symbols (snapshot_id, kind);
+
 ```
 
 ---
@@ -494,6 +577,11 @@ Listing and read/unread updates use `NotificationService` (e.g. `/me/notificatio
 | `/projects/{pid}/work-orders/{wid}/dismiss-stale` | POST | Studio Builder | Dismiss stale flag |
 | `/projects/{pid}/work-orders/{wid}/notes` | POST | Studio Builder | Add note |
 
+On status transition to `Done`:
+
+1. Existing behaviour (notifications, activity) unchanged.
+2. **NEW:** schedule `DocSyncService.propose_for_work_order` as a background task with the status-changer as `run_actor_id`. Best-effort; never blocks the status change; failure is logged and swallowed.
+
 ### ThreadService
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
@@ -510,6 +598,14 @@ Listing and read/unread updates use `NotificationService` (e.g. `/me/notificatio
 |---|---|---|---|
 | `/projects/{pid}/publish` | POST | Studio Builder | Publish spec + work orders to git |
 | `/software/{sid}/history` | GET | Member/Viewer | Commit history timeline |
+
+After a successful publish:
+
+1. Existing behaviour (write project files, run conflict/gap analysis, drift detection on work orders) is unchanged.
+2. **NEW:** if the software has a `ready` codebase snapshot, schedule `CodeDriftService.run_for_software` as a background task with the publishing user as `run_actor_id`. The publish never blocks on this. Failure is logged and swallowed.
+3. **NEW:** publish Software Docs to `<repo_root>/docs/<section-slug>.md` and a generated `<repo_root>/docs/README.md` with the docs outline.
+
+> **Implementation note:** the current publish service writes Software Docs under each project's publish folder (`<project_publish_folder_slug>/docs/`). The corrected layout (under `<repo_root>/docs/`) is what the functional spec describes and what code-drift / doc-sync paths assume when surfacing file references to the user. Fixing the publish layout is a small MR independent of the Slice 16 agents; do it before, during, or immediately after 16e.
 
 ### ConflictService
 | Endpoint | Method | Auth | Description |
@@ -581,13 +677,16 @@ async def build_context(
 ) -> str: ...
 ```
 Assembly order:
-1. Software Definition (always, ~500 token cap)
-2. Project outline — section titles only (always)
-3. Current section full content (always)
-4. Top-5 other section chunks by cosine similarity
-5. Top-5 artifact chunks by cosine similarity
-6. Rank all by score, fill remaining budget greedily
-7. Return labelled context string
+1. Software Definition
+2. Software Docs outline (titles + plain-text content, trimmed under budget pressure like the Project outline)
+3. Project outline (existing)
+4. Current section (existing)
+5. Retrieved chunks (existing)
+
+Software Docs sections also participate in similarity-based retrieval over `section_chunks` — they appear naturally in the retrieved chunks block when relevant.
+
+Budget overflow order is unchanged in intent (trim Project outline first), but the helper now distinguishes two outline blocks. See `_split_outline_blocks` in `rag_service.py` for the implementation.
+
 
 ### GitService (internal)
 Wraps the self-hosted GitLab REST API. GitHub support is planned for a future phase — the abstraction layer is intentionally kept provider-agnostic internally so GitHub can be added without touching call sites.
@@ -637,6 +736,79 @@ Work order pull payload:
   ]
 }
 ```
+### SoftwareDocsSectionService 
+
+| Endpoint | Method | Auth | Description |
+|---|---|---|---|
+| `/software/{sid}/docs` | POST | Studio Owner | Create Software Docs section (outline change) |
+| `/software/{sid}/docs` | GET | Studio Member / Viewer / granted External | List sections ordered by `order` |
+| `/software/{sid}/docs/{secid}` | GET | Studio Member / Viewer / granted External | Get one section |
+| `/software/{sid}/docs/{secid}` | PATCH | Studio Builder+ for content; Studio Owner only for title/slug/order changes | Update section |
+| `/software/{sid}/docs/{secid}` | DELETE | Studio Owner | Delete section |
+| `/software/{sid}/docs/reorder` | POST | Studio Owner | Bulk reorder (full ordered ID list) |
+
+Behaviour:
+
+- Mirrors `SectionService` but always sets `software_id` and leaves `project_id` NULL.
+- Slug generation uses the same `slugify_title` helper; uniqueness enforced by the partial unique index `uq_sections_software_id_slug`.
+- Every mutating call writes a Software Activity Log entry with verb prefix `software_doc_*`.
+- Embedding into `section_chunks` reuses the existing section embedding pipeline; the chunk rows carry `section_id`, not `software_id`, and are discriminated in retrieval by joining to `sections`.
+
+### CodebaseService 
+
+| Endpoint | Method | Auth | Description |
+|---|---|---|---|
+| `/software/{sid}/codebase/reindex` | POST | Studio Builder+ (owning studio only; cross-studio externals denied) | Create a pending snapshot; index runs in background |
+| `/software/{sid}/codebase/snapshots` | GET | Studio Member / Viewer | List snapshots (most recent first) |
+| `/software/{sid}/codebase/snapshots/{snapid}` | GET | Studio Member / Viewer | Snapshot detail (file count, chunk count, status, error) |
+| `/software/{sid}/codebase/diagnostics` | GET | Tool Admin | `?q=` text → repo-map JSON + top vector hits against current ready snapshot |
+
+Internal methods:
+
+- `create_pending_snapshot(software_id, triggered_by_user_id)` — resolves git config (software override or studio default), inserts pending row, returns it. Caller commits before scheduling the background task; see §11b below.
+- `index_snapshot(snapshot_id)` — runs the indexing pipeline (tree walk → blob fetch → tree-sitter chunk → embed → write files/chunks/symbols), respects file/byte caps from settings, marks `superseded` and deletes chunks of the previous ready snapshot on success.
+- `get_ready_snapshot(software_id) -> CodebaseSnapshot | None`
+- `propose_software_docs_outline(software_id, hint, actor_user_id) -> dict` — composes repo-map context, delegates to `BackpropOutlineAgent`.
+- `propose_software_doc_section_draft(software_id, section_id, actor_user_id) -> dict` — composes repo map + retrieved chunks + symbol fallback, delegates to `BackpropSectionAgent`.
+
+### CodebaseRagService 
+
+Internal-only — no endpoints of its own; called by `CodebaseService` and by the code-drift / doc-sync services.
+
+- `retrieve_chunks_for_text(snapshot_id, software_id, query_text, limit) -> list[CodebaseChunkHit]` — embeds the query with `call_source='codebase_rag'`, runs cosine-distance search over `codebase_chunks` scoped to the snapshot. Returns hits with `path`, `chunk_index`, `score`, `snippet` (first 500 chars), `start_line`, `end_line`. Empty list if no ready snapshot or empty query.
+
+### CodebaseRepoMap — (module, not a service class)
+
+`backend/app/services/codebase_repo_map.py` provides:
+
+- `build_repo_map(file_paths, token_budget) -> dict` — current implementation: undirected co-directory graph, NetworkX PageRank, pick top files until token budget is exhausted. Returns `{ "nodes", "ranked_paths", "scores" }`.
+- `repo_map_lru(snapshot_id, token_budget, file_paths) -> dict` — in-process LRU keyed by `(snapshot_id, token_budget, sorted_paths_tuple)`; max 64 entries.
+
+**Planned upgrade (separate MR, not in Slice 16):** swap the graph construction to walk `codebase_symbols` references against `codebase_symbols` definitions, weight edges by reference count, and run PageRank over the resulting directed graph. Same signature; downstream agents benefit automatically. Tracked as a follow-up to the §11c repo-map design below.
+
+### CodeDriftService 
+
+| Endpoint | Method | Auth | Description |
+|---|---|---|---|
+| `/software/{sid}/codebase/code-drift/run` | POST | Studio Builder+ (owning studio only) | Manual run; synchronous; returns `CodeDriftRunResult` |
+
+Internal methods:
+
+- `run_for_software(software_id, run_actor_id) -> CodeDriftRunResult` — full sweep, bounded (50 sections, 50 work orders); clears prior open auto-issues of kinds `code_drift_section` and `code_drift_work_order` for the software; pre-existing `conflict_or_gap` issues are not touched.
+
+The service also exposes a background-task entry point used by `PublishService` after a successful publish (see Publish hook below).
+
+### DocSyncService 
+
+| Endpoint | Method | Auth | Description |
+|---|---|---|---|
+| `/work-orders/{wid}/doc-sync/run` | POST | Studio Builder+ (owning studio only) | Manual run; synchronous; returns `DocSyncRunResult` |
+
+Internal methods:
+
+- `propose_for_work_order(work_order_id, run_actor_id) -> DocSyncRunResult` — picks up to 5 candidate Software Docs sections by relevance, retrieves up to 8 code chunks, delegates to `DocSyncAgent`, validates that every returned proposal targets a real candidate section, inserts `doc_update_suggested` Issues.
+
+The service is also called as a background task from `WorkOrderService` on transition to `Done`.
 
 ---
 
@@ -807,7 +979,8 @@ nodes = [
     { id, type: "section",    label: section.title,       stale: false },
     { id, type: "artifact",   label: artifact.name              },
     { id, type: "work_order", label: work_order.title,    stale: work_order.is_stale },
-    { id, type: "issue",      label: issue.description[:50], status: issue.status }
+    { id, type: "issue",      label: issue.description[:50], status: issue.status },
+    
 ]
 edges = [
     { source, target, type: "generates" | "involves" | "references" | ... }
@@ -901,6 +1074,233 @@ async def check_work_order_drift(work_order_id: UUID):
 - Debounced: fires 5 seconds after the last section save
 - Only runs for work orders in `backlog` or `in_progress` status (done orders are not re-checked)
 - Cost-aware: uses the smallest/fastest configured model if available (future optimisation)
+
+## 11b — Codebase Indexing Pipeline (Technical Design)
+
+`backend/app/services/codebase_pipeline.py` runs `CodebaseService.index_snapshot` in a background task with its own database session:
+
+```text
+create_pending_snapshot(software_id, user_id)
+   │
+   ▼
+session.commit()                              ← row must be visible to the worker
+   │
+   ▼
+BackgroundTasks.add_task(enqueue_codebase_index, snapshot_id)
+   │
+   ▼
+enqueue_codebase_index opens async_session_factory(), then:
+   1. resolve software, git config, decrypt git token
+   2. set status = 'indexing'
+   3. fetch repo tree at the snapshot's commit_sha (GitLab API; never the git binary)
+   4. for each blob that survives should_skip_path():
+        fetch_blob → decode utf-8 (replace errors) → sanitize embedded base64
+        → tree-sitter chunk OR fallback line-window chunk → extract symbols
+        → insert codebase_files / codebase_chunks / codebase_symbols rows
+        → embed chunks in batches (call_source='codebase_index')
+      Honour caps: max_files, max_total_bytes, max_file_bytes (settings).
+   5. mark prior ready snapshot for this software as 'superseded' and DELETE
+      its codebase_chunks rows; snapshot row kept for audit
+   6. set status = 'ready', ready_at = now()
+   On any exception: status = 'failed', error_message = str(exc)[:2000]
+```
+
+Settings (env, prefix `ATELIER_`):
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `CODEBASE_INDEX_MAX_FILES` | 50000 | Hard file count cap per snapshot |
+| `CODEBASE_INDEX_MAX_TOTAL_BYTES` | 524288000 (500 MB) | Total bytes cap per snapshot |
+| `CODEBASE_INDEX_MAX_FILE_BYTES` | 1048576 (1 MB) | Per-file cap; larger files are skipped |
+
+Skipped paths and binary extensions are defined in `code_chunking.py` (`should_skip_path`, `_BINARY_SUFFIXES`). Tree-sitter language map: `_EXT_TO_TS_LANG` in the same module.
+
+---
+
+## 11c — Repo Map (Technical Design)
+
+For each ready snapshot, a per-request repo map is computed from the file path list:
+
+```python
+def build_repo_map(file_paths: list[str], token_budget: int) -> dict:
+    # 1. Normalise paths (forward slashes, strip leading slash, dedupe).
+    # 2. Build an undirected NetworkX graph; one node per file.
+    # 3. For each directory group, connect every pair of files inside it.
+    # 4. Run nx.pagerank with alpha=0.85.
+    # 5. Pick paths in descending PageRank order, accumulating
+    #    (len(path) + 24) characters, until token_budget is exhausted.
+    # 6. Return { "nodes", "ranked_paths", "scores" }.
+```
+
+Cached via `repo_map_lru` keyed by `(snapshot_id, token_budget, sorted_paths)`. The cache is in-process (max 64 entries) and reset on process restart.
+
+The agents in §11d / §11e / §11f consume the repo map by formatting `ranked_paths` as a newline-separated list (top 60 paths typically), prefixed by a short header in the user prompt.
+
+---
+
+## 11d — Backprop Agents (Technical Design)
+
+Two structured agents under `backend/app/agents/`:
+
+### `backprop_outline_agent.py`
+
+- `SYSTEM_PROMPT_TEMPLATE = ATELIER_PRODUCT_PREFIX + "...{sw_name}...{def_block}..."`
+- `USER_PROMPT` placeholders: `{repo_map_blob}`, `{hint}`.
+- `BACKPROP_OUTLINE_JSON_SCHEMA` returns `{ sections: [ { title, slug, summary } ] }`.
+- `call_source='backprop_outline'`.
+- Validation: slugs must match the slug regex used by `SoftwareDocsSectionService`. Invalid slugs are slugified by the service on accept, never rejected at the agent layer.
+
+### `backprop_section_agent.py`
+
+- `SYSTEM_PROMPT_TEMPLATE = ATELIER_PRODUCT_PREFIX + "...{sw_name}...{def_block}..."`
+- `USER_PROMPT` placeholders: `{section_title}`, `{section_summary}`, `{repo_map_blob}`, `{code_chunks_blob}`.
+- `BACKPROP_SECTION_JSON_SCHEMA` returns `{ markdown: str, source_files: [str] }`.
+- `call_source='backprop_section'`.
+- Orchestration in `CodebaseService.propose_software_doc_section_draft`:
+  1. Build repo map at `token_budget=1500`.
+  2. Retrieve top 10 code chunks via `CodebaseRagService.retrieve_chunks_for_text(query_text = title + ' ' + content[:1500])`.
+  3. **Fallback:** if hits < 3, additionally query `codebase_symbols` by case-insensitive `name LIKE` on title tokens, limit 20. Add these file paths as bare path lines (no snippet) to the chunks blob. Document this in the agent docstring.
+
+---
+
+## 11e — Code Drift Agents (Technical Design)
+
+Two structured agents under `backend/app/agents/`:
+
+### `code_drift_section_agent.py`
+
+- `SYSTEM_PROMPT_TEMPLATE = ATELIER_PRODUCT_PREFIX + "..."` — conservative bar: flag only divergences a careful reader would call out.
+- `USER_PROMPT` placeholders: `{section_title}`, `{section_body}`, `{repo_map_blob}`, `{code_chunks_blob}`.
+- `CODE_DRIFT_SECTION_JSON_SCHEMA` returns `{ likely_drifted: bool, severity: "low"|"medium"|"high", reason: str, code_refs: [{ path, start_line, end_line }] }`.
+- `call_source='code_drift_section'`.
+
+### `code_drift_work_order_agent.py`
+
+- `SYSTEM_PROMPT_TEMPLATE = ATELIER_PRODUCT_PREFIX + "..."` — conservative bar: `partial` is the default when uncertain.
+- `USER_PROMPT` placeholders: `{wo_title}`, `{wo_description}`, `{wo_acceptance_criteria}`, `{repo_map_blob}`, `{code_chunks_blob}`.
+- `CODE_DRIFT_WO_JSON_SCHEMA` returns `{ verdict: "complete"|"partial"|"missing", reason: str, code_refs: [...] }`.
+- `call_source='code_drift_work_order'`.
+
+`CodeDriftService.run_for_software` flow:
+
+```text
+ensure_openai_llm_ready(call_source='code_drift_section')   ← skip run on ApiError
+       │
+       ▼
+clear open auto-issues where kind IN ('code_drift_section','code_drift_work_order')
+                                AND software_id = sid
+       │
+       ▼
+sections = SoftwareDocs(sid) ∪ ProjectSections(sid, not_archived)
+           ordered by updated_at desc, limit 50
+work_orders = WorkOrders(sid, status IN (backlog,in_progress,in_review),
+                              not_archived)
+              ordered by updated_at desc, limit 50
+       │
+       ▼
+repo_map = repo_map_lru(snapshot_id, budget=1200, file_paths)
+       │
+       ▼
+for s in sections:
+    chunks = CodebaseRagService.retrieve_chunks_for_text(
+                snapshot_id, sid, query=s.title + ' ' + s.content[:800], limit=8)
+    out = CodeDriftSectionAgent.analyse(...)
+    if out.likely_drifted:
+        insert Issue(kind='code_drift_section',
+                     software_id=sid,
+                     project_id=s.project_id,                ← may be NULL for Software Docs
+                     section_a_id=s.id,
+                     description=out.reason[:2000],
+                     origin='auto', run_actor_id=actor,
+                     payload_json={severity, code_refs})
+
+for w in work_orders:
+    chunks = CodebaseRagService.retrieve_chunks_for_text(
+                snapshot_id, sid,
+                query=w.title + ' ' + w.description + ' ' + w.acceptance_criteria[:400],
+                limit=8)
+    out = CodeDriftWorkOrderAgent.analyse(...)
+    if out.verdict != 'complete':
+        insert Issue(kind='code_drift_work_order',
+                     software_id=sid, project_id=w.project_id,
+                     work_order_id=w.id,
+                     description=out.reason[:2000],
+                     origin='auto', run_actor_id=actor,
+                     payload_json={verdict, code_refs})
+```
+
+Cost-aware: a single `repo_map_lru` lookup is reused across all sections and work orders in a run. Token usage is recorded under `call_source='code_drift_section'` and `'code_drift_work_order'` against the software's owning studio.
+
+---
+
+## 11f — Documentation Sync (Technical Design)
+
+One structured agent under `backend/app/agents/`:
+
+### `doc_sync_agent.py`
+
+- `SYSTEM_PROMPT_TEMPLATE = ATELIER_PRODUCT_PREFIX + "..."` — conservative bar: propose a change only when the work clearly changes what the documentation should say; preserve the section's voice and structure.
+- `USER_PROMPT` placeholders: `{wo_title}`, `{wo_description}`, `{wo_acceptance_criteria}`, `{candidate_sections_blob}`, `{code_chunks_blob}`.
+- `DOC_SYNC_JSON_SCHEMA` returns `{ proposals: [ { section_id: str, rationale: str, replacement_markdown: str } ] }`. The agent may return zero proposals.
+- `call_source='doc_sync'`.
+
+`DocSyncService.propose_for_work_order` flow:
+
+```text
+resolve work_order → project → software → studio
+                                       │
+                                       ▼
+ready = CodebaseService.get_ready_snapshot(software.id)
+if ready is None: return skipped_reason='not_indexed'
+
+candidates = SoftwareDocs(software.id) ranked by similarity
+             to (wo.description + wo.acceptance_criteria), top 5
+                                       │
+                                       ▼
+chunks = CodebaseRagService.retrieve_chunks_for_text(
+            ready.id, software.id,
+            query=wo.title + ' ' + wo.description, limit=8)
+                                       │
+                                       ▼
+out = DocSyncAgent.propose_patches(...)
+for p in out.proposals:
+    if p.section_id ∉ {c.id for c in candidates}:
+        log warning; drop                              ← defensive: agent should not invent IDs
+        continue
+    insert Issue(kind='doc_update_suggested',
+                 software_id=software.id,
+                 project_id=NULL,
+                 section_a_id=p.section_id,
+                 work_order_id=wo.id,
+                 description=p.rationale[:2000],
+                 origin='auto', run_actor_id=actor,
+                 payload_json={replacement_markdown: p.replacement_markdown})
+```
+
+Apply flow:
+
+```text
+user clicks Apply → frontend navigates to Software Docs editor for section_a_id
+                  + sets the Yjs document's pending state to replacement_markdown
+                  (DOES NOT save)
+                  │
+                  ▼
+user saves explicitly
+                  │
+                  ▼
+existing section save path runs (debounced persistence + re-embed)
+                  │
+                  ▼
+issue resolution endpoint called with reason='applied';
+issue.status = 'resolved', resolution_reason = 'applied'
+```
+
+Dismiss flow:
+
+```text
+user clicks Dismiss → existing issue resolution endpoint with reason='dismissed';
+                      issue.status = 'resolved', resolution_reason = 'dismissed'
+```
 
 ---
 
@@ -1134,6 +1534,75 @@ ENCRYPTION_KEY=changeme-32-byte-fernet-key
 - Docker Compose production hardening
 - Documentation (README, configuration guide, admin setup, architecture)
 
+### Slice 16 — Codebase Analyst & Software Docs
+
+#### Slice 16a — Software Docs (software-scoped outline)
+- `sections` schema migration (nullable `project_id`, new `software_id`, mutual-exclusion CHECK, partial unique indexes)
+- `SoftwareDocsSectionService` + endpoints under `/software/{sid}/docs`
+- Activity log verbs `software_doc_*`
+- Yjs collab room path `/ws/software/{sfid}/docs/{sid}/collab`
+- `RAGService` updated: Software Docs outline block between Software Definition and Project outline
+- `PublishService` writes docs files (intended layout: `<repo_root>/docs/<slug>.md` — see Publish patch note)
+- Knowledge Graph node type `Software Doc Section`
+- `SoftwareDocsPage` + `SoftwareDocSectionPage` (CodeMirror + Yjs editor reused)
+- Conflict / gap detection runs as a separate pair-set per software for software-doc sections (does not mix with project sections)
+
+#### Slice 16b — Codebase snapshot infrastructure
+- `codebase_snapshots`, `codebase_files`, `codebase_chunks`, `codebase_symbols` table migrations (HNSW on chunks)
+- `tree-sitter-languages` dependency
+- `code_chunking.py` (tree-sitter chunker + line-window fallback, `should_skip_path`, binary suffix list, base64 sanitiser)
+- `git_service` additions: `list_repo_tree`, `fetch_blob`, `list_commits`
+- `CodebaseService.create_pending_snapshot` + `index_snapshot` + background task pipeline (`codebase_pipeline.py`)
+- `/software/{sid}/codebase/reindex` + `/snapshots` endpoints
+- Codebase panel on `SoftwareSettingsPage` with snapshot history + Reindex button
+- Settings caps wired to `Settings`
+
+#### Slice 16c — Codebase RAG + repo map
+- `CodebaseRagService.retrieve_chunks_for_text`
+- `codebase_repo_map.build_repo_map` (NetworkX, co-directory PageRank) + `repo_map_lru` cache
+- `/software/{sid}/codebase/diagnostics` (Tool Admin)
+- No user-facing UI in this slice
+
+#### Slice 16d — Backprop agents
+- `backprop_outline_agent.py` + `backprop_section_agent.py`
+- `CodebaseService.propose_software_docs_outline` + `propose_software_doc_section_draft` (with `codebase_symbols` name-match fallback)
+- `/software/{sid}/docs/propose-outline` + `/{secid}/propose-draft`
+- "Draft outline from codebase" modal on `SoftwareDocsPage` (Studio Owner)
+- "Draft from codebase" diff modal on `SoftwareDocSectionPage` (Studio Builder+)
+- Agent registry update in `.cursor/rules/agents.mdc`
+
+#### Slice 16e — Code drift agents
+- `issues` schema migration (`kind`, nullable `project_id`, `software_id`, `work_order_id`, `payload_json`, `resolution_reason`, indexes)
+- `code_drift_section_agent.py` + `code_drift_work_order_agent.py`
+- `CodeDriftService.run_for_software`
+- `/software/{sid}/codebase/code-drift/run` endpoint
+- `PublishService` hook to schedule drift run as background task after publish
+- Issues Panel rendering for new issue kinds, including software-scoped issues alongside project-scoped
+- Graph edges: `drifts_from_code` (Section → Issue, Work Order → Issue)
+- Agent registry update in `.cursor/rules/agents.mdc`
+
+#### Slice 16f — Doc sync agent
+- `doc_sync_agent.py`
+- `DocSyncService.propose_for_work_order`
+- `WorkOrderService` hook on transition to `Done` to schedule background sync
+- `/work-orders/{wid}/doc-sync/run` endpoint
+- Issues Panel rendering for `doc_update_suggested` with side-by-side diff and Apply / Apply with edits / Dismiss
+- Section save path resolves the Issue with `resolution_reason='applied'` when Apply was the navigation source
+- Graph edge: `suggests_doc_update` (Work Order → Issue)
+- Future Scope updates in functional requirements doc (§20)
+- Agent registry update in `.cursor/rules/agents.mdc`
+
+**Slice 16 — LLM `call_source` values (token usage dashboard):**
+
+| `call_source` | Agent / entrypoint |
+|---|---|
+| `backprop_outline` | `BackpropOutlineAgent.propose_outline` |
+| `backprop_section` | `BackpropSectionAgent.propose_section_draft` |
+| `code_drift_section` | `CodeDriftSectionAgent.analyse` |
+| `code_drift_work_order` | `CodeDriftWorkOrderAgent.analyse` |
+| `doc_sync` | `DocSyncAgent.propose_patches` |
+
+
 ---
 
 ## 16. Full API Reference
@@ -1256,11 +1725,52 @@ ENCRYPTION_KEY=changeme-32-byte-fernet-key
 | `/ws/projects/{pid}/sections/{sid}/collab` | JWT query param | Yjs co-editing |
 | `/ws/projects/{pid}/chat` | JWT query param | Project chat room |
 
+
 ---
 
 ## 17. Testing Strategy (TDD)
 
 Atelier is built test-first. Every service, route, and component has tests written **before** implementation. The test suite is the specification for the code.
+
+### Software Docs
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/software/{sid}/docs` | Studio Owner | Create section |
+| GET | `/software/{sid}/docs` | Member / Viewer / granted External | List sections |
+| GET | `/software/{sid}/docs/{secid}` | Member / Viewer / granted External | Get one |
+| PATCH | `/software/{sid}/docs/{secid}` | Studio Builder+ (content); Owner (structure) | Update |
+| DELETE | `/software/{sid}/docs/{secid}` | Studio Owner | Delete |
+| POST | `/software/{sid}/docs/reorder` | Studio Owner | Bulk reorder |
+
+### Codebase Index
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/software/{sid}/codebase/reindex` | Studio Builder+ (owning studio) | Trigger snapshot |
+| GET | `/software/{sid}/codebase/snapshots` | Studio Member / Viewer | List snapshots |
+| GET | `/software/{sid}/codebase/snapshots/{snapid}` | Studio Member / Viewer | Snapshot detail |
+| GET | `/software/{sid}/codebase/diagnostics` | Tool Admin | Repo map + vector hits for `?q=` |
+
+### Backprop
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/software/{sid}/docs/propose-outline` | Studio Owner | Backprop outline proposal |
+| POST | `/software/{sid}/docs/{secid}/propose-draft` | Studio Builder+ | Backprop section draft |
+
+### Code Drift
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/software/{sid}/codebase/code-drift/run` | Studio Builder+ | Manual run |
+
+### Doc Sync
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/work-orders/{wid}/doc-sync/run` | Studio Builder+ | Manual run for one Work Order |
+
 
 ---
 

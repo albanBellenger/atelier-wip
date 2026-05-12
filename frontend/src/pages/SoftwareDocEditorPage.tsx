@@ -1,10 +1,11 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
-import { useCallback, useEffect, useMemo } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
+import { BackpropSectionFromCodebaseModal } from '../components/software/BackpropSectionFromCodebaseModal'
 import { SplitEditor } from '../components/editor/SplitEditor'
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
 import {
@@ -15,10 +16,44 @@ import { useStudioAccess } from '../hooks/useStudioAccess'
 import {
   getSoftwareDocsSection,
   getSoftware,
+  listCodebaseSnapshots,
   listSoftware,
   logout as logoutApi,
   me,
+  updateIssue,
 } from '../services/api'
+
+/** sessionStorage payload from IssuesPanel Apply */
+interface DocSyncApplyPayload {
+  projectId: string
+  issueId: string
+  replacementMarkdown: string
+  softwareId: string
+  sectionId: string
+}
+
+const DOC_SYNC_STORAGE_PREFIX = 'atelier_doc_sync:'
+
+function readDocSyncPayload(issueId: string | null): DocSyncApplyPayload | null {
+  if (!issueId) return null
+  try {
+    const raw = sessionStorage.getItem(`${DOC_SYNC_STORAGE_PREFIX}${issueId}`)
+    if (!raw) return null
+    const p = JSON.parse(raw) as DocSyncApplyPayload
+    if (
+      typeof p.projectId === 'string' &&
+      typeof p.issueId === 'string' &&
+      typeof p.replacementMarkdown === 'string' &&
+      typeof p.softwareId === 'string' &&
+      typeof p.sectionId === 'string'
+    ) {
+      return p
+    }
+  } catch {
+    return null
+  }
+  return null
+}
 
 /** Collaborative Markdown editor for a single software-level documentation section. */
 export function SoftwareDocEditorPage(): ReactElement {
@@ -28,6 +63,9 @@ export function SoftwareDocEditorPage(): ReactElement {
     sectionId: string
   }>()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const qc = useQueryClient()
+  const docSyncIssueId = searchParams.get('docSyncIssue')
   const sid = studioId ?? ''
   const sfid = softwareId ?? ''
   const secid = sectionId ?? ''
@@ -52,6 +90,18 @@ export function SoftwareDocEditorPage(): ReactElement {
     queryFn: () => getSoftwareDocsSection(sfid, secid),
     enabled: Boolean(sfid && secid && access.isMember),
   })
+
+  const snapshotsQ = useQuery({
+    queryKey: ['codebaseSnapshots', sfid],
+    queryFn: () => listCodebaseSnapshots(sfid),
+    enabled: Boolean(sfid && access.isStudioEditor),
+  })
+
+  const hasReadyCodebase = Boolean(
+    snapshotsQ.data?.some((s) => s.status === 'ready'),
+  )
+
+  const [backpropOpen, setBackpropOpen] = useState(false)
 
   const swQ = useQuery({
     queryKey: ['softwareOne', sid, sfid],
@@ -97,6 +147,111 @@ export function SoftwareDocEditorPage(): ReactElement {
     access.isStudioEditor ? secid : undefined,
     collabUser,
   )
+
+  const applyBackpropDraft = useCallback(
+    (md: string) => {
+      if (!collab) {
+        return
+      }
+      collab.ydoc.transact(() => {
+        const t = collab.ytext
+        const n = t.length
+        if (n > 0) {
+          t.delete(0, n)
+        }
+        t.insert(0, md)
+      })
+    },
+    [collab],
+  )
+
+  const docSyncPayload = useMemo(
+    () => readDocSyncPayload(docSyncIssueId),
+    [docSyncIssueId],
+  )
+  const docSyncDraftAppliedRef = useRef(false)
+  const docSyncResolvedRef = useRef(false)
+
+  useEffect(() => {
+    docSyncDraftAppliedRef.current = false
+    docSyncResolvedRef.current = false
+  }, [docSyncIssueId, secid])
+
+  useEffect(() => {
+    if (!collab || !docSyncPayload || !docSyncIssueId) {
+      return
+    }
+    if (docSyncPayload.sectionId !== secid || docSyncPayload.softwareId !== sfid) {
+      return
+    }
+    if (docSyncDraftAppliedRef.current) {
+      return
+    }
+    applyBackpropDraft(docSyncPayload.replacementMarkdown)
+    docSyncDraftAppliedRef.current = true
+  }, [collab, docSyncPayload, docSyncIssueId, secid, sfid, applyBackpropDraft])
+
+  useEffect(() => {
+    if (!collab || !docSyncPayload || !docSyncIssueId) {
+      return
+    }
+    if (docSyncPayload.sectionId !== secid) {
+      return
+    }
+    let timer: ReturnType<typeof setTimeout> | null = null
+    let cancelled = false
+
+    const schedule = (): void => {
+      if (timer) {
+        clearTimeout(timer)
+      }
+      timer = setTimeout(() => {
+        timer = null
+        if (cancelled) {
+          return
+        }
+        const cur = collab.ytext.toString()
+        if (cur.trim() !== docSyncPayload.replacementMarkdown.trim()) {
+          return
+        }
+        if (docSyncResolvedRef.current) {
+          return
+        }
+        docSyncResolvedRef.current = true
+        void (async () => {
+          try {
+            await updateIssue(
+              docSyncPayload.projectId,
+              docSyncPayload.issueId,
+              'resolved',
+              { resolution_reason: 'applied' },
+            )
+            try {
+              sessionStorage.removeItem(`${DOC_SYNC_STORAGE_PREFIX}${docSyncPayload.issueId}`)
+            } catch {
+              /* ignore */
+            }
+            await qc.invalidateQueries({ queryKey: ['issues', docSyncPayload.projectId] })
+            const next = new URLSearchParams(searchParams)
+            next.delete('docSyncIssue')
+            setSearchParams(next, { replace: true })
+          } catch {
+            docSyncResolvedRef.current = false
+          }
+        })()
+      }, 2800)
+    }
+
+    collab.ytext.observe(schedule)
+    schedule()
+    return () => {
+      cancelled = true
+      collab.ytext.unobserve(schedule)
+      if (timer) {
+        clearTimeout(timer)
+      }
+    }
+  }, [collab, docSyncPayload, docSyncIssueId, secid, qc, searchParams, setSearchParams])
 
   const handleLogout = useCallback(async () => {
     try {
@@ -160,6 +315,17 @@ export function SoftwareDocEditorPage(): ReactElement {
           </Link>
           <span className="text-zinc-600">/</span>
           <h1 className="text-[18px] font-semibold text-zinc-100">{title}</h1>
+          {access.isStudioEditor ? (
+            <button
+              type="button"
+              title={hasReadyCodebase ? undefined : 'Index the codebase first'}
+              className="ml-auto rounded-lg border border-zinc-600 px-3 py-2 text-[12px] text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={!hasReadyCodebase}
+              onClick={() => setBackpropOpen(true)}
+            >
+              Draft from codebase
+            </button>
+          ) : null}
         </div>
 
         {sectionQ.isPending ? (
@@ -173,6 +339,18 @@ export function SoftwareDocEditorPage(): ReactElement {
           <div className="mt-6 h-[min(720px,calc(100vh-220px))] min-h-[420px] rounded-xl border border-zinc-800 bg-zinc-900/40">
             <SplitEditor collab={collab} />
           </div>
+        ) : null}
+
+        {access.isStudioEditor ? (
+          <BackpropSectionFromCodebaseModal
+            softwareId={sfid}
+            sectionId={secid}
+            currentMarkdown={sectionQ.data?.content ?? ''}
+            hasIndexedCodebase={hasReadyCodebase}
+            isOpen={backpropOpen}
+            onDismiss={() => setBackpropOpen(false)}
+            onInsert={applyBackpropDraft}
+          />
         ) : null}
 
         {sectionQ.data && !access.isStudioEditor ? (
