@@ -73,7 +73,9 @@ export function CodebaseSettingsPanel(
                         ? 'text-emerald-400'
                         : s.status === 'failed'
                           ? 'text-red-400'
-                          : 'text-amber-400'
+                          : s.status === 'superseded'
+                            ? 'text-zinc-500'
+                            : 'text-amber-400'
                     }
                   >
                     {s.status}

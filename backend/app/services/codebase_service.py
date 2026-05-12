@@ -173,8 +173,9 @@ class CodebaseService:
             chunk_count=chunk_count,
         )
 
-    async def _supersede_prior_ready(self, software_id: uuid.UUID, keep_id: uuid.UUID) -> None:
-        prior = (
+    async def _supersede_sibling_snapshots(self, software_id: uuid.UUID, keep_id: uuid.UUID) -> None:
+        """Mark other snapshots for this software as superseded; drop indexed data except for ``keep_id``."""
+        prior_ready = (
             await self.db.scalars(
                 select(CodebaseSnapshot).where(
                     CodebaseSnapshot.software_id == software_id,
@@ -183,7 +184,22 @@ class CodebaseService:
                 )
             )
         ).all()
-        for old in prior:
+        for old in prior_ready:
+            await self.db.execute(delete(CodebaseChunk).where(CodebaseChunk.snapshot_id == old.id))
+            await self.db.execute(delete(CodebaseSymbol).where(CodebaseSymbol.snapshot_id == old.id))
+            await self.db.execute(delete(CodebaseFile).where(CodebaseFile.snapshot_id == old.id))
+            old.status = "superseded"
+
+        stale_pending = (
+            await self.db.scalars(
+                select(CodebaseSnapshot).where(
+                    CodebaseSnapshot.software_id == software_id,
+                    CodebaseSnapshot.status == "pending",
+                    CodebaseSnapshot.id != keep_id,
+                )
+            )
+        ).all()
+        for old in stale_pending:
             await self.db.execute(delete(CodebaseChunk).where(CodebaseChunk.snapshot_id == old.id))
             await self.db.execute(delete(CodebaseSymbol).where(CodebaseSymbol.snapshot_id == old.id))
             await self.db.execute(delete(CodebaseFile).where(CodebaseFile.snapshot_id == old.id))
@@ -193,6 +209,8 @@ class CodebaseService:
         settings = get_settings()
         snap = await self.db.get(CodebaseSnapshot, snapshot_id)
         if snap is None:
+            return
+        if snap.status in ("superseded", "ready"):
             return
         sw = await self.db.get(Software, snap.software_id)
         if sw is None:
@@ -315,4 +333,4 @@ class CodebaseService:
 
         snap.status = "ready"
         snap.ready_at = datetime.now(timezone.utc)
-        await self._supersede_prior_ready(sw.id, snap.id)
+        await self._supersede_sibling_snapshots(sw.id, snap.id)

@@ -26,6 +26,27 @@ describe('CodebaseSettingsPanel', () => {
     expect(await screen.findByText(/no snapshots yet/i)).toBeTruthy()
   })
 
+  it('lists superseded snapshot status for viewers', async () => {
+    vi.spyOn(api, 'listCodebaseSnapshots').mockResolvedValue([
+      {
+        id: 'snap-x',
+        software_id: 's1',
+        commit_sha: 'abcdef1234567890abcdef',
+        branch: 'main',
+        status: 'superseded',
+        error_message: null,
+        created_at: new Date().toISOString(),
+        ready_at: null,
+        file_count: 0,
+        chunk_count: 0,
+      },
+    ])
+    render(wrap(<CodebaseSettingsPanel softwareId="s1" canRequestReindex={false} />))
+    expect(await screen.findByText('superseded')).toBeTruthy()
+    expect(screen.getByText(/abcdef123456/)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /re-index codebase/i })).toBeNull()
+  })
+
   it('shows re-index for builders and calls API', async () => {
     const user = userEvent.setup()
     vi.spyOn(api, 'listCodebaseSnapshots').mockResolvedValue([])
