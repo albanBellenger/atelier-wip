@@ -6,7 +6,7 @@ import * as Y from 'yjs'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest'
 
-import type { MilkdownEditorApi } from '../editor/MilkdownEditor'
+import type { CrepeEditorApi } from '../editor/CrepeEditor'
 import type { YjsCollab } from '../../hooks/useYjsCollab'
 import * as api from '../../services/api'
 import type {
@@ -28,8 +28,8 @@ vi.mock('../../hooks/useStream', () => ({
 }))
 
 function mkSectionEditorApiRef(
-  overrides: Partial<MilkdownEditorApi> = {},
-): RefObject<MilkdownEditorApi | null> {
+  overrides: Partial<CrepeEditorApi> = {},
+): RefObject<CrepeEditorApi | null> {
   return {
     current: {
       getEditorView: () => null,

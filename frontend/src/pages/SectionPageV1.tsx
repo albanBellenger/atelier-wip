@@ -13,7 +13,7 @@ import {
   SplitEditor,
   type EditorSelectionState,
 } from '../components/editor/SplitEditor'
-import type { MilkdownEditorApi } from '../components/editor/MilkdownEditor'
+import type { CrepeEditorApi } from '../components/editor/CrepeEditor'
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
 import { HealthRail } from '../components/section/HealthRail'
 import { SectionLayoutSwitcher } from '../components/section/SectionLayoutSwitcher'
@@ -202,7 +202,7 @@ export function SectionPageV1(): ReactElement {
     collabUser,
   )
 
-  const sectionEditorApiRef = useRef<MilkdownEditorApi | null>(null)
+  const sectionEditorApiRef = useRef<CrepeEditorApi | null>(null)
   const copilotSetDraftRef = useRef<((value: string) => void) | null>(null)
   const copilotSlashExecutorRef = useRef<
     ((raw: string) => void | Promise<void>) | null

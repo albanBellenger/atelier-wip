@@ -210,7 +210,7 @@ Software Docs are deliberately not a wiki — there are no free-form pages, no `
 
 ### 6b.3 Editing
 
-Software Docs sections use the same split-view Milkdown editor and Yjs real-time collaboration as Project Sections (§8). The collaboration room key is distinct from Project Section rooms, so two users editing the same Software Docs section see each other, while a user editing a Project Section is not pulled into the docs room.
+Software Docs sections use the same split-view Crepe (Milkdown) editor and Yjs real-time collaboration as Project Sections (§8). The collaboration room key is distinct from Project Section rooms, so two users editing the same Software Docs section see each other, while a user editing a Project Section is not pulled into the docs room.
 
 Section saves are persisted with the same debounce behaviour as Project Sections, and trigger the same re-embedding pipeline (§6b.5).
 

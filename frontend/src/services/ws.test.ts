@@ -8,7 +8,6 @@ import {
   openSoftwareChatWebSocket,
   projectChatWebSocketUrl,
   softwareChatWebSocketUrl,
-  YDOC_TEXT_FIELD,
 } from './ws'
 
 describe('ws helpers', () => {
@@ -16,10 +15,6 @@ describe('ws helpers', () => {
     document.cookie =
       'atelier_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
     vi.unstubAllEnvs()
-  })
-
-  it('YDOC_TEXT_FIELD is the documented constant', () => {
-    expect(YDOC_TEXT_FIELD).toBe('codemirror')
   })
 
   it('collabRoomName composes project + section path', () => {

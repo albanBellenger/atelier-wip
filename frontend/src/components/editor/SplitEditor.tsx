@@ -11,10 +11,7 @@ import type { EditorViewMode } from '../section/sectionLayoutMode'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { YjsCollab } from '../../hooks/useYjsCollab'
-import {
-  MilkdownEditor,
-  type MilkdownEditorApi,
-} from './MilkdownEditor'
+import { CrepeEditor, type CrepeEditorApi } from './CrepeEditor'
 import type { EditorSelectionState } from './editorSelection'
 
 export type { EditorSelectionState } from './editorSelection'
@@ -31,11 +28,11 @@ export interface SplitEditorProps {
   viewMode?: EditorViewMode
   onViewModeChange?: (mode: EditorViewMode) => void
   patchOverlay?: SectionPatchOverlayState | null
-  /** Optional ref to the underlying Milkdown surface (snapshots, patches). */
-  editorApiRef?: React.RefObject<MilkdownEditorApi | null>
-  /** Prefill section copilot composer from Milkdown AI menus. */
+  /** Optional ref to the underlying Crepe surface (snapshots, patches). */
+  editorApiRef?: React.RefObject<CrepeEditorApi | null>
+  /** Prefill section copilot composer from editor AI menus. */
   onAiComposerPrefill?: (markdown: string) => void
-  /** Same as `MilkdownEditor` — immediate execute for slash/bubble AI items. */
+  /** Same as `CrepeEditor` — immediate execute for slash/bubble AI items. */
   onCopilotSlashExecute?: (rawComposerLine: string) => void | Promise<void>
   /** When true, /replace is omitted from the selection bubble (focus layout). */
   replaceSelectionSlashDisabled?: boolean
@@ -153,7 +150,7 @@ export function SplitEditor({
     }
   }, [collab])
 
-  const internalEditorApiRef = useRef<MilkdownEditorApi | null>(null)
+  const internalEditorApiRef = useRef<CrepeEditorApi | null>(null)
   const resolvedEditorRef = editorApiRef ?? internalEditorApiRef
 
   const previewMarkdown = useMemo(() => {
@@ -258,12 +255,12 @@ export function SplitEditor({
       <div className={outerFlexDir}>
         {showEditor ? (
           <div
-            data-testid="milkdown-host"
+            data-testid="crepe-host"
             style={editorPaneStyle}
             className={editorPaneClass}
           >
             {collab ? (
-              <MilkdownEditor
+              <CrepeEditor
                 ref={resolvedEditorRef}
                 collab={collab}
                 defaultMarkdown={defaultMarkdown}

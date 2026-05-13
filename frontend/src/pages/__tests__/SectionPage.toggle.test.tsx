@@ -1,16 +1,21 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import type { ReactElement } from 'react'
 import { describe, expect, it, vi, afterEach } from 'vitest'
 
 import * as api from '../../services/api'
 import { SectionPage } from '../SectionPage'
 
+vi.mock('../../components/editor/SplitEditor', () => ({
+  SplitEditor: function MockSplitEditor(): ReactElement {
+    return <div data-testid="crepe-host">mock-editor</div>
+  },
+}))
+
 vi.mock('../../hooks/useYjsCollab', async () => {
   const Y = await import('yjs')
   const ydoc = new Y.Doc()
-  const ytext = ydoc.getText('codemirror')
-  ytext.insert(0, 'hello')
   return {
     colorsForUser: (): { color: string; colorLight: string } => ({
       color: 'hsl(0 70% 60%)',
@@ -18,7 +23,6 @@ vi.mock('../../hooks/useYjsCollab', async () => {
     }),
     useYjsCollab: () => ({
       ydoc,
-      ytext,
       provider: { on: vi.fn(), off: vi.fn() },
       awareness: {
         clientID: 0,
@@ -26,6 +30,7 @@ vi.mock('../../hooks/useYjsCollab', async () => {
         on: vi.fn(),
         off: vi.fn(),
       },
+      sendMarkdownSnapshot: vi.fn(),
     }),
   }
 })
@@ -106,6 +111,7 @@ function minimalStubApis(): void {
   vi.spyOn(api, 'getSection').mockResolvedValue({
     id: 'sec-1',
     project_id: 'p1',
+    software_id: null,
     title: 'API design',
     slug: 'api-design',
     order: 1,
@@ -183,9 +189,12 @@ describe('SectionPage V1/V2 toggle', () => {
     )
 
     expect(screen.queryByTestId('outline-editor-v2-root')).not.toBeInTheDocument()
-    await waitFor(() => {
-      expect(screen.getByTestId('milkdown-host')).toBeInTheDocument()
-    })
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('crepe-host')).toBeInTheDocument()
+      },
+      { timeout: 20_000 },
+    )
   })
 
   it('renders V2 root when outlineEditorV2 pref is true', async () => {
@@ -276,9 +285,12 @@ describe('SectionPage V1/V2 toggle', () => {
       </MemoryRouter>,
     )
 
-    await waitFor(() => {
-      expect(screen.getByTestId('milkdown-host')).toBeInTheDocument()
-    })
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('crepe-host')).toBeInTheDocument()
+      },
+      { timeout: 20_000 },
+    )
     expect(screen.queryByTestId('outline-editor-v2-root')).not.toBeInTheDocument()
 
     view.unmount()

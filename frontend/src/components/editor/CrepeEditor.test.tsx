@@ -2,13 +2,13 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { createRef, type ReactElement } from 'react'
 import { describe, expect, it } from 'vitest'
 
-import type { MilkdownEditorApi } from './MilkdownEditor'
-import { MilkdownEditor } from './MilkdownEditor'
+import type { CrepeEditorApi } from './CrepeEditor'
+import { CrepeEditor } from './CrepeEditor'
 
 function renderEditor(markdown: string): ReactElement {
-  const ref = createRef<MilkdownEditorApi>()
+  const ref = createRef<CrepeEditorApi>()
   return (
-    <MilkdownEditor
+    <CrepeEditor
       ref={ref}
       collab={null}
       defaultMarkdown={markdown}
@@ -17,9 +17,9 @@ function renderEditor(markdown: string): ReactElement {
   )
 }
 
-describe('MilkdownEditor', () => {
+describe('CrepeEditor', () => {
   it(
-    'clears loading overlay after editor mounts (no Milkdown/loading deadlock)',
+    'clears loading overlay after editor mounts',
     async () => {
       render(renderEditor('# Hello'))
 

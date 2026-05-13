@@ -20,9 +20,6 @@ function readAtelierTokenFromDocument(): string | null {
   }
 }
 
-/** Shared Y.Text map key for outline-editor-v2 doc blocks only (not section Milkdown collab). */
-export const YDOC_TEXT_FIELD = 'codemirror'
-
 function wsSchemeForHttp(url: URL): 'ws' | 'wss' {
   return url.protocol === 'https:' ? 'wss' : 'ws'
 }

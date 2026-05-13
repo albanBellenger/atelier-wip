@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { describe, expect, it, vi, afterEach } from 'vitest'
 
@@ -24,11 +24,11 @@ vi.mock('../../../hooks/useStudioAccess', () => ({
   }),
 }))
 
-vi.mock('../../editor/MilkdownEditor', async () => {
+vi.mock('../../editor/CrepeEditor', async () => {
   const React = await import('react')
   const { forwardRef, useImperativeHandle } = React
   return {
-    MilkdownEditor: forwardRef(function MockMilkdown(
+    CrepeEditor: forwardRef(function MockCrepe(
       props: { defaultMarkdown?: string },
       ref: React.ForwardedRef<unknown>,
     ) {
@@ -44,7 +44,7 @@ vi.mock('../../editor/MilkdownEditor', async () => {
         [props.defaultMarkdown],
       )
       return (
-        <div data-testid="milkdown-editor-mock">{props.defaultMarkdown ?? ''}</div>
+        <div data-testid="crepe-editor-mock">{props.defaultMarkdown ?? ''}</div>
       )
     }),
   }
@@ -53,8 +53,6 @@ vi.mock('../../editor/MilkdownEditor', async () => {
 vi.mock('../../../hooks/useYjsCollab', async () => {
   const Y = await import('yjs')
   const ydoc = new Y.Doc()
-  const ytext = ydoc.getText('codemirror')
-  ytext.insert(0, '## Sync\n\nLine.')
   return {
     colorsForUser: (): { color: string; colorLight: string } => ({
       color: 'hsl(0 70% 60%)',
@@ -62,7 +60,6 @@ vi.mock('../../../hooks/useYjsCollab', async () => {
     }),
     useYjsCollab: () => ({
       ydoc,
-      ytext,
       provider: { on: vi.fn(), off: vi.fn() },
       awareness: {
         clientID: 0,
@@ -78,6 +75,7 @@ vi.mock('../../../hooks/useYjsCollab', async () => {
 const mockSection: api.Section = {
   id: 'sec-1',
   project_id: 'p1',
+  software_id: null,
   title: 'API',
   slug: 'api',
   order: 1,
@@ -169,7 +167,7 @@ describe('yjs-render integration', () => {
     vi.restoreAllMocks()
   })
 
-  it('shows default markdown in Milkdown canvas when collab is ready', async () => {
+  it('shows default markdown in Crepe canvas when collab is ready', async () => {
     const { OutlineEditorV2 } = await import('../OutlineEditorV2')
     localStorage.clear()
     stubApis()
@@ -191,9 +189,11 @@ describe('yjs-render integration', () => {
       </MemoryRouter>,
     )
 
-    const mock = await screen.findByTestId('milkdown-editor-mock', {
-      timeout: 5000,
-    })
-    expect(mock).toHaveTextContent(/Sync/)
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('crepe-editor-mock')).toHaveTextContent(/Sync/)
+      },
+      { timeout: 5000 },
+    )
   })
 })

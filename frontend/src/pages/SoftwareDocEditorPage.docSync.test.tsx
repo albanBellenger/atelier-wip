@@ -5,7 +5,7 @@ import * as Y from 'yjs'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { MilkdownEditorApi } from '../components/editor/MilkdownEditor'
+import type { CrepeEditorApi } from '../components/editor/CrepeEditor'
 import * as yCollab from '../hooks/useYjsCollab'
 import * as api from '../services/api'
 import { SoftwareDocEditorPage } from './SoftwareDocEditorPage'
@@ -26,11 +26,11 @@ vi.mock('../components/editor/SplitEditor', async () => {
     SplitEditor: function MockSplitEditor(props: {
       collab: unknown
       defaultMarkdown: string
-      editorApiRef?: React.RefObject<MilkdownEditorApi | null>
+      editorApiRef?: React.RefObject<CrepeEditorApi | null>
     }): React.ReactElement {
       const ref = props.editorApiRef
       if (ref != null) {
-        const api: MilkdownEditorApi = {
+        const api: CrepeEditorApi = {
           getEditorView: () => null,
           getMarkdown: () => props.defaultMarkdown,
           replaceFullMarkdown: (md: string) => {
@@ -39,9 +39,9 @@ vi.mock('../components/editor/SplitEditor', async () => {
           applyPatch: () => ({ ok: false, reason: 'mock' }),
           animateAppendFromMarkdown: async () => {},
         }
-        ;(ref as React.MutableRefObject<MilkdownEditorApi | null>).current = api
+        ;(ref as React.MutableRefObject<CrepeEditorApi | null>).current = api
       }
-      return React.createElement('div', { 'data-testid': 'milkdown-host' }, 'mock-editor')
+      return React.createElement('div', { 'data-testid': 'crepe-host' }, 'mock-editor')
     },
   }
 })

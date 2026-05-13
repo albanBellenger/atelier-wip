@@ -30,7 +30,6 @@ vi.mock('../services/ws', () => ({
   collabRoomName: (projectId: string, sectionId: string): string =>
     `proj:${projectId}:sec:${sectionId}`,
   atelierTokenForWebSocket: (): string => 'test-token',
-  YDOC_TEXT_FIELD: 'codemirror',
 }))
 
 describe('colorsForUser', () => {

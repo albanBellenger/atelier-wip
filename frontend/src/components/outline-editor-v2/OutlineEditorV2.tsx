@@ -10,23 +10,16 @@ import {
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import type { EditorSelectionState } from '../editor/editorSelection'
-import {
-  MilkdownEditor,
-  type MilkdownEditorApi,
-} from '../editor/MilkdownEditor'
-import { YDOC_TEXT_FIELD } from '../../services/ws'
+import { CrepeEditor, type CrepeEditorApi } from '../editor/CrepeEditor'
 import { BuilderHomeHeader } from '../home/BuilderHomeHeader'
 import { ContextPopover } from './annotations/ContextPopover'
 import { SuggestionBlock } from './canvas/SuggestionBlock'
-import { DocCanvas } from './canvas/DocCanvas'
-import { SelectionToolbar } from './canvas/SelectionToolbar'
 import { CopilotOverlay } from './copilot/CopilotOverlay'
 import { CopilotToggle } from './chrome/CopilotToggle'
 import { OutlineRail } from './chrome/OutlineRail'
 import { StatusBar } from './chrome/StatusBar'
 import { TopBar } from './chrome/TopBar'
 import { useEditorV2Prefs } from './hooks/useEditorV2Prefs'
-import { useSelection } from './hooks/useSelection'
 import type { SectionPatchOverlayState } from '../../lib/sectionPatchOverlay'
 import {
   getHostedEnvironment,
@@ -280,14 +273,12 @@ export function OutlineEditorV2(): ReactElement {
   )
 
   const [contextPopoverOpen, setContextPopoverOpen] = useState(false)
-  const { selection, clearSelection } = useSelection()
+  const [docRenderTick, setDocRenderTick] = useState(0)
 
   const [wordCount, setWordCount] = useState(0)
   const wordTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const ytext = collab ? collab.ydoc.getText(YDOC_TEXT_FIELD) : null
-
-  const outlineCopilotEditorRef = useRef<MilkdownEditorApi | null>(null)
+  const outlineCopilotEditorRef = useRef<CrepeEditorApi | null>(null)
   const copilotSetDraftRef = useRef<((value: string) => void) | null>(null)
   const copilotSlashExecutorRef = useRef<
     ((raw: string) => void | Promise<void>) | null
@@ -329,19 +320,26 @@ export function OutlineEditorV2(): ReactElement {
   }, [secid])
 
   useEffect(() => {
+    if (!collab) {
+      return
+    }
+    const onAfter = (): void => {
+      setDocRenderTick((n) => n + 1)
+    }
+    collab.ydoc.on('afterTransaction', onAfter)
+    return () => {
+      collab.ydoc.off('afterTransaction', onAfter)
+    }
+  }, [collab])
+
+  useEffect(() => {
     const schedule = (): void => {
       if (wordTimerRef.current) {
         clearTimeout(wordTimerRef.current)
       }
       wordTimerRef.current = setTimeout(() => {
-        let t: string
-        if (displayRaw && ytext) {
-          t = ytext.toString()
-        } else {
-          t =
-            outlineCopilotEditorRef.current?.getMarkdown() ??
-            defaultSectionMarkdown
-        }
+        const t =
+          outlineCopilotEditorRef.current?.getMarkdown() ?? defaultSectionMarkdown
         const trimmed = t.trim()
         const wc =
           trimmed.length === 0 ? 0 : trimmed.split(/\s+/).filter(Boolean).length
@@ -349,30 +347,19 @@ export function OutlineEditorV2(): ReactElement {
         wordTimerRef.current = null
       }, 500)
     }
-    if (displayRaw && ytext) {
-      schedule()
-      ytext.observe(schedule)
-      return () => {
-        ytext.unobserve(schedule)
-        if (wordTimerRef.current) {
-          clearTimeout(wordTimerRef.current)
-          wordTimerRef.current = null
-        }
+    if (!collab) {
+      return undefined
+    }
+    schedule()
+    collab.ydoc.on('afterTransaction', schedule)
+    return () => {
+      collab.ydoc.off('afterTransaction', schedule)
+      if (wordTimerRef.current) {
+        clearTimeout(wordTimerRef.current)
+        wordTimerRef.current = null
       }
     }
-    if (!displayRaw && collab) {
-      schedule()
-      collab.ydoc.on('afterTransaction', schedule)
-      return () => {
-        collab.ydoc.off('afterTransaction', schedule)
-        if (wordTimerRef.current) {
-          clearTimeout(wordTimerRef.current)
-          wordTimerRef.current = null
-        }
-      }
-    }
-    return undefined
-  }, [collab, displayRaw, ytext, defaultSectionMarkdown])
+  }, [collab, defaultSectionMarkdown])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -389,12 +376,11 @@ export function OutlineEditorV2(): ReactElement {
       if (e.key === 'Escape') {
         setCopilotOpen(false)
         setContextPopoverOpen(false)
-        clearSelection()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [clearSelection])
+  }, [])
 
   const health = sectionHealthQ.data
 
@@ -506,42 +492,54 @@ export function OutlineEditorV2(): ReactElement {
               <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
                 <div className="relative flex min-h-0 flex-1 flex-col">
                   <div className="relative min-h-0 flex-1 overflow-hidden">
-                    {!collab || !ytext || !sectionQ.data ? (
+                    {!collab || !sectionQ.data ? (
                       <p className="px-4 py-6 text-zinc-500">
                         Connecting editor…
                       </p>
-                    ) : displayRaw ? (
-                      <DocCanvas
-                        ytext={ytext}
-                        blocks={[]}
-                        annotations={{}}
-                        displayRaw
-                        patchOverlay={null}
-                        selectedBlockId={null}
-                        onSelectBlock={() => {}}
-                      />
                     ) : (
                       <div
                         data-testid="doc-canvas"
-                        className="outline-editor-shell flex min-h-0 flex-1 flex-col overflow-hidden"
+                        className="outline-editor-shell relative flex min-h-0 flex-1 flex-col overflow-hidden"
                       >
                         <SuggestionBlock overlay={patchOverlay} />
                         <div
-                          data-testid="milkdown-host"
-                          className="min-h-0 min-w-0 flex-1 overflow-hidden bg-zinc-950"
+                          className={
+                            displayRaw
+                              ? 'pointer-events-none invisible absolute inset-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
+                              : 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
+                          }
+                          aria-hidden={displayRaw}
                         >
-                          <MilkdownEditor
-                            ref={outlineCopilotEditorRef}
-                            collab={collab}
-                            defaultMarkdown={sectionQ.data.content ?? ''}
-                            readOnly={!access.isStudioEditor}
-                            onSelectionChange={onEditorSelectionChange}
-                            patchOverlay={patchOverlay}
-                            onAiComposerPrefill={onAiComposerPrefill}
-                            onCopilotSlashExecute={onCopilotSlashExecute}
-                            replaceSelectionSlashDisabled={false}
-                          />
+                          <div
+                            data-testid="crepe-host"
+                            className="min-h-0 min-w-0 flex-1 overflow-hidden bg-zinc-950"
+                          >
+                            <CrepeEditor
+                              ref={outlineCopilotEditorRef}
+                              collab={collab}
+                              defaultMarkdown={sectionQ.data.content ?? ''}
+                              readOnly={!access.isStudioEditor}
+                              onSelectionChange={onEditorSelectionChange}
+                              patchOverlay={patchOverlay}
+                              onAiComposerPrefill={onAiComposerPrefill}
+                              onCopilotSlashExecute={onCopilotSlashExecute}
+                              replaceSelectionSlashDisabled={false}
+                            />
+                          </div>
                         </div>
+                        {displayRaw ? (
+                          <div className="outline-editor-shell absolute inset-0 z-[1] min-h-0 flex-1 overflow-auto bg-[#08080a] p-4 font-mono text-sm leading-relaxed text-zinc-200">
+                            <pre className="whitespace-pre-wrap">
+                              {(() => {
+                                void docRenderTick
+                                return (
+                                  outlineCopilotEditorRef.current?.getMarkdown() ??
+                                  defaultSectionMarkdown
+                                )
+                              })()}
+                            </pre>
+                          </div>
+                        ) : null}
                       </div>
                     )}
                   </div>
@@ -575,12 +573,6 @@ export function OutlineEditorV2(): ReactElement {
             </div>
           </div>
         )}
-
-        <SelectionToolbar
-          visible={selection != null}
-          onDismiss={() => clearSelection()}
-          label="Block selected"
-        />
 
         <CopilotOverlay
           open={copilotOpen}

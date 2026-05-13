@@ -980,7 +980,7 @@ get_mcp_key(api_key_header)
 ## 8. Real-Time Collaboration (Yjs)
 
 ```
-Browser A (Milkdown + y-prosemirror)     Browser B (Milkdown + y-prosemirror)
+Browser A (@milkdown/crepe + y-prosemirror)     Browser B (@milkdown/crepe + y-prosemirror)
         │                                      │
         │   Binary Yjs update messages         │
         │   JSON markdown_snapshot (debounced) │
@@ -994,7 +994,7 @@ Postgres:
   sections.content    ← Markdown from markdown_snapshot (RAG / API)
 ```
 
-- Yjs CRDT in each browser; Milkdown uses y-prosemirror (shared type is not legacy `Y.Text` for section bodies).
+- Yjs CRDT in each browser; the section editor uses `@milkdown/crepe` with y-prosemirror (shared type is not legacy `Y.Text` for section bodies).
 - Awareness protocol shares cursor position, display name, colour
 - Colours assigned deterministically by hashing user ID
 - Binary frames relay through pycrdt; JSON `markdown_snapshot` is demuxed in Atelier and never passed to pycrdt.

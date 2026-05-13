@@ -7,11 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as api from '../../../services/api'
 import { OutlineEditorV2 } from '../OutlineEditorV2'
 
-vi.mock('../../editor/MilkdownEditor', async () => {
+vi.mock('../../editor/CrepeEditor', async () => {
   const React = await import('react')
   const { forwardRef, useImperativeHandle } = React
   return {
-    MilkdownEditor: forwardRef(function MockMilkdown(
+    CrepeEditor: forwardRef(function MockCrepe(
       props: { defaultMarkdown?: string },
       ref: React.ForwardedRef<unknown>,
     ) {
@@ -27,7 +27,7 @@ vi.mock('../../editor/MilkdownEditor', async () => {
         [props.defaultMarkdown],
       )
       return (
-        <div data-testid="milkdown-editor-mock">{props.defaultMarkdown ?? ''}</div>
+        <div data-testid="crepe-editor-mock">{props.defaultMarkdown ?? ''}</div>
       )
     }),
   }
@@ -36,8 +36,6 @@ vi.mock('../../editor/MilkdownEditor', async () => {
 vi.mock('../../../hooks/useYjsCollab', async () => {
   const Y = await import('yjs')
   const ydoc = new Y.Doc()
-  const ytext = ydoc.getText('codemirror')
-  ytext.insert(0, '## Hello\n\nWorld.')
   return {
     colorsForUser: (): { color: string; colorLight: string } => ({
       color: 'hsl(0 70% 60%)',
@@ -45,7 +43,6 @@ vi.mock('../../../hooks/useYjsCollab', async () => {
     }),
     useYjsCollab: () => ({
       ydoc,
-      ytext,
       provider: { on: vi.fn(), off: vi.fn() },
       awareness: {
         clientID: 0,
@@ -61,6 +58,7 @@ vi.mock('../../../hooks/useYjsCollab', async () => {
 const mockSection: api.Section = {
   id: 'sec-1',
   project_id: 'p1',
+  software_id: null,
   title: 'API',
   slug: 'api',
   order: 1,
