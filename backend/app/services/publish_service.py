@@ -42,13 +42,14 @@ def _safe_section_path(root: str, s: Section) -> str:
     return f"{root}/sections/{raw}.md"
 
 
-def _safe_doc_path(root: str, s: Section) -> str:
+def _safe_doc_path(s: Section) -> str:
+    """Repo-root-relative path for a Software Doc section (``docs/<slug>.md``)."""
     raw = (s.slug or "").strip()
     if not raw or not re.match(r"^[\w\-]+$", raw):
         raw = re.sub(r"[^\w\-]+", "-", (s.title or "section").lower()).strip("-")[
             :80
         ] or "section"
-    return f"{root}/docs/{raw}.md"
+    return f"docs/{raw}.md"
 
 
 def _wo_markdown(w: WorkOrder) -> str:
@@ -130,12 +131,12 @@ class PublishService:
         if docs_rows:
             doc_toc: list[str] = []
             for s in docs_rows:
-                rel = _safe_doc_path(root, s)
+                rel = _safe_doc_path(s)
                 files[rel] = (
                     effective_section_plaintext(s.content, s.yjs_state).rstrip() + "\n"
                 )
                 doc_toc.append(f"| {s.title} | `{rel}` |")
-            files[f"{root}/docs/README.md"] = (
+            files["docs/README.md"] = (
                 "\n".join(
                     [
                         "# Software documentation",

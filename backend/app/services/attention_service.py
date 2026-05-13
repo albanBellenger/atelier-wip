@@ -292,7 +292,10 @@ class AttentionService:
         projects = list(
             (
                 await self.db.execute(
-                    select(Project).where(Project.software_id == software_id)
+                    select(Project).where(
+                        Project.software_id == software_id,
+                        Project.archived.is_(False),
+                    )
                 )
             ).scalars().all()
         )

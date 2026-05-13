@@ -511,7 +511,7 @@ export function SoftwarePage(): ReactElement {
               <SoftwareDocsTab
                 studioId={sid}
                 softwareId={sfid}
-                canManageOutline={access.isStudioAdmin}
+                canManageOutline={access.canManageProjectOutline}
               />
             ) : (
               <>

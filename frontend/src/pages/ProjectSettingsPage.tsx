@@ -15,6 +15,7 @@ import {
   listSoftwareArtifacts,
   logout as logoutApi,
   me,
+  patchProjectArchived,
   patchProjectArtifactExclusion,
   updateProject,
 } from '../services/api'
@@ -153,7 +154,7 @@ export function ProjectSettingsPage(): ReactElement {
   const [formSyncKey, setFormSyncKey] = useState('')
   const proj = projectQ.data
   const serverSyncKey = proj
-    ? `${proj.id}:${proj.updated_at ?? ''}:${proj.name}:${proj.description ?? ''}:${proj.publish_folder_slug ?? ''}`
+    ? `${proj.id}:${proj.updated_at ?? ''}:${proj.name}:${proj.description ?? ''}:${proj.publish_folder_slug ?? ''}:${proj.archived ? '1' : '0'}`
     : ''
   if (proj && serverSyncKey !== formSyncKey) {
     setFormSyncKey(serverSyncKey)
@@ -174,6 +175,21 @@ export function ProjectSettingsPage(): ReactElement {
       void qc.invalidateQueries({ queryKey: ['project', sfid, pid] })
       void qc.invalidateQueries({ queryKey: ['projects', sfid] })
       setMsg('Saved.')
+    },
+  })
+
+  const canArchiveProject =
+    access.canCreateProject && access.isStudioEditor && !access.isCrossStudioViewer
+
+  const archiveMut = useMutation({
+    mutationFn: (nextArchived: boolean) =>
+      patchProjectArchived(sfid, pid, nextArchived),
+    onSuccess: (_data, nextArchived) => {
+      void qc.invalidateQueries({ queryKey: ['project', sfid, pid] })
+      void qc.invalidateQueries({ queryKey: ['projects', sfid] })
+      void qc.invalidateQueries({ queryKey: ['projects', sfid, 'breadcrumb'] })
+      void qc.invalidateQueries({ queryKey: ['software', sfid, 'attention'] })
+      setMsg(nextArchived ? 'Project archived.' : 'Project restored.')
     },
   })
 
@@ -341,6 +357,47 @@ export function ProjectSettingsPage(): ReactElement {
                 </>
               )}
             </div>
+
+            {canArchiveProject ? (
+              <div className="mt-8 space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/60 p-5">
+                <h2 className="text-sm font-medium text-zinc-300">Archival</h2>
+                <p className="text-xs text-zinc-500">
+                  Archived projects stay readable but are hidden from default lists
+                  and software attention summaries. You can restore them anytime.
+                </p>
+                {proj.archived ? (
+                  <button
+                    type="button"
+                    disabled={archiveMut.isPending}
+                    className="rounded-lg border border-zinc-600 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-100 hover:bg-zinc-700 disabled:opacity-50"
+                    onClick={() => {
+                      void archiveMut.mutateAsync(false)
+                    }}
+                  >
+                    Restore project
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={archiveMut.isPending}
+                    className="rounded-lg border border-amber-700/60 bg-amber-950/40 px-4 py-2 text-sm font-medium text-amber-100 hover:bg-amber-950/70 disabled:opacity-50"
+                    onClick={() => {
+                      if (
+                        typeof window !== 'undefined' &&
+                        !window.confirm(
+                          'Archive this project? It will be hidden from default project lists until you restore it.',
+                        )
+                      ) {
+                        return
+                      }
+                      void archiveMut.mutateAsync(true)
+                    }}
+                  >
+                    Archive project
+                  </button>
+                )}
+              </div>
+            ) : null}
 
             <ArtifactExclusionPanel
               title="Artifact visibility (this project)"

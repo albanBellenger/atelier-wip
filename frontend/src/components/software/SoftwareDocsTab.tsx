@@ -131,7 +131,7 @@ export function SoftwareDocsTab(props: SoftwareDocsTabProps): ReactElement {
         <p className="px-5 py-6 text-[13px] text-zinc-500">
           No software documentation pages yet.
           {canManageOutline
-            ? ' Studio Owners can add shared Markdown docs that publish under each project’s `docs/` folder.'
+            ? ' Studio Owners can add shared Markdown docs; they publish once at the repo root under `docs/`.'
             : ''}
         </p>
       ) : null}

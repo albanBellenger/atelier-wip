@@ -218,6 +218,81 @@ describe('ProjectSettingsPage', () => {
     expect(
       screen.queryByRole('switch', { name: /exclude doc from project context/i }),
     ).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /archive project/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /restore project/i })).not.toBeInTheDocument()
+  })
+
+  it('Builder can archive project after confirm', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.spyOn(api, 'listMeNotifications').mockResolvedValue({
+      items: [],
+      next_cursor: null,
+    })
+    vi.spyOn(api, 'me').mockResolvedValue({
+      user: {
+        id: 'um',
+        email: 'm@b.com',
+        display_name: 'Member',
+        is_platform_admin: false,
+      },
+      studios: [{ studio_id: 's1', studio_name: 'S', role: 'studio_member' }],
+      cross_studio_grants: [],
+    })
+    vi.spyOn(api, 'getSoftware').mockResolvedValue(softwareRow)
+    vi.spyOn(api, 'listSoftware').mockResolvedValue([softwareRow])
+    mockListProjectsNav([
+      {
+        id: 'p1',
+        software_id: 'sw1',
+        name: 'P',
+        description: null,
+        publish_folder_slug: 'p',
+        archived: false,
+        created_at: '',
+        updated_at: '',
+        sections: null,
+        work_orders_done: 0,
+        work_orders_total: 0,
+        sections_count: 0,
+        last_edited_at: null,
+      },
+    ])
+    const activeProj = {
+      id: 'p1',
+      software_id: 'sw1',
+      name: 'P',
+      description: null,
+      publish_folder_slug: 'p',
+      archived: false,
+      created_at: '',
+      updated_at: '',
+      work_orders_done: 0,
+      work_orders_total: 0,
+      sections_count: 0,
+      last_edited_at: null,
+      sections: [],
+    }
+    const archivedProj = { ...activeProj, archived: true }
+    vi.spyOn(api, 'getProject')
+      .mockResolvedValueOnce(activeProj)
+      .mockResolvedValue(archivedProj)
+    vi.spyOn(api, 'listSoftwareArtifacts').mockResolvedValue([])
+    const archiveSpy = vi.spyOn(api, 'patchProjectArchived').mockResolvedValue(archivedProj)
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /archive project/i })).toBeInTheDocument()
+    })
+    await user.click(screen.getByRole('button', { name: /archive project/i }))
+
+    await waitFor(() => {
+      expect(archiveSpy).toHaveBeenCalledWith('sw1', 'p1', true)
+    })
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /restore project/i })).toBeInTheDocument()
+    })
   })
 
   it('Builder can toggle project-scope artifact exclusion', async () => {

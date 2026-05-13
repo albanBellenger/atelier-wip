@@ -9,7 +9,11 @@ import pytest
 
 from app.exceptions import ApiError
 from app.models import Project, Section, Software, WorkOrder
-from app.services.publish_service import PublishResult, PublishService
+from app.services.publish_service import (
+    PublishResult,
+    PublishService,
+    _safe_doc_path,
+)
 
 
 @pytest.mark.asyncio
@@ -67,6 +71,99 @@ async def test_build_file_map_includes_sections_readme_and_exported_wos() -> Non
     assert files[f"alpha/work-orders/{wid}.md"].startswith("# Task")
     assert "Alpha" in files["alpha/README.md"]
     assert "| Intro |" in files["alpha/README.md"]
+
+
+def test_safe_doc_path_valid_slug() -> None:
+    sid = uuid.uuid4()
+    s = Section(
+        id=uuid.uuid4(),
+        project_id=None,
+        software_id=sid,
+        title="Any",
+        slug="foo-bar",
+        order=0,
+        content="",
+    )
+    assert _safe_doc_path(s) == "docs/foo-bar.md"
+
+
+def test_safe_doc_path_title_fallback_when_slug_invalid() -> None:
+    sid = uuid.uuid4()
+    s = Section(
+        id=uuid.uuid4(),
+        project_id=None,
+        software_id=sid,
+        title="Hello  World!",
+        slug="bad slug",
+        order=0,
+        content="",
+    )
+    assert _safe_doc_path(s) == "docs/hello-world.md"
+
+
+def test_safe_doc_path_never_contains_project_style_root() -> None:
+    """Software doc paths are repo-root ``docs/…`` only (no project publish folder prefix)."""
+    sid = uuid.uuid4()
+    s = Section(
+        id=uuid.uuid4(),
+        project_id=None,
+        software_id=sid,
+        title="my-proj",
+        slug="my-proj",
+        order=0,
+        content="",
+    )
+    p = _safe_doc_path(s)
+    assert p.startswith("docs/")
+    assert "/my-proj/docs/" not in p
+    assert not p.startswith("my-proj/")
+
+
+@pytest.mark.asyncio
+async def test_build_file_map_software_docs_at_repo_root_readme() -> None:
+    pid = uuid.uuid4()
+    sw_id = uuid.uuid4()
+    proj = Project(
+        id=pid,
+        software_id=sw_id,
+        name="Alpha",
+        description="desc line",
+        publish_folder_slug="alpha",
+    )
+    sec = Section(
+        id=uuid.uuid4(),
+        project_id=pid,
+        title="Intro",
+        slug="intro",
+        order=0,
+        content="spec body\n",
+    )
+    doc_sec = Section(
+        id=uuid.uuid4(),
+        project_id=None,
+        software_id=sw_id,
+        title="Runbook",
+        slug="runbook",
+        order=0,
+        content="# Run\n",
+    )
+    db = AsyncMock()
+    db.get = AsyncMock(return_value=proj)
+    ex1 = MagicMock()
+    ex1.scalars.return_value.all.return_value = [sec]
+    ex2 = MagicMock()
+    ex2.scalars.return_value.unique.return_value.all.return_value = []
+    ex3 = MagicMock()
+    ex3.scalars.return_value.all.return_value = [doc_sec]
+    db.execute = AsyncMock(side_effect=[ex1, ex2, ex3])
+
+    files = await PublishService(db).build_file_map(pid)
+    assert files["docs/runbook.md"].strip() == "# Run"
+    assert "docs/README.md" in files
+    readme = files["docs/README.md"]
+    assert "| Runbook | `docs/runbook.md` |" in readme
+    assert "# Software documentation" in readme
+    assert not any(k.startswith("alpha/docs/") for k in files)
 
 
 @pytest.mark.asyncio

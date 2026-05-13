@@ -31,32 +31,40 @@ describe('SoftwareDocsTab backprop', () => {
     vi.restoreAllMocks()
   })
 
-  it('does not render outline draft control for non-owners', async () => {
-    vi.spyOn(api, 'listSoftwareDocsSections').mockResolvedValue([])
-    vi.spyOn(api, 'listCodebaseSnapshots').mockResolvedValue([
-      {
-        id: '1',
-        software_id: 'sw',
-        commit_sha: 'a'.repeat(40),
-        branch: 'main',
-        status: 'ready',
-        error_message: null,
-        created_at: new Date().toISOString(),
-        ready_at: new Date().toISOString(),
-        file_count: 1,
-        chunk_count: 1,
-      },
-    ])
-    render(
-      wrap(
-        <SoftwareDocsTab studioId="st" softwareId="sw" canManageOutline={false} />,
-      ),
-    )
-    await screen.findByText(/software documentation/i)
-    expect(screen.queryByRole('button', { name: /draft outline from codebase/i })).toBeNull()
-  })
+  it.each([
+    { caseName: 'builder-equivalent' },
+    { caseName: 'viewer-equivalent' },
+  ])(
+    'does not render outline draft control for non-owner ($caseName)',
+    async ({ caseName: _caseName }) => {
+      vi.spyOn(api, 'listSoftwareDocsSections').mockResolvedValue([])
+      vi.spyOn(api, 'listCodebaseSnapshots').mockResolvedValue([
+        {
+          id: '1',
+          software_id: 'sw',
+          commit_sha: 'a'.repeat(40),
+          branch: 'main',
+          status: 'ready',
+          error_message: null,
+          created_at: new Date().toISOString(),
+          ready_at: new Date().toISOString(),
+          file_count: 1,
+          chunk_count: 1,
+        },
+      ])
+      render(
+        wrap(
+          <SoftwareDocsTab studioId="st" softwareId="sw" canManageOutline={false} />,
+        ),
+      )
+      await screen.findByText(/software documentation/i)
+      expect(
+        screen.queryByRole('button', { name: /draft outline from codebase/i }),
+      ).toBeNull()
+    },
+  )
 
-  it('enables outline draft when a ready snapshot exists', async () => {
+  it('owner sees Draft outline from codebase when snapshots are ready', async () => {
     const user = userEvent.setup()
     vi.spyOn(api, 'listSoftwareDocsSections').mockResolvedValue([])
     vi.spyOn(api, 'listCodebaseSnapshots').mockResolvedValue([

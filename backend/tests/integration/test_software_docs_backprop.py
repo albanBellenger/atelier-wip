@@ -143,10 +143,13 @@ async def test_propose_outline_rbac_and_404(
     assert viewer_forbidden.status_code == 403
 
     await _login(client, member.email)
-    member_ok = await client.post(f"/software/{sw.id}/docs/propose-outline", json={})
-    assert member_ok.status_code == 200, member_ok.text
+    member_forbidden = await client.post(f"/software/{sw.id}/docs/propose-outline", json={})
+    assert member_forbidden.status_code == 403
 
     await _login(client, owner.email)
+    owner_ok = await client.post(f"/software/{sw.id}/docs/propose-outline", json={})
+    assert owner_ok.status_code == 200, owner_ok.text
+
     nf = await client.post(f"/software/{uuid.uuid4()}/docs/propose-outline", json={})
     assert nf.status_code == 404
 

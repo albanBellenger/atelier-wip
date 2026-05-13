@@ -72,8 +72,9 @@ async def propose_software_docs_outline(
     software_id: UUID,
     body: BackpropOutlineRequest,
     session: AsyncSession = Depends(get_db),
-    sa: SoftwareAccess = Depends(require_software_home_editor),
+    sa: SoftwareAccess = Depends(require_software_admin),
 ) -> BackpropOutlineProposalResponse:
+    """Propose a Software Docs outline from the indexed codebase (Studio Owner only)."""
     raw = await CodebaseService(session).propose_software_docs_outline(
         software_id,
         body.hint,
