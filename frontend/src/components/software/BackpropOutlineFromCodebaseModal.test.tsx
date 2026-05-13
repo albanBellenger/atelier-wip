@@ -72,7 +72,15 @@ describe('BackpropOutlineFromCodebaseModal', () => {
     await user.click(boxes[0]!)
     await user.click(screen.getByRole('button', { name: /accept selected/i }))
     expect(createSpy).toHaveBeenCalledTimes(2)
-    expect(createSpy.mock.calls[0]?.[1]).toEqual({ title: 'First', slug: 'first' })
-    expect(createSpy.mock.calls[1]?.[1]).toEqual({ title: 'Second', slug: 'second' })
+    expect(createSpy.mock.calls[0]?.[1]).toEqual({
+      title: 'First',
+      slug: 'first',
+      content: 'S1',
+    })
+    expect(createSpy.mock.calls[1]?.[1]).toEqual({
+      title: 'Second',
+      slug: 'second',
+      content: 'S2',
+    })
   })
 })

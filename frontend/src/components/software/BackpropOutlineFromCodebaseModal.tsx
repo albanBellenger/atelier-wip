@@ -38,9 +38,11 @@ export function BackpropOutlineFromCodebaseModal(
       for (const i of ordered) {
         const r = rows[i]
         if (!r) continue
+        const body = (r.summary ?? '').trim()
         await createSoftwareDocsSection(softwareId, {
           title: r.title,
           slug: r.slug,
+          content: body.length > 0 ? body : undefined,
         })
       }
     },

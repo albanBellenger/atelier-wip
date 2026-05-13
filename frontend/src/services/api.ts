@@ -1801,6 +1801,8 @@ export async function revokeMcpKey(
 export interface SectionCreateBody {
   title: string
   slug?: string | null
+  /** Optional initial Markdown (e.g. backprop outline summary). */
+  content?: string | null
 }
 
 export interface SectionUpdateBody {

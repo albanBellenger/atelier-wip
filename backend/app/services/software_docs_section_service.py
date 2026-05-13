@@ -13,6 +13,7 @@ from app.schemas.section import SectionCreate, SectionResponse, SectionUpdate
 from app.services.section_service import (
     effective_section_plaintext,
     slugify_title,
+    yjs_update_from_plaintext,
 )
 from app.services.section_status import SectionStatusLiteral, rollup_section_status
 from app.services.software_activity_service import SoftwareActivityService
@@ -118,6 +119,8 @@ class SoftwareDocsSectionService:
             base = slugify_title(title)[:256]
         slug = await self._next_unique_slug(software_id, base)
         order = await self._next_order(software_id)
+        initial = (body.content or "").strip() if body.content is not None else ""
+        yjs_blob = yjs_update_from_plaintext(initial)
         sec = Section(
             id=uuid.uuid4(),
             project_id=None,
@@ -125,11 +128,20 @@ class SoftwareDocsSectionService:
             title=title,
             slug=slug,
             order=order,
-            content="",
+            content=initial,
+            yjs_state=yjs_blob,
         )
+        if initial:
+            sec.last_edited_by_id = actor_user_id
         self.db.add(sec)
         await self.db.commit()
         await self.db.refresh(sec)
+        if initial:
+            from app.services.drift_pipeline import schedule_drift_check
+            from app.services.embedding_pipeline import schedule_section_embedding
+
+            schedule_section_embedding(sec.id)
+            schedule_drift_check(sec.id)
         await SoftwareActivityService(self.db).record(
             software_id=software_id,
             studio_id=studio_id,

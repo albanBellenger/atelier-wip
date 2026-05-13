@@ -7,10 +7,11 @@ import pytest
 from pycrdt import Doc, Text
 
 from app.services.section_service import (
-    SectionService,
     SECTION_YJS_TEXT_FIELD,
+    SectionService,
     effective_section_plaintext,
     snapshot_from_yjs_update_bytes,
+    yjs_update_from_plaintext,
 )
 
 
@@ -19,6 +20,16 @@ def test_snapshot_from_yjs_roundtrip() -> None:
     doc[SECTION_YJS_TEXT_FIELD] = Text("hello from yjs")
     blob = doc.get_update()
     assert snapshot_from_yjs_update_bytes(blob) == "hello from yjs"
+
+
+def test_yjs_update_from_plaintext_matches_snapshot_roundtrip() -> None:
+    blob = yjs_update_from_plaintext("seed\nline")
+    assert blob is not None
+    assert snapshot_from_yjs_update_bytes(blob) == "seed\nline"
+
+
+def test_yjs_update_from_plaintext_empty_is_none() -> None:
+    assert yjs_update_from_plaintext("") is None
 
 
 def test_effective_plaintext_prefers_yjs_when_content_is_none_string() -> None:
@@ -60,6 +71,7 @@ def test_section_service_to_response_uses_effective_plaintext() -> None:
     class FakeSec:
         id = sid
         project_id = pid
+        software_id = None
         title = "t"
         slug = "s"
         order = 0

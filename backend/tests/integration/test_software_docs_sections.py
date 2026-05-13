@@ -89,11 +89,24 @@ async def test_software_docs_sections_rbac_and_crud(
     assert body["software_id"] == software_id
     assert body["project_id"] is None
 
+    with_body = await client.post(
+        f"/software/{software_id}/docs",
+        json={
+            "title": "Architecture notes",
+            "slug": "architecture",
+            "content": "## Overview\n\nInitial draft from API.",
+        },
+    )
+    assert with_body.status_code == 200, with_body.text
+    assert "## Overview" in (with_body.json().get("content") or "")
+
     client.cookies.clear()
     client.cookies.set("atelier_token", token_member)
     lst = await client.get(f"/software/{software_id}/docs")
     assert lst.status_code == 200
-    assert len(lst.json()) == 1
+    assert len(lst.json()) == 2
+    slugs = {row["slug"] for row in lst.json()}
+    assert "shared-readme" in slugs and "architecture" in slugs
 
     one = await client.get(f"/software/{software_id}/docs/{sec_id}")
     assert one.status_code == 200

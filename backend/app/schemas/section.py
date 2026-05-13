@@ -12,6 +12,11 @@ from app.schemas.section_outline_health import SectionOutlineHealthLite
 class SectionCreate(BaseModel):
     title: str = Field(min_length=1, max_length=512)
     slug: str | None = Field(default=None, max_length=256)
+    content: str | None = Field(
+        default=None,
+        max_length=500_000,
+        description="Optional initial Markdown (e.g. backprop outline summary).",
+    )
 
 
 class SectionUpdate(BaseModel):

@@ -58,6 +58,16 @@ def effective_section_plaintext(
     return snap
 
 
+def yjs_update_from_plaintext(markdown: str) -> bytes | None:
+    """Full Yjs update from empty doc for server-seeded Markdown (dual-write with ``content``)."""
+    text = markdown if markdown is not None else ""
+    if text == "":
+        return None
+    doc = Doc()
+    doc[SECTION_YJS_TEXT_FIELD] = Text(text)
+    return doc.get_update()
+
+
 def slugify_title(title: str) -> str:
     s = unicodedata.normalize("NFKD", title)
     s = s.encode("ascii", "ignore").decode("ascii")
@@ -313,6 +323,8 @@ class SectionService:
             base = slugify_title(title)[:256]
         slug = await self._next_unique_slug(project_id, base)
         order = await self._next_order(project_id)
+        initial = (body.content or "").strip() if body.content is not None else ""
+        yjs_blob = yjs_update_from_plaintext(initial)
         sec = Section(
             id=uuid.uuid4(),
             project_id=project_id,
@@ -320,11 +332,18 @@ class SectionService:
             title=title,
             slug=slug,
             order=order,
-            content="",
+            content=initial,
+            yjs_state=yjs_blob,
         )
         self.db.add(sec)
         await self.db.commit()
         await self.db.refresh(sec)
+        if initial:
+            from app.services.drift_pipeline import schedule_drift_check
+            from app.services.embedding_pipeline import schedule_section_embedding
+
+            schedule_section_embedding(sec.id)
+            schedule_drift_check(sec.id)
         st = await self.batch_section_statuses(project_id, [sec])
         ic = await self.batch_open_issue_counts(project_id, [sec.id])
         return self._to_response(
