@@ -57,13 +57,14 @@ Never submit a PR with implementation code that has no corresponding test. Never
 
 ### RBAC — never skip this
 
-Every protected route must use the appropriate FastAPI dependency:
+Every protected route must use the appropriate FastAPI dependency (see `backend/app/deps.py`):
 
 - `get_current_user` — for any authenticated route
-- `require_studio_member(studio_id)` — for member-level actions
-- `require_studio_admin(studio_id)` — for admin-level actions
+- `get_studio_access` — owning-studio membership (or platform admin); base for studio-scoped routes
+- `require_studio_admin` — Studio Owner actions (`studio_members.role = studio_admin`, plus platform admin)
+- `require_studio_editor` — edit/spec/WO/chat-style actions for home members: `studio_admin` or `studio_member` only; excludes `studio_viewer`; cross-studio `external_editor` passes where the dependency resolves software access accordingly
 - `require_platform_admin` — for infrastructure-only platform actions (LLM registry, embeddings, connectivity tests, read-only studio directory)
-- `get_cross_studio_access(user, software_id)` — for read-only or edit cross-studio grants on software
+- Software and project routes use nested access (`get_software_access`, `get_project_access_nested`, etc.), which resolve **either** owning-studio membership **or** an approved `cross_studio_access` grant (`viewer` or `external_editor`)
 
 Never perform manual role checks inside route handlers — always use the dependency chain.
 

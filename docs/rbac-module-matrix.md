@@ -16,6 +16,8 @@ This document is the **source of truth** for human-role access to Atelier module
 | **External** | Approved `cross_studio_access` with `access_level = external_editor` (user is from a *requesting* studio, not the software owner studio) |
 | **Viewer** | **Home viewer:** `studio_members.role = studio_viewer`. **Cross-studio viewer:** approved grant with `access_level = viewer`. |
 
+**FastAPI dependency names** (not product labels): studio routes use `get_studio_access`, `require_studio_admin`, and `require_studio_editor` from [`deps.py`](../backend/app/deps.py). There is no `require_studio_member` dependency — “any membership including viewer” is `StudioAccess.is_studio_member`; “may edit like a Builder” is `is_studio_editor`. **Home Studio Viewer** is a member but not an editor: never treat `is_studio_member` alone as permission to mutate data; write paths must depend on `is_studio_editor` (or stricter). The capabilities endpoint exposes an explicit `is_studio_viewer` flag for UI clarity.
+
 Legend in tables: **Y** = allowed, **N** = forbidden (typical 403), **—** = not applicable / blocked earlier (e.g. no route access). **Y\*** = allowed with constraints (filtering, field-level checks, or empty result).
 
 ---
@@ -113,9 +115,11 @@ Rows are **product modules**. Columns are personas. **R** = read/list/get, **C**
 |--|:---:|:---:|:---:|:---:|:---:|:---:|
 | R list / get project | Y | Y | Y | Y | Y | Y |
 | C create project | Y | Y | Y | N | N | N |
-| U / D project | Y | Y | N | N | N | N |
+| U `PUT` project (name, description, publish folder slug) | Y | Y | N | N | N | N |
+| U `PATCH` project (`archived` flag — archive / restore) | Y | Y | Y | N | N | N |
+| D delete project | Y | Y | N | N | N | N |
 
-*C* requires `require_software_home_editor` (no cross-studio). *U/D* require `require_project_studio_admin_nested` (Studio Owner on owning enrollment).
+*C* requires `require_software_home_editor` (no cross-studio). *PUT* and *DELETE* require `require_project_studio_admin_nested` (Studio Owner on owning enrollment). *PATCH* archive uses `require_project_home_editor_nested` (owning-studio Builder or Owner; not cross-studio).
 
 ---
 
@@ -130,6 +134,16 @@ Rows are **product modules**. Columns are personas. **R** = read/list/get, **C**
 | Improve `POST .../improve` | Y | Y | Y | Y | N | N |
 
 *Outline ops* (create, reorder, delete): `require_outline_manager` — Studio Owner only, **not** cross-studio ([`deps.py`](../backend/app/deps.py)). Content patch: `require_project_member` + `SectionService` structure keys require Owner.
+
+---
+
+### 8b. Software Docs — Backprop outline proposal
+
+| | Platform admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
+|--|:---:|:---:|:---:|:---:|:---:|:---:|
+| C `POST /software/{sid}/docs/propose-outline` | Y | Y | N | N | N | N |
+
+*Enforced by:* `require_software_admin` on [`software_docs_sections.py`](../backend/app/routers/software_docs_sections.py) — Studio Owner on the owning studio only (same owner-only outline semantics as `require_outline_manager` on project sections).
 
 ---
 
@@ -222,6 +236,16 @@ All routes: `require_project_member`.
 
 ---
 
+### 16b. Software chat (REST + WebSocket)
+
+| | Platform admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
+|--|:---:|:---:|:---:|:---:|:---:|:---:|
+| R history / WS | Y | Y | Y | Y | N | N |
+
+*Enforced by:* `get_software_access` (REST) or `fetch_software_access` (WebSocket), plus explicit `is_studio_editor` check in [`software_chat.py`](../backend/app/routers/software_chat.py).
+
+---
+
 ### 17. My token usage (`GET /me/token-usage`)
 
 | | Platform admin | Studio owner | Builder | External | Studio Viewer | Viewer (cross-studio) |
@@ -280,8 +304,10 @@ Auth ([`auth.py`](../backend/app/routers/auth.py)): `register`, `login`, `logout
 | software | GET/PUT/PATCH/DELETE | `/studios/{studio_id}/software/{id}` | `get_software_in_studio` / `require_software_editor_in_studio` / `require_software_admin_in_studio` |
 | software | GET | `.../history` | `get_software_in_studio` |
 | software | POST | `.../git/test` | `require_software_admin_in_studio` |
+| software_docs_sections | POST | `/software/{software_id}/docs/propose-outline` | `require_software_admin` |
 | projects | GET/POST | `/software/{software_id}/projects` | `get_software_access` / `require_software_home_editor` |
 | projects | GET/PUT/DELETE | `/software/{software_id}/projects/{project_id}` | `get_project_access_nested` / `require_project_studio_admin_nested` |
+| projects | PATCH | `/software/{software_id}/projects/{project_id}` | `get_project_access_nested` / `require_project_home_editor_nested` |
 | sections | GET | `/projects/{project_id}/sections` | `get_project_access` |
 | sections | POST/reorder/DELETE | `.../sections...` | `require_outline_manager` |
 | sections | GET | `.../context-preview` | `get_project_access` |
@@ -297,6 +323,7 @@ Auth ([`auth.py`](../backend/app/routers/auth.py)): `register`, `login`, `logout
 | project_graph | GET/POST | `/projects/{project_id}/graph...` | `get_project_access` / `require_project_member` |
 | project_publish | POST | `/projects/{project_id}/publish` | `require_can_publish` |
 | project_chat | GET/WS | `/projects/{project_id}/chat`, `/ws/.../chat` | `get_project_access` + `is_studio_editor` |
+| software-chat | GET/WS | `/software/{software_id}/chat`, `/ws/software/{software_id}/chat` | `get_software_access` / `fetch_software_access` + `is_studio_editor` |
 | collab | WS | `/ws/projects/{project_id}/sections/{section_id}/collab` | `fetch_project_access` + `is_studio_editor` |
 | me_token_usage | GET | `/me/token-usage` | `get_current_user` + membership check |
 | mcp_api | GET/PATCH/POST | `/mcp/...` | MCP key deps |

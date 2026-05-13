@@ -34,11 +34,11 @@ async def list_software_attention(
             code="FORBIDDEN",
             message="Attention feed is not available with read-only cross-studio access.",
         )
-    if not sa.studio_access.is_studio_member:
+    if not sa.studio_access.is_studio_editor:
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Membership in this studio is required.",
+            message="Studio Owner or Builder access required",
         )
     return await AttentionService(session).list_software_attention(
         software_id=software_id,

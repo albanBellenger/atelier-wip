@@ -23,11 +23,11 @@ async def post_builder_composer_hint(
     user: User = Depends(get_current_user),
 ) -> BuilderComposerHintResponse:
     sa = await fetch_software_access(session, user, body.software_id)
-    if not sa.studio_access.is_studio_member:
+    if not sa.studio_access.is_studio_editor:
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Membership in this studio is required.",
+            message="Studio Owner or Builder access required",
         )
     project: Project | None = None
     if body.project_id is not None:

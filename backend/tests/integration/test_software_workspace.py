@@ -4,12 +4,13 @@ import uuid
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.integration.studio_http_seed import post_admin_studio
 
-from app.models import User
+from app.models import User, WorkOrder
+from tests.integration.test_work_orders import _studio_project_with_sections
 from tests.integration.embedding_mocks import patch_fake_embedding_transport
 
 
@@ -175,6 +176,52 @@ async def test_software_attention_activity_token_summary(
 
 
 @pytest.mark.asyncio
+async def test_software_attention_excludes_archived_projects(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, _studio_id, software_id, pid, sec_a, _sec_b = (
+        await _studio_project_with_sections(client, db_session, sfx)
+    )
+    client.cookies.set("atelier_token", token)
+    cr = await client.post(
+        f"/projects/{pid}/work-orders",
+        json={
+            "title": "Stale candidate",
+            "description": "D",
+            "status": "backlog",
+            "section_ids": [sec_a],
+        },
+    )
+    assert cr.status_code == 200, cr.text
+    wid = cr.json()["id"]
+    await db_session.execute(
+        update(WorkOrder)
+        .where(WorkOrder.id == uuid.UUID(wid))
+        .values(is_stale=True, stale_reason="Spec moved under you.")
+    )
+    await db_session.flush()
+
+    att_before = await client.get(f"/software/{software_id}/attention")
+    assert att_before.status_code == 200, att_before.text
+    body_before = att_before.json()
+    assert body_before["counts"]["drift"] >= 1
+    assert any(row["project_id"] == pid for row in body_before["items"])
+
+    arch = await client.patch(
+        f"/software/{software_id}/projects/{pid}",
+        json={"archived": True},
+    )
+    assert arch.status_code == 200, arch.text
+
+    att_after = await client.get(f"/software/{software_id}/attention")
+    assert att_after.status_code == 200, att_after.text
+    body_after = att_after.json()
+    assert not any(row["project_id"] == pid for row in body_after["items"])
+    assert body_after["counts"]["drift"] == 0
+
+
+@pytest.mark.asyncio
 async def test_software_workspace_requires_auth(
     client: AsyncClient, db_session: AsyncSession
 ) -> None:
@@ -266,6 +313,16 @@ async def test_studio_viewer_cannot_see_activity_or_upload(
     software_id = sw.json()["id"]
 
     client.cookies.set("atelier_token", token_viewer)
+
+    att = await client.get(f"/software/{software_id}/attention")
+    assert att.status_code == 403
+    assert att.json()["code"] == "FORBIDDEN"
+
+    summ = await client.get(
+        f"/studios/{studio_id}/software/{software_id}/token-usage/summary"
+    )
+    assert summ.status_code == 403
+    assert summ.json()["code"] == "FORBIDDEN"
 
     act = await client.get(f"/software/{software_id}/activity")
     assert act.status_code == 403

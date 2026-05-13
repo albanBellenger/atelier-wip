@@ -111,11 +111,11 @@ async def software_token_usage_summary(
     session: AsyncSession = Depends(get_db),
     sa: SoftwareAccess = Depends(get_software_in_studio),
 ) -> SoftwareTokenUsageSummaryOut:
-    if not sa.studio_access.is_studio_member:
+    if not sa.studio_access.is_studio_editor:
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Membership in this studio is required.",
+            message="Studio Owner or Builder access required",
         )
     today = datetime.now(timezone.utc).date()
     if date_from is None or date_to is None:

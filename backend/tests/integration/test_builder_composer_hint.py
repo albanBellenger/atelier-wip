@@ -7,7 +7,10 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tests.integration.test_work_orders import _studio_project_with_sections
+from tests.integration.test_work_orders import (
+    _register,
+    _studio_project_with_sections,
+)
 
 
 @pytest.mark.asyncio
@@ -67,3 +70,27 @@ async def test_builder_composer_hint_project_not_under_software(
         )
     assert r.status_code == 404
     assert "not found" in r.json().get("detail", "").lower()
+
+
+@pytest.mark.asyncio
+async def test_builder_composer_hint_studio_viewer_forbidden(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token_owner, studio_id, sw_id, pid, _a, _b = await _studio_project_with_sections(
+        client, db_session, sfx
+    )
+    token_viewer = await _register(client, sfx, "viewerhints")
+    client.cookies.set("atelier_token", token_owner)
+    inv = await client.post(
+        f"/studios/{studio_id}/members",
+        json={"email": f"viewerhints-{sfx}@example.com", "role": "studio_viewer"},
+    )
+    assert inv.status_code == 200
+    client.cookies.set("atelier_token", token_viewer)
+    r = await client.post(
+        "/me/builder-composer-hint",
+        json={"software_id": sw_id, "project_id": pid, "local_hour": 9},
+    )
+    assert r.status_code == 403
+    assert r.json().get("code") == "FORBIDDEN"

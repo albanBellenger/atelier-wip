@@ -1,5 +1,5 @@
 # Atelier — Technical Architecture
-_Version 2.1 — updated with Studio hierarchy, RBAC, Work Orders, Knowledge Graph, MCP server, Drift Detection, Token Dashboard, TDD strategy_
+_Version 2.2 — aligned `studio_members` / `cross_studio_access` role strings and §7 RBAC dependency chain with implementation and FR v2.2 labels_
 
 ---
 
@@ -102,10 +102,12 @@ created_at  TIMESTAMPTZ DEFAULT NOW()
 ```sql
 studio_id  UUID REFERENCES studios(id) ON DELETE CASCADE,
 user_id    UUID REFERENCES users(id),
-role       TEXT NOT NULL,   -- studio_admin | studio_member
+role       TEXT NOT NULL,   -- studio_admin | studio_member | studio_viewer
 joined_at  TIMESTAMPTZ DEFAULT NOW(),
 PRIMARY KEY (studio_id, user_id)
 ```
+
+Persisted values map to FR v2.2 home-studio labels: `studio_admin` → Studio Owner, `studio_member` → Studio Builder, `studio_viewer` → Studio Viewer (read-only within the studio; see FR). A database `CHECK` constraint (`ck_studio_members_role_allowed`, migration `w1x2y3z4a5b7`) enforces these three literals only.
 
 ### `cross_studio_access`
 ```sql
@@ -114,11 +116,17 @@ requesting_studio_id  UUID REFERENCES studios(id),
 target_software_id    UUID REFERENCES software(id),
 requested_by     UUID REFERENCES users(id),
 approved_by      UUID REFERENCES users(id),   -- tool admin
-access_level     TEXT DEFAULT 'viewer',        -- viewer | editor
+access_level     TEXT DEFAULT 'viewer',        -- viewer | external_editor
 status           TEXT DEFAULT 'pending',       -- pending | approved | rejected
 created_at       TIMESTAMPTZ DEFAULT NOW(),
 resolved_at      TIMESTAMPTZ
 ```
+
+`viewer` = FR cross-studio **Viewer** (read-only on the granted software). `external_editor` = FR cross-studio **External** (edit scope on that software only; not the same as MCP key `access_level` viewer/editor on `mcp_keys`).
+
+### `mcp_keys` (separate from cross-studio)
+
+MCP API keys use their own `access_level` (`viewer` | `editor`) on the `mcp_keys` table — do not confuse with `cross_studio_access.access_level`.
 
 ### `software`
 ```sql
@@ -137,12 +145,17 @@ updated_at   TIMESTAMPTZ DEFAULT NOW()
 
 ### `projects`
 ```sql
-id          UUID PRIMARY KEY,
-software_id UUID REFERENCES software(id) ON DELETE CASCADE,
-name        TEXT NOT NULL,
-description TEXT,
-created_at  TIMESTAMPTZ DEFAULT NOW(),
-updated_at  TIMESTAMPTZ DEFAULT NOW()
+id                   UUID PRIMARY KEY,
+software_id          UUID REFERENCES software(id) ON DELETE CASCADE,
+name                 TEXT NOT NULL,
+description          TEXT,
+publish_folder_slug  TEXT NOT NULL,   -- unique per software; git export root folder
+archived             BOOLEAN NOT NULL DEFAULT FALSE,
+created_at           TIMESTAMPTZ DEFAULT NOW(),
+updated_at           TIMESTAMPTZ DEFAULT NOW(),
+last_published_at    TIMESTAMPTZ,     -- nullable; last successful publish timestamp
+UNIQUE (software_id, publish_folder_slug)
+-- Index ix_projects_software_archived on (software_id, archived) for list filtering
 ```
 
 ### `sections`
@@ -252,7 +265,7 @@ title                TEXT NOT NULL,
 description          TEXT NOT NULL,
 implementation_guide TEXT,
 acceptance_criteria  TEXT,
-status               TEXT DEFAULT 'backlog',  -- backlog | in_progress | in_review | done
+status               TEXT DEFAULT 'backlog',  -- backlog | in_progress | in_review | done | archived
 phase                TEXT,
 assignee_id          UUID REFERENCES users(id),
 is_stale             BOOLEAN DEFAULT FALSE,
@@ -320,6 +333,16 @@ user_id    UUID REFERENCES users(id),
 role       TEXT NOT NULL,   -- user | assistant
 content    TEXT NOT NULL,
 created_at TIMESTAMPTZ DEFAULT NOW()
+```
+
+### `software_chat_messages`
+```sql
+id          UUID PRIMARY KEY,
+software_id UUID REFERENCES software(id) ON DELETE CASCADE,
+user_id     UUID REFERENCES users(id),
+role        TEXT NOT NULL,   -- user | assistant
+content     TEXT NOT NULL,
+created_at  TIMESTAMPTZ DEFAULT NOW()
 ```
 
 ### `issues`
@@ -437,6 +460,7 @@ CREATE INDEX ON work_orders    (project_id, status);
 CREATE INDEX ON work_orders    (project_id, is_stale);
 CREATE INDEX ON work_orders    (assignee_id);
 CREATE INDEX ON chat_messages  (project_id, created_at);
+CREATE INDEX ON software_chat_messages (software_id, created_at);
 CREATE INDEX ON thread_messages(thread_id,  created_at);
 CREATE INDEX ON issues         (project_id, status);
 CREATE INDEX ON graph_edges    (project_id, source_type, source_id);
@@ -533,9 +557,11 @@ Listing and read/unread updates use `NotificationService` (e.g. `/me/notificatio
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
 | `/software/{sid}/projects` | POST | Studio Builder+ | Create project |
-| `/software/{sid}/projects` | GET | Studio Builder | List projects |
+| `/software/{sid}/projects` | GET | Studio Builder | List projects; optional `?include_archived=true` (default hides archived) |
+| `/studios/{id}/projects` | GET | Studio Builder | All projects in studio (flattened); optional `?include_archived=true` |
 | `/software/{sid}/projects/{pid}` | GET | Studio Builder | Project detail + sections |
-| `/software/{sid}/projects/{pid}` | PUT | Studio Owner | Update name, description |
+| `/software/{sid}/projects/{pid}` | PUT | Studio Owner | Update name, description, publish folder slug |
+| `/software/{sid}/projects/{pid}` | PATCH | Studio Builder+ | Archive or unarchive (JSON body `archived` boolean); owning studio only |
 | `/software/{sid}/projects/{pid}` | DELETE | Studio Owner | Delete project + cascade |
 
 ### SectionService
@@ -591,7 +617,8 @@ On status transition to `Done`:
 ### ChatService
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
-| `/projects/{pid}/chat` | GET | Studio Builder | Paginated chat history |
+| `/projects/{pid}/chat` | GET | Studio Builder | Paginated project chat history |
+| `/software/{sid}/chat` | GET | Studio Builder | Paginated software chat history |
 
 ### PublishService
 | Endpoint | Method | Auth | Description |
@@ -604,8 +631,6 @@ After a successful publish:
 1. Existing behaviour (write project files, run conflict/gap analysis, drift detection on work orders) is unchanged.
 2. **NEW:** if the software has a `ready` codebase snapshot, schedule `CodeDriftService.run_for_software` as a background task with the publishing user as `run_actor_id`. The publish never blocks on this. Failure is logged and swallowed.
 3. **NEW:** publish Software Docs to `<repo_root>/docs/<section-slug>.md` and a generated `<repo_root>/docs/README.md` with the docs outline.
-
-> **Implementation note:** the current publish service writes Software Docs under each project's publish folder (`<project_publish_folder_slug>/docs/`). The corrected layout (under `<repo_root>/docs/`) is what the functional spec describes and what code-drift / doc-sync paths assume when surfacing file references to the user. Fixing the publish layout is a small MR independent of the Slice 16 agents; do it before, during, or immediately after 16e.
 
 ### ConflictService
 | Endpoint | Method | Auth | Description |
@@ -831,6 +856,15 @@ The service is also called as a background task from `WorkOrderService` on trans
   4. On complete: persist to `chat_messages`, insert `token_usage`
 - On disconnect: unregister from room
 
+### Software Chat (`/ws/software/{sid}/chat`)
+- On connect: validate JWT (query param or cookie), resolve software access (`fetch_software_access`); require studio Owner/Builder (`is_studio_editor`); register in software chat room
+- On user message:
+  1. Broadcast user message immediately to all connected clients
+  2. Build system prompt from software definition and project list (software-scoped agent; no project RAG)
+  3. Stream LLM tokens, broadcasting each token to all clients
+  4. On complete: persist to `software_chat_messages`, insert `token_usage`
+- On disconnect: unregister from room (`software_chat_room_registry`)
+
 ---
 
 ## 6. Frontend Structure
@@ -843,7 +877,7 @@ frontend/src/
 │   ├── AuthPage.tsx                # Login + Register tabs
 │   ├── StudioListPage.tsx          # Grid of studio cards
 │   ├── StudioPage.tsx              # Studio dashboard — software list
-│   ├── SoftwarePage.tsx            # Software dashboard — project list
+│   ├── SoftwarePage.tsx            # Software dashboard — projects, SoftwareChatRoom tab, Software Docs
 │   ├── ProjectPage.tsx             # Outline + section list + tabs
 │   ├── SectionPage.tsx             # Split editor + thread panel
 │   ├── WorkOrdersPage.tsx          # Kanban board + list view
@@ -860,8 +894,11 @@ frontend/src/
 │   │   ├── SplitEditor.tsx
 │   │   └── CollabCursor.tsx
 │   ├── chat/
-│   │   ├── ChatRoom.tsx
+│   │   ├── ChatRoom.tsx            # Project chat room
+│   │   ├── SoftwareChatRoom.tsx    # Software-wide chat (WS + history)
 │   │   └── ThreadPanel.tsx
+│   ├── home/
+│   │   └── BuilderHomeComposer.tsx # Studio dashboard — draft → navigate to software chat
 │   ├── outline/
 │   │   └── OutlineNav.tsx
 │   ├── work-orders/
@@ -899,25 +936,29 @@ frontend/src/
 ## 7. RBAC Enforcement
 
 ### Backend
-Every protected route uses a FastAPI dependency chain:
+Studio-scoped routes resolve membership (and optional context) via FastAPI dependencies in [`backend/app/deps.py`](../backend/app/deps.py). There is no `get_studio_membership` or `require_studio_member` symbol — use the names below.
+
+**Studio routes (`/studios/{studio_id}/...`):**
 
 ```python
 get_current_user(jwt)
-  └── get_studio_membership(user, studio_id)   # returns role or 403
-        └── require_studio_admin()              # 403 if not admin
-        └── require_studio_member()             # 403 if viewer or not member
-        └── get_cross_studio_access(user, software_id)  # for read-only or edit cross-studio grants
+  └── get_studio_access(studio_id)           # StudioAccess: owning-studio member or platform admin; 403 if not a member
+        └── require_studio_admin()           # 403 unless Studio Owner (studio_admin) or platform admin
+        └── require_studio_editor()          # 403 unless Owner, Builder (studio_member), cross-studio external_editor, or platform admin
 ```
 
-Software-level routes additionally resolve the studio from the software and apply the same chain. Project-level routes resolve studio via software → project chain.
+**Software routes** resolve `Software`, then `resolve_studio_access_for_software`: owning-studio membership **or**, if not a member, an **approved** `cross_studio_access` row for that user’s requesting studio and the target software (`viewer` or `external_editor`). Nested helpers include `get_software_access`, `require_software_editor_in_studio`, `require_software_admin_in_studio`, and project-scoped variants (`get_project_access_nested`, `require_project_member`, etc.).
 
-MCP routes have a separate dependency:
+**Capability flags** for the UI: `GET /studios/{studio_id}/me/capabilities` maps `StudioAccess` to booleans (`is_studio_editor`, `is_studio_viewer`, `is_cross_studio_viewer`, …) in [`backend/app/services/rbac_capabilities_service.py`](../backend/app/services/rbac_capabilities_service.py).
+
+MCP routes have a separate dependency (MCP key `access_level`, not cross-studio):
+
 ```python
 get_mcp_key(api_key_header)
   └── validate_key_hash()
   └── check_not_revoked()
   └── resolve_studio_scope()
-  └── resolve_access_level()   # viewer | editor
+  └── resolve_access_level()   # MCP key: viewer | editor
 ```
 
 ### Frontend
@@ -1542,7 +1583,7 @@ ENCRYPTION_KEY=changeme-32-byte-fernet-key
 - Activity log verbs `software_doc_*`
 - Yjs collab room path `/ws/software/{sfid}/docs/{sid}/collab`
 - `RAGService` updated: Software Docs outline block between Software Definition and Project outline
-- `PublishService` writes docs files (intended layout: `<repo_root>/docs/<slug>.md` — see Publish patch note)
+- `PublishService` writes docs files at `<repo_root>/docs/<slug>.md` plus `<repo_root>/docs/README.md` on every project publish
 - Knowledge Graph node type `Software Doc Section`
 - `SoftwareDocsPage` + `SoftwareDocSectionPage` (CodeMirror + Yjs editor reused)
 - Conflict / gap detection runs as a separate pair-set per software for software-doc sections (does not mix with project sections)
@@ -1688,7 +1729,8 @@ ENCRYPTION_KEY=changeme-32-byte-fernet-key
 |---|---|---|---|
 | GET | `/projects/{pid}/sections/{sid}/thread` | Member | Get thread + history |
 | POST | `/projects/{pid}/sections/{sid}/thread/messages` | Member | Send message (SSE) |
-| GET | `/projects/{pid}/chat` | Member | Chat history |
+| GET | `/projects/{pid}/chat` | Member | Project chat history |
+| GET | `/software/{sid}/chat` | Member | Software chat history |
 
 ### Graph
 | Method | Path | Auth | Description |
@@ -1724,6 +1766,7 @@ ENCRYPTION_KEY=changeme-32-byte-fernet-key
 |---|---|---|
 | `/ws/projects/{pid}/sections/{sid}/collab` | JWT query param | Yjs co-editing |
 | `/ws/projects/{pid}/chat` | JWT query param | Project chat room |
+| `/ws/software/{sid}/chat` | JWT query param or cookie | Software-wide chat room |
 
 
 ---

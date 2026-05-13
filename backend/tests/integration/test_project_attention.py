@@ -102,6 +102,27 @@ async def test_attention_cross_studio_viewer_forbidden(
 
 
 @pytest.mark.asyncio
+async def test_attention_studio_viewer_forbidden(
+    client: AsyncClient, db_session: AsyncSession
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token_owner, studio_id, _sw_id, pid, _a, _b = await _studio_project_with_sections(
+        client, db_session, sfx
+    )
+    token_viewer = await _register(client, sfx, "attview")
+    client.cookies.set("atelier_token", token_owner)
+    inv = await client.post(
+        f"/studios/{studio_id}/members",
+        json={"email": f"attview-{sfx}@example.com", "role": "studio_viewer"},
+    )
+    assert inv.status_code == 200
+    client.cookies.set("atelier_token", token_viewer)
+    r = await client.get(f"/projects/{pid}/attention")
+    assert r.status_code == 403
+    assert r.json().get("code") == "FORBIDDEN"
+
+
+@pytest.mark.asyncio
 async def test_attention_conflict_drift_update_counts(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,

@@ -30,11 +30,11 @@ async def list_project_attention(
     pa: ProjectAccess = Depends(require_project_issues_readable),
 ) -> AttentionListOut:
     _ensure_project(pa, project_id)
-    if not pa.studio_access.is_studio_member:
+    if not pa.studio_access.is_studio_editor:
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
-            message="Not a member of this studio.",
+            message="Studio Owner or Builder access required",
         )
     return await AttentionService(session).list_project_attention(
         project_id=project_id,

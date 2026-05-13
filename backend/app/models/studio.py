@@ -52,7 +52,9 @@ class StudioMember(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), primary_key=True
     )
-    role: Mapped[str] = mapped_column(String(32), nullable=False)  # studio_admin | studio_member
+    role: Mapped[str] = mapped_column(
+        String(32), nullable=False
+    )  # studio_admin | studio_member | studio_viewer (FR: Owner / Builder / Viewer)
     joined_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
