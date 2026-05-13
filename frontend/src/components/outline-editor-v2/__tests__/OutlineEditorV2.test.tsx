@@ -7,6 +7,32 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as api from '../../../services/api'
 import { OutlineEditorV2 } from '../OutlineEditorV2'
 
+vi.mock('../../editor/MilkdownEditor', async () => {
+  const React = await import('react')
+  const { forwardRef, useImperativeHandle } = React
+  return {
+    MilkdownEditor: forwardRef(function MockMilkdown(
+      props: { defaultMarkdown?: string },
+      ref: React.ForwardedRef<unknown>,
+    ) {
+      useImperativeHandle(
+        ref,
+        () => ({
+          getEditorView: () => null,
+          getMarkdown: () => props.defaultMarkdown ?? '',
+          replaceFullMarkdown: () => undefined,
+          applyPatch: () => ({ ok: false as const, reason: 'mock' }),
+          animateAppendFromMarkdown: () => Promise.resolve(),
+        }),
+        [props.defaultMarkdown],
+      )
+      return (
+        <div data-testid="milkdown-editor-mock">{props.defaultMarkdown ?? ''}</div>
+      )
+    }),
+  }
+})
+
 vi.mock('../../../hooks/useYjsCollab', async () => {
   const Y = await import('yjs')
   const ydoc = new Y.Doc()
@@ -27,6 +53,7 @@ vi.mock('../../../hooks/useYjsCollab', async () => {
         on: vi.fn(),
         off: vi.fn(),
       },
+      sendMarkdownSnapshot: vi.fn(),
     }),
   }
 })
@@ -94,8 +121,6 @@ describe('OutlineEditorV2', () => {
       drawer_tokens: null,
       drawer_sources: null,
     })
-    vi.spyOn(api, 'listProjectIssues').mockResolvedValue([])
-    vi.spyOn(api, 'listWorkOrders').mockResolvedValue([])
     vi.spyOn(api, 'getSoftware').mockResolvedValue({
       id: 'sw1',
       studio_id: 's1',

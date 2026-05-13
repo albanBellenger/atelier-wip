@@ -13,7 +13,6 @@ from app.schemas.section import SectionCreate, SectionResponse, SectionUpdate
 from app.services.section_service import (
     effective_section_plaintext,
     slugify_title,
-    yjs_update_from_plaintext,
 )
 from app.services.section_status import SectionStatusLiteral, rollup_section_status
 from app.services.software_activity_service import SoftwareActivityService
@@ -120,7 +119,6 @@ class SoftwareDocsSectionService:
         slug = await self._next_unique_slug(software_id, base)
         order = await self._next_order(software_id)
         initial = (body.content or "").strip() if body.content is not None else ""
-        yjs_blob = yjs_update_from_plaintext(initial)
         sec = Section(
             id=uuid.uuid4(),
             project_id=None,
@@ -129,7 +127,7 @@ class SoftwareDocsSectionService:
             slug=slug,
             order=order,
             content=initial,
-            yjs_state=yjs_blob,
+            yjs_state=None,
         )
         if initial:
             sec.last_edited_by_id = actor_user_id

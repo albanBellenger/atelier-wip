@@ -185,3 +185,8 @@ export function useDocBlocks(ytext: Y.Text | null): { blocks: DocBlock[] } {
 
   return { blocks }
 }
+
+/** Parse markdown into outline blocks (same rules as {@link useDocBlocks}). */
+export function docBlocksFromMarkdown(markdown: string): DocBlock[] {
+  return withIds(parseMarkdownBlocks(markdown))
+}

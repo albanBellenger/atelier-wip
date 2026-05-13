@@ -80,7 +80,7 @@ describe('useYjsCollab', () => {
       expect(result.current).not.toBeNull()
     })
     expect(WebsocketProviderMock).toHaveBeenCalled()
-    expect(result.current?.ytext).toBeDefined()
+    expect(result.current?.sendMarkdownSnapshot).toBeDefined()
     unmount()
     expect(mockDestroy).toHaveBeenCalled()
   })

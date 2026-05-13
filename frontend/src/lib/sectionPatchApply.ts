@@ -1,4 +1,6 @@
-import * as Y from 'yjs'
+import type { EditorView } from '@milkdown/prose/view'
+import { Slice } from '@milkdown/prose/model'
+import type { Parser, Serializer } from '@milkdown/transformer'
 
 export type PatchProposalMeta =
   | {
@@ -9,8 +11,6 @@ export type PatchProposalMeta =
   | {
       intent: 'replace_selection'
       replacement_markdown: string
-      selection_from: number
-      selection_to: number
       error?: string
     }
   | {
@@ -23,8 +23,8 @@ export type PatchProposalMeta =
 
 export interface PatchAnchor {
   snapshot: string
-  selectionFrom?: number
-  selectionTo?: number
+  /** Client-selected plaintext at send time (preview for replace_selection). */
+  selectedPlaintext?: string
 }
 
 export function isPatchIntentProposal(
@@ -34,9 +34,10 @@ export function isPatchIntentProposal(
 }
 
 export function canApplyPatch(
-  ytext: Y.Text,
+  currentMarkdown: string,
   proposal: PatchProposalMeta,
   anchor: PatchAnchor,
+  view?: EditorView | null,
 ): { ok: true } | { ok: false; reason: string } {
   if ('error' in proposal && proposal.error) {
     return { ok: false, reason: proposal.error }
@@ -44,8 +45,7 @@ export function canApplyPatch(
   if (!isPatchIntentProposal(proposal)) {
     return { ok: false, reason: 'Invalid patch proposal.' }
   }
-  const current = ytext.toString()
-  if (current !== anchor.snapshot) {
+  if (currentMarkdown !== anchor.snapshot) {
     return {
       ok: false,
       reason:
@@ -56,23 +56,17 @@ export function canApplyPatch(
     return { ok: true }
   }
   if (proposal.intent === 'replace_selection') {
-    const { selection_from: from, selection_to: to } = proposal
-    if (
-      typeof from !== 'number' ||
-      typeof to !== 'number' ||
-      from < 0 ||
-      to > current.length ||
-      from > to
-    ) {
-      return { ok: false, reason: 'Invalid selection range for the current document.' }
+    if (view == null) {
+      return { ok: true }
     }
-    if (current.slice(from, to) !== anchor.snapshot.slice(from, to)) {
-      return { ok: false, reason: 'Selected region no longer matches the original text.' }
+    const { from, to } = view.state.selection
+    if (from === to) {
+      return { ok: false, reason: 'No selection to replace.' }
     }
     return { ok: true }
   }
   if (proposal.intent === 'edit') {
-    const n = current.split(proposal.old_snippet).length - 1
+    const n = currentMarkdown.split(proposal.old_snippet).length - 1
     if (n !== 1) {
       return {
         ok: false,
@@ -84,32 +78,84 @@ export function canApplyPatch(
   return { ok: false, reason: 'Unknown patch intent.' }
 }
 
-export function applyPatchToYtext(
-  ytext: Y.Text,
+function parseFragment(parser: Parser, markdown: string) {
+  const root = parser(markdown)
+  return root.content
+}
+
+/** Replace entire document body from Markdown (used by edit patch + stream animation). */
+export function replaceDocFromMarkdown(
+  view: EditorView,
+  parser: Parser,
+  fullMarkdown: string,
+): void {
+  const frag = parseFragment(parser, fullMarkdown)
+  const { state } = view
+  view.dispatch(
+    state.tr.replaceWith(0, state.doc.content.size, frag).scrollIntoView(),
+  )
+}
+
+/** Insert Markdown at document end (same separator rules as append patch). */
+export function insertAppendMarkdownFragment(
+  view: EditorView,
+  parser: Parser,
+  serializer: Serializer,
+  fragmentMd: string,
+): void {
+  if (fragmentMd.length === 0) {
+    return
+  }
+  const current = serializer(view.state.doc)
+  const { state } = view
+  const md = fragmentMd
+  const prefix =
+    state.doc.content.size > 0 &&
+    !current.endsWith('\n') &&
+    md.length > 0
+      ? '\n\n'
+      : current.length > 0 && md.length > 0
+        ? '\n'
+        : ''
+  const frag = parseFragment(parser, prefix + md)
+  const tr = state.tr.insert(state.doc.content.size, frag)
+  view.dispatch(tr.scrollIntoView())
+}
+
+export function applyPatchToEditor(
+  view: EditorView,
+  parser: Parser,
+  serializer: Serializer,
   proposal: PatchProposalMeta,
   anchor: PatchAnchor,
 ): { ok: true } | { ok: false; reason: string } {
-  const gate = canApplyPatch(ytext, proposal, anchor)
+  const current = serializer(view.state.doc)
+  const gate = canApplyPatch(current, proposal, anchor, view)
   if (!gate.ok) {
     return gate
   }
   if (!isPatchIntentProposal(proposal)) {
     return { ok: false, reason: 'Invalid patch proposal.' }
   }
-  const current = ytext.toString()
+  const { state } = view
   if (proposal.intent === 'append') {
-    const md = proposal.markdown_to_append ?? ''
-    const insertAt = ytext.length
-    const prefix =
-      insertAt > 0 && !current.endsWith('\n') && md.length > 0 ? '\n\n' : insertAt > 0 ? '\n' : ''
-    ytext.insert(insertAt, prefix + md)
+    insertAppendMarkdownFragment(
+      view,
+      parser,
+      serializer,
+      proposal.markdown_to_append ?? '',
+    )
     return { ok: true }
   }
   if (proposal.intent === 'replace_selection') {
-    const { selection_from: from, selection_to: to, replacement_markdown: rep } = proposal
-    const len = to - from
-    ytext.delete(from, len)
-    ytext.insert(from, rep ?? '')
+    const { from, to } = state.selection
+    if (from === to) {
+      return { ok: false, reason: 'No selection to replace.' }
+    }
+    const frag = parseFragment(parser, proposal.replacement_markdown ?? '')
+    const slice = new Slice(frag, 0, 0)
+    const tr = state.tr.replaceRange(from, to, slice)
+    view.dispatch(tr.scrollIntoView())
     return { ok: true }
   }
   if (proposal.intent === 'edit') {
@@ -117,9 +163,11 @@ export function applyPatchToYtext(
     if (idx < 0) {
       return { ok: false, reason: 'Snippet not found.' }
     }
-    const oldLen = proposal.old_snippet.length
-    ytext.delete(idx, oldLen)
-    ytext.insert(idx, proposal.new_snippet)
+    const nextMd =
+      current.slice(0, idx) +
+      proposal.new_snippet +
+      current.slice(idx + proposal.old_snippet.length)
+    replaceDocFromMarkdown(view, parser, nextMd)
     return { ok: true }
   }
   return { ok: false, reason: 'Unknown patch intent.' }
@@ -139,16 +187,9 @@ export function normalizePatchProposal(
     return { intent: 'append', markdown_to_append: raw.markdown_to_append }
   }
   if (intent === 'replace_selection') {
-    const from = Number(raw.selection_from)
-    const to = Number(raw.selection_to)
-    if (!Number.isFinite(from) || !Number.isFinite(to)) {
-      return { error: 'invalid_replace_selection_offsets' }
-    }
     return {
       intent: 'replace_selection',
       replacement_markdown: String(raw.replacement_markdown ?? ''),
-      selection_from: from,
-      selection_to: to,
     }
   }
   if (intent === 'edit') {

@@ -20,7 +20,6 @@ from app.schemas.private_thread import (
 from app.schemas.token_usage_scope import TokenUsageScope
 from app.services.chat_history_window import HISTORY_TRIM_NOTICE
 from app.services.llm_service import LLMService, serialize_outbound_chat_messages_for_debug
-from app.services.private_thread_patch import _normalize_patch_proposal
 from app.services.private_thread_selection import (
     excerpt_block_for_rag,
     validate_selection_against_snapshot,
@@ -144,19 +143,18 @@ class PrivateThreadService:
             section_id=section_id,
             current_section_plaintext=body.current_section_plaintext,
         )
-        if body.selection_from is not None or body.selection_to is not None:
+        if (body.selected_plaintext or "").strip():
             validate_selection_against_snapshot(
                 snapshot=snap,
-                selection_from=body.selection_from,
-                selection_to=body.selection_to,
                 selected_plaintext=body.selected_plaintext,
+                require_unique_in_snapshot=body.thread_intent == "replace_selection",
             )
         if body.thread_intent == "replace_selection":
-            if body.selection_from is None or body.selection_to is None:
+            if not (body.selected_plaintext or "").strip():
                 raise ApiError(
                     status_code=422,
                     code="VALIDATION_ERROR",
-                    message="replace_selection requires selection_from and selection_to.",
+                    message="replace_selection requires selected_plaintext.",
                 )
             if body.current_section_plaintext is None:
                 raise ApiError(
@@ -174,8 +172,6 @@ class PrivateThreadService:
         content: str,
         current_section_plaintext: str | None = None,
         include_git_history: bool = False,
-        selection_from: int | None = None,
-        selection_to: int | None = None,
         selected_plaintext: str | None = None,
         include_selection_in_context: bool = True,
         thread_intent: Literal["ask", "append", "replace_selection", "edit"] = "ask",
@@ -202,20 +198,19 @@ class PrivateThreadService:
             current_section_plaintext=current_section_plaintext,
         )
 
-        selection_triple: tuple[int, int, str] | None = None
-        if selection_from is not None or selection_to is not None:
-            selection_triple = validate_selection_against_snapshot(
+        selection_excerpt: str | None = None
+        if (selected_plaintext or "").strip():
+            selection_excerpt = validate_selection_against_snapshot(
                 snapshot=effective_snap,
-                selection_from=selection_from,
-                selection_to=selection_to,
                 selected_plaintext=selected_plaintext,
+                require_unique_in_snapshot=thread_intent == "replace_selection",
             )
 
-        if thread_intent == "replace_selection" and selection_triple is None:
+        if thread_intent == "replace_selection" and selection_excerpt is None:
             raise ApiError(
                 status_code=422,
                 code="VALIDATION_ERROR",
-                message="replace_selection requires selection_from, selection_to, and current_section_plaintext.",
+                message="replace_selection requires selected_plaintext and current_section_plaintext.",
             )
 
         thread = await self.get_or_create_thread(
@@ -280,10 +275,10 @@ class PrivateThreadService:
         excerpt_extra = ""
         if (
             include_selection_in_context
-            and selection_triple is not None
-            and selection_triple[2].strip()
+            and selection_excerpt is not None
+            and selection_excerpt.strip()
         ):
-            excerpt_extra = "\n\n" + excerpt_block_for_rag(selection_triple[2])
+            excerpt_extra = "\n\n" + excerpt_block_for_rag(selection_excerpt)
 
         from app.agents.private_thread_agent import PrivateThreadAgent
 
@@ -383,7 +378,7 @@ class PrivateThreadService:
                 effective_snap=effective_snap,
                 content=content,
                 full=full,
-                selection_triple=selection_triple,
+                selection_excerpt=selection_excerpt,
                 ctx=ctx,
             )
 

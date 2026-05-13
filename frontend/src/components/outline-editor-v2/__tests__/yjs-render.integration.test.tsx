@@ -1,10 +1,54 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { describe, expect, it, vi, afterEach } from 'vitest'
 
 import * as api from '../../../services/api'
-import { OutlineEditorV2 } from '../OutlineEditorV2'
+
+vi.mock('../../../hooks/useStudioAccess', () => ({
+  useStudioAccess: () => ({
+    role: 'studio_member',
+    isMember: true,
+    isStudioAdmin: false,
+    isStudioEditor: true,
+    isStudioViewer: false,
+    isPlatformAdmin: false,
+    isCrossStudioViewer: false,
+    canPublish: true,
+    canManageProjectOutline: true,
+    canEditSoftwareDefinition: true,
+    canCreateProject: true,
+    crossGrant: null,
+    isLoadingCapabilities: false,
+    capabilitiesError: false,
+  }),
+}))
+
+vi.mock('../../editor/MilkdownEditor', async () => {
+  const React = await import('react')
+  const { forwardRef, useImperativeHandle } = React
+  return {
+    MilkdownEditor: forwardRef(function MockMilkdown(
+      props: { defaultMarkdown?: string },
+      ref: React.ForwardedRef<unknown>,
+    ) {
+      useImperativeHandle(
+        ref,
+        () => ({
+          getEditorView: () => null,
+          getMarkdown: () => props.defaultMarkdown ?? '',
+          replaceFullMarkdown: () => undefined,
+          applyPatch: () => ({ ok: false as const, reason: 'mock' }),
+          animateAppendFromMarkdown: () => Promise.resolve(),
+        }),
+        [props.defaultMarkdown],
+      )
+      return (
+        <div data-testid="milkdown-editor-mock">{props.defaultMarkdown ?? ''}</div>
+      )
+    }),
+  }
+})
 
 vi.mock('../../../hooks/useYjsCollab', async () => {
   const Y = await import('yjs')
@@ -26,6 +70,7 @@ vi.mock('../../../hooks/useYjsCollab', async () => {
         on: vi.fn(),
         off: vi.fn(),
       },
+      sendMarkdownSnapshot: vi.fn(),
     }),
   }
 })
@@ -36,7 +81,7 @@ const mockSection: api.Section = {
   title: 'API',
   slug: 'api',
   order: 1,
-  content: '',
+  content: '## Sync\n\nLine.',
   status: 'ready',
   open_issue_count: 0,
   created_at: '2026-01-01T00:00:00Z',
@@ -87,8 +132,6 @@ function stubApis(): void {
     drawer_tokens: null,
     drawer_sources: null,
   })
-  vi.spyOn(api, 'listProjectIssues').mockResolvedValue([])
-  vi.spyOn(api, 'listWorkOrders').mockResolvedValue([])
   vi.spyOn(api, 'getSoftware').mockResolvedValue({
     id: 'sw1',
     studio_id: 's1',
@@ -126,7 +169,8 @@ describe('yjs-render integration', () => {
     vi.restoreAllMocks()
   })
 
-  it('renders heading parsed from initial Y.Text', async () => {
+  it('shows default markdown in Milkdown canvas when collab is ready', async () => {
+    const { OutlineEditorV2 } = await import('../OutlineEditorV2')
     localStorage.clear()
     stubApis()
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -147,8 +191,9 @@ describe('yjs-render integration', () => {
       </MemoryRouter>,
     )
 
-    await waitFor(() => {
-      expect(screen.getByText('Sync')).toBeInTheDocument()
+    const mock = await screen.findByTestId('milkdown-editor-mock', {
+      timeout: 5000,
     })
+    expect(mock).toHaveTextContent(/Sync/)
   })
 })

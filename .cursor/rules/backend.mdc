@@ -38,5 +38,4 @@ class MyService:
 
 ## Yjs persistence
 
-- Always dual-write: `yjs_state` (BYTEA binary) + `content` (plain text)
-- Never write only `content` — this destroys CRDT state
+- Persist `yjs_state` (BYTEA) from pycrdt `get_update()` on debounce; persist `content` from client `markdown_snapshot` JSON on the same collab socket (coalesced debounce). Do not derive `content` from Yjs on the server for section/software-doc bodies.

@@ -854,7 +854,7 @@ The service is also called as a background task from `WorkOrderService` on trans
 - Implements Yjs WebSocket sync protocol
 - Receives binary Yjs update messages, broadcasts to all clients on same section
 - On connect: sends stored `yjs_state` binary blob to the new client so it can sync from the last persisted state before sending its own pending updates
-- Debounce 2s → dual write to Postgres: `yjs_state` (binary Uint8Array) + `content` (plain text extracted from Yjs doc)
+- Debounce 2s (coalesced) → Postgres: `yjs_state` from pycrdt `get_update()` + `content` from client JSON `markdown_snapshot` on the same socket (never server-side Yjs plaintext extraction for section bodies)
 - After write: trigger `DriftService.check_work_order_drift` for all linked work orders
 - JWT passed as query param on connect
 
@@ -980,28 +980,26 @@ get_mcp_key(api_key_header)
 ## 8. Real-Time Collaboration (Yjs)
 
 ```
-Browser A (CodeMirror + Yjs)          Browser B (CodeMirror + Yjs)
+Browser A (Milkdown + y-prosemirror)     Browser B (Milkdown + y-prosemirror)
         │                                      │
         │   Binary Yjs update messages         │
+        │   JSON markdown_snapshot (debounced) │
         ▼                                      ▼
 FastAPI WS /collab  ←── broadcast ──────────→ FastAPI WS /collab
         │
-        │ Debounced (2s)
+        │ Debounced (2s, coalesced)
         ▼
-Postgres: dual write
-  sections.yjs_state  ← binary Uint8Array (full Yjs doc state)
-  sections.content    ← plain text Markdown (extracted for RAG)
-        │
-        ▼
-DriftService.check_work_order_drift(linked work orders)
+Postgres:
+  sections.yjs_state  ← binary (full Yjs doc state)
+  sections.content    ← Markdown from markdown_snapshot (RAG / API)
 ```
 
-- Yjs CRDT in each browser; y-codemirror.next binds Y.Text to CodeMirror 6
+- Yjs CRDT in each browser; Milkdown uses y-prosemirror (shared type is not legacy `Y.Text` for section bodies).
 - Awareness protocol shares cursor position, display name, colour
 - Colours assigned deterministically by hashing user ID
-- FastAPI handler is a pure relay — no Yjs parsing on the server
-- **Dual-write on debounce:** the server saves both the full binary Yjs document state (`yjs_state BYTEA`) and the extracted plain text (`content TEXT`). Saving only plain text would destroy Yjs vector clocks, tombstones, and operational history, making it impossible to correctly merge concurrent offline changes on reconnect. The binary state is the source of truth for the CRDT; the plain text is the source of truth for RAG.
-- **On reconnect / cold load:** the server sends the stored `yjs_state` binary blob to the connecting client, which applies it to its local Yjs doc before sending its own pending updates. This ensures correct merge of any offline edits.
+- Binary frames relay through pycrdt; JSON `markdown_snapshot` is demuxed in Atelier and never passed to pycrdt.
+- **Cold load:** if `yjs_state` is missing or cleared, the server does not seed `Y.Text` from `content`; the client seeds the editor from REST `content` then syncs Yjs.
+- **On reconnect:** clients merge Yjs updates from `yjs_state` when present; otherwise they align from REST `content` before sync.
 
 ---
 

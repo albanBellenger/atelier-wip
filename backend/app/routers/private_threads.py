@@ -112,8 +112,6 @@ async def stream_private_thread_reply(
             content=body.content,
             current_section_plaintext=body.current_section_plaintext,
             include_git_history=body.include_git_history,
-            selection_from=body.selection_from,
-            selection_to=body.selection_to,
             selected_plaintext=body.selected_plaintext,
             include_selection_in_context=body.include_selection_in_context,
             thread_intent=body.thread_intent,

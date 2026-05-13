@@ -2743,8 +2743,6 @@ export interface PrivateThreadStreamPayload {
   content: string
   current_section_plaintext?: string
   include_git_history?: boolean
-  selection_from?: number
-  selection_to?: number
   selected_plaintext?: string
   include_selection_in_context?: boolean
   thread_intent?: 'ask' | 'append' | 'replace_selection' | 'edit'

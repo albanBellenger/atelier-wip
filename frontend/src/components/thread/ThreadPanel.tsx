@@ -1,5 +1,6 @@
-import type { ReactElement } from 'react'
-import type { EditorSelectionState } from '../editor/SplitEditor'
+import type { ReactElement, RefObject } from 'react'
+import type { EditorSelectionState } from '../editor/editorSelection'
+import type { MilkdownEditorApi } from '../editor/MilkdownEditor'
 import type { YjsCollab } from '../../hooks/useYjsCollab'
 import type { SectionHealth } from '../../services/api'
 import type { SectionPatchOverlayState } from '../../lib/sectionPatchOverlay'
@@ -16,6 +17,7 @@ export function ThreadPanel(props: {
   sectionId: string
   projectHref: string
   collab: YjsCollab | null
+  sectionEditorApiRef: RefObject<MilkdownEditorApi | null>
   editorSelection: EditorSelectionState | null
   onClearEditorSelection: () => void
   density?: CopilotDensity
@@ -26,6 +28,7 @@ export function ThreadPanel(props: {
   contextRagQuerySynced?: string
   onContextRagQuerySyncedChange?: (q: string) => void
   copilotTabRequest?: { id: number; tab: CopilotSideTab } | null
+  onRegisterCopilotDraftSetter?: (setDraft: (value: string) => void) => void
 }): ReactElement {
   const density = props.density ?? 'compact'
   if (density === 'focus') {
@@ -37,6 +40,7 @@ export function ThreadPanel(props: {
           sectionId={props.sectionId}
           projectHref={props.projectHref}
           collab={props.collab}
+          sectionEditorApiRef={props.sectionEditorApiRef}
           editorSelection={props.editorSelection}
           onClearEditorSelection={props.onClearEditorSelection}
           density={props.density}
@@ -47,6 +51,7 @@ export function ThreadPanel(props: {
           contextRagQuerySynced={props.contextRagQuerySynced}
           onContextRagQuerySyncedChange={props.onContextRagQuerySyncedChange}
           copilotTabRequest={props.copilotTabRequest}
+          onRegisterCopilotDraftSetter={props.onRegisterCopilotDraftSetter}
         />
       </div>
     )
@@ -58,6 +63,7 @@ export function ThreadPanel(props: {
       sectionId={props.sectionId}
       projectHref={props.projectHref}
       collab={props.collab}
+      sectionEditorApiRef={props.sectionEditorApiRef}
       editorSelection={props.editorSelection}
       onClearEditorSelection={props.onClearEditorSelection}
       healthSummary={props.healthSummary}
@@ -66,6 +72,7 @@ export function ThreadPanel(props: {
       contextRagQuerySynced={props.contextRagQuerySynced}
       onContextRagQuerySyncedChange={props.onContextRagQuerySyncedChange}
       copilotTabRequest={props.copilotTabRequest}
+      onRegisterCopilotDraftSetter={props.onRegisterCopilotDraftSetter}
     />
   )
 }

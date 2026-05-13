@@ -14,13 +14,14 @@ from starlette.websockets import WebSocketDisconnect
 from app.collab import server as srv
 from app.collab.server import (
     AtelierWebsocketServer,
-    YDOC_TEXT_FIELD,
+    CollabRoomTarget,
     _is_client_disconnect,
     collab_exception_handler,
     collab_room_path,
     parse_collab_path,
 )
 from app.models import Section
+from app.services.section_service import SECTION_YJS_TEXT_FIELD
 
 
 def test_is_client_disconnect_client_disconnected_name() -> None:
@@ -217,7 +218,7 @@ async def test_load_doc_wrong_project() -> None:
 
 
 @pytest.mark.asyncio
-async def test_load_doc_from_plain_content() -> None:
+async def test_load_doc_plain_content_does_not_seed_ytext() -> None:
     pid, sec_id = uuid.uuid4(), uuid.uuid4()
     sec = Section(
         id=sec_id,
@@ -235,14 +236,13 @@ async def test_load_doc_from_plain_content() -> None:
         server = srv.init_collab_server(factory, debounce_s=0.01)
         path = collab_room_path(pid, sec_id)
         doc = await server._load_doc(path)
-        assert YDOC_TEXT_FIELD in doc
-        assert str(doc[YDOC_TEXT_FIELD]) == "hello"
+        assert doc.get_update() == Doc().get_update()
     finally:
         srv._collab_server = old
 
 
 @pytest.mark.asyncio
-async def test_load_doc_invalid_yjs_falls_back_to_content(
+async def test_load_doc_invalid_yjs_clears_blob_empty_doc(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pid, sec_id = uuid.uuid4(), uuid.uuid4()
@@ -269,7 +269,7 @@ async def test_load_doc_invalid_yjs_falls_back_to_content(
 
         monkeypatch.setattr(Doc, "apply_update", bad_apply)
         doc = await server._load_doc(path)
-        assert str(doc[YDOC_TEXT_FIELD]) == "fallback text"
+        assert doc.get_update() == Doc().get_update()
         assert sec.yjs_state is None
         commit.assert_awaited()
     finally:
@@ -280,7 +280,7 @@ async def test_load_doc_invalid_yjs_falls_back_to_content(
 async def test_load_doc_valid_yjs_state() -> None:
     pid, sec_id = uuid.uuid4(), uuid.uuid4()
     d0 = Doc()
-    d0[YDOC_TEXT_FIELD] = Text("from yjs")
+    d0[SECTION_YJS_TEXT_FIELD] = Text("from yjs")
     blob = d0.get_update()
 
     sec = Section(
@@ -299,7 +299,7 @@ async def test_load_doc_valid_yjs_state() -> None:
         server = srv.init_collab_server(factory, debounce_s=0.01)
         path = collab_room_path(pid, sec_id)
         doc = await server._load_doc(path)
-        assert "from yjs" in str(doc.get(YDOC_TEXT_FIELD, type=Text))
+        assert "from yjs" in str(doc.get(SECTION_YJS_TEXT_FIELD, type=Text))
     finally:
         srv._collab_server = old
 
@@ -316,22 +316,24 @@ async def test_debounced_persist_skips_when_room_removed(
         doc = Doc()
         room = MagicMock()
         room.ydoc = doc
-        path = collab_room_path(uuid.uuid4(), uuid.uuid4())
+        pid, sid = uuid.uuid4(), uuid.uuid4()
+        path = collab_room_path(pid, sid)
+        target = CollabRoomTarget(section_id=sid, project_id=pid, software_id=None)
         persist = AsyncMock()
         monkeypatch.setattr(server, "_persist_to_db", persist)
         monkeypatch.setattr(asyncio, "sleep", AsyncMock())
-        await server._debounced_persist(path, uuid.uuid4(), uuid.uuid4(), room)
+        await server._debounced_persist(path, target, room)
         persist.assert_not_called()
 
         server.rooms[path] = room
-        await server._debounced_persist(path, uuid.uuid4(), uuid.uuid4(), room)
+        await server._debounced_persist(path, target, room)
         persist.assert_awaited_once()
     finally:
         srv._collab_server = old
 
 
 @pytest.mark.asyncio
-async def test_persist_to_db_no_text_field_writes_empty_content() -> None:
+async def test_persist_to_db_without_pending_markdown_keeps_content() -> None:
     pid, sec_id = uuid.uuid4(), uuid.uuid4()
     sec = Section(
         id=sec_id,
@@ -350,18 +352,19 @@ async def test_persist_to_db_no_text_field_writes_empty_content() -> None:
     srv._collab_server = None
     try:
         server = srv.init_collab_server(factory, debounce_s=0.01)
+        path = collab_room_path(pid, sec_id)
+        target = CollabRoomTarget(section_id=sec_id, project_id=pid, software_id=None)
         doc = Doc()
-        await server._persist_to_db(pid, sec_id, doc)
-        assert sec.content == ""
+        await server._persist_to_db(path, target, doc)
+        assert sec.content == "old"
+        assert sec.yjs_state == doc.get_update()
         commit.assert_awaited()
     finally:
         srv._collab_server = old
 
 
 @pytest.mark.asyncio
-async def test_persist_to_db_text_read_raises_logs_and_keeps_yjs(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
+async def test_persist_to_db_applies_pending_markdown_snapshot() -> None:
     pid, sec_id = uuid.uuid4(), uuid.uuid4()
     sec = Section(
         id=sec_id,
@@ -376,26 +379,16 @@ async def test_persist_to_db_text_read_raises_logs_and_keeps_yjs(
     commit = AsyncMock()
     session.commit = commit
 
-    class BadDoc:
-        def __contains__(self, k: object) -> bool:
-            return k == YDOC_TEXT_FIELD
-
-        def get(self, key: str, type: object = None) -> object:
-            raise TypeError("not text")
-
-        def get_update(self) -> bytes:
-            return b"snap"
-
     old = srv._collab_server
     srv._collab_server = None
     try:
         server = srv.init_collab_server(factory, debounce_s=0.01)
-        doc = BadDoc()
-
-        caplog.set_level(logging.WARNING)
-        await server._persist_to_db(pid, sec_id, doc)
-        assert sec.yjs_state == b"snap"
-        assert sec.content == "old"
+        path = collab_room_path(pid, sec_id)
+        target = CollabRoomTarget(section_id=sec_id, project_id=pid, software_id=None)
+        doc = Doc()
+        server._pending_markdown_by_room[path] = "new markdown"
+        await server._persist_to_db(path, target, doc)
+        assert sec.content == "new markdown"
         commit.assert_awaited()
     finally:
         srv._collab_server = old
@@ -416,8 +409,11 @@ async def test_persist_to_db_skips_when_section_missing() -> None:
     try:
         server = srv.init_collab_server(factory, debounce_s=0.01)
         doc = Doc()
-        doc[YDOC_TEXT_FIELD] = Text("x")
-        await server._persist_to_db(uuid.uuid4(), uuid.uuid4(), doc)
+        path = collab_room_path(uuid.uuid4(), uuid.uuid4())
+        target = CollabRoomTarget(
+            section_id=uuid.uuid4(), project_id=uuid.uuid4(), software_id=None
+        )
+        await server._persist_to_db(path, target, doc)
         session.commit.assert_not_called()
     finally:
         srv._collab_server = old
@@ -440,8 +436,9 @@ async def test_persist_to_db_skips_wrong_project() -> None:
     try:
         server = srv.init_collab_server(factory, debounce_s=0.01)
         doc = Doc()
-        doc[YDOC_TEXT_FIELD] = Text("x")
-        await server._persist_to_db(pid, sec_id, doc)
+        path = collab_room_path(pid, sec_id)
+        target = CollabRoomTarget(section_id=sec_id, project_id=pid, software_id=None)
+        await server._persist_to_db(path, target, doc)
         session.commit.assert_not_called()
     finally:
         srv._collab_server = old
@@ -477,8 +474,10 @@ async def test_persist_to_db_schedules_embedding_when_content_changes(
     try:
         server = srv.init_collab_server(factory, debounce_s=0.01)
         doc = Doc()
-        doc[YDOC_TEXT_FIELD] = Text("new content")
-        await server._persist_to_db(pid, sec_id, doc)
+        path = collab_room_path(pid, sec_id)
+        target = CollabRoomTarget(section_id=sec_id, project_id=pid, software_id=None)
+        server._pending_markdown_by_room[path] = "new content"
+        await server._persist_to_db(path, target, doc)
         emb.assert_called_once_with(sec_id)
         drift.assert_called_once_with(sec_id)
     finally:

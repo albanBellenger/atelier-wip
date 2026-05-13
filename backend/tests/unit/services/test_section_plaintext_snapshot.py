@@ -1,4 +1,4 @@
-"""Reconcile section.content with yjs_state for API plaintext snapshots."""
+"""Section plaintext helpers and legacy Yjs snapshot decode."""
 
 import uuid
 from datetime import datetime, timezone
@@ -22,29 +22,24 @@ def test_snapshot_from_yjs_roundtrip() -> None:
     assert snapshot_from_yjs_update_bytes(blob) == "hello from yjs"
 
 
-def test_yjs_update_from_plaintext_matches_snapshot_roundtrip() -> None:
-    blob = yjs_update_from_plaintext("seed\nline")
-    assert blob is not None
-    assert snapshot_from_yjs_update_bytes(blob) == "seed\nline"
-
-
-def test_yjs_update_from_plaintext_empty_is_none() -> None:
+def test_yjs_update_from_plaintext_returns_none() -> None:
+    assert yjs_update_from_plaintext("seed\nline") is None
     assert yjs_update_from_plaintext("") is None
 
 
-def test_effective_plaintext_prefers_yjs_when_content_is_none_string() -> None:
+def test_effective_plaintext_normalizes_none_string() -> None:
     doc = Doc()
     doc[SECTION_YJS_TEXT_FIELD] = Text("body")
     blob = doc.get_update()
-    assert effective_section_plaintext("None", blob) == "body"
+    assert effective_section_plaintext("None", blob) == ""
 
 
-def test_effective_plaintext_prefers_yjs_when_content_blank() -> None:
+def test_effective_plaintext_blank_content_ignores_yjs() -> None:
     doc = Doc()
     doc[SECTION_YJS_TEXT_FIELD] = Text("only-yjs")
     blob = doc.get_update()
-    assert effective_section_plaintext("", blob) == "only-yjs"
-    assert effective_section_plaintext("   ", blob) == "only-yjs"
+    assert effective_section_plaintext("", blob) == ""
+    assert effective_section_plaintext("   ", blob) == "   "
 
 
 def test_effective_plaintext_keeps_non_empty_db_content() -> None:
@@ -54,7 +49,7 @@ def test_effective_plaintext_keeps_non_empty_db_content() -> None:
     assert effective_section_plaintext("stored", blob) == "stored"
 
 
-def test_effective_plaintext_invalid_yjs_falls_back() -> None:
+def test_effective_plaintext_invalid_yjs_ignored() -> None:
     assert effective_section_plaintext("ok", b"not-a-valid-update") == "ok"
     assert effective_section_plaintext("", b"garbage") == ""
 
@@ -75,10 +70,10 @@ def test_section_service_to_response_uses_effective_plaintext() -> None:
         title = "t"
         slug = "s"
         order = 0
-        content = "None"
+        content = "from-db"
         yjs_state = blob
         created_at = now
         updated_at = now
 
     r = svc._to_response(FakeSec(), status="ready")  # noqa: SLF001
-    assert r.content == "x"
+    assert r.content == "from-db"

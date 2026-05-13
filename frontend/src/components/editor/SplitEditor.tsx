@@ -1,140 +1,60 @@
-import { defaultKeymap, indentWithTab } from '@codemirror/commands'
-import { markdown } from '@codemirror/lang-markdown'
-import { EditorState } from '@codemirror/state'
-import {
-  EditorView,
-  highlightActiveLine,
-  keymap,
-  lineNumbers,
-  placeholder,
-  ViewPlugin,
-  type ViewUpdate,
-} from '@codemirror/view'
 import {
   useEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
-  type MutableRefObject,
   type ReactElement,
 } from 'react'
 import type { SectionPatchOverlayState } from '../../lib/sectionPatchOverlay'
 import type { EditorViewMode } from '../section/sectionLayoutMode'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import * as Y from 'yjs'
-import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next'
 import type { YjsCollab } from '../../hooks/useYjsCollab'
+import {
+  MilkdownEditor,
+  type MilkdownEditorApi,
+} from './MilkdownEditor'
+import type { EditorSelectionState } from './editorSelection'
+
+export type { EditorSelectionState } from './editorSelection'
 
 const SAVE_SAVED_RESET_MS = 2500
 
-const editorTheme = EditorView.theme(
-  {
-    '&': {
-      height: '100%',
-      backgroundColor: 'rgb(9 9 11)',
-      color: 'rgb(244 244 245)',
-    },
-    '.cm-scroller': {
-      fontFamily:
-        'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-      fontSize: '13px',
-    },
-    '.cm-content': { caretColor: 'rgb(196 181 253)' },
-    '.cm-activeLine': { backgroundColor: 'rgb(39 39 42 / 0.5)' },
-    '&.cm-focused .cm-cursor': {
-      borderLeftColor: 'rgb(196 181 253)',
-    },
-    '&.cm-focused .cm-selectionBackground': {
-      background: 'rgb(91 33 182 / 0.35) !important',
-    },
-  },
-  { dark: true },
-)
-
-function useMarkdownPreview(ytext: Y.Text | undefined): string {
-  const [text, setText] = useState(() => ytext?.toString() ?? '')
-  useEffect(() => {
-    if (!ytext) {
-      setText('')
-      return
-    }
-    const obs = () => setText(ytext.toString())
-    ytext.observe(obs)
-    obs()
-    return () => ytext.unobserve(obs)
-  }, [ytext])
-  return text
-}
-
-export interface EditorSelectionState {
-  from: number
-  to: number
-  text: string
-}
-
 export interface SplitEditorProps {
   collab: YjsCollab | null
+  /** Canonical Markdown from REST for cold seed (must match `sections.content`). */
+  defaultMarkdown: string
+  /** When true, editor is display-only (no AI menus, no collab connect). */
+  readOnly?: boolean
   onSelectionChange?: (sel: EditorSelectionState | null) => void
-  /** When both are set, view mode is controlled and the internal tablist is hidden. */
   viewMode?: EditorViewMode
   onViewModeChange?: (mode: EditorViewMode) => void
-  /** Optional LLM patch preview shown in the Markdown preview pane (Accept / Reject). */
   patchOverlay?: SectionPatchOverlayState | null
-}
-
-function selectionExtension(
-  onChangeRef: MutableRefObject<
-    ((sel: EditorSelectionState | null) => void) | undefined
-  >,
-) {
-  return ViewPlugin.fromClass(
-    class {
-      update(update: ViewUpdate): void {
-        if (!update.selectionSet && !update.docChanged) {
-          return
-        }
-        const fn = onChangeRef.current
-        if (!fn) {
-          return
-        }
-        const m = update.state.selection.main
-        if (m.empty) {
-          fn(null)
-        } else {
-          fn({
-            from: m.from,
-            to: m.to,
-            text: update.state.sliceDoc(m.from, m.to),
-          })
-        }
-      }
-    },
-  )
+  /** Optional ref to the underlying Milkdown surface (snapshots, patches). */
+  editorApiRef?: React.RefObject<MilkdownEditorApi | null>
+  /** Prefill section copilot composer from Milkdown AI menus. */
+  onAiComposerPrefill?: (markdown: string) => void
+  /** When true, /replace is omitted from the selection bubble (focus layout). */
+  replaceSelectionSlashDisabled?: boolean
 }
 
 export function SplitEditor({
   collab,
+  defaultMarkdown,
+  readOnly = false,
   onSelectionChange,
   viewMode: viewModeProp,
   onViewModeChange,
   patchOverlay,
+  editorApiRef,
+  onAiComposerPrefill,
+  replaceSelectionSlashDisabled = false,
 }: SplitEditorProps): ReactElement {
-  const parentRef = useRef<HTMLDivElement | null>(null)
-  const viewRef = useRef<EditorView | null>(null)
-  const onSelRef = useRef(onSelectionChange)
-  onSelRef.current = onSelectionChange
-  const preview = useMarkdownPreview(collab?.ytext)
-
-  const undoManager = useMemo(() => {
-    if (!collab?.ytext) return null
-    return new Y.UndoManager(collab.ytext)
-  }, [collab?.ytext])
-
   const isControlled =
     viewModeProp !== undefined && onViewModeChange !== undefined
   const [uncontrolledViewMode, setUncontrolledViewMode] =
-    useState<EditorViewMode>('split')
+    useState<EditorViewMode>('markdown')
   const viewMode: EditorViewMode = isControlled
     ? viewModeProp
     : uncontrolledViewMode
@@ -150,40 +70,6 @@ export function SplitEditor({
   const showEditor = layoutMode !== 'preview'
   const showPreview = layoutMode !== 'markdown'
   const dualPane = showEditor && showPreview
-
-  useEffect(() => {
-    const parent = parentRef.current
-    if (!showEditor || !parent || !collab || !undoManager) {
-      return
-    }
-
-    const state = EditorState.create({
-      doc: collab.ytext.toString(),
-      extensions: [
-        lineNumbers(),
-        highlightActiveLine(),
-        markdown(),
-        editorTheme,
-        keymap.of([
-          ...yUndoManagerKeymap,
-          indentWithTab,
-          ...defaultKeymap,
-        ]),
-        placeholder('Write Markdown…'),
-        yCollab(collab.ytext, collab.awareness, { undoManager }),
-        EditorView.lineWrapping,
-        selectionExtension(onSelRef),
-      ],
-    })
-
-    const view = new EditorView({ state, parent })
-    viewRef.current = view
-
-    return () => {
-      view.destroy()
-      viewRef.current = null
-    }
-  }, [showEditor, collab, undoManager])
 
   const [saveState, setSaveState] = useState<'saving' | 'saved'>('saved')
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -202,8 +88,6 @@ export function SplitEditor({
       mq.removeEventListener('change', apply)
     }
   }, [])
-
-  const collabYtext = collab?.ytext
 
   useEffect(() => {
     const p = collab?.provider as
@@ -225,9 +109,10 @@ export function SplitEditor({
   }, [collab])
 
   useEffect(() => {
-    if (!collabYtext) {
+    if (!collab) {
       return
     }
+    const ydoc = collab.ydoc
     const onY = (): void => {
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current)
@@ -239,15 +124,42 @@ export function SplitEditor({
         saveTimerRef.current = null
       }, SAVE_SAVED_RESET_MS)
     }
-    collabYtext.observe(onY)
+    ydoc.on('update', onY)
     return () => {
-      collabYtext.unobserve(onY)
+      ydoc.off('update', onY)
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current)
         saveTimerRef.current = null
       }
     }
-  }, [collabYtext])
+  }, [collab])
+
+  const [, bumpPreview] = useReducer((n: number) => n + 1, 0)
+
+  useEffect(() => {
+    if (!collab) {
+      return
+    }
+    const ydoc = collab.ydoc
+    const onAfter = (): void => {
+      bumpPreview()
+    }
+    ydoc.on('afterTransaction', onAfter)
+    return () => {
+      ydoc.off('afterTransaction', onAfter)
+    }
+  }, [collab])
+
+  const internalEditorApiRef = useRef<MilkdownEditorApi | null>(null)
+  const resolvedEditorRef = editorApiRef ?? internalEditorApiRef
+
+  const previewMarkdown = useMemo(() => {
+    const api = resolvedEditorRef.current
+    if (api) {
+      return api.getMarkdown()
+    }
+    return defaultMarkdown
+  }, [resolvedEditorRef, defaultMarkdown, bumpPreview])
 
   function onDividerMouseDown(
     e: import('react').MouseEvent<HTMLButtonElement>,
@@ -301,11 +213,9 @@ export function SplitEditor({
     ? 'prose prose-invert prose-sm max-w-none min-h-0 max-h-[60vh] min-w-0 flex-1 overflow-auto bg-zinc-950 p-4 text-zinc-300 lg:max-h-none prose-a:text-violet-400 [&_code]:rounded [&_code]:bg-zinc-800 [&_code]:px-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-zinc-900'
     : 'prose prose-invert prose-sm max-w-none min-h-[480px] min-w-0 flex-1 overflow-auto bg-zinc-950 p-4 text-zinc-300 prose-a:text-violet-400 [&_code]:rounded [&_code]:bg-zinc-800 [&_code]:px-1 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-zinc-900'
 
-  const proseTabs = (
-    ['markdown', 'preview', 'split'] as const
-  ).map((mode) => {
+  const proseTabs = (['markdown', 'preview', 'split'] as const).map((mode) => {
     const label =
-      mode === 'markdown' ? 'Markdown' : mode === 'preview' ? 'Preview' : 'Split'
+      mode === 'markdown' ? 'Editor' : mode === 'preview' ? 'Preview' : 'Split'
     return (
       <button
         key={mode}
@@ -345,11 +255,25 @@ export function SplitEditor({
       <div className={outerFlexDir}>
         {showEditor ? (
           <div
-            ref={parentRef}
-            data-testid="codemirror-host"
+            data-testid="milkdown-host"
             style={editorPaneStyle}
             className={editorPaneClass}
-          />
+          >
+            {collab ? (
+              <MilkdownEditor
+                ref={resolvedEditorRef}
+                collab={collab}
+                defaultMarkdown={defaultMarkdown}
+                readOnly={readOnly}
+                onSelectionChange={onSelectionChange}
+                patchOverlay={patchOverlay}
+                onAiComposerPrefill={onAiComposerPrefill}
+                replaceSelectionSlashDisabled={replaceSelectionSlashDisabled}
+              />
+            ) : (
+              <p className="p-3 text-xs text-zinc-500">Connecting…</p>
+            )}
+          </div>
         ) : null}
         {isRowSplit ? (
           <button
@@ -404,7 +328,9 @@ export function SplitEditor({
                 </div>
               </div>
             ) : (
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{preview}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {previewMarkdown}
+              </ReactMarkdown>
             )}
           </div>
         ) : null}

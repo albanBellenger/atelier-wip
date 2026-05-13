@@ -21,7 +21,7 @@ from app.services.notification_dispatch_service import NotificationDispatchServi
 from app.services.rag_service import RAGService
 from app.services.section_status import SectionStatusLiteral, rollup_section_status
 
-# Shared Y.Text map key — must match frontend `YDOC_TEXT_FIELD` and collab persistence.
+# Legacy CodeMirror Y.Text map key (outline tooling / snapshot_from_yjs_update_bytes only).
 SECTION_YJS_TEXT_FIELD = "codemirror"
 
 log = structlog.get_logger("atelier.section")
@@ -46,26 +46,18 @@ def snapshot_from_yjs_update_bytes(blob: bytes | None) -> str | None:
 def effective_section_plaintext(
     content: str | None, yjs_state: bytes | None
 ) -> str:
-    """Plaintext for API responses: DB column, or Yjs when empty / legacy ``\"None\"``."""
+    """Plaintext for API/RAG: authoritative ``sections.content`` (Markdown snapshots)."""
+    _ = yjs_state  # kept for callers; collab no longer mirrors plaintext into Y.Text.
     snap = content or ""
     if snap == "None":
         snap = ""
-    if snap.strip() != "":
-        return snap
-    extracted = snapshot_from_yjs_update_bytes(yjs_state)
-    if extracted is not None:
-        return extracted
     return snap
 
 
 def yjs_update_from_plaintext(markdown: str) -> bytes | None:
-    """Full Yjs update from empty doc for server-seeded Markdown (dual-write with ``content``)."""
-    text = markdown if markdown is not None else ""
-    if text == "":
-        return None
-    doc = Doc()
-    doc[SECTION_YJS_TEXT_FIELD] = Text(text)
-    return doc.get_update()
+    """Deprecated: new sections use ``yjs_state=None`` (Milkdown/y-prosemirror seeds the doc)."""
+    del markdown
+    return None
 
 
 def slugify_title(title: str) -> str:
@@ -324,7 +316,6 @@ class SectionService:
         slug = await self._next_unique_slug(project_id, base)
         order = await self._next_order(project_id)
         initial = (body.content or "").strip() if body.content is not None else ""
-        yjs_blob = yjs_update_from_plaintext(initial)
         sec = Section(
             id=uuid.uuid4(),
             project_id=project_id,
@@ -333,7 +324,7 @@ class SectionService:
             slug=slug,
             order=order,
             content=initial,
-            yjs_state=yjs_blob,
+            yjs_state=None,
         )
         self.db.add(sec)
         await self.db.commit()

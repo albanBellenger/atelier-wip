@@ -9,7 +9,7 @@ import re
 from typing import Any, NamedTuple
 from uuid import UUID
 
-from pycrdt import Doc, Text, TransactionEvent
+from pycrdt import Doc, TransactionEvent
 from pycrdt.websocket import WebsocketServer, YRoom, exception_logger
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.websockets import WebSocketDisconnect
@@ -18,12 +18,8 @@ from app.collab.editor_context import collab_acting_user_id
 from app.models import Section, Software
 from app.services.notification_dispatch_service import NotificationDispatchService
 from app.services.software_activity_service import SoftwareActivityService
-from app.services.section_service import SECTION_YJS_TEXT_FIELD
 
 log = logging.getLogger("atelier.collab")
-
-# Must match y-codemirror.next + yCollab default shared text field name.
-YDOC_TEXT_FIELD = SECTION_YJS_TEXT_FIELD
 
 _collab_server: WebsocketServer | None = None
 
@@ -160,6 +156,7 @@ class AtelierWebsocketServer(WebsocketServer):
         self._session_factory = session_factory
         self._debounce_s = d
         self._persist_tasks: dict[str, asyncio.Task[None]] = {}
+        self._pending_markdown_by_room: dict[str, str] = {}
 
     async def get_room(self, name: str) -> YRoom:
         if name not in self.rooms:
@@ -191,11 +188,13 @@ class AtelierWebsocketServer(WebsocketServer):
             t = self._persist_tasks.pop(key, None)
             if t is not None and not t.done():
                 t.cancel()
+            self._pending_markdown_by_room.pop(key, None)
             log.debug("collab: delete_room skipped, %r not in registry", key)
             return
         t = self._persist_tasks.pop(key, None)
         if t is not None and not t.done():
             t.cancel()
+        self._pending_markdown_by_room.pop(key, None)
         await super().delete_room(name=key, room=None)
 
     def _validate_section_for_room(
@@ -207,6 +206,32 @@ class AtelierWebsocketServer(WebsocketServer):
             sec.software_id == target.software_id
             and sec.project_id is None
             and target.software_id is not None
+        )
+
+    def enqueue_markdown_snapshot(self, room_path: str, content: str) -> None:
+        """Client-pushed Markdown for ``sections.content`` (same debounce as Yjs binary)."""
+        if len(content) > 5_000_000:
+            log.warning("collab: markdown_snapshot too large on %s", room_path)
+            return
+        self._pending_markdown_by_room[room_path] = content
+        room = self.rooms.get(room_path)
+        if room is None:
+            log.debug("collab: markdown_snapshot for unknown room %s", room_path)
+            return
+        target = parse_collab_room(room_path)
+        self._schedule_persist(room_path, target, room)
+
+    def _schedule_persist(
+        self,
+        room_name: str,
+        target: CollabRoomTarget,
+        room: YRoom,
+    ) -> None:
+        t = self._persist_tasks.get(room_name)
+        if t is not None and not t.done():
+            t.cancel()
+        self._persist_tasks[room_name] = asyncio.create_task(
+            self._debounced_persist(room_name, target, room)
         )
 
     async def _load_doc(self, room_path: str) -> Doc:
@@ -223,28 +248,19 @@ class AtelierWebsocketServer(WebsocketServer):
                 except ValueError:
                     log.warning(
                         "collab: invalid yjs_state for section %s (wrong encoding or "
-                        "legacy get_state blob); falling back to plain content",
+                        "legacy get_state blob); clearing yjs_state (client re-seeds)",
                         target.section_id,
                     )
                     doc = Doc()
-                    if sec.content:
-                        doc[YDOC_TEXT_FIELD] = Text(sec.content)
                     sec.yjs_state = None
                     await session.commit()
-            elif sec.content:
-                doc[YDOC_TEXT_FIELD] = Text(sec.content)
             return doc
 
     def _attach_persist_observer(self, room: YRoom, room_name: str) -> None:
         target = parse_collab_room(room_name)
 
         def on_change(_event: TransactionEvent) -> None:
-            t = self._persist_tasks.get(room_name)
-            if t is not None and not t.done():
-                t.cancel()
-            self._persist_tasks[room_name] = asyncio.create_task(
-                self._debounced_persist(room_name, target, room)
-            )
+            self._schedule_persist(room_name, target, room)
 
         room.ydoc.observe(on_change)
 
@@ -257,31 +273,20 @@ class AtelierWebsocketServer(WebsocketServer):
         await asyncio.sleep(self._debounce_s)
         if room_name not in self.rooms:
             return
-        await self._persist_to_db(target, room.ydoc)
+        await self._persist_to_db(room_name, target, room.ydoc)
 
     async def _persist_to_db(
         self,
+        room_name: str,
         target: CollabRoomTarget,
         doc: Doc,
     ) -> None:
         # Must store Yjs *update* bytes (full snapshot from empty), not get_state().
         # apply_update() cannot load get_state() output — it expects mergeable updates
         # compatible with JS Yjs encodeStateAsUpdate / Y.Sync.
+        _MISSING = object()
         snapshot = doc.get_update()
-        text: str | None = None
-        if YDOC_TEXT_FIELD in doc:
-            try:
-                shared = doc.get(YDOC_TEXT_FIELD, type=Text)
-                text = str(shared)
-            except Exception:
-                log.warning(
-                    "collab: could not read %r as pycrdt Text; "
-                    "skipping plaintext snapshot update (yjs_state still saved)",
-                    YDOC_TEXT_FIELD,
-                    exc_info=True,
-                )
-        else:
-            text = ""
+        pending_md = self._pending_markdown_by_room.pop(room_name, _MISSING)
         editor = collab_acting_user_id.get()
         changed = False
         section_title = ""
@@ -290,12 +295,15 @@ class AtelierWebsocketServer(WebsocketServer):
             if sec is None or not self._validate_section_for_room(sec, target):
                 return
             old_content = sec.content or ""
+            old_yjs = sec.yjs_state
             section_title = sec.title
             sec.yjs_state = snapshot
-            if text is not None:
-                sec.content = text
-            effective = text if text is not None else old_content
-            changed = effective != old_content
+            if pending_md is not _MISSING:
+                sec.content = pending_md
+            new_content = sec.content or ""
+            yjs_changed = bytes(sec.yjs_state or b"") != bytes(old_yjs or b"")
+            content_changed = new_content != old_content
+            changed = yjs_changed or content_changed
             if changed and editor is not None:
                 sec.last_edited_by_id = editor
             await session.commit()

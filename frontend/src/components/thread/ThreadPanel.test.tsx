@@ -1,10 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { RefObject } from 'react'
 import * as Y from 'yjs'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest'
 
+import type { MilkdownEditorApi } from '../editor/MilkdownEditor'
 import type { YjsCollab } from '../../hooks/useYjsCollab'
 import * as api from '../../services/api'
 import type {
@@ -24,6 +26,21 @@ const { streamSpy } = vi.hoisted(() => ({
 vi.mock('../../hooks/useStream', () => ({
   useStream: () => ({ streamPrivateThread: streamSpy }),
 }))
+
+function mkSectionEditorApiRef(
+  overrides: Partial<MilkdownEditorApi> = {},
+): RefObject<MilkdownEditorApi | null> {
+  return {
+    current: {
+      getEditorView: () => null,
+      getMarkdown: () => '',
+      replaceFullMarkdown: () => {},
+      applyPatch: () => ({ ok: false, reason: 'noop' }),
+      animateAppendFromMarkdown: () => Promise.resolve(),
+      ...overrides,
+    },
+  }
+}
 
 describe('ThreadPanel', () => {
   afterEach(() => {
@@ -78,6 +95,7 @@ describe('ThreadPanel', () => {
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
             collab={null}
+            sectionEditorApiRef={mkSectionEditorApiRef()}
             editorSelection={null}
             onClearEditorSelection={() => {}}
           />
@@ -96,11 +114,10 @@ describe('ThreadPanel', () => {
       messages: [],
     })
     const ydoc = new Y.Doc()
-    const ytext = ydoc.getText('t')
     const collab: YjsCollab = {
       ydoc,
       provider: {} as YjsCollab['provider'],
-      ytext,
+      sendMarkdownSnapshot: vi.fn(),
       awareness: {
         clientID: 0,
         getStates: () => {
@@ -122,6 +139,7 @@ describe('ThreadPanel', () => {
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
             collab={collab}
+            sectionEditorApiRef={mkSectionEditorApiRef()}
             editorSelection={null}
             onClearEditorSelection={() => {}}
           />
@@ -179,6 +197,7 @@ describe('ThreadPanel', () => {
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
             collab={null}
+            sectionEditorApiRef={mkSectionEditorApiRef()}
             editorSelection={null}
             onClearEditorSelection={() => {}}
           />
@@ -201,7 +220,7 @@ describe('ThreadPanel', () => {
     })
   })
 
-  it('Send includes selection bounds when include selection is on', async () => {
+  it('Send includes selected plaintext when include selection is on', async () => {
     const user = userEvent.setup()
     HTMLElement.prototype.scrollIntoView = vi.fn()
     streamSpy.mockClear()
@@ -212,14 +231,15 @@ describe('ThreadPanel', () => {
     })
 
     const ydoc = new Y.Doc()
-    const ytext = ydoc.getText('t')
-    ytext.insert(0, 'abcdef')
-    const collab = {
+    const collab: YjsCollab = {
       ydoc,
       provider: {} as YjsCollab['provider'],
-      ytext,
       awareness: {} as YjsCollab['awareness'],
+      sendMarkdownSnapshot: vi.fn(),
     }
+    const sectionEditorApiRef = mkSectionEditorApiRef({
+      getMarkdown: () => 'abcdef',
+    })
 
     const qc = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -234,6 +254,7 @@ describe('ThreadPanel', () => {
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
             collab={collab}
+            sectionEditorApiRef={sectionEditorApiRef}
             editorSelection={{ from: 1, to: 3, text: 'bc' }}
             onClearEditorSelection={() => {}}
           />
@@ -257,8 +278,8 @@ describe('ThreadPanel', () => {
       Record<string, unknown>,
       unknown,
     ]
-    expect(payload.selection_from).toBe(1)
-    expect(payload.selection_to).toBe(3)
+    expect(payload.selection_from).toBeUndefined()
+    expect(payload.selection_to).toBeUndefined()
     expect(payload.selected_plaintext).toBe('bc')
     expect(payload.current_section_plaintext).toBe('abcdef')
   })
@@ -278,13 +299,11 @@ describe('ThreadPanel', () => {
     })
 
     const ydoc = new Y.Doc()
-    const ytext = ydoc.getText('t')
-    ytext.insert(0, 'hi')
-    const collab = {
+    const collab: YjsCollab = {
       ydoc,
       provider: {} as YjsCollab['provider'],
-      ytext,
       awareness: {} as YjsCollab['awareness'],
+      sendMarkdownSnapshot: vi.fn(),
     }
 
     window.localStorage.setItem(softwareChatModelStorageKey('s1'), 'gpt-4o')
@@ -302,6 +321,7 @@ describe('ThreadPanel', () => {
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
             collab={collab}
+            sectionEditorApiRef={mkSectionEditorApiRef()}
             editorSelection={null}
             onClearEditorSelection={() => {}}
           />
@@ -346,8 +366,9 @@ describe('ThreadPanel', () => {
           findings: [],
           conflicts: [],
           patch_proposal: {
-            intent: 'append',
-            markdown_to_append: 'tail',
+            intent: 'edit',
+            old_snippet: 'snap',
+            new_snippet: 'snapX',
           },
         })
       },
@@ -361,12 +382,15 @@ describe('ThreadPanel', () => {
     const ydoc = new Y.Doc()
     const ytext = ydoc.getText('t')
     ytext.insert(0, 'snap')
-    const collab = {
+    const collab: YjsCollab = {
       ydoc,
       provider: {} as YjsCollab['provider'],
-      ytext,
       awareness: {} as YjsCollab['awareness'],
+      sendMarkdownSnapshot: vi.fn(),
     }
+    const sectionEditorApiRef = mkSectionEditorApiRef({
+      getMarkdown: () => ytext.toString(),
+    })
 
     const qc = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -381,6 +405,7 @@ describe('ThreadPanel', () => {
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
             collab={collab}
+            sectionEditorApiRef={sectionEditorApiRef}
             editorSelection={null}
             onClearEditorSelection={() => {}}
           />
@@ -388,7 +413,7 @@ describe('ThreadPanel', () => {
       </MemoryRouter>,
     )
 
-    await user.type(screen.getByPlaceholderText(/copilot/), '/append go')
+    await user.type(screen.getByPlaceholderText(/copilot/), '/edit go')
     await user.click(screen.getByRole('button', { name: 'Send' }))
 
     await waitFor(() => {
@@ -441,6 +466,7 @@ describe('ThreadPanel', () => {
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
             collab={null}
+            sectionEditorApiRef={mkSectionEditorApiRef()}
             editorSelection={null}
             onClearEditorSelection={() => {}}
           />
@@ -487,6 +513,7 @@ describe('ThreadPanel', () => {
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
             collab={null}
+            sectionEditorApiRef={mkSectionEditorApiRef()}
             editorSelection={null}
             onClearEditorSelection={() => {}}
           />
@@ -529,6 +556,7 @@ describe('ThreadPanel', () => {
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
             collab={null}
+            sectionEditorApiRef={mkSectionEditorApiRef()}
             editorSelection={null}
             onClearEditorSelection={() => {}}
           />
@@ -618,6 +646,7 @@ describe('ThreadPanel', () => {
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
             collab={null}
+            sectionEditorApiRef={mkSectionEditorApiRef()}
             editorSelection={null}
             onClearEditorSelection={() => {}}
           />
@@ -668,6 +697,7 @@ describe('ThreadPanel', () => {
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
             collab={null}
+            sectionEditorApiRef={mkSectionEditorApiRef()}
             editorSelection={null}
             onClearEditorSelection={() => {}}
           />
@@ -717,6 +747,7 @@ describe('ThreadPanel', () => {
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
             collab={null}
+            sectionEditorApiRef={mkSectionEditorApiRef()}
             editorSelection={null}
             onClearEditorSelection={() => {}}
           />
@@ -796,6 +827,7 @@ describe('ThreadPanel', () => {
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
             collab={null}
+            sectionEditorApiRef={mkSectionEditorApiRef()}
             editorSelection={null}
             onClearEditorSelection={() => {}}
           />
@@ -843,6 +875,7 @@ describe('ThreadPanel', () => {
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
             collab={null}
+            sectionEditorApiRef={mkSectionEditorApiRef()}
             editorSelection={null}
             onClearEditorSelection={() => {}}
           />
@@ -879,6 +912,7 @@ describe('ThreadPanel', () => {
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
             collab={null}
+            sectionEditorApiRef={mkSectionEditorApiRef()}
             editorSelection={null}
             onClearEditorSelection={() => {}}
             density="focus"
@@ -950,6 +984,7 @@ describe('ThreadPanel', () => {
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
             collab={null}
+            sectionEditorApiRef={mkSectionEditorApiRef()}
             editorSelection={null}
             onClearEditorSelection={() => {}}
             density="focus"
@@ -1032,6 +1067,7 @@ describe('ThreadPanel', () => {
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
             collab={null}
+            sectionEditorApiRef={mkSectionEditorApiRef()}
             editorSelection={null}
             onClearEditorSelection={() => {}}
           />
@@ -1093,6 +1129,7 @@ describe('ThreadPanel', () => {
             sectionId="sec1"
             projectHref="/studios/s1/software/sw1/projects/p1"
             collab={null}
+            sectionEditorApiRef={mkSectionEditorApiRef()}
             editorSelection={null}
             onClearEditorSelection={() => {}}
           />

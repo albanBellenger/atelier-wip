@@ -777,8 +777,6 @@ async def test_replace_selection_422_without_plaintext_override(
         json={
             "content": "replace foo",
             "thread_intent": "replace_selection",
-            "selection_from": 0,
-            "selection_to": 1,
             "selected_plaintext": "a",
         },
     )
@@ -786,7 +784,7 @@ async def test_replace_selection_422_without_plaintext_override(
 
 
 @pytest.mark.asyncio
-async def test_replace_selection_422_without_selection_bounds(
+async def test_replace_selection_422_without_selected_plaintext(
     client: AsyncClient, db_session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sfx = uuid.uuid4().hex[:8]

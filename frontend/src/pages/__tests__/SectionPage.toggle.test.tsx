@@ -184,7 +184,7 @@ describe('SectionPage V1/V2 toggle', () => {
 
     expect(screen.queryByTestId('outline-editor-v2-root')).not.toBeInTheDocument()
     await waitFor(() => {
-      expect(screen.getByTestId('codemirror-host')).toBeInTheDocument()
+      expect(screen.getByTestId('milkdown-host')).toBeInTheDocument()
     })
   })
 
@@ -277,7 +277,7 @@ describe('SectionPage V1/V2 toggle', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByTestId('codemirror-host')).toBeInTheDocument()
+      expect(screen.getByTestId('milkdown-host')).toBeInTheDocument()
     })
     expect(screen.queryByTestId('outline-editor-v2-root')).not.toBeInTheDocument()
 

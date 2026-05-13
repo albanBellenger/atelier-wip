@@ -1,10 +1,10 @@
 """Unit: _normalize_patch_proposal guards."""
 
-from app.services.private_thread_service import _normalize_patch_proposal
+from app.services.private_thread_patch import _normalize_patch_proposal
 
 
 def test_invalid_patch_response() -> None:
-    p = _normalize_patch_proposal("append", [], snapshot="x", selection=None)
+    p = _normalize_patch_proposal("append", [], snapshot="x", selection_excerpt=None)
     assert p.get("error") == "invalid_patch_response"
 
 
@@ -13,7 +13,7 @@ def test_empty_old_snippet() -> None:
         "edit",
         {"old_snippet": "", "new_snippet": "z"},
         snapshot="ab",
-        selection=None,
+        selection_excerpt=None,
     )
     assert p.get("error") == "empty_old_snippet"
 
@@ -23,7 +23,7 @@ def test_append_ok() -> None:
         "append",
         {"markdown_to_append": "## More\n"},
         snapshot="x",
-        selection=None,
+        selection_excerpt=None,
     )
     assert p["intent"] == "append"
     assert "## More" in p["markdown_to_append"]
@@ -34,7 +34,7 @@ def test_append_empty_error() -> None:
         "append",
         {"markdown_to_append": "   "},
         snapshot="x",
-        selection=None,
+        selection_excerpt=None,
     )
     assert p.get("error") == "empty_append"
 
@@ -44,7 +44,7 @@ def test_replace_requires_selection() -> None:
         "replace_selection",
         {"replacement_markdown": "z"},
         snapshot="ab",
-        selection=None,
+        selection_excerpt=None,
     )
     assert p.get("error") == "replace_requires_selection"
 
@@ -54,12 +54,11 @@ def test_replace_ok() -> None:
         "replace_selection",
         {"replacement_markdown": "Z"},
         snapshot="ab",
-        selection=(0, 1, "a"),
+        selection_excerpt="a",
     )
     assert p["intent"] == "replace_selection"
-    assert p["selection_from"] == 0
-    assert p["selection_to"] == 1
     assert p["replacement_markdown"] == "Z"
+    assert "selection_from" not in p
 
 
 def test_edit_snippet_not_unique() -> None:
@@ -67,7 +66,7 @@ def test_edit_snippet_not_unique() -> None:
         "edit",
         {"old_snippet": "a", "new_snippet": "b"},
         snapshot="aaa",
-        selection=None,
+        selection_excerpt=None,
     )
     assert p.get("error") == "old_snippet_must_match_exactly_once"
     assert p.get("occurrences") == 3
@@ -78,7 +77,7 @@ def test_edit_ok() -> None:
         "edit",
         {"old_snippet": "foo", "new_snippet": "bar"},
         snapshot="one foo two",
-        selection=None,
+        selection_excerpt=None,
     )
     assert p["intent"] == "edit"
     assert p["old_snippet"] == "foo"

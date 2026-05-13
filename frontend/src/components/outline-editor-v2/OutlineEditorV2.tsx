@@ -9,11 +9,15 @@ import {
 } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
-import type { EditorSelectionState } from '../editor/SplitEditor'
+import type { EditorSelectionState } from '../editor/editorSelection'
+import {
+  MilkdownEditor,
+  type MilkdownEditorApi,
+} from '../editor/MilkdownEditor'
+import { YDOC_TEXT_FIELD } from '../../services/ws'
 import { BuilderHomeHeader } from '../home/BuilderHomeHeader'
 import { ContextPopover } from './annotations/ContextPopover'
-import type { AnnotationBlockRef } from './annotations/useAnnotations'
-import { useAnnotations } from './annotations/useAnnotations'
+import { SuggestionBlock } from './canvas/SuggestionBlock'
 import { DocCanvas } from './canvas/DocCanvas'
 import { SelectionToolbar } from './canvas/SelectionToolbar'
 import { CopilotOverlay } from './copilot/CopilotOverlay'
@@ -21,7 +25,6 @@ import { CopilotToggle } from './chrome/CopilotToggle'
 import { OutlineRail } from './chrome/OutlineRail'
 import { StatusBar } from './chrome/StatusBar'
 import { TopBar } from './chrome/TopBar'
-import { useDocBlocks } from './hooks/useDocBlocks'
 import { useEditorV2Prefs } from './hooks/useEditorV2Prefs'
 import { useSelection } from './hooks/useSelection'
 import type { SectionPatchOverlayState } from '../../lib/sectionPatchOverlay'
@@ -37,11 +40,9 @@ import {
   getSection,
   getSectionHealth,
   getSoftware,
-  listProjectIssues,
   listProjects,
   listSections,
   listSoftware,
-  listWorkOrders,
   logout as logoutApi,
   me,
   reorderSections,
@@ -136,19 +137,6 @@ export function OutlineEditorV2(): ReactElement {
   const sectionHealthQ = useQuery({
     queryKey: ['sectionHealth', pid, secid],
     queryFn: () => getSectionHealth(pid, secid),
-    enabled: Boolean(pid && secid && access.isMember),
-  })
-
-  const issuesQ = useQuery({
-    queryKey: ['issues', pid, secid, 'v2'],
-    queryFn: () => listProjectIssues(pid, { sectionId: secid }),
-    enabled: Boolean(pid && secid && access.isMember),
-  })
-
-  const staleWoQ = useQuery({
-    queryKey: ['workOrders', pid, 'stale', secid],
-    queryFn: () =>
-      listWorkOrders(pid, { section_id: secid, is_stale: true }),
     enabled: Boolean(pid && secid && access.isMember),
   })
 
@@ -253,11 +241,19 @@ export function OutlineEditorV2(): ReactElement {
     collabUser,
   )
 
-  const [editorSelection] = useState<EditorSelectionState | null>(null)
+  const [editorSelection, setEditorSelection] =
+    useState<EditorSelectionState | null>(null)
+  const onEditorSelectionChange = useCallback(
+    (sel: EditorSelectionState | null) => {
+      setEditorSelection(sel)
+    },
+    [],
+  )
 
   const [copilotOpen, setCopilotOpen] = useState(false)
   const [railCollapsed, setRailCollapsed] = useState(false)
   const [sessionFlip, setSessionFlip] = useState(false)
+  const displayRaw = v2prefs.outlineRawDefault !== sessionFlip
   const [patchOverlay, setPatchOverlay] =
     useState<SectionPatchOverlayState | null>(null)
   const [syncedContextRagQuery, setSyncedContextRagQuery] = useState('')
@@ -284,66 +280,78 @@ export function OutlineEditorV2(): ReactElement {
   )
 
   const [contextPopoverOpen, setContextPopoverOpen] = useState(false)
-  const { selection, setSelection, clearSelection } = useSelection()
+  const { selection, clearSelection } = useSelection()
 
   const [wordCount, setWordCount] = useState(0)
   const wordTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const ytext = collab?.ytext ?? null
-  const { blocks } = useDocBlocks(ytext)
+  const ytext = collab ? collab.ydoc.getText(YDOC_TEXT_FIELD) : null
+
+  const outlineCopilotEditorRef = useRef<MilkdownEditorApi | null>(null)
+  const copilotSetDraftRef = useRef<((value: string) => void) | null>(null)
+
+  const onRegisterCopilotDraftSetter = useCallback(
+    (fn: (value: string) => void) => {
+      copilotSetDraftRef.current = fn
+    },
+    [],
+  )
+
+  const onAiComposerPrefill = useCallback((markdown: string) => {
+    copilotSetDraftRef.current?.(markdown)
+  }, [])
+
+  const defaultSectionMarkdown = sectionQ.data?.content ?? ''
 
   useEffect(() => {
     setSessionFlip(false)
   }, [secid])
 
   useEffect(() => {
-    if (!ytext) {
-      return
-    }
-    const bump = (): void => {
+    const schedule = (): void => {
       if (wordTimerRef.current) {
         clearTimeout(wordTimerRef.current)
       }
       wordTimerRef.current = setTimeout(() => {
-        const t = ytext.toString().trim()
-        const wc = t.length === 0 ? 0 : t.split(/\s+/).filter(Boolean).length
+        let t: string
+        if (displayRaw && ytext) {
+          t = ytext.toString()
+        } else {
+          t =
+            outlineCopilotEditorRef.current?.getMarkdown() ??
+            defaultSectionMarkdown
+        }
+        const trimmed = t.trim()
+        const wc =
+          trimmed.length === 0 ? 0 : trimmed.split(/\s+/).filter(Boolean).length
         setWordCount(wc)
         wordTimerRef.current = null
       }, 500)
     }
-    bump()
-    ytext.observe(bump)
-    return () => {
-      ytext.unobserve(bump)
-      if (wordTimerRef.current) {
-        clearTimeout(wordTimerRef.current)
+    if (displayRaw && ytext) {
+      schedule()
+      ytext.observe(schedule)
+      return () => {
+        ytext.unobserve(schedule)
+        if (wordTimerRef.current) {
+          clearTimeout(wordTimerRef.current)
+          wordTimerRef.current = null
+        }
       }
     }
-  }, [ytext])
-
-  const annotationBlocks: AnnotationBlockRef[] = useMemo(
-    () =>
-      blocks.map((b) => ({
-        id: b.id,
-        kind: b.type,
-        text: b.type === 'ul' ? b.items.join('\n') : b.text,
-      })),
-    [blocks],
-  )
-
-  const pendingSuggestionLabel = patchOverlay?.mergedMarkdown?.trim()
-    ? patchOverlay.mergedMarkdown.trim().slice(0, 120)
-    : null
-
-  const annotations = useAnnotations({
-    sectionId: secid,
-    blocks: annotationBlocks,
-    issues: issuesQ.data,
-    staleWorkOrders: staleWoQ.data,
-    pendingSuggestionLabel,
-  })
-
-  const displayRaw = v2prefs.outlineRawDefault !== sessionFlip
+    if (!displayRaw && collab) {
+      schedule()
+      collab.ydoc.on('afterTransaction', schedule)
+      return () => {
+        collab.ydoc.off('afterTransaction', schedule)
+        if (wordTimerRef.current) {
+          clearTimeout(wordTimerRef.current)
+          wordTimerRef.current = null
+        }
+      }
+    }
+    return undefined
+  }, [collab, displayRaw, ytext, defaultSectionMarkdown])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -477,22 +485,42 @@ export function OutlineEditorV2(): ReactElement {
               <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
                 <div className="relative flex min-h-0 flex-1 flex-col">
                   <div className="relative min-h-0 flex-1 overflow-hidden">
-                    {!collab || !ytext ? (
+                    {!collab || !ytext || !sectionQ.data ? (
                       <p className="px-4 py-6 text-zinc-500">
                         Connecting editor…
                       </p>
-                    ) : (
+                    ) : displayRaw ? (
                       <DocCanvas
                         ytext={ytext}
-                        blocks={blocks}
-                        annotations={annotations}
-                        displayRaw={displayRaw}
-                        patchOverlay={patchOverlay}
-                        selectedBlockId={selection?.blockId ?? null}
-                        onSelectBlock={(id) => {
-                          setSelection(id ? { blockId: id } : null)
-                        }}
+                        blocks={[]}
+                        annotations={{}}
+                        displayRaw
+                        patchOverlay={null}
+                        selectedBlockId={null}
+                        onSelectBlock={() => {}}
                       />
+                    ) : (
+                      <div
+                        data-testid="doc-canvas"
+                        className="outline-editor-shell flex min-h-0 flex-1 flex-col overflow-hidden"
+                      >
+                        <SuggestionBlock overlay={patchOverlay} />
+                        <div
+                          data-testid="milkdown-host"
+                          className="min-h-0 min-w-0 flex-1 overflow-hidden bg-zinc-950"
+                        >
+                          <MilkdownEditor
+                            ref={outlineCopilotEditorRef}
+                            collab={collab}
+                            defaultMarkdown={sectionQ.data.content ?? ''}
+                            readOnly={!access.isStudioEditor}
+                            onSelectionChange={onEditorSelectionChange}
+                            patchOverlay={patchOverlay}
+                            onAiComposerPrefill={onAiComposerPrefill}
+                            replaceSelectionSlashDisabled={false}
+                          />
+                        </div>
+                      </div>
                     )}
                   </div>
                   <div className="relative">
@@ -543,14 +571,18 @@ export function OutlineEditorV2(): ReactElement {
               sectionId={secid}
               projectHref={projectHref}
               collab={collab}
+              sectionEditorApiRef={outlineCopilotEditorRef}
               editorSelection={editorSelection}
-              onClearEditorSelection={() => {}}
+              onClearEditorSelection={() => {
+                setEditorSelection(null)
+              }}
               healthSummary={sectionHealthQ.data ?? null}
               canEditContext={access.isStudioEditor}
               onPatchOverlayChange={handlePatchOverlay}
               contextRagQuerySynced={syncedContextRagQuery}
               onContextRagQuerySyncedChange={setSyncedContextRagQuery}
               copilotTabRequest={null}
+              onRegisterCopilotDraftSetter={onRegisterCopilotDraftSetter}
             />
           ) : (
             <p className="p-4 text-sm text-zinc-500">Connecting…</p>

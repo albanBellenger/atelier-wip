@@ -10,57 +10,72 @@ from app.services.private_thread_selection import (
 )
 
 
-def test_validate_returns_none_when_no_bounds() -> None:
+def test_validate_returns_none_when_no_selection() -> None:
     assert (
         validate_selection_against_snapshot(
             snapshot="abc",
-            selection_from=None,
-            selection_to=None,
             selected_plaintext=None,
+            require_unique_in_snapshot=False,
         )
         is None
     )
 
 
-def test_validate_raises_when_only_from() -> None:
-    with pytest.raises(ApiError) as ei:
+def test_validate_returns_none_when_whitespace_only() -> None:
+    assert (
         validate_selection_against_snapshot(
             snapshot="abc",
-            selection_from=0,
-            selection_to=None,
-            selected_plaintext=None,
+            selected_plaintext="   ",
+            require_unique_in_snapshot=False,
+        )
+        is None
+    )
+
+
+def test_validate_substring_ok() -> None:
+    r = validate_selection_against_snapshot(
+        snapshot="hello world",
+        selected_plaintext="hello",
+        require_unique_in_snapshot=False,
+    )
+    assert r == "hello"
+
+
+def test_validate_unique_required() -> None:
+    with pytest.raises(ApiError) as ei:
+        validate_selection_against_snapshot(
+            snapshot="aaa",
+            selected_plaintext="a",
+            require_unique_in_snapshot=True,
         )
     assert ei.value.status_code == 422
 
 
-def test_validate_matches_plaintext() -> None:
+def test_validate_unique_ok() -> None:
     r = validate_selection_against_snapshot(
-        snapshot="hello world",
-        selection_from=0,
-        selection_to=5,
-        selected_plaintext="hello",
+        snapshot="aba",
+        selected_plaintext="b",
+        require_unique_in_snapshot=True,
     )
-    assert r == (0, 5, "hello")
+    assert r == "b"
 
 
-def test_validate_plaintext_mismatch() -> None:
+def test_validate_plaintext_not_in_snapshot() -> None:
     with pytest.raises(ApiError) as ei:
         validate_selection_against_snapshot(
             snapshot="hello world",
-            selection_from=0,
-            selection_to=5,
-            selected_plaintext="hallo",
+            selected_plaintext="nope",
+            require_unique_in_snapshot=False,
         )
     assert ei.value.status_code == 422
 
 
-def test_validate_empty_excerpt() -> None:
+def test_validate_requires_snapshot() -> None:
     with pytest.raises(ApiError):
         validate_selection_against_snapshot(
-            snapshot="   x",
-            selection_from=0,
-            selection_to=3,
-            selected_plaintext="   ",
+            snapshot=None,
+            selected_plaintext="x",
+            require_unique_in_snapshot=False,
         )
 
 

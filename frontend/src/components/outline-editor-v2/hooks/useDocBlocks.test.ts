@@ -3,7 +3,7 @@ import * as Y from 'yjs'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { YDOC_TEXT_FIELD } from '../../../services/ws'
-import { useDocBlocks, type DocBlock } from './useDocBlocks'
+import { useDocBlocks, docBlocksFromMarkdown, type DocBlock } from './useDocBlocks'
 
 function makeYtext(initial: string): Y.Text {
   const doc = new Y.Doc()
@@ -126,5 +126,18 @@ Closing line.
     if (last.type === 'p') {
       expect(last.text).toContain('New paragraph')
     }
+  })
+})
+
+describe('docBlocksFromMarkdown', () => {
+  it('matches useDocBlocks parsing for a string', () => {
+    const md = '## Title\n\nBody.\n'
+    const ytext = makeYtext(md)
+    const { result } = renderHook(() => useDocBlocks(ytext))
+    const fromHook = result.current.blocks as DocBlock[]
+    const fromFn = docBlocksFromMarkdown(md)
+    expect(fromFn.map((b) => ({ type: b.type, id: b.id }))).toEqual(
+      fromHook.map((b) => ({ type: b.type, id: b.id })),
+    )
   })
 })

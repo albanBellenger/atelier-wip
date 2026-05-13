@@ -16,8 +16,8 @@ describe('sectionPatchPreview', () => {
     expect(previewAfterAppend('a\n', 'b')).toBe('a\nb')
   })
 
-  it('previewAfterReplace splices range', () => {
-    expect(previewAfterReplace('hello world', 0, 5, 'H')).toBe('H world')
+  it('previewAfterReplace splices using selected plaintext', () => {
+    expect(previewAfterReplace('hello world', 'H', 'hello')).toBe('H world')
   })
 
   it('previewAfterEdit replaces first occurrence only', () => {

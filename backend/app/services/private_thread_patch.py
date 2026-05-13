@@ -10,7 +10,7 @@ def _normalize_patch_proposal(
     raw: object,
     *,
     snapshot: str,
-    selection: tuple[int, int, str] | None,
+    selection_excerpt: str | None,
 ) -> dict[str, Any]:
     """Return a JSON-serializable patch_proposal for meta, or {error: ...}."""
     if not isinstance(raw, dict):
@@ -21,14 +21,12 @@ def _normalize_patch_proposal(
             return {"error": "empty_append"}
         return {"intent": "append", "markdown_to_append": md}
     if intent == "replace_selection":
-        if selection is None:
+        if selection_excerpt is None:
             return {"error": "replace_requires_selection"}
         rep = str(raw.get("replacement_markdown") if "replacement_markdown" in raw else "")
         return {
             "intent": "replace_selection",
             "replacement_markdown": rep,
-            "selection_from": selection[0],
-            "selection_to": selection[1],
         }
     old_s = str(raw.get("old_snippet") or "")
     new_s = str(raw.get("new_snippet") or "")

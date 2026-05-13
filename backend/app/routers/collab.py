@@ -4,9 +4,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, WebSocket
 
-from app.collab.channel import FastAPIWebSocketChannel
+from app.collab.channel import FastAPIWebSocketChannel, MarkdownSnapshotDemuxChannel
 from app.collab.editor_context import collab_acting_user_id
 from app.collab.server import (
+    AtelierWebsocketServer,
     collab_room_path,
     get_collab_server,
     software_docs_collab_room_path,
@@ -65,10 +66,14 @@ async def section_collab(
 
     await websocket.accept()
     path = collab_room_path(project_id, section_id)
-    channel = FastAPIWebSocketChannel(websocket, path)
+    inner = FastAPIWebSocketChannel(websocket, path)
+    server = get_collab_server()
+    channel: FastAPIWebSocketChannel | MarkdownSnapshotDemuxChannel = inner
+    if isinstance(server, AtelierWebsocketServer):
+        channel = MarkdownSnapshotDemuxChannel(inner, server.enqueue_markdown_snapshot)
     var_tok = collab_acting_user_id.set(user.id)
     try:
-        await get_collab_server().serve(channel)
+        await server.serve(channel)
     finally:
         collab_acting_user_id.reset(var_tok)
 
@@ -109,9 +114,13 @@ async def software_docs_collab(
 
     await websocket.accept()
     path = software_docs_collab_room_path(software_id, section_id)
-    channel = FastAPIWebSocketChannel(websocket, path)
+    inner = FastAPIWebSocketChannel(websocket, path)
+    server = get_collab_server()
+    channel: FastAPIWebSocketChannel | MarkdownSnapshotDemuxChannel = inner
+    if isinstance(server, AtelierWebsocketServer):
+        channel = MarkdownSnapshotDemuxChannel(inner, server.enqueue_markdown_snapshot)
     var_tok = collab_acting_user_id.set(user.id)
     try:
-        await get_collab_server().serve(channel)
+        await server.serve(channel)
     finally:
         collab_acting_user_id.reset(var_tok)

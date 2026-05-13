@@ -98,14 +98,14 @@ Every schema change requires a new Alembic migration. Never modify an existing m
 
 ## Database Rules
 
-### Yjs state — always dual-write
+### Yjs state — collab persistence
 
-When persisting section content after a Yjs update, you must write both:
+On debounced persist after Yjs updates on the collab WebSocket, the server writes:
 
-- `sections.yjs_state` — the full binary `Uint8Array` Yjs document state (CRDT source of truth)
-- `sections.content` — plain text Markdown extracted from the Yjs doc (RAG source of truth)
+- `sections.yjs_state` — full binary Yjs document state from `doc.get_update()` (CRDT source of truth)
+- `sections.content` — Markdown from the same WebSocket via JSON `markdown_snapshot` frames (debounced together with binary; **not** parsed from Yjs on the server)
 
-Never save only plain text — this destroys the Yjs CRDT vector clocks and breaks offline merge.
+The client must send `markdown_snapshot` when the serialized Markdown changes so RAG and APIs stay aligned with the CRDT. Never persist `content` from server-side Yjs text extraction for spec sections.
 
 ### Vector indexes — always HNSW
 
@@ -219,7 +219,7 @@ Never assert `len(string) < N` — this is a flap risk.
 - Never call an LLM provider SDK directly — always go through `LLMService`
 - Never generate presigned MinIO URLs for client downloads — always proxy through FastAPI
 - Never use `ivfflat` for pgvector indexes — always use `hnsw`
-- Never save only plain text to `sections.content` on a Yjs debounce — always dual-write with `yjs_state`
+- Never persist `sections.content` from server-side Yjs text extraction on collab debounce — use client `markdown_snapshot` plus binary `yjs_state`
 - Never skip the RBAC dependency chain — never check roles manually in route handlers
 - Never return a raw SQLAlchemy model from an API endpoint — always use a Pydantic schema
 - Never write implementation code without a failing test first

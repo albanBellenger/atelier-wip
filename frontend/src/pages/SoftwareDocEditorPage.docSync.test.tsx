@@ -5,9 +5,46 @@ import * as Y from 'yjs'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { MilkdownEditorApi } from '../components/editor/MilkdownEditor'
 import * as yCollab from '../hooks/useYjsCollab'
 import * as api from '../services/api'
 import { SoftwareDocEditorPage } from './SoftwareDocEditorPage'
+
+const docSyncEditorMocks = vi.hoisted(() => ({
+  replaceFullMarkdownSpy: vi.fn((_: string) => undefined),
+}))
+
+/** Mirrors production: collab is null until Yjs connects after the editor can mount. */
+const docSyncCollabState = vi.hoisted(() => ({
+  ready: false,
+  bundle: null as import('../hooks/useYjsCollab').YjsCollab | null,
+}))
+
+vi.mock('../components/editor/SplitEditor', async () => {
+  const React = await import('react')
+  return {
+    SplitEditor: function MockSplitEditor(props: {
+      collab: unknown
+      defaultMarkdown: string
+      editorApiRef?: React.RefObject<MilkdownEditorApi | null>
+    }): React.ReactElement {
+      const ref = props.editorApiRef
+      if (ref != null) {
+        const api: MilkdownEditorApi = {
+          getEditorView: () => null,
+          getMarkdown: () => props.defaultMarkdown,
+          replaceFullMarkdown: (md: string) => {
+            docSyncEditorMocks.replaceFullMarkdownSpy(md)
+          },
+          applyPatch: () => ({ ok: false, reason: 'mock' }),
+          animateAppendFromMarkdown: async () => {},
+        }
+        ;(ref as React.MutableRefObject<MilkdownEditorApi | null>).current = api
+      }
+      return React.createElement('div', { 'data-testid': 'milkdown-host' }, 'mock-editor')
+    },
+  }
+})
 
 vi.mock('../hooks/useStudioAccess', () => ({
   useStudioAccess: () => ({
@@ -47,8 +84,7 @@ const editorMe: api.MeResponse = {
   cross_studio_grants: [],
 }
 
-function wrap(path: string): ReactElement {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+function wrap(qc: QueryClient, path: string): ReactElement {
   return (
     <MemoryRouter initialEntries={[path]}>
       <QueryClientProvider client={qc}>
@@ -66,6 +102,14 @@ function wrap(path: string): ReactElement {
 describe('SoftwareDocEditorPage doc sync apply', () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
+    docSyncCollabState.ready = false
+    docSyncCollabState.bundle = null
+    docSyncEditorMocks.replaceFullMarkdownSpy.mockClear()
+    vi.mocked(yCollab.useSoftwareDocYjsCollab).mockImplementation(() =>
+      docSyncCollabState.ready && docSyncCollabState.bundle
+        ? docSyncCollabState.bundle
+        : null,
+    )
     vi.stubGlobal(
       'matchMedia',
       vi.fn().mockImplementation((query: string) => ({
@@ -88,20 +132,18 @@ describe('SoftwareDocEditorPage doc sync apply', () => {
 
   it('applies replacement from session and resolves issue after idle match', async () => {
     const ydoc = new Y.Doc()
-    const ytext = ydoc.getText('codemirror')
     const collab = {
       ydoc,
-      ytext,
       provider: { on: vi.fn(), off: vi.fn() },
       awareness: {
         on: vi.fn(),
         off: vi.fn(),
         setLocalStateField: vi.fn(),
       },
+      sendMarkdownSnapshot: vi.fn(),
     }
-    vi.mocked(yCollab.useSoftwareDocYjsCollab).mockReturnValue(
-      collab as unknown as yCollab.YjsCollab,
-    )
+    docSyncCollabState.bundle = collab as unknown as yCollab.YjsCollab
+    docSyncCollabState.ready = false
 
     sessionStorage.setItem(
       'atelier_doc_sync:iss1',
@@ -133,19 +175,24 @@ describe('SoftwareDocEditorPage doc sync apply', () => {
     })
 
     vi.spyOn(api, 'me').mockResolvedValue(editorMe)
-    vi.spyOn(api, 'getSoftwareDocsSection').mockResolvedValue({
-      id: 'sec1',
-      project_id: null,
-      software_id: 'sw1',
-      title: 'T',
-      slug: 't',
-      order: 0,
-      content: 'Old',
-      status: 'ready',
-      open_issue_count: 0,
-      outline_health: null,
-      created_at: '2026-01-01T00:00:00Z',
-      updated_at: '2026-01-01T00:00:00Z',
+    let sectionFetchCount = 0
+    vi.spyOn(api, 'getSoftwareDocsSection').mockImplementation(async () => {
+      sectionFetchCount += 1
+      const content = sectionFetchCount === 1 ? 'Old' : 'Replaced body'
+      return {
+        id: 'sec1',
+        project_id: null,
+        software_id: 'sw1',
+        title: 'T',
+        slug: 't',
+        order: 0,
+        content,
+        status: 'ready',
+        open_issue_count: 0,
+        outline_health: null,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      }
     })
     vi.spyOn(api, 'listCodebaseSnapshots').mockResolvedValue([])
     vi.spyOn(api, 'getSoftware').mockResolvedValue({
@@ -163,10 +210,20 @@ describe('SoftwareDocEditorPage doc sync apply', () => {
     })
     vi.spyOn(api, 'listSoftware').mockResolvedValue([])
 
-    render(wrap('/studios/s1/software/sw1/docs/sec1?docSyncIssue=iss1'))
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const path = '/studios/s1/software/sw1/docs/sec1?docSyncIssue=iss1'
+    const { rerender } = render(wrap(qc, path))
+
     await screen.findByRole('heading', { level: 1, name: 'T' })
 
-    expect(ytext.toString()).toBe('Replaced body')
+    await act(async () => {
+      docSyncCollabState.ready = true
+      rerender(wrap(qc, path))
+    })
+
+    expect(docSyncEditorMocks.replaceFullMarkdownSpy).toHaveBeenCalledWith(
+      'Replaced body',
+    )
 
     await act(async () => {
       vi.advanceTimersByTime(3000)

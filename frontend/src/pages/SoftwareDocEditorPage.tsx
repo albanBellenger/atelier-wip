@@ -7,6 +7,7 @@ import remarkGfm from 'remark-gfm'
 
 import { BackpropSectionFromCodebaseModal } from '../components/software/BackpropSectionFromCodebaseModal'
 import { SplitEditor } from '../components/editor/SplitEditor'
+import type { MilkdownEditorApi } from '../components/editor/MilkdownEditor'
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
 import {
   colorsForUser,
@@ -148,21 +149,13 @@ export function SoftwareDocEditorPage(): ReactElement {
     collabUser,
   )
 
+  const editorApiRef = useRef<MilkdownEditorApi | null>(null)
+
   const applyBackpropDraft = useCallback(
     (md: string) => {
-      if (!collab) {
-        return
-      }
-      collab.ydoc.transact(() => {
-        const t = collab.ytext
-        const n = t.length
-        if (n > 0) {
-          t.delete(0, n)
-        }
-        t.insert(0, md)
-      })
+      editorApiRef.current?.replaceFullMarkdown(md)
     },
-    [collab],
+    [],
   )
 
   const docSyncPayload = useMemo(
@@ -201,7 +194,7 @@ export function SoftwareDocEditorPage(): ReactElement {
     let timer: ReturnType<typeof setTimeout> | null = null
     let cancelled = false
 
-    const schedule = (): void => {
+    const tick = (): void => {
       if (timer) {
         clearTimeout(timer)
       }
@@ -210,16 +203,19 @@ export function SoftwareDocEditorPage(): ReactElement {
         if (cancelled) {
           return
         }
-        const cur = collab.ytext.toString()
-        if (cur.trim() !== docSyncPayload.replacementMarkdown.trim()) {
-          return
-        }
-        if (docSyncResolvedRef.current) {
-          return
-        }
-        docSyncResolvedRef.current = true
         void (async () => {
           try {
+            const sec = await getSoftwareDocsSection(sfid, secid)
+            if (
+              sec.content.trim() !== docSyncPayload.replacementMarkdown.trim()
+            ) {
+              tick()
+              return
+            }
+            if (docSyncResolvedRef.current) {
+              return
+            }
+            docSyncResolvedRef.current = true
             await updateIssue(
               docSyncPayload.projectId,
               docSyncPayload.issueId,
@@ -227,31 +223,34 @@ export function SoftwareDocEditorPage(): ReactElement {
               { resolution_reason: 'applied' },
             )
             try {
-              sessionStorage.removeItem(`${DOC_SYNC_STORAGE_PREFIX}${docSyncPayload.issueId}`)
+              sessionStorage.removeItem(
+                `${DOC_SYNC_STORAGE_PREFIX}${docSyncPayload.issueId}`,
+              )
             } catch {
               /* ignore */
             }
-            await qc.invalidateQueries({ queryKey: ['issues', docSyncPayload.projectId] })
+            await qc.invalidateQueries({
+              queryKey: ['issues', docSyncPayload.projectId],
+            })
             const next = new URLSearchParams(searchParams)
             next.delete('docSyncIssue')
             setSearchParams(next, { replace: true })
           } catch {
             docSyncResolvedRef.current = false
+            tick()
           }
         })()
-      }, 2800)
+      }, 800)
     }
 
-    collab.ytext.observe(schedule)
-    schedule()
+    tick()
     return () => {
       cancelled = true
-      collab.ytext.unobserve(schedule)
       if (timer) {
         clearTimeout(timer)
       }
     }
-  }, [collab, docSyncPayload, docSyncIssueId, secid, qc, searchParams, setSearchParams])
+  }, [collab, docSyncPayload, docSyncIssueId, secid, sfid, qc, searchParams, setSearchParams])
 
   const handleLogout = useCallback(async () => {
     try {
@@ -337,7 +336,12 @@ export function SoftwareDocEditorPage(): ReactElement {
 
         {sectionQ.data && access.isStudioEditor ? (
           <div className="mt-6 h-[min(720px,calc(100vh-220px))] min-h-[420px] rounded-xl border border-zinc-800 bg-zinc-900/40">
-            <SplitEditor collab={collab} />
+            <SplitEditor
+              collab={collab}
+              defaultMarkdown={sectionQ.data.content ?? ''}
+              readOnly={false}
+              editorApiRef={editorApiRef}
+            />
           </div>
         ) : null}
 

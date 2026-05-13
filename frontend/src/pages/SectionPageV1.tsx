@@ -13,6 +13,7 @@ import {
   SplitEditor,
   type EditorSelectionState,
 } from '../components/editor/SplitEditor'
+import type { MilkdownEditorApi } from '../components/editor/MilkdownEditor'
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
 import { HealthRail } from '../components/section/HealthRail'
 import { SectionLayoutSwitcher } from '../components/section/SectionLayoutSwitcher'
@@ -201,6 +202,20 @@ export function SectionPageV1(): ReactElement {
     collabUser,
   )
 
+  const sectionEditorApiRef = useRef<MilkdownEditorApi | null>(null)
+  const copilotSetDraftRef = useRef<((value: string) => void) | null>(null)
+
+  const onRegisterCopilotDraftSetter = useCallback(
+    (fn: (value: string) => void) => {
+      copilotSetDraftRef.current = fn
+    },
+    [],
+  )
+
+  const onAiComposerPrefill = useCallback((markdown: string) => {
+    copilotSetDraftRef.current?.(markdown)
+  }, [])
+
   const [editorSelection, setEditorSelection] = useState<
     EditorSelectionState | null
   >(null)
@@ -328,8 +343,6 @@ export function SectionPageV1(): ReactElement {
     return () => window.removeEventListener('keydown', onKey)
   }, [layoutMode, focusComposerEmpty])
 
-  const collabYtext = collab?.ytext
-
   useEffect(() => {
     const p = collab?.provider as
       | {
@@ -350,9 +363,10 @@ export function SectionPageV1(): ReactElement {
   }, [collab])
 
   useEffect(() => {
-    if (!collabYtext) {
+    if (!collab) {
       return
     }
+    const ydoc = collab.ydoc
     const onY = (): void => {
       setBreadcrumbDocEpoch((n) => n + 1)
       if (breadcrumbSaveTimerRef.current) {
@@ -365,23 +379,26 @@ export function SectionPageV1(): ReactElement {
         breadcrumbSaveTimerRef.current = null
       }, SAVE_SAVED_RESET_MS)
     }
-    collabYtext.observe(onY)
+    ydoc.on('update', onY)
     return () => {
-      collabYtext.unobserve(onY)
+      ydoc.off('update', onY)
       if (breadcrumbSaveTimerRef.current) {
         clearTimeout(breadcrumbSaveTimerRef.current)
         breadcrumbSaveTimerRef.current = null
       }
     }
-  }, [collabYtext])
+  }, [collab])
 
   const breadcrumbLineCount = useMemo(() => {
-    const t = collab?.ytext?.toString() ?? ''
+    const t =
+      sectionEditorApiRef.current?.getMarkdown() ??
+      sectionQ.data?.content ??
+      ''
     if (t.length === 0) {
       return 0
     }
     return t.split('\n').length
-  }, [collab?.ytext, breadcrumbDocEpoch])
+  }, [sectionQ.data?.content, breadcrumbDocEpoch])
 
   const queryClient = useQueryClient()
 
@@ -614,6 +631,7 @@ export function SectionPageV1(): ReactElement {
                     sectionId={secid}
                     projectHref={projectHref}
                     collab={collab}
+                    sectionEditorApiRef={sectionEditorApiRef}
                     editorSelection={editorSelection}
                     onClearEditorSelection={() => setEditorSelection(null)}
                     density="focus"
@@ -624,6 +642,7 @@ export function SectionPageV1(): ReactElement {
                     contextRagQuerySynced={syncedContextRagQuery}
                     onContextRagQuerySyncedChange={setSyncedContextRagQuery}
                     copilotTabRequest={copilotTabRequest}
+                    onRegisterCopilotDraftSetter={onRegisterCopilotDraftSetter}
                   />
                 </div>
               </div>
@@ -686,12 +705,17 @@ export function SectionPageV1(): ReactElement {
                     <div className="min-h-0 flex-1">
                       <SplitEditor
                         collab={collab}
+                        defaultMarkdown={sectionQ.data.content ?? ''}
+                        readOnly={!access.isStudioEditor}
                         onSelectionChange={onEditorSelectionChange}
                         viewMode={editorViewMode}
                         onViewModeChange={setLayoutMode}
                         patchOverlay={
                           layoutMode === 'context' ? null : patchOverlay
                         }
+                        editorApiRef={sectionEditorApiRef}
+                        onAiComposerPrefill={onAiComposerPrefill}
+                        replaceSelectionSlashDisabled={layoutMode === 'focus'}
                       />
                     </div>
                   )}
@@ -703,6 +727,7 @@ export function SectionPageV1(): ReactElement {
                     sectionId={secid}
                     projectHref={projectHref}
                     collab={collab}
+                    sectionEditorApiRef={sectionEditorApiRef}
                     editorSelection={editorSelection}
                     onClearEditorSelection={() => setEditorSelection(null)}
                     healthSummary={sectionHealthQ.data ?? null}
@@ -711,6 +736,7 @@ export function SectionPageV1(): ReactElement {
                     contextRagQuerySynced={syncedContextRagQuery}
                     onContextRagQuerySyncedChange={setSyncedContextRagQuery}
                     copilotTabRequest={copilotTabRequest}
+                    onRegisterCopilotDraftSetter={onRegisterCopilotDraftSetter}
                   />
                 </div>
               </div>

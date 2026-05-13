@@ -1,5 +1,6 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import React from 'react'
 import * as Y from 'yjs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -7,20 +8,42 @@ import type { YjsCollab } from '../../hooks/useYjsCollab'
 import type { SectionPatchOverlayState } from '../../lib/sectionPatchOverlay'
 import { SplitEditor } from './SplitEditor'
 
-function minimalCollab(content: string): YjsCollab {
+vi.mock('./MilkdownEditor', () => ({
+  MilkdownEditor: React.forwardRef(function MockMilkdown(
+    _props: Record<string, unknown>,
+    ref: React.Ref<{ getMarkdown: () => string }>,
+  ) {
+    React.useImperativeHandle(ref, () => ({
+      getMarkdown: () => '',
+      getEditorView: () => null,
+      replaceFullMarkdown: vi.fn(),
+      applyPatch: () => ({ ok: false, reason: 'mock' }),
+      animateAppendFromMarkdown: () => Promise.resolve(),
+    }))
+    return React.createElement(
+      'div',
+      { 'data-testid': 'milkdown-editor-inner' },
+      'mock',
+    )
+  }),
+}))
+
+function minimalCollab(): YjsCollab {
   const ydoc = new Y.Doc()
-  const ytext = ydoc.getText('t')
-  ytext.insert(0, content)
   return {
     ydoc,
-    provider: {} as YjsCollab['provider'],
-    ytext,
+    provider: {
+      ws: null,
+      on: vi.fn(),
+      off: vi.fn(),
+    } as unknown as YjsCollab['provider'],
     awareness: {
       clientID: 0,
       getStates: () => new Map(),
       on: vi.fn(),
       off: vi.fn(),
     } as unknown as YjsCollab['awareness'],
+    sendMarkdownSnapshot: vi.fn(),
   }
 }
 
@@ -45,15 +68,15 @@ describe('SplitEditor', () => {
     vi.restoreAllMocks()
   })
 
-  it('renders editor view tablist with Markdown, Preview, Split', () => {
-    const collab = minimalCollab('# Hello')
-    render(<SplitEditor collab={collab} />)
+  it('renders editor view tablist with Editor, Preview, Split', () => {
+    const collab = minimalCollab()
+    render(<SplitEditor collab={collab} defaultMarkdown="# Hello" />)
     expect(
       screen.getByRole('tablist', { name: 'Editor view' }),
     ).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Markdown' })).toHaveAttribute(
+    expect(screen.getByRole('tab', { name: 'Editor' })).toHaveAttribute(
       'aria-selected',
-      'false',
+      'true',
     )
     expect(screen.getByRole('tab', { name: 'Preview' })).toHaveAttribute(
       'aria-selected',
@@ -61,13 +84,16 @@ describe('SplitEditor', () => {
     )
     expect(screen.getByRole('tab', { name: 'Split' })).toHaveAttribute(
       'aria-selected',
-      'true',
+      'false',
     )
   })
 
-  it('renders markdown preview with headings and paragraphs (not a single flat text block)', () => {
-    const collab = minimalCollab('# Section title\n\nBody paragraph.')
-    render(<SplitEditor collab={collab} />)
+  it('renders markdown preview with headings and paragraphs (not a single flat text block)', async () => {
+    const user = userEvent.setup()
+    const collab = minimalCollab()
+    const md = '# Section title\n\nBody paragraph.'
+    render(<SplitEditor collab={collab} defaultMarkdown={md} />)
+    await user.click(screen.getByRole('tab', { name: 'Split' }))
     const preview = screen.getByTestId('markdown-preview')
     expect(
       within(preview).getByRole('heading', {
@@ -78,30 +104,31 @@ describe('SplitEditor', () => {
     expect(within(preview).getByText('Body paragraph.')).toBeInTheDocument()
   })
 
-  it('switches to preview-only: hides CodeMirror host, shows markdown preview', async () => {
+  it('switches to preview-only: hides Milkdown host, shows markdown preview', async () => {
     const user = userEvent.setup()
-    const collab = minimalCollab('# Hi')
-    render(<SplitEditor collab={collab} />)
+    const collab = minimalCollab()
+    render(<SplitEditor collab={collab} defaultMarkdown="# Hi" />)
     await user.click(screen.getByRole('tab', { name: 'Preview' }))
-    expect(screen.queryByTestId('codemirror-host')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('milkdown-host')).not.toBeInTheDocument()
     expect(screen.getByTestId('markdown-preview')).toBeInTheDocument()
   })
 
-  it('switches to markdown-only: hides preview pane', async () => {
+  it('switches to editor-only: hides preview pane', async () => {
     const user = userEvent.setup()
-    const collab = minimalCollab('x')
-    render(<SplitEditor collab={collab} />)
-    await user.click(screen.getByRole('tab', { name: 'Markdown' }))
-    expect(screen.getByTestId('codemirror-host')).toBeInTheDocument()
+    const collab = minimalCollab()
+    render(<SplitEditor collab={collab} defaultMarkdown="x" />)
+    await user.click(screen.getByRole('tab', { name: 'Editor' }))
+    expect(screen.getByTestId('milkdown-host')).toBeInTheDocument()
     expect(screen.queryByTestId('markdown-preview')).not.toBeInTheDocument()
   })
 
   it('controlled mode hides the internal tablist when viewMode and onViewModeChange are passed', () => {
-    const collab = minimalCollab('# Hello')
+    const collab = minimalCollab()
     const onViewModeChange = vi.fn()
     render(
       <SplitEditor
         collab={collab}
+        defaultMarkdown="# Hello"
         viewMode="preview"
         onViewModeChange={onViewModeChange}
       />,
@@ -116,7 +143,7 @@ describe('SplitEditor', () => {
     const user = userEvent.setup()
     const onApply = vi.fn()
     const onDismiss = vi.fn()
-    const collab = minimalCollab('# Hello')
+    const collab = minimalCollab()
     const patchOverlay: SectionPatchOverlayState = {
       mergedMarkdown: '## Patched',
       canApply: true,
@@ -127,6 +154,7 @@ describe('SplitEditor', () => {
     render(
       <SplitEditor
         collab={collab}
+        defaultMarkdown="# Hello"
         viewMode="preview"
         onViewModeChange={vi.fn()}
         patchOverlay={patchOverlay}
@@ -141,7 +169,7 @@ describe('SplitEditor', () => {
     const user = userEvent.setup()
     const onApply = vi.fn()
     const onDismiss = vi.fn()
-    const collab = minimalCollab('# Hello')
+    const collab = minimalCollab()
     const patchOverlay: SectionPatchOverlayState = {
       mergedMarkdown: '## Patched',
       canApply: true,
@@ -152,6 +180,7 @@ describe('SplitEditor', () => {
     render(
       <SplitEditor
         collab={collab}
+        defaultMarkdown="# Hello"
         viewMode="preview"
         onViewModeChange={vi.fn()}
         patchOverlay={patchOverlay}

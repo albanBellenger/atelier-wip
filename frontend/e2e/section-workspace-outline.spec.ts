@@ -62,7 +62,7 @@ test('context layout shows kind prefs for editors', async ({
   await expect(firstOn).toHaveText('Off')
 })
 
-test('accept inline patch after deterministic thread SSE mock', async ({
+test('thread append SSE animates markdown into section editor', async ({
   page,
   baseURL,
 }) => {
@@ -99,9 +99,31 @@ test('accept inline patch after deterministic thread SSE mock', async ({
   await expect(ws.sectionOutline()).toBeVisible({ timeout: 20_000 })
   const ta = ws.copilotComposerTextarea()
   await expect(ta).toBeVisible({ timeout: 25_000 })
-  await ta.fill('/append E2E inline patch')
+  await ta.fill('/append E2E stream append')
   await page.getByRole('button', { name: 'Send' }).click()
-  await expect(ws.patchInlinePreview()).toBeVisible({ timeout: 30_000 })
-  await page.getByRole('button', { name: 'Accept' }).click()
-  await expect(ws.patchInlinePreview()).not.toBeVisible({ timeout: 15_000 })
+  await expect(ws.milkdownHost()).toContainText('[E2E] appended line', {
+    timeout: 30_000,
+  })
+  await expect(ws.patchInlinePreview()).not.toBeVisible({ timeout: 10_000 })
+})
+
+test('editor slash AI menu prefills copilot composer', async ({
+  page,
+  baseURL,
+}) => {
+  const path = process.env.PLAYWRIGHT_SECTION_URL
+  test.skip(
+    !path,
+    'Set PLAYWRIGHT_SECTION_URL to a section deep link (logged-in session).',
+  )
+  const ws = new SectionWorkspacePage(page)
+  await ws.goto(`${baseURL ?? ''}${path}`)
+  await expect(ws.sectionOutline()).toBeVisible({ timeout: 20_000 })
+  await ws.milkdownProseMirror().click()
+  await page.keyboard.type('/')
+  const appendBtn = page.getByTestId('editor-slash-ai-append')
+  await expect(appendBtn).toBeVisible({ timeout: 15_000 })
+  await appendBtn.click()
+  const ta = ws.copilotComposerTextarea()
+  await expect(ta).toHaveValue('/append ')
 })

@@ -26,7 +26,7 @@ test.describe('outline editor v2', () => {
     await expect(page.getByTestId('doc-canvas')).toBeVisible({
       timeout: 25_000,
     })
-    await expect(page.getByTestId('margin-dot').first()).toBeVisible({
+    await expect(page.getByTestId('milkdown-host')).toBeVisible({
       timeout: 15_000,
     })
 

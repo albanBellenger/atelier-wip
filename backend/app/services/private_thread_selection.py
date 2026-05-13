@@ -11,59 +11,42 @@ SELECTED_EXCERPT_RAG_MAX = 16_000
 def validate_selection_against_snapshot(
     *,
     snapshot: str | None,
-    selection_from: int | None,
-    selection_to: int | None,
     selected_plaintext: str | None,
-) -> tuple[int, int, str] | None:
+    require_unique_in_snapshot: bool,
+) -> str | None:
     """
-    Returns (from, to, excerpt) when selection is active, else None.
-    snapshot must be the same document the client used for offsets (UTF-16 indices).
+    When ``selected_plaintext`` is non-empty, validate it against ``snapshot``.
+
+    ``require_unique_in_snapshot``: for ``replace_selection``, the substring must
+    appear exactly once (non-overlapping ``str.count`` semantics).
     """
-    if selection_from is None and selection_to is None:
+    if selected_plaintext is None or not selected_plaintext.strip():
         return None
-    if selection_from is None or selection_to is None:
-        raise ApiError(
-            status_code=422,
-            code="VALIDATION_ERROR",
-            message="selection_from and selection_to must both be provided together.",
-        )
-    if selection_from > selection_to:
-        raise ApiError(
-            status_code=422,
-            code="VALIDATION_ERROR",
-            message="selection_from must be less than or equal to selection_to.",
-        )
+    excerpt = selected_plaintext
     if snapshot is None:
         raise ApiError(
             status_code=422,
             code="VALIDATION_ERROR",
-            message="current_section_plaintext is required when selection bounds are sent.",
+            message="current_section_plaintext is required when selected_plaintext is sent.",
         )
-    doc_len = len(snapshot)
-    if selection_from < 0 or selection_to > doc_len:
-        raise ApiError(
-            status_code=422,
-            code="VALIDATION_ERROR",
-            message="Selection is out of range for the provided section text.",
-        )
-    slice_text = snapshot[selection_from:selection_to]
-    if selected_plaintext is not None:
-        if slice_text != selected_plaintext:
+    if require_unique_in_snapshot:
+        c = snapshot.count(excerpt)
+        if c != 1:
             raise ApiError(
                 status_code=422,
                 code="VALIDATION_ERROR",
-                message="selected_plaintext does not match the section text at the given offsets.",
+                message=(
+                    "Selected text must appear exactly once in the section markdown "
+                    f"({c} occurrences)."
+                ),
             )
-        excerpt = selected_plaintext
-    else:
-        excerpt = slice_text
-    if not excerpt.strip():
+    elif excerpt not in snapshot:
         raise ApiError(
             status_code=422,
             code="VALIDATION_ERROR",
-            message="Selection is empty.",
+            message="selected_plaintext does not appear in the section text.",
         )
-    return (selection_from, selection_to, excerpt)
+    return excerpt
 
 
 def excerpt_block_for_rag(excerpt: str) -> str:

@@ -217,18 +217,15 @@ class PrivateThreadAgent:
         effective_snap: str,
         content: str,
         full: str,
-        selection_triple: tuple[int, int, str] | None,
+        selection_excerpt: str | None,
         ctx: TokenUsageScope,
     ) -> dict[str, Any] | None:
         patch_prompt = (
             f"Current section markdown (full):\n{effective_snap}\n\n"
             f"User request:\n{content}\n\nAssistant reply (main body):\n{full}\n"
         )
-        if selection_triple is not None:
-            patch_prompt += (
-                f"\nSelection to replace (from={selection_triple[0]}, "
-                f"to={selection_triple[1]}):\n{selection_triple[2]}\n"
-            )
+        if selection_excerpt is not None:
+            patch_prompt += f"\nSelection to replace:\n{selection_excerpt}\n"
         try:
             if intent == "append":
                 raw_patch = await self.llm.chat_structured(
@@ -242,7 +239,7 @@ class PrivateThreadAgent:
                     "append",
                     raw_patch,
                     snapshot=effective_snap,
-                    selection=selection_triple,
+                    selection_excerpt=selection_excerpt,
                 )
             if intent == "replace_selection":
                 raw_patch = await self.llm.chat_structured(
@@ -256,7 +253,7 @@ class PrivateThreadAgent:
                     "replace_selection",
                     raw_patch,
                     snapshot=effective_snap,
-                    selection=selection_triple,
+                    selection_excerpt=selection_excerpt,
                 )
             raw_patch = await self.llm.chat_structured(
                 system_prompt=THREAD_PATCH_EDIT_SYSTEM_PROMPT,
@@ -266,7 +263,7 @@ class PrivateThreadAgent:
                 call_source="thread_patch_edit",
             )
             return _normalize_patch_proposal(
-                "edit", raw_patch, snapshot=effective_snap, selection=selection_triple
+                "edit", raw_patch, snapshot=effective_snap, selection_excerpt=selection_excerpt
             )
         except ApiError:
             return {"error": "patch_structured_call_failed"}

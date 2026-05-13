@@ -71,20 +71,10 @@ class PrivateThreadStreamBody(BaseModel):
         default=False,
         description="When true, append recent GitLab commits to RAG context if configured.",
     )
-    selection_from: int | None = Field(
-        default=None,
-        ge=0,
-        description="Start offset (UTF-16 code units) into current_section_plaintext.",
-    )
-    selection_to: int | None = Field(
-        default=None,
-        ge=0,
-        description="End offset (exclusive, UTF-16) into current_section_plaintext.",
-    )
     selected_plaintext: str | None = Field(
         default=None,
         max_length=PRIVATE_THREAD_SELECTED_PLAINTEXT_MAX,
-        description="Optional; must match snapshot[selection_from:selection_to] when provided.",
+        description="Optional editor selection text; must appear in current_section_plaintext.",
     )
     include_selection_in_context: bool = Field(
         default=True,
@@ -105,14 +95,7 @@ class PrivateThreadStreamBody(BaseModel):
     )
 
     @model_validator(mode="after")
-    def selection_both_or_neither(self) -> PrivateThreadStreamBody:
-        has_from = self.selection_from is not None
-        has_to = self.selection_to is not None
-        if has_from != has_to:
-            raise ValueError("selection_from and selection_to must both be set or both omitted.")
-        if has_from and self.selection_from is not None and self.selection_to is not None:
-            if self.selection_from > self.selection_to:
-                raise ValueError("selection_from must be <= selection_to.")
+    def command_only_with_ask(self) -> PrivateThreadStreamBody:
         if self.command != "none" and self.thread_intent != "ask":
             raise ValueError("command is only supported when thread_intent is ask.")
         return self

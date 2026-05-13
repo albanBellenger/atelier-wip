@@ -1,4 +1,4 @@
-"""Unit: PrivateThreadStreamBody selection fields."""
+"""Unit: PrivateThreadStreamBody."""
 
 import pytest
 from pydantic import ValidationError
@@ -6,25 +6,13 @@ from pydantic import ValidationError
 from app.schemas.private_thread import PrivateThreadStreamBody
 
 
-def test_selection_both_required() -> None:
-    with pytest.raises(ValidationError):
-        PrivateThreadStreamBody(
-            content="hi",
-            selection_from=1,
-            selection_to=None,
-        )
-
-
-def test_valid_selection_bounds() -> None:
+def test_valid_selected_plaintext() -> None:
     b = PrivateThreadStreamBody(
         content="hi",
-        selection_from=1,
-        selection_to=3,
         selected_plaintext="bc",
         current_section_plaintext="abcd",
     )
-    assert b.selection_from == 1
-    assert b.selection_to == 3
+    assert b.selected_plaintext == "bc"
 
 
 def test_command_requires_ask_intent() -> None:

@@ -4,7 +4,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import type { ReactElement } from 'react'
+import type { ReactElement, RefObject } from 'react'
 import {
   useEffect,
   useLayoutEffect,
@@ -12,14 +12,14 @@ import {
   useRef,
   useState,
 } from 'react'
-import * as Y from 'yjs'
-import type { EditorSelectionState } from '../editor/SplitEditor'
+import type { Transaction } from 'yjs'
+import type { EditorSelectionState } from '../editor/editorSelection'
+import type { MilkdownEditorApi } from '../editor/MilkdownEditor'
 import { useStudioChatModelPicker } from '../../hooks/useStudioChatModelPicker'
 import { useStream } from '../../hooks/useStream'
 import type { YjsCollab } from '../../hooks/useYjsCollab'
 import { summarizePeerEdit } from '../../lib/copilotPeerEditSummary'
 import {
-  applyPatchToYtext,
   canApplyPatch,
   isPatchIntentProposal,
   normalizePatchProposal,
@@ -37,7 +37,10 @@ import {
   collaboratorCountFromAwareness,
   safeAwarenessStates,
 } from '../../lib/copilotAwareness'
-import { parseThreadComposerInput } from '../../lib/threadSlashCommand'
+import {
+  parseThreadComposerInput,
+  type ThreadIntent,
+} from '../../lib/threadSlashCommand'
 import type { LlmOutboundPromptMessage } from '../../lib/llmOutboundPrompt'
 import {
   getContextPreview,
@@ -112,6 +115,7 @@ export function CopilotPanel(props: {
   sectionId: string
   projectHref: string
   collab: YjsCollab | null
+  sectionEditorApiRef: RefObject<MilkdownEditorApi | null>
   editorSelection: EditorSelectionState | null
   onClearEditorSelection: () => void
   density?: CopilotDensity
@@ -127,6 +131,8 @@ export function CopilotPanel(props: {
   onContextRagQuerySyncedChange?: (q: string) => void
   /** Parent-driven tab switch (e.g. HealthRail “Open … tab”). */
   copilotTabRequest?: { id: number; tab: CopilotSideTab } | null
+  /** Lets ancestors (e.g. Milkdown slash menu) call the same `setDraft` as the composer. */
+  onRegisterCopilotDraftSetter?: (setDraft: (value: string) => void) => void
 }): ReactElement {
   const {
     studioId,
@@ -134,6 +140,7 @@ export function CopilotPanel(props: {
     sectionId,
     projectHref,
     collab,
+    sectionEditorApiRef,
     editorSelection,
     onClearEditorSelection,
     density = 'compact',
@@ -144,6 +151,7 @@ export function CopilotPanel(props: {
     contextRagQuerySynced = '',
     onContextRagQuerySyncedChange,
     copilotTabRequest,
+    onRegisterCopilotDraftSetter,
   } = props
   const { streamPrivateThread } = useStream()
   const {
@@ -181,6 +189,7 @@ export function CopilotPanel(props: {
   >([])
   const [awareBump, setAwareBump] = useState(0)
   const anchorRef = useRef<PatchAnchor | null>(null)
+  const activeStreamIntentRef = useRef<ThreadIntent | null>(null)
   const [anchorGate, setAnchorGate] = useState<PatchAnchor | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const chatScrollRef = useRef<HTMLDivElement>(null)
@@ -195,6 +204,10 @@ export function CopilotPanel(props: {
   const [llmPromptOverlayMessageId, setLlmPromptOverlayMessageId] = useState<
     string | null
   >(null)
+
+  useEffect(() => {
+    onRegisterCopilotDraftSetter?.(setDraft)
+  }, [onRegisterCopilotDraftSetter, setDraft])
 
   useEffect(() => {
     onDraftEmptyChange?.(!draft.trim())
@@ -242,9 +255,9 @@ export function CopilotPanel(props: {
   collabRef.current = collab
 
   useEffect(() => {
-    const ytext = collab?.ytext
+    const ydoc = collab?.ydoc
     setPeerEditEvents([])
-    if (!ytext) {
+    if (!ydoc) {
       return
     }
     let timer: number | null = null
@@ -270,8 +283,8 @@ export function CopilotPanel(props: {
         ].slice(0, 40),
       )
     }
-    const onObs = (_event: Y.YTextEvent, transaction: Y.Transaction): void => {
-      if (transaction.local) {
+    const onAfter = (tr: Transaction): void => {
+      if (tr.local) {
         return
       }
       pending = true
@@ -280,27 +293,27 @@ export function CopilotPanel(props: {
       }
       timer = window.setTimeout(flush, 450)
     }
-    ytext.observe(onObs)
+    ydoc.on('afterTransaction', onAfter)
     return () => {
       if (timer != null) {
         window.clearTimeout(timer)
       }
-      ytext.unobserve(onObs)
+      ydoc.off('afterTransaction', onAfter)
     }
-  }, [collab?.ytext])
+  }, [collab?.ydoc])
 
   useLayoutEffect(() => {
-    if (!collab?.ytext || patchProposal == null) {
+    if (!collab?.ydoc || patchProposal == null) {
       return
     }
-    const onObs = (): void => {
+    const onAfter = (): void => {
       setDocBump((n) => n + 1)
     }
-    collab.ytext.observe(onObs)
+    collab.ydoc.on('afterTransaction', onAfter)
     return () => {
-      collab.ytext.unobserve(onObs)
+      collab.ydoc.off('afterTransaction', onAfter)
     }
-  }, [collab?.ytext, patchProposal])
+  }, [collab?.ydoc, patchProposal])
 
   const threadQ = useQuery({
     queryKey: ['privateThread', projectId, sectionId],
@@ -371,7 +384,7 @@ export function CopilotPanel(props: {
   const improveMut = useMutation({
     meta: { skipGlobalToast: true },
     mutationFn: async (instruction: string | null) => {
-      const snapshot = collab?.ytext?.toString() ?? ''
+      const snapshot = sectionEditorApiRef.current?.getMarkdown() ?? ''
       return improveSection(projectId, sectionId, {
         instruction,
         current_section_plaintext:
@@ -379,6 +392,7 @@ export function CopilotPanel(props: {
       })
     },
     onMutate: () => {
+      activeStreamIntentRef.current = null
       setErr(null)
       setIncludeGitHistory(false)
       setIncludeSelectionInContext(true)
@@ -410,6 +424,7 @@ export function CopilotPanel(props: {
       }
       const content = parsed.content
       const effectiveIntent = parsed.threadIntent
+      activeStreamIntentRef.current = effectiveIntent
       const streamCommand = parsed.command
       const sendIncludeGit = includeGitHistory
       const sendIncludeSelection = includeSelectionInContext
@@ -426,40 +441,33 @@ export function CopilotPanel(props: {
       setLiveTrimNotice(null)
       setFindings([])
       setContextTruncated(false)
-      const snapshot = collab?.ytext?.toString()
+      const snapshot = sectionEditorApiRef.current?.getMarkdown() ?? ''
       const sel = editorSelection
       const hasNonEmptySelection =
-        sel != null &&
-        collab != null &&
-        snapshot !== undefined &&
-        sel.to > sel.from
-      const sendSelectionBounds =
+        sel != null && collab != null && sel.to > sel.from
+      const sendSelectedPlaintext =
         hasNonEmptySelection &&
         (sendIncludeSelection || effectiveIntent === 'replace_selection')
       const payload = {
         content,
         command: streamCommand,
-        ...(collab != null ? { current_section_plaintext: snapshot ?? '' } : {}),
+        ...(collab != null ? { current_section_plaintext: snapshot } : {}),
         include_git_history: sendIncludeGit,
         include_selection_in_context: sendIncludeSelection,
         thread_intent: effectiveIntent,
-        ...(sendSelectionBounds && sel != null
+        ...(sendSelectedPlaintext && sel != null
           ? {
-              selection_from: sel.from,
-              selection_to: sel.to,
               selected_plaintext: sel.text,
             }
           : {}),
         ...(selectedModel ? { preferred_model: selectedModel } : {}),
       }
       anchorRef.current =
-        collab != null && snapshot !== undefined
+        collab != null
           ? {
               snapshot,
-              selectionFrom:
-                hasNonEmptySelection && sel != null ? sel.from : undefined,
-              selectionTo:
-                hasNonEmptySelection && sel != null ? sel.to : undefined,
+              selectedPlaintext:
+                hasNonEmptySelection && sel != null ? sel.text : undefined,
             }
           : null
       setAnchorGate(anchorRef.current)
@@ -481,31 +489,57 @@ export function CopilotPanel(props: {
             meta.patch_proposal !== undefined ? meta.patch_proposal : undefined
           if (raw !== undefined) {
             const norm = normalizePatchProposal(raw ?? null)
-            setPatchProposal(norm)
-            if (norm && collab != null && snapshot !== undefined) {
-              const after = previewFromProposal(snapshot, norm)
-              setPatchPreviewLines(
-                summarizeTextChange(snapshot, after, 12),
-              )
+            const api = sectionEditorApiRef.current
+            if (
+              norm != null &&
+              isPatchIntentProposal(norm) &&
+              norm.intent === 'append' &&
+              activeStreamIntentRef.current === 'append' &&
+              api != null &&
+              typeof api.animateAppendFromMarkdown === 'function'
+            ) {
+              void api
+                .animateAppendFromMarkdown(norm.markdown_to_append)
+                .then(() => {
+                  setPatchProposal(null)
+                  setPatchPreviewLines([])
+                  anchorRef.current = null
+                  setAnchorGate(null)
+                })
             } else {
-              setPatchPreviewLines([])
+              setPatchProposal(norm)
+              if (norm && collab != null) {
+                const after = previewFromProposal(
+                  snapshot,
+                  norm,
+                  anchorRef.current,
+                )
+                setPatchPreviewLines(
+                  summarizeTextChange(snapshot, after, 12),
+                )
+              } else {
+                setPatchPreviewLines([])
+              }
             }
           }
+          const assistId = meta.assistant_message_id
           if (
-            typeof meta.assistant_message_id === 'string' &&
-            meta.assistant_message_id !== '' &&
+            typeof assistId === 'string' &&
+            assistId !== '' &&
             meta.llm_outbound_messages != null &&
             meta.llm_outbound_messages.length > 0
           ) {
+            const outbound = meta.llm_outbound_messages
             setLlmPromptByMessageId((prev) => ({
               ...prev,
-              [meta.assistant_message_id]: meta.llm_outbound_messages,
+              [assistId]: outbound,
             }))
           }
         },
       })
     },
     onSuccess: () => {
+      activeStreamIntentRef.current = null
       setStreaming('')
       setLiveTrimNotice(null)
       void qc.invalidateQueries({
@@ -513,6 +547,7 @@ export function CopilotPanel(props: {
       })
     },
     onError: (e: unknown) => {
+      activeStreamIntentRef.current = null
       const msg =
         e && typeof e === 'object' && 'detail' in e
           ? String((e as { detail: unknown }).detail)
@@ -524,6 +559,7 @@ export function CopilotPanel(props: {
   function previewFromProposal(
     snapshot: string,
     p: PatchProposalMeta,
+    anchor: PatchAnchor | null,
   ): string {
     if ('error' in p && p.error) {
       return snapshot
@@ -537,9 +573,8 @@ export function CopilotPanel(props: {
     if (p.intent === 'replace_selection') {
       return previewAfterReplace(
         snapshot,
-        p.selection_from,
-        p.selection_to,
         p.replacement_markdown,
+        anchor?.selectedPlaintext ?? '',
       )
     }
     if (p.intent === 'edit') {
@@ -550,16 +585,16 @@ export function CopilotPanel(props: {
 
   function onApplyPatch(): void {
     setApplyErr(null)
-    if (!collab?.ytext || !patchProposal || !anchorRef.current) {
+    const api = sectionEditorApiRef.current
+    if (!api || !patchProposal || !anchorRef.current) {
       setApplyErr('Nothing to apply.')
       return
     }
     const anchor: PatchAnchor = {
       snapshot: anchorRef.current.snapshot,
-      selectionFrom: anchorRef.current.selectionFrom,
-      selectionTo: anchorRef.current.selectionTo,
+      selectedPlaintext: anchorRef.current.selectedPlaintext,
     }
-    const r = applyPatchToYtext(collab.ytext, patchProposal, anchor)
+    const r = api.applyPatch(patchProposal, anchor)
     if (!r.ok) {
       setApplyErr(r.reason)
       return
@@ -594,18 +629,21 @@ export function CopilotPanel(props: {
     if (!patchProposal || !anchorRef.current?.snapshot) {
       return
     }
-    const merged = previewFromProposal(anchorRef.current.snapshot, patchProposal)
+    const merged = previewFromProposal(
+      anchorRef.current.snapshot,
+      patchProposal,
+      anchorRef.current,
+    )
     setProposedMarkdown(merged)
     setSideTab('diff')
   }
 
   function onApplyProposedFull(): void {
-    if (!collab?.ytext || !proposedMarkdown.trim()) {
+    const api = sectionEditorApiRef.current
+    if (!api || !proposedMarkdown.trim()) {
       return
     }
-    const t = collab.ytext
-    t.delete(0, t.length)
-    t.insert(0, proposedMarkdown)
+    api.replaceFullMarkdown(proposedMarkdown)
     setProposedMarkdown('')
     setSideTab('chat')
   }
@@ -642,21 +680,28 @@ export function CopilotPanel(props: {
     ? 'Switch to Split mode to use /replace with a selection.'
     : 'Replace requires a non-empty editor selection.'
   void docBump
+  const diffOriginalMarkdown = useMemo(
+    () => sectionEditorApiRef.current?.getMarkdown() ?? '',
+    [sectionEditorApiRef, docBump],
+  )
+
   let applyPatchBlocked: string | null = null
   if (
     patchProposal != null &&
-    collab?.ytext != null &&
+    sectionEditorApiRef.current != null &&
     anchorGate != null &&
     !('error' in patchProposal && patchProposal.error)
   ) {
-    const gate = canApplyPatch(collab.ytext, patchProposal, anchorGate)
+    const md = sectionEditorApiRef.current.getMarkdown()
+    const view = sectionEditorApiRef.current.getEditorView()
+    const gate = canApplyPatch(md, patchProposal, anchorGate, view)
     if (!gate.ok) {
       applyPatchBlocked = gate.reason
     }
   }
 
   const applyPatchEnabled =
-    Boolean(collab?.ytext) &&
+    sectionEditorApiRef.current != null &&
     patchProposal != null &&
     !('error' in patchProposal && patchProposal.error) &&
     applyPatchBlocked == null
@@ -676,12 +721,12 @@ export function CopilotPanel(props: {
     if (onPatchOverlayChange == null) {
       return
     }
-    if (!collab?.ytext || patchProposal == null || anchorGate == null) {
+    if (patchProposal == null || anchorGate == null) {
       patchOverlayPrevRef.current = null
       onPatchOverlayChange(null)
       return
     }
-    const merged = previewFromProposal(anchorGate.snapshot, patchProposal)
+    const merged = previewFromProposal(anchorGate.snapshot, patchProposal, anchorGate)
     const prev = patchOverlayPrevRef.current
     if (
       prev != null &&
@@ -709,7 +754,7 @@ export function CopilotPanel(props: {
     })
   }, [
     onPatchOverlayChange,
-    collab?.ytext,
+    sectionEditorApiRef,
     patchProposal,
     anchorGate,
     applyPatchEnabled,
@@ -1034,14 +1079,14 @@ export function CopilotPanel(props: {
     ) : isFocusLayout ? (
       <div className="mx-auto flex min-h-0 w-full max-w-[840px] flex-1 flex-col overflow-hidden px-4">
         <DiffTab
-          original={collab?.ytext?.toString() ?? ''}
+          original={diffOriginalMarkdown}
           proposed={proposedMarkdown}
           onApply={onApplyProposedFull}
         />
       </div>
     ) : (
       <DiffTab
-        original={collab?.ytext?.toString() ?? ''}
+        original={diffOriginalMarkdown}
         proposed={proposedMarkdown}
         onApply={onApplyProposedFull}
       />

@@ -11,13 +11,24 @@ export function previewAfterAppend(snapshot: string, markdownToAppend: string): 
   return snapshot + sep + markdownToAppend
 }
 
+/** Preview replace_selection using the client's selected plaintext at send time (not LLM offsets). */
 export function previewAfterReplace(
   snapshot: string,
-  from: number,
-  to: number,
   replacementMarkdown: string,
+  selectedPlaintext: string,
 ): string {
-  return snapshot.slice(0, from) + replacementMarkdown + snapshot.slice(to)
+  if (!selectedPlaintext) {
+    return snapshot
+  }
+  const idx = snapshot.indexOf(selectedPlaintext)
+  if (idx < 0) {
+    return snapshot
+  }
+  return (
+    snapshot.slice(0, idx) +
+    replacementMarkdown +
+    snapshot.slice(idx + selectedPlaintext.length)
+  )
 }
 
 export function previewAfterEdit(

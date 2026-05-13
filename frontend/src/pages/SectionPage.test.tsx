@@ -272,7 +272,7 @@ describe('SectionPage', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByTestId('codemirror-host')).toBeInTheDocument()
+      expect(screen.getByTestId('milkdown-host')).toBeInTheDocument()
     })
     expect(screen.getByTestId('section-layout-switcher')).toBeInTheDocument()
 
@@ -280,7 +280,7 @@ describe('SectionPage', () => {
     await waitFor(() => {
       expect(screen.getByTestId('section-title-breadcrumb')).toBeInTheDocument()
     })
-    expect(screen.queryByTestId('codemirror-host')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('milkdown-host')).not.toBeInTheDocument()
     expect(localStorage.getItem('atelier:sectionLayout:sec-1')).toBe('focus')
   })
 
@@ -309,7 +309,7 @@ describe('SectionPage', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByTestId('codemirror-host')).toBeInTheDocument()
+      expect(screen.getByTestId('milkdown-host')).toBeInTheDocument()
     })
 
     await act(async () => {
@@ -335,7 +335,7 @@ describe('SectionPage', () => {
       )
     })
     await waitFor(() => {
-      expect(screen.getByTestId('codemirror-host')).toBeInTheDocument()
+      expect(screen.getByTestId('milkdown-host')).toBeInTheDocument()
     })
   })
 

@@ -210,7 +210,7 @@ Software Docs are deliberately not a wiki — there are no free-form pages, no `
 
 ### 6b.3 Editing
 
-Software Docs sections use the same split-view CodeMirror editor and Yjs real-time collaboration as Project Sections (§8). The collaboration room key is distinct from Project Section rooms, so two users editing the same Software Docs section see each other, while a user editing a Project Section is not pulled into the docs room.
+Software Docs sections use the same split-view Milkdown editor and Yjs real-time collaboration as Project Sections (§8). The collaboration room key is distinct from Project Section rooms, so two users editing the same Software Docs section see each other, while a user editing a Project Section is not pulled into the docs room.
 
 Section saves are persisted with the same debounce behaviour as Project Sections, and trigger the same re-embedding pipeline (§6b.5).
 
@@ -454,7 +454,7 @@ The private-thread composer recognises slash-prefixed commands that change how t
 | `/replace <instruction>` | Streamed reply that proposes replacing the user's current editor selection. Disabled if no selection is active. |
 | `/edit <instruction>` | Streamed reply that proposes a unique snippet replacement inside the section |
 
-**Editor selection as context.** When the editor has an active selection, the composer can include the selection (offsets and excerpt) as a "selected excerpt" block in the LLM context, so the model can answer scoped to that selection.
+**Editor selection as context.** When the editor has an active selection, the composer can include the selected plaintext as a "selected excerpt" block in the LLM context, so the model can answer scoped to that selection.
 
 **Patch proposal.** For commands whose intent is to modify the section (`/append`, `/replace`, `/edit`, and `/improve`), the server may return a structured `patch_proposal` after the streamed reply. The client displays the proposed change as a preview; the user must explicitly **Apply** before any change is written into the collaborative editor. No silent auto-apply.
 

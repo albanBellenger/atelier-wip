@@ -6,7 +6,6 @@ import {
   collabRoomName,
   collabWebSocketBaseUrl,
   softwareDocCollabRoomName,
-  YDOC_TEXT_FIELD,
 } from '../services/ws'
 
 export interface CollabUserStyle {
@@ -33,11 +32,31 @@ export function colorsForUser(userId: string): {
   return { color, colorLight }
 }
 
+const MARKDOWN_SNAPSHOT_TYPE = 'markdown_snapshot' as const
+
 export interface YjsCollab {
   ydoc: Y.Doc
   provider: WebsocketProvider
-  ytext: Y.Text
   awareness: WebsocketProvider['awareness']
+  /** Send canonical Markdown for `sections.content` on the same collab WebSocket (debounce in caller). */
+  sendMarkdownSnapshot: (markdown: string) => void
+}
+
+function attachMarkdownSnapshotSender(
+  provider: WebsocketProvider,
+): (markdown: string) => void {
+  return (markdown: string): void => {
+    const ws = provider.ws as WebSocket | null
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      return
+    }
+    ws.send(
+      JSON.stringify({
+        type: MARKDOWN_SNAPSHOT_TYPE,
+        content: markdown,
+      }),
+    )
+  }
 }
 
 export function useYjsCollab(
@@ -67,10 +86,10 @@ export function useYjsCollab(
         ...(token ? { params: { token } } : {}),
       },
     )
-    const ytext = ydoc.getText(YDOC_TEXT_FIELD)
     const { awareness } = provider
+    const sendMarkdownSnapshot = attachMarkdownSnapshotSender(provider)
 
-    setBundle({ ydoc, provider, ytext, awareness })
+    setBundle({ ydoc, provider, awareness, sendMarkdownSnapshot })
 
     return () => {
       provider.destroy()
@@ -124,10 +143,10 @@ export function useSoftwareDocYjsCollab(
         ...(token ? { params: { token } } : {}),
       },
     )
-    const ytext = ydoc.getText(YDOC_TEXT_FIELD)
     const { awareness } = provider
+    const sendMarkdownSnapshot = attachMarkdownSnapshotSender(provider)
 
-    setBundle({ ydoc, provider, ytext, awareness })
+    setBundle({ ydoc, provider, awareness, sendMarkdownSnapshot })
 
     return () => {
       provider.destroy()
