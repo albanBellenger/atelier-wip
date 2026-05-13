@@ -214,6 +214,9 @@ export function CopilotPanel(props: {
 
   useEffect(() => {
     onRegisterCopilotDraftSetter?.(setDraft)
+    return () => {
+      onRegisterCopilotDraftSetter?.(() => {})
+    }
   }, [onRegisterCopilotDraftSetter, setDraft])
 
   useEffect(() => {
@@ -582,6 +585,11 @@ export function CopilotPanel(props: {
 
   useEffect(() => {
     onRegisterCopilotSlashExecutor?.(executeComposerRaw)
+    return () => {
+      onRegisterCopilotSlashExecutor?.((_raw: string) => {
+        /* unregister */
+      })
+    }
   }, [onRegisterCopilotSlashExecutor, executeComposerRaw])
 
   function previewFromProposal(

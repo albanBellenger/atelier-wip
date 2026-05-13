@@ -289,6 +289,9 @@ export function OutlineEditorV2(): ReactElement {
 
   const outlineCopilotEditorRef = useRef<MilkdownEditorApi | null>(null)
   const copilotSetDraftRef = useRef<((value: string) => void) | null>(null)
+  const copilotSlashExecutorRef = useRef<
+    ((raw: string) => void | Promise<void>) | null
+  >(null)
 
   const onRegisterCopilotDraftSetter = useCallback(
     (fn: (value: string) => void) => {
@@ -297,8 +300,26 @@ export function OutlineEditorV2(): ReactElement {
     [],
   )
 
+  const onRegisterCopilotSlashExecutor = useCallback(
+    (run: (raw: string) => void | Promise<void>) => {
+      copilotSlashExecutorRef.current = run
+    },
+    [],
+  )
+
+  /** Copilot lives in `CopilotOverlay`; panel mounts only when open, so defer until after mount. */
   const onAiComposerPrefill = useCallback((markdown: string) => {
-    copilotSetDraftRef.current?.(markdown)
+    setCopilotOpen(true)
+    window.setTimeout(() => {
+      copilotSetDraftRef.current?.(markdown)
+    }, 0)
+  }, [])
+
+  const onCopilotSlashExecute = useCallback((raw: string) => {
+    setCopilotOpen(true)
+    window.setTimeout(() => {
+      void copilotSlashExecutorRef.current?.(raw)
+    }, 0)
   }, [])
 
   const defaultSectionMarkdown = sectionQ.data?.content ?? ''
@@ -517,6 +538,7 @@ export function OutlineEditorV2(): ReactElement {
                             onSelectionChange={onEditorSelectionChange}
                             patchOverlay={patchOverlay}
                             onAiComposerPrefill={onAiComposerPrefill}
+                            onCopilotSlashExecute={onCopilotSlashExecute}
                             replaceSelectionSlashDisabled={false}
                           />
                         </div>
@@ -583,6 +605,7 @@ export function OutlineEditorV2(): ReactElement {
               onContextRagQuerySyncedChange={setSyncedContextRagQuery}
               copilotTabRequest={null}
               onRegisterCopilotDraftSetter={onRegisterCopilotDraftSetter}
+              onRegisterCopilotSlashExecutor={onRegisterCopilotSlashExecutor}
             />
           ) : (
             <p className="p-4 text-sm text-zinc-500">Connecting…</p>
