@@ -7,7 +7,7 @@ import * as Y from 'yjs'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { MilkdownEditorApi } from '../editor/MilkdownEditor'
+import type { CrepeEditorApi } from '../editor/CrepeEditor'
 import type { YjsCollab } from '../../hooks/useYjsCollab'
 import * as api from '../../services/api'
 import { CopilotPanel } from './CopilotPanel'
@@ -27,7 +27,7 @@ vi.mock('../../hooks/useStream', () => ({
   useStream: () => ({ streamPrivateThread: streamSpy }),
 }))
 
-function mkEditorRef(): RefObject<MilkdownEditorApi | null> {
+function mkEditorRef(): RefObject<CrepeEditorApi | null> {
   return {
     current: {
       getEditorView: () => null,
@@ -124,7 +124,7 @@ describe('CopilotPanel', () => {
       awareness: {} as YjsCollab['awareness'],
       sendMarkdownSnapshot: vi.fn(),
     }
-    const editorRef: RefObject<MilkdownEditorApi | null> = {
+    const editorRef: RefObject<CrepeEditorApi | null> = {
       current: {
         getEditorView: () => null,
         getMarkdown: () => 'section-md',
@@ -180,7 +180,7 @@ describe('CopilotPanel', () => {
 
   it('registered slash executor calls improveSection for /improve', async () => {
     let slashExec: ((raw: string) => void | Promise<void>) | null = null
-    const editorRef: RefObject<MilkdownEditorApi | null> = {
+    const editorRef: RefObject<CrepeEditorApi | null> = {
       current: {
         getEditorView: () => null,
         getMarkdown: () => 'x',

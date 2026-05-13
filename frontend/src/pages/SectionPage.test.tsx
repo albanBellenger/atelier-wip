@@ -2,20 +2,24 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import type { ReactElement } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as api from '../services/api'
 import { APP_VERSION } from '../version'
 import { SectionPage } from './SectionPage'
 
+vi.mock('../components/editor/SplitEditor', () => ({
+  SplitEditor: function MockSplitEditor(): ReactElement {
+    return <div data-testid="crepe-host">mock-editor</div>
+  },
+}))
+
 vi.mock('../hooks/useYjsCollab', async () => {
   const Y = await import('yjs')
   const ydoc = new Y.Doc()
-  const ytext = ydoc.getText('codemirror')
-  ytext.insert(0, 'hello')
   const bundle = {
     ydoc,
-    ytext,
     provider: { on: vi.fn(), off: vi.fn() },
     awareness: {
       clientID: 0,
@@ -23,6 +27,7 @@ vi.mock('../hooks/useYjsCollab', async () => {
       on: vi.fn(),
       off: vi.fn(),
     },
+    sendMarkdownSnapshot: vi.fn(),
   }
   return {
     colorsForUser: (): { color: string; colorLight: string } => ({
@@ -272,7 +277,7 @@ describe('SectionPage', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByTestId('milkdown-host')).toBeInTheDocument()
+      expect(screen.getByTestId('crepe-host')).toBeInTheDocument()
     })
     expect(screen.getByTestId('section-layout-switcher')).toBeInTheDocument()
 
@@ -280,7 +285,7 @@ describe('SectionPage', () => {
     await waitFor(() => {
       expect(screen.getByTestId('section-title-breadcrumb')).toBeInTheDocument()
     })
-    expect(screen.queryByTestId('milkdown-host')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('crepe-host')).not.toBeInTheDocument()
     expect(localStorage.getItem('atelier:sectionLayout:sec-1')).toBe('focus')
   })
 
@@ -309,7 +314,7 @@ describe('SectionPage', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByTestId('milkdown-host')).toBeInTheDocument()
+      expect(screen.getByTestId('crepe-host')).toBeInTheDocument()
     })
 
     await act(async () => {
@@ -335,7 +340,7 @@ describe('SectionPage', () => {
       )
     })
     await waitFor(() => {
-      expect(screen.getByTestId('milkdown-host')).toBeInTheDocument()
+      expect(screen.getByTestId('crepe-host')).toBeInTheDocument()
     })
   })
 

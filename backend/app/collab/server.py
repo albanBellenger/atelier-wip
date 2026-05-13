@@ -16,7 +16,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from app.collab.editor_context import collab_acting_user_id
 from app.models import Section, Software
-from app.services.notification_dispatch_service import NotificationDispatchService
+from app.services.section_service import SECTION_YJS_TEXT_FIELD
 from app.services.software_activity_service import SoftwareActivityService
 
 log = logging.getLogger("atelier.collab")
@@ -254,6 +254,17 @@ class AtelierWebsocketServer(WebsocketServer):
                     doc = Doc()
                     sec.yjs_state = None
                     await session.commit()
+                else:
+                    if SECTION_YJS_TEXT_FIELD in doc:
+                        log.warning(
+                            "collab: legacy outline-editor-v2 Y.Text (%r) in yjs_state "
+                            "for section %s; clearing (Crepe/y-prosemirror re-seeds)",
+                            SECTION_YJS_TEXT_FIELD,
+                            target.section_id,
+                        )
+                        doc = Doc()
+                        sec.yjs_state = None
+                        await session.commit()
             return doc
 
     def _attach_persist_observer(self, room: YRoom, room_name: str) -> None:

@@ -101,7 +101,7 @@ test('thread append SSE animates markdown into section editor', async ({
   await expect(ta).toBeVisible({ timeout: 25_000 })
   await ta.fill('/append E2E stream append')
   await page.getByRole('button', { name: 'Send' }).click()
-  await expect(ws.milkdownHost()).toContainText('[E2E] appended line', {
+  await expect(ws.crepeHost()).toContainText('[E2E] appended line', {
     timeout: 30_000,
   })
   await expect(ws.patchInlinePreview()).not.toBeVisible({ timeout: 10_000 })
@@ -119,9 +119,9 @@ test('editor slash AI menu prefills copilot composer', async ({
   const ws = new SectionWorkspacePage(page)
   await ws.goto(`${baseURL ?? ''}${path}`)
   await expect(ws.sectionOutline()).toBeVisible({ timeout: 20_000 })
-  await ws.milkdownProseMirror().click()
+  await ws.crepeProseMirror().click()
   await page.keyboard.type('/')
-  const appendBtn = page.getByTestId('editor-slash-ai-append')
+  const appendBtn = page.getByText('Copilot: append', { exact: true })
   await expect(appendBtn).toBeVisible({ timeout: 15_000 })
   await appendBtn.click()
   const ta = ws.copilotComposerTextarea()

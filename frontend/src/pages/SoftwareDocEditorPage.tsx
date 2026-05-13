@@ -7,7 +7,7 @@ import remarkGfm from 'remark-gfm'
 
 import { BackpropSectionFromCodebaseModal } from '../components/software/BackpropSectionFromCodebaseModal'
 import { SplitEditor } from '../components/editor/SplitEditor'
-import type { MilkdownEditorApi } from '../components/editor/MilkdownEditor'
+import type { CrepeEditorApi } from '../components/editor/CrepeEditor'
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
 import {
   colorsForUser,
@@ -149,7 +149,7 @@ export function SoftwareDocEditorPage(): ReactElement {
     collabUser,
   )
 
-  const editorApiRef = useRef<MilkdownEditorApi | null>(null)
+  const editorApiRef = useRef<CrepeEditorApi | null>(null)
 
   const applyBackpropDraft = useCallback(
     (md: string) => {

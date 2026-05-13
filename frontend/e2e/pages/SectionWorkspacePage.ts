@@ -47,12 +47,12 @@ export class SectionWorkspacePage {
     return this.page.getByTestId('patch-inline-preview')
   }
 
-  milkdownHost(): ReturnType<Page['getByTestId']> {
-    return this.page.getByTestId('milkdown-host')
+  crepeHost(): ReturnType<Page['getByTestId']> {
+    return this.page.getByTestId('crepe-host')
   }
 
-  milkdownProseMirror(): ReturnType<Page['locator']> {
-    return this.page.locator('[data-testid="milkdown-host"] .ProseMirror').first()
+  crepeProseMirror(): ReturnType<Page['locator']> {
+    return this.page.locator('[data-testid="crepe-host"] .ProseMirror').first()
   }
 
   sectionLayoutSwitcher(): ReturnType<Page['getByTestId']> {

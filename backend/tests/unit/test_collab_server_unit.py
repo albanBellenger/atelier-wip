@@ -277,7 +277,8 @@ async def test_load_doc_invalid_yjs_clears_blob_empty_doc(
 
 
 @pytest.mark.asyncio
-async def test_load_doc_valid_yjs_state() -> None:
+async def test_load_doc_legacy_codemirror_ytext_clears_blob() -> None:
+    """Outline v2 stored Markdown in Y.Text at ``codemirror``; Crepe uses y-prosemirror."""
     pid, sec_id = uuid.uuid4(), uuid.uuid4()
     d0 = Doc()
     d0[SECTION_YJS_TEXT_FIELD] = Text("from yjs")
@@ -289,17 +290,21 @@ async def test_load_doc_valid_yjs_state() -> None:
         title="T",
         slug="s",
         order=0,
-        content="ignored when yjs",
+        content="fallback md",
         yjs_state=blob,
     )
-    factory, _ = _session_with_section(sec)
+    factory, session = _session_with_section(sec)
+    commit = AsyncMock()
+    session.commit = commit
     old = srv._collab_server
     srv._collab_server = None
     try:
         server = srv.init_collab_server(factory, debounce_s=0.01)
         path = collab_room_path(pid, sec_id)
         doc = await server._load_doc(path)
-        assert "from yjs" in str(doc.get(SECTION_YJS_TEXT_FIELD, type=Text))
+        assert doc.get_update() == Doc().get_update()
+        assert sec.yjs_state is None
+        commit.assert_awaited()
     finally:
         srv._collab_server = old
 

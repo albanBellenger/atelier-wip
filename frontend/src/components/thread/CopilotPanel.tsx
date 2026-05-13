@@ -16,7 +16,7 @@ import {
 import { toast } from 'sonner'
 import type { Transaction } from 'yjs'
 import type { EditorSelectionState } from '../editor/editorSelection'
-import type { MilkdownEditorApi } from '../editor/MilkdownEditor'
+import type { CrepeEditorApi } from '../editor/CrepeEditor'
 import { useStudioChatModelPicker } from '../../hooks/useStudioChatModelPicker'
 import { useStream } from '../../hooks/useStream'
 import type { YjsCollab } from '../../hooks/useYjsCollab'
@@ -117,7 +117,7 @@ export function CopilotPanel(props: {
   sectionId: string
   projectHref: string
   collab: YjsCollab | null
-  sectionEditorApiRef: RefObject<MilkdownEditorApi | null>
+  sectionEditorApiRef: RefObject<CrepeEditorApi | null>
   editorSelection: EditorSelectionState | null
   onClearEditorSelection: () => void
   density?: CopilotDensity

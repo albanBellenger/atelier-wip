@@ -8,8 +8,8 @@ import type { YjsCollab } from '../../hooks/useYjsCollab'
 import type { SectionPatchOverlayState } from '../../lib/sectionPatchOverlay'
 import { SplitEditor } from './SplitEditor'
 
-vi.mock('./MilkdownEditor', () => ({
-  MilkdownEditor: React.forwardRef(function MockMilkdown(
+vi.mock('./CrepeEditor', () => ({
+  CrepeEditor: React.forwardRef(function MockCrepe(
     _props: Record<string, unknown>,
     ref: React.Ref<{ getMarkdown: () => string }>,
   ) {
@@ -22,7 +22,7 @@ vi.mock('./MilkdownEditor', () => ({
     }))
     return React.createElement(
       'div',
-      { 'data-testid': 'milkdown-editor-inner' },
+      { 'data-testid': 'crepe-editor-inner' },
       'mock',
     )
   }),
@@ -104,12 +104,12 @@ describe('SplitEditor', () => {
     expect(within(preview).getByText('Body paragraph.')).toBeInTheDocument()
   })
 
-  it('switches to preview-only: hides Milkdown host, shows markdown preview', async () => {
+  it('switches to preview-only: hides Crepe host, shows markdown preview', async () => {
     const user = userEvent.setup()
     const collab = minimalCollab()
     render(<SplitEditor collab={collab} defaultMarkdown="# Hi" />)
     await user.click(screen.getByRole('tab', { name: 'Preview' }))
-    expect(screen.queryByTestId('milkdown-host')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('crepe-host')).not.toBeInTheDocument()
     expect(screen.getByTestId('markdown-preview')).toBeInTheDocument()
   })
 
@@ -118,7 +118,7 @@ describe('SplitEditor', () => {
     const collab = minimalCollab()
     render(<SplitEditor collab={collab} defaultMarkdown="x" />)
     await user.click(screen.getByRole('tab', { name: 'Editor' }))
-    expect(screen.getByTestId('milkdown-host')).toBeInTheDocument()
+    expect(screen.getByTestId('crepe-host')).toBeInTheDocument()
     expect(screen.queryByTestId('markdown-preview')).not.toBeInTheDocument()
   })
 
