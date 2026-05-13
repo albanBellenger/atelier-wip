@@ -278,8 +278,8 @@ describe('ThreadPanel', () => {
       Record<string, unknown>,
       unknown,
     ]
-    expect(payload.selection_from).toBeUndefined()
-    expect(payload.selection_to).toBeUndefined()
+    expect(payload).not.toHaveProperty('selection_from')
+    expect(payload).not.toHaveProperty('selection_to')
     expect(payload.selected_plaintext).toBe('bc')
     expect(payload.current_section_plaintext).toBe('abcdef')
   })

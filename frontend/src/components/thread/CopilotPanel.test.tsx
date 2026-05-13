@@ -3,15 +3,24 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { act } from 'react'
 import type { RefObject } from 'react'
+import * as Y from 'yjs'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { MilkdownEditorApi } from '../editor/MilkdownEditor'
+import type { YjsCollab } from '../../hooks/useYjsCollab'
 import * as api from '../../services/api'
 import { CopilotPanel } from './CopilotPanel'
 
 const { streamSpy } = vi.hoisted(() => ({
   streamSpy: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('sonner', () => ({
+  toast: {
+    loading: vi.fn(() => 'copilot-exec-toast'),
+    dismiss: vi.fn(),
+  },
 }))
 
 vi.mock('../../hooks/useStream', () => ({
@@ -104,6 +113,118 @@ describe('CopilotPanel', () => {
       registered?.('/append ')
     })
     expect(ta).toHaveValue('/append ')
+  })
+
+  it('registered slash executor streams /append with same payload shape as Send', async () => {
+    let slashExec: ((raw: string) => void | Promise<void>) | null = null
+    const ydoc = new Y.Doc()
+    const collab: YjsCollab = {
+      ydoc,
+      provider: {} as YjsCollab['provider'],
+      awareness: {} as YjsCollab['awareness'],
+      sendMarkdownSnapshot: vi.fn(),
+    }
+    const editorRef: RefObject<MilkdownEditorApi | null> = {
+      current: {
+        getEditorView: () => null,
+        getMarkdown: () => 'section-md',
+        replaceFullMarkdown: () => {},
+        applyPatch: () => ({ ok: false, reason: 'noop' }),
+        animateAppendFromMarkdown: () => Promise.resolve(),
+      },
+    }
+    streamSpy.mockClear()
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <CopilotPanel
+            studioId="s1"
+            projectId="p1"
+            sectionId="sec1"
+            projectHref="/studios/s1/software/sw1/projects/p1"
+            collab={collab}
+            sectionEditorApiRef={editorRef}
+            editorSelection={null}
+            onClearEditorSelection={() => {}}
+            onRegisterCopilotSlashExecutor={(fn) => {
+              slashExec = fn
+            }}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    await waitFor(() => {
+      expect(slashExec).not.toBeNull()
+    })
+    await act(async () => {
+      await slashExec?.('/append')
+    })
+    await waitFor(() => {
+      expect(streamSpy).toHaveBeenCalled()
+    })
+    const [, , payload] = streamSpy.mock.calls[0] as [
+      string,
+      string,
+      Record<string, unknown>,
+      unknown,
+    ]
+    expect(payload.thread_intent).toBe('append')
+    expect(payload.content).toBe(
+      'Append helpful content to the end of this section.',
+    )
+    expect(payload.current_section_plaintext).toBe('section-md')
+  })
+
+  it('registered slash executor calls improveSection for /improve', async () => {
+    let slashExec: ((raw: string) => void | Promise<void>) | null = null
+    const editorRef: RefObject<MilkdownEditorApi | null> = {
+      current: {
+        getEditorView: () => null,
+        getMarkdown: () => 'x',
+        replaceFullMarkdown: () => {},
+        applyPatch: () => ({ ok: false, reason: 'noop' }),
+        animateAppendFromMarkdown: () => Promise.resolve(),
+      },
+    }
+    streamSpy.mockClear()
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={qc}>
+          <CopilotPanel
+            studioId="s1"
+            projectId="p1"
+            sectionId="sec1"
+            projectHref="/studios/s1/software/sw1/projects/p1"
+            collab={null}
+            sectionEditorApiRef={editorRef}
+            editorSelection={null}
+            onClearEditorSelection={() => {}}
+            onRegisterCopilotSlashExecutor={(fn) => {
+              slashExec = fn
+            }}
+          />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+    await waitFor(() => {
+      expect(slashExec).not.toBeNull()
+    })
+    await act(async () => {
+      await slashExec?.('/improve')
+    })
+    await waitFor(() => {
+      expect(vi.mocked(api.improveSection)).toHaveBeenCalledWith('p1', 'sec1', {
+        instruction: null,
+        current_section_plaintext: 'x',
+      })
+    })
+    expect(streamSpy).not.toHaveBeenCalled()
   })
 
   it('viewer cannot see context kind prefs when canEditContext is false', async () => {

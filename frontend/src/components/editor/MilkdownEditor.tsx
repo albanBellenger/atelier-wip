@@ -67,6 +67,11 @@ export interface MilkdownEditorProps {
   patchOverlay?: SectionPatchOverlayState | null
   /** Prefill section copilot composer from slash / bubble AI entries. */
   onAiComposerPrefill?: (markdown: string) => void
+  /**
+   * Run copilot Send-equivalent for a raw slash line (e.g. `/append`), used by
+   * slash/bubble items with `executionMode: 'execute'`.
+   */
+  onCopilotSlashExecute?: (rawComposerLine: string) => void | Promise<void>
   /** When true, /replace is disabled in the selection bubble (focus layout). */
   replaceSelectionSlashDisabled?: boolean
 }
@@ -315,6 +320,7 @@ export const MilkdownEditor = forwardRef<MilkdownEditorApi, MilkdownEditorProps>
           <AiComposerPrefillProvider
             value={{
               onAiComposerPrefill: props.onAiComposerPrefill,
+              onExecuteCopilotSlash: props.onCopilotSlashExecute,
               replaceSelectionDisabled: props.replaceSelectionSlashDisabled,
             }}
           >

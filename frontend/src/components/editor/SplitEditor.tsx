@@ -35,6 +35,8 @@ export interface SplitEditorProps {
   editorApiRef?: React.RefObject<MilkdownEditorApi | null>
   /** Prefill section copilot composer from Milkdown AI menus. */
   onAiComposerPrefill?: (markdown: string) => void
+  /** Same as `MilkdownEditor` — immediate execute for slash/bubble AI items. */
+  onCopilotSlashExecute?: (rawComposerLine: string) => void | Promise<void>
   /** When true, /replace is omitted from the selection bubble (focus layout). */
   replaceSelectionSlashDisabled?: boolean
 }
@@ -49,6 +51,7 @@ export function SplitEditor({
   patchOverlay,
   editorApiRef,
   onAiComposerPrefill,
+  onCopilotSlashExecute,
   replaceSelectionSlashDisabled = false,
 }: SplitEditorProps): ReactElement {
   const isControlled =
@@ -268,6 +271,7 @@ export function SplitEditor({
                 onSelectionChange={onSelectionChange}
                 patchOverlay={patchOverlay}
                 onAiComposerPrefill={onAiComposerPrefill}
+                onCopilotSlashExecute={onCopilotSlashExecute}
                 replaceSelectionSlashDisabled={replaceSelectionSlashDisabled}
               />
             ) : (

@@ -1360,8 +1360,8 @@ user clicks Dismiss → existing issue resolution endpoint with reason='dismisse
 ```
 POST /projects/{pid}/sections/{sid}/thread/messages
   JSON: { content, current_section_plaintext?, include_git_history?,
-          selection_from?, selection_to?, selected_plaintext?,
-          include_selection_in_context?, thread_intent? }
+          selected_plaintext?, include_selection_in_context?, thread_intent?,
+          command?, preferred_model? }
         │
         ▼
 RAGService.build_context(query, project_id, section_id,
@@ -1380,7 +1380,7 @@ ThreadPanel.tsx — useStream() → streamPrivateThreadReply → privateThreadSs
   patch_proposal (if any) is shown with preview; Apply writes to Yjs only after user confirmation
 ```
 
-`thread_intent` defaults to `ask` (chat only). For `append` | `replace_selection` | `edit`, the server runs an additional structured LLM call after the main reply and attaches the result as `patch_proposal` on the final `meta` event. Selection bounds are validated against the same plaintext snapshot used for RAG when provided. `replace_selection` requires `current_section_plaintext` and selection offsets matching that snapshot.
+`thread_intent` defaults to `ask` (chat only). For `append` | `replace_selection` | `edit`, the server runs an additional structured LLM call after the main reply and attaches the result as `patch_proposal` on the final `meta` event. When `selected_plaintext` is sent, it is validated against the same plaintext snapshot used for RAG (substring match; for `replace_selection`, the excerpt must appear exactly once in that snapshot). `replace_selection` requires `current_section_plaintext` and `selected_plaintext`; selection bounds are validated by snapshot match, not offsets.
 
 ### Project Chat (WebSocket broadcast)
 ```

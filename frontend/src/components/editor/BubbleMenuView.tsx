@@ -13,6 +13,8 @@ import {
 
 import {
   composerPrefixForAiMenuItem,
+  composerRawLineForMenuExecute,
+  executionModeForAiMenuItem,
   parsedInputForAiMenuItem,
 } from '../../lib/aiMenuActions'
 import { useAiComposerPrefill } from './aiComposerPrefillContext'
@@ -36,8 +38,11 @@ export function BubbleMenuView(): ReactElement {
   const providerRef = useRef<TooltipProvider | null>(null)
   const { view, prevState } = usePluginViewContext()
   const [loading, get] = useInstance()
-  const { onAiComposerPrefill, replaceSelectionDisabled } =
-    useAiComposerPrefill()
+  const {
+    onAiComposerPrefill,
+    onExecuteCopilotSlash,
+    replaceSelectionDisabled,
+  } = useAiComposerPrefill()
 
   const runAction = useCallback(
     (fn: (ctx: Ctx) => void) => {
@@ -74,6 +79,14 @@ export function BubbleMenuView(): ReactElement {
         return
       }
       if (parsedInputForAiMenuItem(id) == null) {
+        return
+      }
+      const execRaw = composerRawLineForMenuExecute(id)
+      if (executionModeForAiMenuItem(id) === 'execute' && execRaw != null) {
+        runAction((ctx) => {
+          ctx.get(editorViewCtx).focus()
+        })
+        void onExecuteCopilotSlash?.(execRaw)
         return
       }
       const prefix = composerPrefixForAiMenuItem(id)

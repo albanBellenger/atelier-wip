@@ -14,9 +14,12 @@ import {
 import {
   AI_MENU_ITEM_IDS,
   composerPrefixForAiMenuItem,
+  composerRawLineForMenuExecute,
+  executionModeForAiMenuItem,
   parsedInputForAiMenuItem,
 } from '../../lib/aiMenuActions'
 import { useAiComposerPrefill } from './aiComposerPrefillContext'
+import { BLOCK_MENU_ITEMS } from './slashBlockActions'
 import { deleteSlashInputRange } from './slashInputDelete'
 
 export const atelierSlash = slashFactory('atelier-slash')
@@ -30,13 +33,13 @@ const AI_LABELS: Record<string, string> = {
   critique: 'Copilot: critique',
 }
 
-/** Milkdown slash menu (AI → copilot composer). Wired via `atelierSlash` plugin. */
+/** Milkdown slash menu: block insertion + AI → copilot. Wired via `atelierSlash` plugin. */
 export function SlashMenuView(): ReactElement {
   const hostRef = useRef<HTMLDivElement>(null)
   const providerRef = useRef<SlashProvider | null>(null)
   const { view, prevState } = usePluginViewContext()
   const [loading, get] = useInstance()
-  const { onAiComposerPrefill } = useAiComposerPrefill()
+  const { onAiComposerPrefill, onExecuteCopilotSlash } = useAiComposerPrefill()
 
   const runAction = useCallback(
     (fn: (ctx: Ctx) => void) => {
@@ -64,12 +67,33 @@ export function SlashMenuView(): ReactElement {
     providerRef.current?.update(view, prevState)
   })
 
+  const onPickBlock =
+    (run: (ctx: Ctx) => void) =>
+    (e: MouseEvent): void => {
+      e.preventDefault()
+      e.stopPropagation()
+      runAction((ctx) => {
+        const viewInner = ctx.get(editorViewCtx)
+        deleteSlashInputRange(viewInner)
+        run(ctx)
+        viewInner.focus()
+      })
+    }
+
   const onPickAi =
     (id: string) =>
     (e: MouseEvent): void => {
       e.preventDefault()
       e.stopPropagation()
       if (parsedInputForAiMenuItem(id) == null) {
+        return
+      }
+      const execRaw = composerRawLineForMenuExecute(id)
+      if (executionModeForAiMenuItem(id) === 'execute' && execRaw != null) {
+        runAction((ctx) => {
+          deleteSlashInputRange(ctx.get(editorViewCtx))
+        })
+        void onExecuteCopilotSlash?.(execRaw)
         return
       }
       const prefix = composerPrefixForAiMenuItem(id)
@@ -89,6 +113,23 @@ export function SlashMenuView(): ReactElement {
       role="listbox"
       aria-label="Slash commands"
     >
+      {BLOCK_MENU_ITEMS.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          role="option"
+          data-testid={`editor-slash-block-${item.id}`}
+          className="rounded px-2 py-1.5 text-left text-zinc-200 hover:bg-zinc-800"
+          onMouseDown={onPickBlock(item.run)}
+        >
+          {item.label}
+        </button>
+      ))}
+      <div
+        className="my-0.5 h-px shrink-0 bg-zinc-700"
+        data-testid="editor-slash-group-divider"
+        aria-hidden
+      />
       {AI_MENU_ITEM_IDS.map((id) => (
         <button
           key={id}

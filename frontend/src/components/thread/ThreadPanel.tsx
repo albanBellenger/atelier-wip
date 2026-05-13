@@ -29,6 +29,9 @@ export function ThreadPanel(props: {
   onContextRagQuerySyncedChange?: (q: string) => void
   copilotTabRequest?: { id: number; tab: CopilotSideTab } | null
   onRegisterCopilotDraftSetter?: (setDraft: (value: string) => void) => void
+  onRegisterCopilotSlashExecutor?: (
+    run: (rawComposerLine: string) => void | Promise<void>,
+  ) => void
 }): ReactElement {
   const density = props.density ?? 'compact'
   if (density === 'focus') {
@@ -52,6 +55,7 @@ export function ThreadPanel(props: {
           onContextRagQuerySyncedChange={props.onContextRagQuerySyncedChange}
           copilotTabRequest={props.copilotTabRequest}
           onRegisterCopilotDraftSetter={props.onRegisterCopilotDraftSetter}
+          onRegisterCopilotSlashExecutor={props.onRegisterCopilotSlashExecutor}
         />
       </div>
     )
@@ -73,6 +77,7 @@ export function ThreadPanel(props: {
       onContextRagQuerySyncedChange={props.onContextRagQuerySyncedChange}
       copilotTabRequest={props.copilotTabRequest}
       onRegisterCopilotDraftSetter={props.onRegisterCopilotDraftSetter}
+      onRegisterCopilotSlashExecutor={props.onRegisterCopilotSlashExecutor}
     />
   )
 }

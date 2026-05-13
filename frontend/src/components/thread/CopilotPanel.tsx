@@ -6,12 +6,14 @@ import {
 } from '@tanstack/react-query'
 import type { ReactElement, RefObject } from 'react'
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from 'react'
+import { toast } from 'sonner'
 import type { Transaction } from 'yjs'
 import type { EditorSelectionState } from '../editor/editorSelection'
 import type { MilkdownEditorApi } from '../editor/MilkdownEditor'
@@ -133,6 +135,10 @@ export function CopilotPanel(props: {
   copilotTabRequest?: { id: number; tab: CopilotSideTab } | null
   /** Lets ancestors (e.g. Milkdown slash menu) call the same `setDraft` as the composer. */
   onRegisterCopilotDraftSetter?: (setDraft: (value: string) => void) => void
+  /** Lets ancestors run the same Send path as the composer for a raw slash line. */
+  onRegisterCopilotSlashExecutor?: (
+    run: (rawComposerLine: string) => void | Promise<void>,
+  ) => void
 }): ReactElement {
   const {
     studioId,
@@ -152,6 +158,7 @@ export function CopilotPanel(props: {
     onContextRagQuerySyncedChange,
     copilotTabRequest,
     onRegisterCopilotDraftSetter,
+    onRegisterCopilotSlashExecutor,
   } = props
   const { streamPrivateThread } = useStream()
   const {
@@ -413,8 +420,8 @@ export function CopilotPanel(props: {
 
   const sendMut = useMutation({
     meta: { skipGlobalToast: true },
-    mutationFn: async () => {
-      const rawContent = draft.trim()
+    mutationFn: async (overrideRaw?: string) => {
+      const rawContent = (overrideRaw ?? draft).trim()
       if (!rawContent) {
         return
       }
@@ -556,6 +563,27 @@ export function CopilotPanel(props: {
     },
   })
 
+  const executeComposerRaw = useCallback(
+    async (raw: string): Promise<void> => {
+      const tid = toast.loading('Copilot…', { id: 'copilot-surface-exec' })
+      try {
+        const parsed = parseThreadComposerInput(raw.trim())
+        if (parsed.kind === 'improve_section') {
+          await improveMut.mutateAsync(parsed.instruction)
+        } else if (parsed.kind === 'stream') {
+          await sendMut.mutateAsync(raw.trim())
+        }
+      } finally {
+        toast.dismiss(tid)
+      }
+    },
+    [improveMut, sendMut],
+  )
+
+  useEffect(() => {
+    onRegisterCopilotSlashExecutor?.(executeComposerRaw)
+  }, [onRegisterCopilotSlashExecutor, executeComposerRaw])
+
   function previewFromProposal(
     snapshot: string,
     p: PatchProposalMeta,
@@ -658,7 +686,7 @@ export function CopilotPanel(props: {
       improveMut.mutate(parsed.instruction)
       return
     }
-    sendMut.mutate()
+    sendMut.mutate(undefined)
   }
 
   const msgs = threadQ.data?.messages ?? []

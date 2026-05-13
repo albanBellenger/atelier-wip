@@ -1,6 +1,10 @@
 # Frontend refactor — Phase A inventory
 
+**2026-05-13 (Milkdown follow-up):** `npm ls` audit: `@codemirror/commands`, `@codemirror/lang-markdown`, `@codemirror/state`, `@codemirror/view`, and `@codemirror/legacy-modes` are **not** direct `package.json` dependencies; they arrive transitively via `@codemirror/merge` (DiffTab), `@codemirror/theme-one-dark`, and `@milkdown/react` → `@milkdown/crepe` / `@milkdown/kit`. `y-codemirror.next` is **not** installed (empty `npm ls`). No unused direct CodeMirror packages were removed — only `@codemirror/merge` + `@codemirror/theme-one-dark` remain as direct CM deps.
+
 Generated as part of the bounded frontend refactor. **Repo:** `c:\Repo\Atelier`. **Note:** `rg` (ripgrep) was not on PATH in the automation shell; dependency hits were verified with workspace search equivalent to `rg` over `frontend/src` and config roots.
+
+**Milkdown (2026):** Section / software-doc body editing uses `MilkdownEditor.tsx` + thin `SplitEditor.tsx`; `useYjsCollab` sends debounced `markdown_snapshot` JSON on the collab WebSocket. `@codemirror/merge` + `@codemirror/theme-one-dark` remain for `DiffTab.tsx`. Outline v2 keeps `Y.Text` via `YDOC_TEXT_FIELD` in `ws.ts`.
 
 ---
 
@@ -9,12 +13,12 @@ Generated as part of the bounded frontend refactor. **Repo:** `c:\Repo\Atelier`.
 | Package | Status | Evidence |
 |---------|--------|----------|
 | **dependencies** | | |
-| `@codemirror/commands` | used-runtime | `SplitEditor.tsx` |
-| `@codemirror/lang-markdown` | used-runtime | `SplitEditor.tsx`, `DiffTab.tsx` |
-| `@codemirror/merge` | used-runtime | `DiffTab.tsx` |
-| `@codemirror/state` | used-runtime | `SplitEditor.tsx`, `DiffTab.tsx` |
-| `@codemirror/theme-one-dark` | used-runtime | `DiffTab.tsx` |
-| `@codemirror/view` | used-runtime | `SplitEditor.tsx`, `DiffTab.tsx` |
+| `@codemirror/commands` | transitive | `@milkdown/react` → `@milkdown/crepe` → `codemirror` (no direct `frontend/src` import) |
+| `@codemirror/lang-markdown` | transitive + used-runtime | **`DiffTab.tsx`**; also under `@milkdown/crepe` language-data |
+| `@codemirror/merge` | direct + used-runtime | **`DiffTab.tsx`** |
+| `@codemirror/state` | transitive + used-runtime | **`DiffTab.tsx`** via merge / theme; `@milkdown/kit` components |
+| `@codemirror/theme-one-dark` | direct + used-runtime | **`DiffTab.tsx`** |
+| `@codemirror/view` | transitive + used-runtime | **`DiffTab.tsx`** via merge |
 | `@dnd-kit/core` | used-runtime | `OutlineNav.tsx`, `WorkOrdersPage.tsx`, `ProjectOutlineCard.tsx` |
 | `@dnd-kit/sortable` | used-runtime | `OutlineNav.tsx`, `ProjectOutlineCard.tsx` |
 | `@dnd-kit/utilities` | transitive-peer / used-runtime | Imported from `OutlineNav.tsx`, `ProjectOutlineCard.tsx` (peer of sortable) |
@@ -26,7 +30,7 @@ Generated as part of the bounded frontend refactor. **Repo:** `c:\Repo\Atelier`.
 | `recharts` | used-runtime | `TokenUsageReportPanel.tsx`, `LlmUsageReportPanel.tsx` (+ tests) |
 | `remark-gfm` | used-runtime | Plugin string in `SplitEditor.tsx`, `DocsUserGuidePage.tsx`, `ConversationView.tsx` |
 | `sonner` | used-runtime | `main.tsx`, `Toast.tsx`, `apiErrorToast.ts`, tests |
-| `y-codemirror.next` | used-runtime | `SplitEditor.tsx` |
+| `y-codemirror.next` | not installed | `npm ls` empty — not in `package.json`; v2 uses Milkdown/Yjs without this binding |
 | `y-websocket` | used-runtime | `useYjsCollab.ts`, `ws.ts` |
 | `yjs` | used-runtime | Editor, collab hook, tests, `sectionPatchApply` |
 | **devDependencies** | | |

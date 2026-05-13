@@ -204,6 +204,9 @@ export function SectionPageV1(): ReactElement {
 
   const sectionEditorApiRef = useRef<MilkdownEditorApi | null>(null)
   const copilotSetDraftRef = useRef<((value: string) => void) | null>(null)
+  const copilotSlashExecutorRef = useRef<
+    ((raw: string) => void | Promise<void>) | null
+  >(null)
 
   const onRegisterCopilotDraftSetter = useCallback(
     (fn: (value: string) => void) => {
@@ -212,8 +215,19 @@ export function SectionPageV1(): ReactElement {
     [],
   )
 
+  const onRegisterCopilotSlashExecutor = useCallback(
+    (run: (raw: string) => void | Promise<void>) => {
+      copilotSlashExecutorRef.current = run
+    },
+    [],
+  )
+
   const onAiComposerPrefill = useCallback((markdown: string) => {
     copilotSetDraftRef.current?.(markdown)
+  }, [])
+
+  const onCopilotSlashExecute = useCallback((raw: string) => {
+    void copilotSlashExecutorRef.current?.(raw)
   }, [])
 
   const [editorSelection, setEditorSelection] = useState<
@@ -643,6 +657,7 @@ export function SectionPageV1(): ReactElement {
                     onContextRagQuerySyncedChange={setSyncedContextRagQuery}
                     copilotTabRequest={copilotTabRequest}
                     onRegisterCopilotDraftSetter={onRegisterCopilotDraftSetter}
+                    onRegisterCopilotSlashExecutor={onRegisterCopilotSlashExecutor}
                   />
                 </div>
               </div>
@@ -715,6 +730,7 @@ export function SectionPageV1(): ReactElement {
                         }
                         editorApiRef={sectionEditorApiRef}
                         onAiComposerPrefill={onAiComposerPrefill}
+                        onCopilotSlashExecute={onCopilotSlashExecute}
                         replaceSelectionSlashDisabled={layoutMode === 'focus'}
                       />
                     </div>
@@ -737,6 +753,7 @@ export function SectionPageV1(): ReactElement {
                     onContextRagQuerySyncedChange={setSyncedContextRagQuery}
                     copilotTabRequest={copilotTabRequest}
                     onRegisterCopilotDraftSetter={onRegisterCopilotDraftSetter}
+                    onRegisterCopilotSlashExecutor={onRegisterCopilotSlashExecutor}
                   />
                 </div>
               </div>
