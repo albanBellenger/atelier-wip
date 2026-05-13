@@ -15,6 +15,7 @@ vi.mock('../hooks/useStudioAccess', () => ({
     isMember: true,
     isStudioAdmin: false,
     isStudioEditor: true,
+    isStudioViewer: false,
     isPlatformAdmin: false,
     isCrossStudioViewer: false,
     canPublish: true,

@@ -18,6 +18,10 @@ class StudioCapabilitiesOut(BaseModel):
     is_studio_admin: bool
     is_studio_editor: bool
     is_studio_member: bool
+    is_studio_viewer: bool = Field(
+        ...,
+        description="True when the user is a home-studio Viewer (studio_viewer); false for cross-studio grants.",
+    )
     is_cross_studio_viewer: bool
     can_publish: bool
     can_edit_software_definition: bool

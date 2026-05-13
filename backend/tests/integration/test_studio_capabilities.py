@@ -59,6 +59,7 @@ async def test_capabilities_studio_admin_member_viewer(
     assert body["can_create_project"] is True
     assert body["can_manage_project_outline"] is True
     assert body["membership_role"] == "studio_admin"
+    assert body["is_studio_viewer"] is False
     assert body["cross_studio_grant"] is None
 
     sw_id = (
@@ -76,6 +77,7 @@ async def test_capabilities_studio_admin_member_viewer(
     sw_body = cap_sw.json()
     assert sw_body["is_studio_admin"] is True
     assert sw_body["cross_studio_grant"] is None
+    assert sw_body["is_studio_viewer"] is False
 
     token_builder = await _register(client, sfx, "builder")
     client.cookies.set("atelier_token", token_owner)
@@ -96,6 +98,7 @@ async def test_capabilities_studio_admin_member_viewer(
     assert bb["can_create_project"] is True
     assert bb["can_manage_project_outline"] is False
     assert bb["membership_role"] == "studio_member"
+    assert bb["is_studio_viewer"] is False
 
     token_viewer = await _register(client, sfx, "viewer")
     client.cookies.set("atelier_token", token_owner)
@@ -115,6 +118,7 @@ async def test_capabilities_studio_admin_member_viewer(
     assert vb["can_edit_software_definition"] is False
     assert vb["can_create_project"] is False
     assert vb["membership_role"] == "studio_viewer"
+    assert vb["is_studio_viewer"] is True
 
 
 @pytest.mark.asyncio
@@ -178,6 +182,7 @@ async def test_capabilities_cross_studio_editor(
     assert x["can_create_project"] is False
     assert x["can_manage_project_outline"] is False
     assert x["can_edit_software_definition"] is False
+    assert x["is_studio_viewer"] is False
 
 
 @pytest.mark.asyncio
@@ -235,6 +240,7 @@ async def test_capabilities_cross_studio_viewer(
     xv = cap_v.json()
     assert xv["is_cross_studio_viewer"] is True
     assert xv["is_studio_editor"] is False
+    assert xv["is_studio_viewer"] is False
 
 
 @pytest.mark.asyncio

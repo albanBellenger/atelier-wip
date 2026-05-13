@@ -137,6 +137,15 @@ class StudioAccess:
         return self.membership.role in ("studio_admin", "studio_member")
 
     @property
+    def is_studio_viewer(self) -> bool:
+        """Home-studio Viewer (read-only); excludes cross-studio grants."""
+        if self.cross_studio_grant is not None:
+            return False
+        if self.membership is None:
+            return False
+        return self.membership.role == "studio_viewer"
+
+    @property
     def can_publish(self) -> bool:
         if self.user.is_platform_admin:
             return True

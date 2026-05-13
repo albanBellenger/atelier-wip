@@ -19,6 +19,7 @@ const denyAll: StudioAccessFields = {
   isMember: false,
   isStudioAdmin: false,
   isStudioEditor: false,
+  isStudioViewer: false,
   isPlatformAdmin: false,
   isCrossStudioViewer: false,
   canPublish: false,
@@ -36,6 +37,7 @@ const denyAll: StudioAccessFields = {
  *
  * Product language (see ``frontend/src/lib/roleLabels.ts``): home-studio wire roles are
  * ``studio_admin`` (Studio Owner), ``studio_member`` (Studio Builder), ``studio_viewer`` (Studio Viewer).
+ * ``isStudioViewer`` is true only for the home-studio Viewer role (not cross-studio read-only grants).
  */
 export function useStudioAccess(
   profile: MeResponse | undefined,

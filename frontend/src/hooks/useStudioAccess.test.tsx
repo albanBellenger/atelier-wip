@@ -40,8 +40,8 @@ describe('useStudioAccess', () => {
     )
     await waitFor(() => {
       expect(result.current.isLoadingCapabilities).toBe(false)
+      expect(result.current.canEditSoftwareDefinition).toBe(true)
     })
-    expect(result.current.canEditSoftwareDefinition).toBe(true)
   })
 
   it('canEditSoftwareDefinition: studio_member is false', async () => {
@@ -61,8 +61,9 @@ describe('useStudioAccess', () => {
     )
     await waitFor(() => {
       expect(result.current.isLoadingCapabilities).toBe(false)
+      expect(result.current.canEditSoftwareDefinition).toBe(false)
+      expect(result.current.isStudioViewer).toBe(false)
     })
-    expect(result.current.canEditSoftwareDefinition).toBe(false)
   })
 
   it('canEditSoftwareDefinition: studio_viewer is false', async () => {
@@ -82,8 +83,9 @@ describe('useStudioAccess', () => {
     )
     await waitFor(() => {
       expect(result.current.isLoadingCapabilities).toBe(false)
+      expect(result.current.canEditSoftwareDefinition).toBe(false)
+      expect(result.current.isStudioViewer).toBe(true)
     })
-    expect(result.current.canEditSoftwareDefinition).toBe(false)
   })
 
   it('canEditSoftwareDefinition: platform admin is true', async () => {
@@ -103,8 +105,8 @@ describe('useStudioAccess', () => {
     )
     await waitFor(() => {
       expect(result.current.isLoadingCapabilities).toBe(false)
+      expect(result.current.canEditSoftwareDefinition).toBe(true)
     })
-    expect(result.current.canEditSoftwareDefinition).toBe(true)
   })
 
   it('canEditSoftwareDefinition: cross-studio external_editor grant is false', async () => {
@@ -134,7 +136,7 @@ describe('useStudioAccess', () => {
     )
     await waitFor(() => {
       expect(result.current.isLoadingCapabilities).toBe(false)
+      expect(result.current.canEditSoftwareDefinition).toBe(false)
     })
-    expect(result.current.canEditSoftwareDefinition).toBe(false)
   })
 })

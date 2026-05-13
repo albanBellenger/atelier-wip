@@ -122,6 +122,7 @@ export interface StudioCapabilitiesOut {
   is_studio_admin: boolean
   is_studio_editor: boolean
   is_studio_member: boolean
+  is_studio_viewer: boolean
   is_cross_studio_viewer: boolean
   can_publish: boolean
   can_edit_software_definition: boolean

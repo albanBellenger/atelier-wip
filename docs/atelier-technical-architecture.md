@@ -385,13 +385,24 @@ studio_id    UUID REFERENCES studios(id),
 software_id  UUID REFERENCES software(id),
 project_id   UUID REFERENCES projects(id),
 user_id      UUID REFERENCES users(id),
-call_source TEXT NOT NULL,   -- thread | chat | work_order_gen | conflict | drift | graph
+call_source TEXT NOT NULL,   -- free-form discriminator; see **call_source values** below
 model        TEXT NOT NULL,
 input_tokens INTEGER NOT NULL,
 output_tokens INTEGER NOT NULL,
 estimated_cost_usd NUMERIC(10,6),
 created_at   TIMESTAMPTZ DEFAULT NOW()
 ```
+
+**`call_source` values (aligned with `backend/app/` as of this document):** The column is **not** a database enum — there is no `CHECK` constraint; new features may introduce new strings (stored as `VARCHAR(32)`, truncated on insert in `token_tracker`). Budget and LLM routing treat `call_source` as a label; [`llm_routing_buckets.py`](../backend/app/services/llm_routing_buckets.py) maps strings to routing buckets (`chat`, `code_gen`, `classification`, `embeddings`) and lists extra examples used for policy UI (`mcp_wo`, `work_order`) even when not every path persists them.
+
+- **Chats:** Project chat and software chat both persist **`chat`**. Distinguish them in reporting or CSV filters using scope columns: **non-null `project_id`** (project chat) vs **non-null `software_id`** with project context as appropriate (software chat), not by `call_source` alone.
+- **Private thread / slash-style thread tools:** `private_thread`, `thread_conflict_scan`, `thread_patch_append`, `thread_patch_replace`, `thread_patch_edit` (some readiness paths use `chat`).
+- **Work orders & MCP:** `work_order_gen`, `work_order_dedupe`, `mcp` (MCP list/pull accounting uses synthetic `model` names such as `mcp_list_work_orders` / `mcp_context_pull` where applicable).
+- **Spec & graph analysis:** `conflict`, `drift`, `section_drift`, `graph`.
+- **Other LLM product surfaces:** `section_improve`, `builder_composer_hint`, `citation_health`, `rag_software_definition_summary`.
+- **Embeddings:** Default bulk/path embedding charges use **`embedding`**; codebase snapshot indexing and query embedding use **`codebase_index`** and **`codebase_rag`** respectively (see functional requirements §9b.8).
+- **Software-docs codebase agents (Slice 16):** `backprop_outline`, `backprop_section`, `code_drift_section`, `code_drift_work_order`, `doc_sync`.
+- **Platform:** `admin_connectivity_probe`.
 
 ### `codebase_snapshots`  
 

@@ -6,6 +6,7 @@ export type StudioAccessFields = {
   isMember: boolean
   isStudioAdmin: boolean
   isStudioEditor: boolean
+  isStudioViewer: boolean
   isPlatformAdmin: boolean
   isCrossStudioViewer: boolean
   canPublish: boolean
@@ -23,6 +24,7 @@ export function mapStudioCapabilitiesOutToFields(
     isMember: c.is_studio_member,
     isStudioAdmin: c.is_studio_admin,
     isStudioEditor: c.is_studio_editor,
+    isStudioViewer: c.is_studio_viewer,
     isPlatformAdmin: c.is_platform_admin,
     isCrossStudioViewer: c.is_cross_studio_viewer,
     canPublish: c.can_publish,
@@ -73,6 +75,8 @@ export function deriveStudioAccessFromProfile(
 
   const isCrossStudioViewer = crossGrant?.access_level === 'viewer'
 
+  const isStudioViewer = !crossGrant && role === 'studio_viewer'
+
   const canPublish = isPlatformAdmin || (!crossGrant && Boolean(isStudioEditor))
 
   const canManageProjectOutline =
@@ -90,6 +94,7 @@ export function deriveStudioAccessFromProfile(
     isMember,
     isStudioAdmin,
     isStudioEditor,
+    isStudioViewer,
     isPlatformAdmin,
     isCrossStudioViewer,
     canPublish,
@@ -113,6 +118,7 @@ export function studioCapabilitiesOutFromProfile(
     is_studio_admin: f.isStudioAdmin,
     is_studio_editor: f.isStudioEditor,
     is_studio_member: f.isMember,
+    is_studio_viewer: f.isStudioViewer,
     is_cross_studio_viewer: f.isCrossStudioViewer,
     can_publish: f.canPublish,
     can_edit_software_definition: f.canEditSoftwareDefinition,

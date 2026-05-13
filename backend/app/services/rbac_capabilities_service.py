@@ -53,6 +53,7 @@ class RbacCapabilitiesService:
             is_studio_admin=access.is_studio_admin,
             is_studio_editor=access.is_studio_editor,
             is_studio_member=access.is_studio_member,
+            is_studio_viewer=access.is_studio_viewer,
             is_cross_studio_viewer=access.is_cross_studio_viewer,
             can_publish=access.can_publish,
             can_edit_software_definition=access.can_edit_software_definition,

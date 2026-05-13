@@ -347,6 +347,7 @@ export function apiCoverageHandlers(): RequestHandler[] {
     is_studio_admin: true,
     is_studio_editor: true,
     is_studio_member: true,
+    is_studio_viewer: false,
     is_cross_studio_viewer: false,
     can_publish: true,
     can_edit_software_definition: true,
