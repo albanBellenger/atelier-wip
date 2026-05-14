@@ -1,5 +1,5 @@
 # Atelier — Technical Architecture
-_Version 2.2 — aligned `studio_members` / `cross_studio_access` role strings and §7 RBAC dependency chain with implementation and FR v2.2 labels_
+_Version 2.3 — replaced LlamaIndex with LiteLLM in tech stack; corrected Knowledge Graph library label; documented Issues visibility by Viewer role; added codebase index feature section; added stale-draft notification job; added per-role token usage visibility; added emergency CLI reference_
 
 ---
 
@@ -12,9 +12,9 @@ _Version 2.2 — aligned `studio_members` / `cross_studio_access` role strings a
 | Database | PostgreSQL 16 + pgvector | Relational + vector search in one service |
 | Auth | Email + password (JWT) | Simple, stateless, no external dependency |
 | Real-time collab | Yjs + WebSocket | Most mature CRDT library, great CodeMirror binding |
-| LLM | Agnostic via LlamaIndex | Admin-configured provider; abstracts OpenAI, Anthropic, Azure, etc. |
-| Embeddings | Same provider as LLM | Admin-configured; LlamaIndex abstracts provider |
-| RAG | LlamaIndex | Unified abstraction for chunking, embedding, retrieval |
+| LLM | Agnostic via LiteLLM | Admin-configured provider; OpenAI-compatible proxy — supports OpenAI, Anthropic, Azure, and 100+ other providers |
+| Embeddings | Same provider as LLM | Admin-configured; LiteLLM abstracts provider via OpenAI-compatible embeddings API |
+| RAG | pgvector + LiteLLM | Custom chunking pipeline; LiteLLM for embeddings; pgvector HNSW for similarity search |
 | File storage | MinIO (S3-compatible) | Self-hosted, Docker-friendly, S3 API compatible |
 | Git integration | GitLab API (self-hosted) | No git binary on server; REST API only. GitHub planned for future phase. |
 | Real-time chat | WebSockets (FastAPI) | Native FastAPI support, shares WS infrastructure with Yjs |
@@ -32,7 +32,7 @@ _Version 2.2 — aligned `studio_members` / `cross_studio_access` role strings a
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────────────┐ │
 │  │  Spec    │ │ Project  │ │Knowledge │ │  Work Order    │ │
 │  │  Editor  │ │  Chat    │ │  Graph   │ │  Board         │ │
-│  │(Yjs+CM) │ │  (WS)    │ │  (D3)    │ │  (Kanban)      │ │
+│  │(Yjs+CM) │ │  (WS)    │ │(rfg-2d)  │ │  (Kanban)      │ │
 │  └────┬─────┘ └────┬─────┘ └────┬─────┘ └───────┬────────┘ │
 └───────┼────────────┼────────────┼────────────────┼──────────┘
         │ REST/SSE   │ WS         │ REST           │ REST
@@ -537,6 +537,17 @@ Listing and read/unread updates use `NotificationService` (e.g. `/me/notificatio
 | `/admin/users` | GET/POST | Tool Admin | User directory / create user (`require_platform_admin`) |
 | `/admin/users/{id}/admin-status` | PUT | Tool Admin | Set platform admin flag (`require_platform_admin`) |
 
+**Emergency CLI recovery:** if all Tool Admin accounts are inaccessible, a sysadmin with shell access to the backend container can grant Tool Admin status (creating the user if needed) without touching the database directly:
+
+```bash
+cd backend
+python manage.py create-admin --email admin@example.com
+# Optional: python manage.py create-admin --email admin@example.com --password <value>
+# Optional: python manage.py list-admins
+```
+
+Omitting `--password` generates a random 16-character password printed once. Defined in `backend/manage.py`; see `docs/admin-setup.md` and the README `Emergency recovery` section.
+
 ### StudioService
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
@@ -647,8 +658,14 @@ After a successful publish:
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
 | `/projects/{pid}/analyze` | POST | Studio Builder | Manual conflict analysis trigger |
-| `/projects/{pid}/issues` | GET | Member (filtered by role) | List issues |
+| `/projects/{pid}/issues` | GET | Member (filtered by role — see note) | List issues |
 | `/projects/{pid}/issues/{iid}` | PUT | Studio Builder | Update issue status |
+
+**Issues visibility by role** (`GET /projects/{pid}/issues`):
+- **Tool Admin, Studio Owner, Studio Builder** — full access, all issue kinds.
+- **Studio Viewer** (home-studio read-only role) — read access; issues list visible but no analysis can be triggered. Enforced by `require_project_issues_readable` in `deps.py` which passes home-studio Viewers through.
+- **Cross-studio External** — read access (editor-level grant, same as Builder for read).
+- **Cross-studio Viewer** — blocked (403). `require_project_issues_readable` raises `FORBIDDEN` for `is_cross_studio_viewer=true`. This mirrors FR §4.3 where the cross-studio Viewer row shows ❌ for "View issues".
 
 ### GraphService (internal + endpoint)
 | Endpoint | Method | Auth | Description |
@@ -693,7 +710,7 @@ async def chat_structured(
 ```
 - Resolves chat credentials from `llm_provider_registry` and routing rules (updates apply on registry writes)
 - Automatically records token usage via TokenTracker on every call
-- Supports OpenAI, Anthropic, Azure, and any LlamaIndex-supported provider
+- Supports OpenAI, Anthropic, Azure, and any LiteLLM-supported provider via the OpenAI-compatible proxy interface
 - **Structured output abstraction:** `chat_structured` translates the `output_schema` to the correct provider mechanism:
   - **OpenAI / Azure:** `response_format = {"type": "json_schema", "json_schema": output_schema}`
   - **Anthropic:** XML-tagged output via system prompt instruction + post-response JSON extraction
@@ -1051,6 +1068,69 @@ On publish, `GraphService.detect_section_relationships` runs:
 - Click → navigate to that entity's detail page
 - Legend always visible
 - Viewer access: graph is fully visible but clicking work orders shows read-only detail
+
+---
+
+## 9b. Codebase Index — Feature Design
+
+The Codebase Index lets Atelier compare the spec to what was actually built, draft Software Docs from existing code, and surface documentation that needs updating after work ships. It is scoped to a **Software** and requires a configured GitLab URL, branch, and token (§6 git config).
+
+### Snapshot Lifecycle
+
+```
+POST /software/{sid}/codebase/reindex   (Studio Builder+, owning studio only)
+        │
+        ▼
+CodebaseService.create_pending_snapshot()
+  → resolves git config, resolves HEAD commit SHA via GitLab API
+  → inserts codebase_snapshots row  (status='pending')
+  → session.commit()                 ← row must be visible before background task starts
+        │
+        ▼
+BackgroundTasks.add_task(enqueue_codebase_index, snapshot_id)
+        │
+        ▼
+index_snapshot() in its own async session:
+  status = 'indexing'
+  fetch repo tree → blob fetch → tree-sitter chunk / line-window fallback
+  → codebase_files / codebase_chunks (embed, call_source='codebase_index') / codebase_symbols
+  → mark prior 'ready' snapshot 'superseded', DELETE its codebase_chunks rows
+  status = 'ready'
+  On error: status = 'failed', error_message = str(exc)[:2000]
+```
+
+At most one snapshot per Software is ever `ready`. Snapshot rows are retained for audit even after supersession; only their chunk rows are deleted to bound storage.
+
+### Access Control
+
+| Action | Roles permitted |
+|---|---|
+| Trigger reindex (`POST /reindex`) | Studio Builder or Owner of the **owning** studio; cross-studio Externals denied (`require_software_home_editor`) |
+| List / view snapshots | Studio Member or Viewer (any); cross-studio Externals and Viewers with a grant |
+| Diagnostics (`GET /diagnostics?q=`) | Tool Admin only |
+
+### RAG Integration
+
+`CodebaseRagService.retrieve_chunks_for_text` embeds the query with `call_source='codebase_rag'`, runs cosine-distance search over `codebase_chunks` (HNSW, `vector_cosine_ops`) scoped to the current ready snapshot. Used by:
+- **Code Drift** — per section and per work order during `CodeDriftService.run_for_software`
+- **Doc Sync** — per work order during `DocSyncService.propose_for_work_order`
+- **Backprop agents** — for Software Docs outline and section draft proposals
+
+### Repo Map
+
+`codebase_repo_map.build_repo_map` builds an undirected co-directory graph over file paths, runs NetworkX PageRank (α=0.85), and returns the top files within a token budget. The result is LRU-cached in-process (max 64 entries, keyed by `(snapshot_id, token_budget, sorted_paths)`). Agents receive the repo map as a newline-separated ranked file list in the user prompt.
+
+### Settings (env, prefix `ATELIER_`)
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `CODEBASE_INDEX_MAX_FILES` | 50 000 | Hard file count cap per snapshot |
+| `CODEBASE_INDEX_MAX_TOTAL_BYTES` | 524 288 000 (500 MB) | Total bytes cap |
+| `CODEBASE_INDEX_MAX_FILE_BYTES` | 1 048 576 (1 MB) | Per-file cap; larger files skipped |
+
+### Admin Diagnostics UI
+
+`AdminPage.tsx` includes a **Codebase** tab (`CodebaseSection.tsx`) that lists all software with git configured, shows their current snapshot status (file count, chunk count, symbol count), and exposes a per-software **Reindex** button (calls `POST /software/{sid}/codebase/reindex`). Visible to Tool Admins only.
 
 ---
 
@@ -1759,8 +1839,24 @@ ENCRYPTION_KEY=changeme-32-byte-fernet-key
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | GET | `/admin/token-usage` | Tool Admin | **Not registered** (default **404**; removed); no all-studios aggregate route |
-| GET | `/studios/{id}/token-usage` | Studio Owner | Own studio |
-| GET | `/me/token-usage` | Member | Own usage |
+| GET | `/studios/{id}/token-usage` | Studio Owner | Own studio aggregate |
+| GET | `/me/token-usage` | Member | Own usage (Builder, External, Studio Owner) |
+
+**Token usage visibility by role** (FR §4.3):
+- **Tool Admin** — full visibility across all studios via the dashboard (reads all `token_usage` rows by studio).
+- **Studio Owner** — `GET /studios/{id}/token-usage` for their own studio.
+- **Studio Builder / cross-studio External** — `GET /me/token-usage` for their own calls only.
+- **Studio Viewer / cross-studio Viewer** — no token usage access; `GET /me/token-usage` returns 403 for these roles.
+
+### Notifications
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/me/notifications` | JWT | Paginated inbox (cursor-based) |
+| PATCH | `/me/notifications/{nid}` | JWT | Mark individual notification read/unread |
+| POST | `/me/notifications/mark-all-read` | JWT | Mark all as read |
+| POST | `/admin/jobs/stale-draft-notifications` | Tool Admin | Manually trigger the stale-draft notification sweep (equivalent to the daily job) |
+
+**Stale-draft notification job** — the `draft_unpublished` kind is written by a background job (`draft_unpublished_notification_job`), not by `NotificationDispatchService`. Enable the daily sweep at application startup with `ATELIER_STALE_DRAFT_NOTIFIER=1`. Platform administrators can trigger it on demand via `POST /admin/jobs/stale-draft-notifications`.
 
 ### MCP Server
 | Method | Path | Auth | Description |
