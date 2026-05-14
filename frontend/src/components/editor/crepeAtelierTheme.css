@@ -1,0 +1,303 @@
+/*
+  Crepe UI overrides (layered after @milkdown/crepe theme CSS).
+  DOM reference (Crepe 7.x / @milkdown/crepe block-edit + toolbar):
+
+  Slash menu — NOT a custom element: a div with class `milkdown-slash-menu` (Crepe nests under
+  `.milkdown`); overrides use `.crepe-atelier-host .milkdown .milkdown-slash-menu` for specificity.
+  Inner structure: root wrapper > `nav.tab-group` > `ul` > `li` (group tabs, `.selected` for
+  active group) + `div.menu-groups` > `div.menu-group` > `h6` (group title) + `ul` > `li[data-index]`
+  (`.hover` = keyboard/mouse-selected row, `.active` = pointer-down). Each item: `svg` + `span` label.
+
+  Toolbar — `div.milkdown-toolbar` with flex row of `button.toolbar-item` and `div.divider`
+  between Crepe groups. Toggle states use `button.toolbar-item.active`.
+
+  Block handle — `div.milkdown-block-handle` with `[data-show="true"|"false"]` from BlockProvider;
+  two `div.operation-item` children (add, then drag handle). SVG icons inside.
+
+  Copilot-only icons: class `atelier-copilot-menu-icon` on the shared SVG in crepeCopilotMenus.ts
+  (Crepe does not emit stable data-group-key / data-item-key on menu rows).
+*/
+
+.crepe-atelier-host .milkdown .milkdown-slash-menu {
+  font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+  color: #e4e4e7;
+  background: rgba(24, 24, 27, 0.95);
+  border: 1px solid rgba(39, 39, 42, 0.8);
+  border-radius: 8px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  padding: 4px 0;
+  min-width: 220px;
+  transition:
+    background-color 80ms ease,
+    border-color 80ms ease,
+    box-shadow 80ms ease;
+}
+
+.crepe-atelier-host .milkdown .milkdown-slash-menu .tab-group {
+  border-bottom: 1px solid rgba(39, 39, 42, 0.8);
+  padding: 4px 0 0;
+}
+
+.crepe-atelier-host .milkdown .milkdown-slash-menu .tab-group ul {
+  padding: 4px 8px 6px;
+  gap: 6px;
+}
+
+.crepe-atelier-host .milkdown .milkdown-slash-menu .tab-group ul li {
+  padding: 6px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #71717a;
+  border-radius: 4px;
+  transition:
+    background-color 80ms ease,
+    color 80ms ease;
+}
+
+.crepe-atelier-host .milkdown .milkdown-slash-menu .tab-group ul li:hover {
+  background: #18181b;
+  color: #a1a1aa;
+}
+
+.crepe-atelier-host .milkdown .milkdown-slash-menu .tab-group ul li.selected {
+  background: rgba(139, 92, 246, 0.12);
+  color: #ddd6fe;
+  box-shadow: inset 2px 0 0 0 #8b5cf6;
+}
+
+.crepe-atelier-host .milkdown .milkdown-slash-menu .menu-groups {
+  padding: 0 0 4px;
+  max-height: 420px;
+}
+
+.crepe-atelier-host .milkdown .milkdown-slash-menu .menu-group h6 {
+  padding: 6px 12px 4px;
+  margin: 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #71717a;
+  line-height: 1.2;
+}
+
+.crepe-atelier-host .milkdown .milkdown-slash-menu .menu-group + .menu-group::before {
+  content: '';
+  display: block;
+  border-top: 1px solid rgba(39, 39, 42, 0.8);
+  margin: 4px 0;
+}
+
+.crepe-atelier-host .milkdown .milkdown-slash-menu .menu-group li {
+  min-width: 220px;
+  padding: 8px 12px;
+  margin: 0 4px;
+  border-radius: 4px;
+  border-left: 2px solid transparent;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.25;
+  color: #e4e4e7;
+  gap: 8px;
+  transition:
+    background-color 80ms ease,
+    color 80ms ease,
+    border-color 80ms ease;
+}
+
+.crepe-atelier-host .milkdown .milkdown-slash-menu .menu-group li > span {
+  font-size: 13px;
+  font-weight: 500;
+  color: inherit;
+}
+
+.crepe-atelier-host .milkdown .milkdown-slash-menu .menu-group li svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: currentColor;
+  fill: currentColor;
+  opacity: 0.7;
+  transition: opacity 80ms ease;
+}
+
+.crepe-atelier-host .milkdown .milkdown-slash-menu .menu-group li:hover svg,
+.crepe-atelier-host .milkdown .milkdown-slash-menu .menu-group li.hover svg,
+.crepe-atelier-host .milkdown .milkdown-slash-menu .menu-group li.active svg {
+  opacity: 1;
+}
+
+.crepe-atelier-host .milkdown .milkdown-slash-menu .menu-group li.hover {
+  background: rgba(139, 92, 246, 0.12);
+  color: #ddd6fe;
+  border-left-color: #8b5cf6;
+}
+
+.crepe-atelier-host .milkdown .milkdown-slash-menu .menu-group li.active {
+  background: rgba(139, 92, 246, 0.18);
+}
+
+.crepe-atelier-host .milkdown .milkdown-slash-menu .menu-group li svg.atelier-copilot-menu-icon {
+  color: #a78bfa;
+  fill: #a78bfa;
+  opacity: 0.9;
+}
+
+.crepe-atelier-host .milkdown .milkdown-slash-menu .menu-group li.hover svg.atelier-copilot-menu-icon,
+.crepe-atelier-host .milkdown .milkdown-slash-menu .menu-group li.active svg.atelier-copilot-menu-icon {
+  color: #ddd6fe;
+  fill: #ddd6fe;
+  opacity: 1;
+}
+
+/* Optional right-hint pattern if Crepe adds shortcut spans later */
+.crepe-atelier-host .milkdown .milkdown-slash-menu .menu-group li .shortcut,
+.crepe-atelier-host .milkdown .milkdown-slash-menu .menu-group li [class*='hint'] {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  color: #52525b;
+  margin-left: auto;
+}
+
+/* --- Toolbar --- */
+
+.crepe-atelier-host .milkdown .milkdown-toolbar {
+  font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  background: rgba(24, 24, 27, 0.95);
+  border: 1px solid rgba(39, 39, 42, 0.8);
+  border-radius: 8px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  overflow: visible;
+  transition:
+    background-color 80ms ease,
+    box-shadow 80ms ease;
+}
+
+.crepe-atelier-host .milkdown .milkdown-toolbar .divider {
+  width: 1px;
+  align-self: stretch;
+  min-height: 20px;
+  margin: 2px 4px;
+  background: #27272a;
+  flex-shrink: 0;
+}
+
+.crepe-atelier-host .milkdown .milkdown-toolbar .toolbar-item {
+  width: auto;
+  height: auto;
+  min-width: 0;
+  margin: 0;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #d4d4d8;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background-color 80ms ease,
+    color 80ms ease;
+}
+
+.crepe-atelier-host .milkdown .milkdown-toolbar .toolbar-item:hover {
+  background: #27272a;
+  color: #f4f4f5;
+}
+
+.crepe-atelier-host .milkdown .milkdown-toolbar .toolbar-item:active {
+  background: rgba(139, 92, 246, 0.15);
+  color: #ddd6fe;
+}
+
+.crepe-atelier-host .milkdown .milkdown-toolbar .toolbar-item svg {
+  width: 18px;
+  height: 18px;
+  color: currentColor;
+  fill: currentColor;
+}
+
+.crepe-atelier-host .milkdown .milkdown-toolbar .toolbar-item svg.atelier-copilot-menu-icon {
+  color: #a78bfa;
+  fill: #a78bfa;
+}
+
+.crepe-atelier-host .milkdown .milkdown-toolbar .toolbar-item:hover svg.atelier-copilot-menu-icon,
+.crepe-atelier-host .milkdown .milkdown-toolbar .toolbar-item:active svg.atelier-copilot-menu-icon {
+  color: #ddd6fe;
+  fill: #ddd6fe;
+}
+
+.crepe-atelier-host .milkdown .milkdown-toolbar .toolbar-item.active {
+  background: rgba(139, 92, 246, 0.15);
+  color: #ddd6fe;
+}
+
+.crepe-atelier-host .milkdown .milkdown-toolbar .toolbar-item.active svg {
+  color: #a78bfa;
+  fill: #a78bfa;
+}
+
+/* --- Block handle --- */
+
+.crepe-atelier-host .milkdown .milkdown-block-handle {
+  display: flex;
+  gap: 2px;
+  padding: 0 4px 0 0;
+  transition: opacity 80ms ease;
+}
+
+.crepe-atelier-host .milkdown .milkdown-block-handle .operation-item {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  box-sizing: border-box;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #71717a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background-color 80ms ease,
+    color 80ms ease;
+}
+
+.crepe-atelier-host .milkdown .milkdown-block-handle .operation-item:first-child {
+  cursor: pointer;
+}
+
+.crepe-atelier-host .milkdown .milkdown-block-handle .operation-item:last-child {
+  cursor: grab;
+}
+
+.crepe-atelier-host .milkdown .milkdown-block-handle .operation-item:last-child:active {
+  cursor: grabbing;
+}
+
+.crepe-atelier-host .milkdown .milkdown-block-handle .operation-item:hover {
+  background: rgba(39, 39, 42, 0.8);
+  color: #e4e4e7;
+}
+
+.crepe-atelier-host .milkdown .milkdown-block-handle .operation-item svg {
+  width: 16px;
+  height: 16px;
+  color: currentColor;
+  fill: currentColor;
+}
+
+.crepe-atelier-host .milkdown .milkdown-block-handle .operation-item.active {
+  background: rgba(139, 92, 246, 0.12);
+  color: #ddd6fe;
+}

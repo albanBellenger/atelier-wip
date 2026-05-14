@@ -330,7 +330,7 @@ export function OutlineEditorV2(): ReactElement {
     return () => {
       collab.ydoc.off('afterTransaction', onAfter)
     }
-  }, [collab])
+  }, [collab, defaultSectionMarkdown])
 
   useEffect(() => {
     const schedule = (): void => {

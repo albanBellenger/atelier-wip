@@ -30,6 +30,7 @@ import type { EditorSelectionState } from './editorSelection'
 import '@milkdown/crepe/theme/common/style.css'
 import '@milkdown/crepe/theme/frame-dark.css'
 import '@milkdown/kit/prose/view/style/prosemirror.css'
+import './crepeAtelierTheme.css'
 
 const SNAPSHOT_DEBOUNCE_MS = 2000
 

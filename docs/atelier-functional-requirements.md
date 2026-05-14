@@ -304,6 +304,9 @@ Projects can be archived to remove them from active workspaces without deleting 
 - Changes are auto-persisted to the database (debounced ~2 seconds)
 - Save state shown in UI ("Saving..." / "Saved")
 
+### 8.3 Editor chrome (Crepe)
+- Slash menu, selection toolbar, and block handle are themed with layered CSS so they match Atelier's dark zinc surfaces and violet focus accents (see `frontend/src/components/editor/crepeAtelierTheme.css`).
+
 ---
 
 ## 9. Artifacts
