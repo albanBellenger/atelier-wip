@@ -16,6 +16,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from app.collab.editor_context import collab_acting_user_id
 from app.models import Section, Software
+from app.services.notification_dispatch_service import NotificationDispatchService
 from app.services.section_service import SECTION_YJS_TEXT_FIELD
 from app.services.software_activity_service import SoftwareActivityService
 

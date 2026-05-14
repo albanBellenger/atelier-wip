@@ -261,22 +261,29 @@ const CrepeEditorInner = forwardRef<CrepeEditorApi, CrepeEditorProps>(
         } catch {
           /* ignore */
         }
+        // Do not tie the loading overlay to Yjs / CollabReady. `crepe.create()` already
+        // mounts ProseMirror; if `ctx.wait(CollabReady)` stalls, users otherwise see
+        // content behind a perpetual "Loading editor…" shell.
+        setLoading(false)
         const bundle = collabRef.current
         if (bundle && !readOnlyRef.current) {
-          await crepe.editor.action(async (ctx) => {
-            await ctx.wait(CollabReady)
-            if (cancelled) {
-              return
-            }
-            const svc = ctx.get(collabServiceCtx)
-            svc
-              .bindDoc(bundle.ydoc)
-              .setAwareness(bundle.awareness)
-              .applyTemplate(defaultMarkdown)
-              .connect()
-          })
+          try {
+            await crepe.editor.action(async (ctx) => {
+              await ctx.wait(CollabReady)
+              if (cancelled) {
+                return
+              }
+              const svc = ctx.get(collabServiceCtx)
+              svc
+                .bindDoc(bundle.ydoc)
+                .setAwareness(bundle.awareness)
+                .applyTemplate(defaultMarkdown)
+                .connect()
+            })
+          } catch {
+            /* collab bind is best-effort; editor remains usable */
+          }
         }
-        setLoading(false)
       })()
 
       return () => {

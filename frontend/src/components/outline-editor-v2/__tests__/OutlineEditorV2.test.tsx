@@ -216,4 +216,65 @@ describe('OutlineEditorV2', () => {
       expect(screen.getByTestId('copilot-overlay')).toBeInTheDocument()
     })
   })
+
+  it('footer RAW shows markdown pre after Alt+M flipped view away from raw', async () => {
+    localStorage.setItem(
+      'atelier:userEditorPrefs',
+      JSON.stringify({
+        outlineEditorV2: true,
+        outlineRailPinned: false,
+        outlineRawDefault: true,
+      }),
+    )
+    const user = userEvent.setup()
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    vi.mocked(api.getSection).mockResolvedValue({
+      ...mockSection,
+      content: '# Role defs\n\nBody line',
+    })
+    render(
+      <MemoryRouter
+        initialEntries={[
+          '/studios/s1/software/sw1/projects/p1/sections/sec-1',
+        ]}
+      >
+        <QueryClientProvider client={qc}>
+          <Routes>
+            <Route
+              path="/studios/:studioId/software/:softwareId/projects/:projectId/sections/:sectionId"
+              element={<OutlineEditorV2 />}
+            />
+          </Routes>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('doc-canvas')).toBeInTheDocument()
+    })
+
+    await waitFor(() => {
+      const pre = document.querySelector('pre.whitespace-pre-wrap')
+      expect(pre?.textContent).toContain('# Role defs')
+    })
+
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'm',
+        altKey: true,
+        bubbles: true,
+      }),
+    )
+
+    await waitFor(() => {
+      expect(document.querySelector('pre.whitespace-pre-wrap')).toBeNull()
+    })
+
+    await user.click(screen.getByTestId('status-raw-toggle'))
+
+    await waitFor(() => {
+      const pre = document.querySelector('pre.whitespace-pre-wrap')
+      expect(pre?.textContent).toContain('# Role defs')
+    })
+  })
 })

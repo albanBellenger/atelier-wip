@@ -553,8 +553,9 @@ export function OutlineEditorV2(): ReactElement {
                       citationsMissing={health?.citations_missing ?? 0}
                       wordCount={wordCount}
                       filename={`${sectionQ.data.slug}.md`}
-                      rawMode={v2prefs.outlineRawDefault}
+                      rawMode={displayRaw}
                       onSetRawDefault={(raw) => {
+                        setSessionFlip(false)
                         v2prefs.setOutlineRawDefault(raw)
                       }}
                       onTokenClick={() => setContextPopoverOpen((o) => !o)}
