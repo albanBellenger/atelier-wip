@@ -12,6 +12,8 @@ export interface CollabUserStyle {
   name: string
   color: string
   colorLight: string
+  /** Broadcast on awareness so remote clients can recompute cursor-matched colours via `colorsForUser`. */
+  userId?: string
 }
 
 function hashHue(input: string): number {
@@ -101,6 +103,7 @@ export function useYjsCollab(
   const userName = user?.name
   const userColor = user?.color
   const userColorLight = user?.colorLight
+  const userId = user?.userId
 
   useEffect(() => {
     if (!bundle || userName == null || !userColor || !userColorLight) {
@@ -110,8 +113,9 @@ export function useYjsCollab(
       name: userName,
       color: userColor,
       colorLight: userColorLight,
+      ...(userId != null && userId !== '' ? { userId } : {}),
     })
-  }, [bundle, userName, userColor, userColorLight])
+  }, [bundle, userName, userColor, userColorLight, userId])
 
   return bundle
 }
@@ -158,6 +162,7 @@ export function useSoftwareDocYjsCollab(
   const userName = user?.name
   const userColor = user?.color
   const userColorLight = user?.colorLight
+  const userId = user?.userId
 
   useEffect(() => {
     if (!bundle || userName == null || !userColor || !userColorLight) {
@@ -167,8 +172,9 @@ export function useSoftwareDocYjsCollab(
       name: userName,
       color: userColor,
       colorLight: userColorLight,
+      ...(userId != null && userId !== '' ? { userId } : {}),
     })
-  }, [bundle, userName, userColor, userColorLight])
+  }, [bundle, userName, userColor, userColorLight, userId])
 
   return bundle
 }

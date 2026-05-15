@@ -9,11 +9,12 @@ import {
 } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
+import { CollaboratorPresenceStack } from '../components/editor/CollaboratorPresenceStack'
+import type { CrepeEditorApi } from '../components/editor/CrepeEditor'
 import {
   SplitEditor,
   type EditorSelectionState,
 } from '../components/editor/SplitEditor'
-import type { CrepeEditorApi } from '../components/editor/CrepeEditor'
 import { BuilderHomeHeader } from '../components/home/BuilderHomeHeader'
 import { HealthRail } from '../components/section/HealthRail'
 import { SectionLayoutSwitcher } from '../components/section/SectionLayoutSwitcher'
@@ -22,9 +23,9 @@ import { ContextTab } from '../components/thread/ContextTab'
 import type { CopilotSideTab } from '../components/thread/CopilotStatusStrip'
 import { ThreadPanel } from '../components/thread/ThreadPanel'
 import { usePersistedSectionLayoutMode } from '../hooks/usePersistedSectionLayoutMode'
+import { useCollabAwarenessPresence } from '../hooks/useCollabAwarenessPresence'
 import { colorsForUser, useYjsCollab } from '../hooks/useYjsCollab'
 import { useStudioAccess } from '../hooks/useStudioAccess'
-import { collaboratorCountFromAwareness, remoteAwarenessPeers } from '../lib/copilotAwareness'
 import type { SectionPatchOverlayState } from '../lib/sectionPatchOverlay'
 import {
   getHostedEnvironment,
@@ -193,6 +194,7 @@ export function SectionPageV1(): ReactElement {
       name: profile.user.display_name,
       color,
       colorLight,
+      userId: profile.user.id,
     }
   }, [profile?.user?.display_name, profile?.user?.id])
 
@@ -452,49 +454,8 @@ export function SectionPageV1(): ReactElement {
     },
   })
 
-  const [sectionAwareBump, setSectionAwareBump] = useState(0)
-
-  useEffect(() => {
-    if (!collab?.awareness) {
-      return
-    }
-    const a = collab.awareness as {
-      on?: (ev: string, fn: () => void) => void
-      off?: (ev: string, fn: () => void) => void
-    }
-    if (typeof a.on !== 'function') {
-      return
-    }
-    const fn = (): void => {
-      setSectionAwareBump((n) => n + 1)
-    }
-    a.on('change', fn)
-    return () => {
-      a.off?.('change', fn)
-    }
-  }, [collab?.awareness])
-
-  void sectionAwareBump
-
-  const focusCollaboratorCount = useMemo(
-    () => collaboratorCountFromAwareness(collab),
-    [collab, sectionAwareBump],
-  )
-
-  const remotePeers = useMemo(
-    () => remoteAwarenessPeers(collab),
-    [collab, sectionAwareBump],
-  )
-
-  const peerInitials = (name: string): string => {
-    const parts = name.trim().split(/\s+/)
-    if (parts.length >= 2 && parts[0] && parts[parts.length - 1]) {
-      return (
-        parts[0].charAt(0) + parts[parts.length - 1].charAt(0)
-      ).toUpperCase()
-    }
-    return name.slice(0, 2).toUpperCase() || '?'
-  }
+  const { remotePeers, collaboratorCount: focusCollaboratorCount } =
+    useCollabAwarenessPresence(collab)
 
   const editorViewMode =
     layoutMode === 'markdown' ||
@@ -547,23 +508,8 @@ export function SectionPageV1(): ReactElement {
           </span>
         </div>
         {layoutMode !== 'focus' && remotePeers.length > 0 ? (
-          <div
-            className="flex items-center gap-1.5 sm:order-none"
-            aria-label="Collaborators on this section"
-          >
-            {remotePeers.map((p, i) => (
-              <span
-                key={`${p.name}-${i}`}
-                title={p.name}
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 text-[10px] font-medium text-zinc-100"
-                style={{
-                  borderColor: p.color,
-                  backgroundColor: 'rgb(24 24 27)',
-                }}
-              >
-                {peerInitials(p.name)}
-              </span>
-            ))}
+          <div className="flex items-center gap-1.5 sm:order-none">
+            <CollaboratorPresenceStack peers={remotePeers} />
           </div>
         ) : null}
         {layoutMode === 'focus' ? (

@@ -140,6 +140,7 @@ export function SoftwareDocEditorPage(): ReactElement {
       name: profile.user.display_name,
       color,
       colorLight,
+      userId: profile.user.id,
     }
   }, [profile?.user?.display_name, profile?.user?.id])
 

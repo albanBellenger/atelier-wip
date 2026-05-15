@@ -47,6 +47,38 @@ function minimalCollab(): YjsCollab {
   }
 }
 
+function collabWithRemotePeer(): YjsCollab {
+  const ydoc = new Y.Doc()
+  const states = new Map<number, unknown>([
+    [0, { user: { name: 'Local', color: 'hsl(0 70% 60%)', userId: 'loc' } }],
+    [
+      2,
+      {
+        user: {
+          name: 'Taylor Quinn',
+          color: '#ff0000',
+          userId: 'remote-tq',
+        },
+      },
+    ],
+  ])
+  return {
+    ydoc,
+    provider: {
+      ws: null,
+      on: vi.fn(),
+      off: vi.fn(),
+    } as unknown as YjsCollab['provider'],
+    awareness: {
+      clientID: 0,
+      getStates: (): Map<number, unknown> => states,
+      on: vi.fn(),
+      off: vi.fn(),
+    } as unknown as YjsCollab['awareness'],
+    sendMarkdownSnapshot: vi.fn(),
+  }
+}
+
 describe('SplitEditor', () => {
   beforeEach(() => {
     Object.defineProperty(window, 'matchMedia', {
@@ -66,6 +98,20 @@ describe('SplitEditor', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+  it('shows collaborator presence in the editor header when remotes are connected', () => {
+    const collab = collabWithRemotePeer()
+    render(<SplitEditor collab={collab} defaultMarkdown="# Hello" />)
+    expect(screen.getByTitle('Taylor Quinn')).toHaveTextContent('TQ')
+  })
+
+  it('shows remote collaborator presence for read-only editors', () => {
+    const collab = collabWithRemotePeer()
+    render(
+      <SplitEditor collab={collab} defaultMarkdown="# Hello" readOnly />,
+    )
+    expect(screen.getByTitle('Taylor Quinn')).toBeInTheDocument()
   })
 
   it('renders editor view tablist with Editor, Preview, Split', () => {
