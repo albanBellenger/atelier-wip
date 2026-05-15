@@ -11,6 +11,15 @@ import {
   type ReactElement,
 } from 'react'
 
+import {
+  dispatchBlockHandlePointerProbe,
+  findFirstParagraphEl,
+  getBlockHandleProbeClientX,
+  hideBlockHandleViaPointerProbe,
+  queryVisibleBlockHandle,
+  readEditorBlockHandleFirstRunDone,
+  writeEditorBlockHandleFirstRunDone,
+} from '../../lib/editorBlockHandleOnboarding'
 import type { YjsCollab } from '../../hooks/useYjsCollab'
 import type { SectionPatchOverlayState } from '../../lib/sectionPatchOverlay'
 import {
@@ -30,6 +39,7 @@ import {
   createIssueGutterMilkdownPlugin,
   dispatchIssueGutterRefresh,
 } from './crepeIssueGutterPlugin'
+import { EditorBlockHandleOnboardingTooltip } from './EditorBlockHandleOnboardingTooltip'
 import type { EditorSelectionState } from './editorSelection'
 import type { IssueGutterMark } from './issueGutterSpec'
 
@@ -138,6 +148,9 @@ const CrepeEditorInner = forwardRef<CrepeEditorApi, CrepeEditorProps>(
     issueGutterMarksRef.current = issueGutterMarks ?? []
 
     const [loading, setLoading] = useState(true)
+    const [blockOnboardingRect, setBlockOnboardingRect] =
+      useState<DOMRectReadOnly | null>(null)
+    const blockOnboardingViewRef = useRef<EditorView | null>(null)
 
     useImperativeHandle(
       ref,
@@ -410,6 +423,125 @@ const CrepeEditorInner = forwardRef<CrepeEditorApi, CrepeEditorProps>(
       }
     }, [issueGutterMarks, loading])
 
+    useEffect(() => {
+      blockOnboardingViewRef.current = null
+      setBlockOnboardingRect(null)
+      if (readOnly || loading) {
+        return
+      }
+      if (readEditorBlockHandleFirstRunDone()) {
+        return
+      }
+      const cancelled = { current: false }
+      let rafOuter = 0
+      let rafInner = 0
+      let tProbeRepeat: ReturnType<typeof setTimeout> | null = null
+      let tPollStart: ReturnType<typeof setTimeout> | null = null
+      let pollTimer: ReturnType<typeof setTimeout> | null = null
+      let tDismiss: ReturnType<typeof setTimeout> | null = null
+
+      const clearTimers = (): void => {
+        if (tProbeRepeat != null) {
+          clearTimeout(tProbeRepeat)
+          tProbeRepeat = null
+        }
+        if (tPollStart != null) {
+          clearTimeout(tPollStart)
+          tPollStart = null
+        }
+        if (pollTimer != null) {
+          clearTimeout(pollTimer)
+          pollTimer = null
+        }
+        if (tDismiss != null) {
+          clearTimeout(tDismiss)
+          tDismiss = null
+        }
+      }
+
+      const run = (): void => {
+        if (cancelled.current) {
+          return
+        }
+        const host = outerRef.current
+        const c = crepeRef.current
+        if (!host || !c) {
+          return
+        }
+        let view: EditorView | null = null
+        try {
+          view = c.editor.action((ctx) => ctx.get(editorViewCtx))
+        } catch {
+          return
+        }
+        if (!view || cancelled.current) {
+          return
+        }
+        const p = findFirstParagraphEl(view)
+        if (!p) {
+          return
+        }
+        const clientX = getBlockHandleProbeClientX(view)
+        const pr = p.getBoundingClientRect()
+        const clientY = pr.top + pr.height / 2
+        dispatchBlockHandlePointerProbe(view, clientX, clientY)
+        tProbeRepeat = setTimeout(() => {
+          if (cancelled.current) {
+            return
+          }
+          dispatchBlockHandlePointerProbe(view, clientX, clientY)
+        }, 260)
+
+        let polls = 0
+        const poll = (): void => {
+          if (cancelled.current) {
+            return
+          }
+          const h = queryVisibleBlockHandle(host)
+          if (h) {
+            blockOnboardingViewRef.current = view
+            writeEditorBlockHandleFirstRunDone()
+            setBlockOnboardingRect(h.getBoundingClientRect())
+            tDismiss = setTimeout(() => {
+              if (cancelled.current) {
+                return
+              }
+              setBlockOnboardingRect(null)
+              const v = blockOnboardingViewRef.current
+              blockOnboardingViewRef.current = null
+              if (v) {
+                hideBlockHandleViaPointerProbe(v)
+              }
+            }, 3000)
+            return
+          }
+          polls += 1
+          if (polls >= 28) {
+            return
+          }
+          pollTimer = setTimeout(poll, 80)
+        }
+        tPollStart = setTimeout(poll, 50)
+      }
+
+      rafOuter = requestAnimationFrame(() => {
+        rafInner = requestAnimationFrame(run)
+      })
+
+      return () => {
+        cancelled.current = true
+        cancelAnimationFrame(rafOuter)
+        cancelAnimationFrame(rafInner)
+        clearTimers()
+        setBlockOnboardingRect(null)
+        const v = blockOnboardingViewRef.current
+        blockOnboardingViewRef.current = null
+        if (v) {
+          hideBlockHandleViaPointerProbe(v)
+        }
+      }
+    }, [readOnly, loading])
+
     return (
       <div
         ref={outerRef}
@@ -420,6 +552,9 @@ const CrepeEditorInner = forwardRef<CrepeEditorApi, CrepeEditorProps>(
           ref={crepeRootRef}
           className="h-full min-h-[200px] w-full min-w-0 [&_.milkdown]:min-h-[200px]"
         />
+        {blockOnboardingRect ? (
+          <EditorBlockHandleOnboardingTooltip anchorRect={blockOnboardingRect} />
+        ) : null}
         {loading ? (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-start bg-zinc-950">
             <p className="p-3 text-xs text-zinc-500">Loading editor…</p>

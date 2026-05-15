@@ -4,6 +4,10 @@ import { describe, expect, it } from 'vitest'
 
 import type { EditorView } from '@milkdown/prose/view'
 
+import {
+  EDITOR_BLOCK_HANDLE_FIRST_RUN_LS_KEY,
+  writeEditorBlockHandleFirstRunDone,
+} from '../../lib/editorBlockHandleOnboarding'
 import type { CrepeEditorApi } from './CrepeEditor'
 import { CrepeEditor, pmSelectionToEditorState } from './CrepeEditor'
 
@@ -46,5 +50,50 @@ describe('CrepeEditor', () => {
       expect(await screen.findByText('Hello', {}, { timeout: 15_000 })).toBeInTheDocument()
     },
     20_000,
+  )
+
+  it(
+    'does not show block-handle onboarding in read-only mode',
+    async () => {
+      window.localStorage.removeItem(EDITOR_BLOCK_HANDLE_FIRST_RUN_LS_KEY)
+      render(
+        <CrepeEditor
+          ref={createRef<CrepeEditorApi>()}
+          collab={null}
+          defaultMarkdown="Hello"
+          readOnly
+        />,
+      )
+      await waitFor(
+        () => expect(screen.queryByText('Loading editor…')).not.toBeInTheDocument(),
+        { timeout: 15_000 },
+      )
+      await new Promise((r) => setTimeout(r, 2000))
+      expect(screen.queryByTestId('editor-block-onboarding-tooltip')).toBeNull()
+    },
+    22_000,
+  )
+
+  it(
+    'does not show block-handle onboarding when the first-run flag is already set',
+    async () => {
+      window.localStorage.removeItem(EDITOR_BLOCK_HANDLE_FIRST_RUN_LS_KEY)
+      writeEditorBlockHandleFirstRunDone()
+      render(
+        <CrepeEditor
+          ref={createRef<CrepeEditorApi>()}
+          collab={null}
+          defaultMarkdown="Hello"
+          readOnly={false}
+        />,
+      )
+      await waitFor(
+        () => expect(screen.queryByText('Loading editor…')).not.toBeInTheDocument(),
+        { timeout: 15_000 },
+      )
+      await new Promise((r) => setTimeout(r, 2000))
+      expect(screen.queryByTestId('editor-block-onboarding-tooltip')).toBeNull()
+    },
+    22_000,
   )
 })
