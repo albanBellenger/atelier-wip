@@ -87,6 +87,7 @@ async def test_get_graph_builds_nodes_and_edges(
         id = iid
         description = "long " * 20
         status = "open"
+        kind = "conflict_or_gap"
 
     class Edge:
         source_type = "section"
@@ -103,6 +104,7 @@ async def test_get_graph_builds_nodes_and_edges(
     db.execute = AsyncMock(
         side_effect=[
             mk_result([Sec]),
+            mk_result([]),  # software_doc_section query (no rows)
             mk_result([WO]),
             mk_result([Art]),
             mk_result([Iss]),
