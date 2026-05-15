@@ -50,6 +50,10 @@ import './crepeAtelierTheme.css'
 
 const SNAPSHOT_DEBOUNCE_MS = 2000
 
+/** Empty-doc hint in Crepe (`Placeholder` feature, `mode: "doc"`). */
+export const EMPTY_SECTION_EDITOR_PLACEHOLDER =
+  'Press / to insert content or call an agent. Drop an image to upload it. Select text to invoke the Copilot.'
+
 /** Aligned with Crepe block-edit `menuAPI` (`$ctx(..., 'menuAPICtx')`). Resolved by name via Milkdown `ctx.get`. */
 const CREPE_BLOCK_EDIT_MENU_API_NAME = 'menuAPICtx' as const
 
@@ -267,6 +271,10 @@ const CrepeEditorInner = forwardRef<CrepeEditorApi, CrepeEditorProps>(
                 // First bubble appearance is delayed via `patches/@milkdown+crepe+7.21.0.patch`
                 // (Milkdown’s TooltipProvider uses a leading throttle, so a high `debounce` alone does not help).
                 buildToolbar: crepeToolbarBuildToolbar(() => copilotCallbacksRef.current),
+              },
+              [CrepeFeature.Placeholder]: {
+                text: EMPTY_SECTION_EDITOR_PLACEHOLDER,
+                mode: 'doc',
               },
             }
           : undefined
