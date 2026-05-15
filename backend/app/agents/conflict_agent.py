@@ -28,7 +28,12 @@ SYSTEM_PROMPT = (
     "section_index_b (both indices valid).\n"
     "- section_gap: missing critical info for section_index_a only; set "
     "section_index_b to null.\n"
-    "Use indices exactly as given (0-based). Be concise."
+    "Use section indices exactly as given (0-based). Be concise.\n"
+    "Heading anchors (ATX Markdown only: lines starting with #): for each finding, "
+    "set 0-based heading_index as the position among # / ## / ### … headings in "
+    "that section's body in file order—the heading that best localizes the issue. "
+    "For pair_conflict set heading_index_a in section A's body and heading_index_b "
+    "in section B's body. Use null when you cannot infer a heading."
 )
 
 USER_PROMPT = "Sections catalog:\n\n{catalog}"
@@ -55,12 +60,18 @@ CONFLICT_ANALYSIS_SCHEMA: dict[str, Any] = {
                         "section_index_a": {"type": "integer"},
                         "section_index_b": {"type": ["integer", "null"]},
                         "description": {"type": "string"},
+                        "heading_index": {"type": ["integer", "null"]},
+                        "heading_index_a": {"type": ["integer", "null"]},
+                        "heading_index_b": {"type": ["integer", "null"]},
                     },
                     "required": [
                         "finding_type",
                         "section_index_a",
                         "section_index_b",
                         "description",
+                        "heading_index",
+                        "heading_index_a",
+                        "heading_index_b",
                     ],
                 },
             }
@@ -68,6 +79,22 @@ CONFLICT_ANALYSIS_SCHEMA: dict[str, Any] = {
         "required": ["findings"],
     },
 }
+
+
+def _issue_payload_from_finding(*, finding_type: str, item: dict[str, Any]) -> dict[str, Any]:
+    """Normalize heading anchors from structured LLM output for editor gutter."""
+    if finding_type == "section_gap":
+        raw = item.get("heading_index")
+        idx = raw if isinstance(raw, int) and raw >= 0 else None
+        return {"finding_type": "section_gap", "heading_index": idx}
+    if finding_type == "pair_conflict":
+        ra = item.get("heading_index_a")
+        rb = item.get("heading_index_b")
+        ia = ra if isinstance(ra, int) and ra >= 0 else None
+        ib = rb if isinstance(rb, int) and rb >= 0 else None
+        return {"finding_type": "pair_conflict", "heading_index_a": ia, "heading_index_b": ib}
+    return {"finding_type": finding_type or "unknown"}
+
 
 # ── Agent ─────────────────────────────────────────────────────────────────────
 
@@ -182,6 +209,11 @@ class ConflictAgent:
                     continue
                 sec_b_uuid = sections[ib].id
 
+            payload_json = _issue_payload_from_finding(
+                finding_type=str(ft) if ft else "",
+                item=item,
+            )
+
             issue = Issue(
                 id=uuid.uuid4(),
                 project_id=project_id,
@@ -194,6 +226,7 @@ class ConflictAgent:
                 status="open",
                 origin=origin,
                 run_actor_id=run_actor_id,
+                payload_json=payload_json,
             )
             self.db.add(issue)
             await self.db.flush()

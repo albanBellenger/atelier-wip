@@ -25,7 +25,12 @@ import {
   crepeToolbarBuildToolbar,
   type CrepeCopilotMenuCallbacks,
 } from './crepeCopilotMenus'
+import {
+  createIssueGutterMilkdownPlugin,
+  dispatchIssueGutterRefresh,
+} from './crepeIssueGutterPlugin'
 import type { EditorSelectionState } from './editorSelection'
+import type { IssueGutterMark } from './issueGutterSpec'
 
 import '@milkdown/crepe/theme/common/style.css'
 import '@milkdown/crepe/theme/frame-dark.css'
@@ -56,6 +61,8 @@ export interface CrepeEditorProps {
   onAiComposerPrefill?: (markdown: string) => void
   onCopilotSlashExecute?: (rawComposerLine: string) => void | Promise<void>
   replaceSelectionSlashDisabled?: boolean
+  /** Open gap/conflict issues with heading anchors — gutter widgets in the editor. */
+  issueGutterMarks?: readonly IssueGutterMark[]
 }
 
 /** Exported for unit tests. Crepe can fire `selectionUpdated` before `editorViewCtx` is ready. */
@@ -93,6 +100,7 @@ const CrepeEditorInner = forwardRef<CrepeEditorApi, CrepeEditorProps>(
       onAiComposerPrefill,
       onCopilotSlashExecute,
       replaceSelectionSlashDisabled = false,
+      issueGutterMarks,
     },
     ref,
   ): ReactElement {
@@ -117,6 +125,8 @@ const CrepeEditorInner = forwardRef<CrepeEditorApi, CrepeEditorProps>(
     }
     const onEditorReadyRef = useRef(onEditorReady)
     onEditorReadyRef.current = onEditorReady
+    const issueGutterMarksRef = useRef<readonly IssueGutterMark[]>([])
+    issueGutterMarksRef.current = issueGutterMarks ?? []
 
     const [loading, setLoading] = useState(true)
 
@@ -245,6 +255,9 @@ const CrepeEditorInner = forwardRef<CrepeEditorApi, CrepeEditorProps>(
         featureConfigs,
       })
       crepe.editor.use(collabPlugin)
+      crepe.editor.use(
+        createIssueGutterMilkdownPlugin(() => issueGutterMarksRef.current),
+      )
 
       crepe.on((lm) => {
         lm.markdownUpdated((_ctx, markdown) => {
@@ -354,6 +367,22 @@ const CrepeEditorInner = forwardRef<CrepeEditorApi, CrepeEditorProps>(
         setLoading(true)
       }
     }, [defaultMarkdown, readOnly, canEdit, collab])
+
+    useEffect(() => {
+      issueGutterMarksRef.current = issueGutterMarks ?? []
+      const c = crepeRef.current
+      if (!c || loading) {
+        return
+      }
+      try {
+        void c.editor.action((ctx) => {
+          const view = ctx.get(editorViewCtx)
+          dispatchIssueGutterRefresh(view)
+        })
+      } catch {
+        /* editor may be destroying */
+      }
+    }, [issueGutterMarks, loading])
 
     return (
       <div
