@@ -1,3 +1,277 @@
+diff --git a/node_modules/@milkdown/crepe/lib/cjs/feature/block-edit/index.js b/node_modules/@milkdown/crepe/lib/cjs/feature/block-edit/index.js
+index c96e611..510d7ac 100644
+--- a/node_modules/@milkdown/crepe/lib/cjs/feature/block-edit/index.js
++++ b/node_modules/@milkdown/crepe/lib/cjs/feature/block-edit/index.js
+@@ -488,6 +488,8 @@ function getGroups(filter, config, ctx) {
+     }
+     if (((_j = config == null ? void 0 : config.textGroup) == null ? void 0 : _j.h1) !== null) {
+       textGroup.addItem("h1", {
++        shortcut: "#",
++
+         label: (_m = (_l = (_k = config == null ? void 0 : config.textGroup) == null ? void 0 : _k.h1) == null ? void 0 : _l.label) != null ? _m : "Heading 1",
+         icon: (_p = (_o = (_n = config == null ? void 0 : config.textGroup) == null ? void 0 : _n.h1) == null ? void 0 : _o.icon) != null ? _p : h1Icon,
+         onRun: (ctx2) => {
+@@ -505,6 +507,8 @@ function getGroups(filter, config, ctx) {
+     }
+     if (((_q = config == null ? void 0 : config.textGroup) == null ? void 0 : _q.h2) !== null) {
+       textGroup.addItem("h2", {
++        shortcut: "##",
++
+         label: (_t = (_s = (_r = config == null ? void 0 : config.textGroup) == null ? void 0 : _r.h2) == null ? void 0 : _s.label) != null ? _t : "Heading 2",
+         icon: (_w = (_v = (_u = config == null ? void 0 : config.textGroup) == null ? void 0 : _u.h2) == null ? void 0 : _v.icon) != null ? _w : h2Icon,
+         onRun: (ctx2) => {
+@@ -522,6 +526,8 @@ function getGroups(filter, config, ctx) {
+     }
+     if (((_x = config == null ? void 0 : config.textGroup) == null ? void 0 : _x.h3) !== null) {
+       textGroup.addItem("h3", {
++        shortcut: "###",
++
+         label: (_A = (_z = (_y = config == null ? void 0 : config.textGroup) == null ? void 0 : _y.h3) == null ? void 0 : _z.label) != null ? _A : "Heading 3",
+         icon: (_D = (_C = (_B = config == null ? void 0 : config.textGroup) == null ? void 0 : _B.h3) == null ? void 0 : _C.icon) != null ? _D : h3Icon,
+         onRun: (ctx2) => {
+@@ -539,6 +545,8 @@ function getGroups(filter, config, ctx) {
+     }
+     if (((_E = config == null ? void 0 : config.textGroup) == null ? void 0 : _E.h4) !== null) {
+       textGroup.addItem("h4", {
++        shortcut: "####",
++
+         label: (_H = (_G = (_F = config == null ? void 0 : config.textGroup) == null ? void 0 : _F.h4) == null ? void 0 : _G.label) != null ? _H : "Heading 4",
+         icon: (_K = (_J = (_I = config == null ? void 0 : config.textGroup) == null ? void 0 : _I.h4) == null ? void 0 : _J.icon) != null ? _K : h4Icon,
+         onRun: (ctx2) => {
+@@ -556,6 +564,8 @@ function getGroups(filter, config, ctx) {
+     }
+     if (((_L = config == null ? void 0 : config.textGroup) == null ? void 0 : _L.h5) !== null) {
+       textGroup.addItem("h5", {
++        shortcut: "#####",
++
+         label: (_O = (_N = (_M = config == null ? void 0 : config.textGroup) == null ? void 0 : _M.h5) == null ? void 0 : _N.label) != null ? _O : "Heading 5",
+         icon: (_R = (_Q = (_P = config == null ? void 0 : config.textGroup) == null ? void 0 : _P.h5) == null ? void 0 : _Q.icon) != null ? _R : h5Icon,
+         onRun: (ctx2) => {
+@@ -573,6 +583,8 @@ function getGroups(filter, config, ctx) {
+     }
+     if (((_S = config == null ? void 0 : config.textGroup) == null ? void 0 : _S.h6) !== null) {
+       textGroup.addItem("h6", {
++        shortcut: "######",
++
+         label: (_V = (_U = (_T = config == null ? void 0 : config.textGroup) == null ? void 0 : _T.h6) == null ? void 0 : _U.label) != null ? _V : "Heading 6",
+         icon: (_Y = (_X = (_W = config == null ? void 0 : config.textGroup) == null ? void 0 : _W.h6) == null ? void 0 : _X.icon) != null ? _Y : h6Icon,
+         onRun: (ctx2) => {
+@@ -590,6 +602,8 @@ function getGroups(filter, config, ctx) {
+     }
+     if (((_Z = config == null ? void 0 : config.textGroup) == null ? void 0 : _Z.quote) !== null) {
+       textGroup.addItem("quote", {
++        shortcut: ">",
++
+         label: (_aa = (_$ = (__ = config == null ? void 0 : config.textGroup) == null ? void 0 : __.quote) == null ? void 0 : _$.label) != null ? _aa : "Quote",
+         icon: (_da = (_ca = (_ba = config == null ? void 0 : config.textGroup) == null ? void 0 : _ba.quote) == null ? void 0 : _ca.icon) != null ? _da : quoteIcon,
+         onRun: (ctx2) => {
+@@ -604,6 +618,8 @@ function getGroups(filter, config, ctx) {
+     }
+     if (((_ea = config == null ? void 0 : config.textGroup) == null ? void 0 : _ea.divider) !== null) {
+       textGroup.addItem("divider", {
++        shortcut: "---",
++
+         label: (_ha = (_ga = (_fa = config == null ? void 0 : config.textGroup) == null ? void 0 : _fa.divider) == null ? void 0 : _ga.label) != null ? _ha : "Divider",
+         icon: (_ka = (_ja = (_ia = config == null ? void 0 : config.textGroup) == null ? void 0 : _ia.divider) == null ? void 0 : _ja.icon) != null ? _ka : dividerIcon,
+         onRun: (ctx2) => {
+@@ -624,6 +640,8 @@ function getGroups(filter, config, ctx) {
+     );
+     if (((_na = config == null ? void 0 : config.listGroup) == null ? void 0 : _na.bulletList) !== null) {
+       listGroup.addItem("bullet-list", {
++        shortcut: "-",
++
+         label: (_qa = (_pa = (_oa = config == null ? void 0 : config.listGroup) == null ? void 0 : _oa.bulletList) == null ? void 0 : _pa.label) != null ? _qa : "Bullet List",
+         icon: (_ta = (_sa = (_ra = config == null ? void 0 : config.listGroup) == null ? void 0 : _ra.bulletList) == null ? void 0 : _sa.icon) != null ? _ta : bulletListIcon,
+         onRun: (ctx2) => {
+@@ -638,6 +656,8 @@ function getGroups(filter, config, ctx) {
+     }
+     if (((_ua = config == null ? void 0 : config.listGroup) == null ? void 0 : _ua.orderedList) !== null) {
+       listGroup.addItem("ordered-list", {
++        shortcut: "1.",
++
+         label: (_xa = (_wa = (_va = config == null ? void 0 : config.listGroup) == null ? void 0 : _va.orderedList) == null ? void 0 : _wa.label) != null ? _xa : "Ordered List",
+         icon: (_Aa = (_za = (_ya = config == null ? void 0 : config.listGroup) == null ? void 0 : _ya.orderedList) == null ? void 0 : _za.icon) != null ? _Aa : orderedListIcon,
+         onRun: (ctx2) => {
+@@ -652,6 +672,8 @@ function getGroups(filter, config, ctx) {
+     }
+     if (((_Ba = config == null ? void 0 : config.listGroup) == null ? void 0 : _Ba.taskList) !== null) {
+       listGroup.addItem("task-list", {
++        shortcut: "[]",
++
+         label: (_Ea = (_Da = (_Ca = config == null ? void 0 : config.listGroup) == null ? void 0 : _Ca.taskList) == null ? void 0 : _Da.label) != null ? _Ea : "Task List",
+         icon: (_Ha = (_Ga = (_Fa = config == null ? void 0 : config.listGroup) == null ? void 0 : _Fa.taskList) == null ? void 0 : _Ga.icon) != null ? _Ha : todoListIcon,
+         onRun: (ctx2) => {
+@@ -687,6 +709,8 @@ function getGroups(filter, config, ctx) {
+     }
+     if (((_Ra = config == null ? void 0 : config.advancedGroup) == null ? void 0 : _Ra.codeBlock) !== null) {
+       advancedGroup.addItem("code", {
++        shortcut: "```",
++
+         label: (_Ua = (_Ta = (_Sa = config == null ? void 0 : config.advancedGroup) == null ? void 0 : _Sa.codeBlock) == null ? void 0 : _Ta.label) != null ? _Ua : "Code",
+         icon: (_Xa = (_Wa = (_Va = config == null ? void 0 : config.advancedGroup) == null ? void 0 : _Va.codeBlock) == null ? void 0 : _Wa.icon) != null ? _Xa : codeIcon,
+         onRun: (ctx2) => {
+@@ -719,6 +743,8 @@ function getGroups(filter, config, ctx) {
+     }
+     if (((_db = config == null ? void 0 : config.advancedGroup) == null ? void 0 : _db.math) !== null && isLatexEnabled) {
+       advancedGroup.addItem("math", {
++        shortcut: "$$",
++
+         label: (_gb = (_fb = (_eb = config == null ? void 0 : config.advancedGroup) == null ? void 0 : _eb.math) == null ? void 0 : _fb.label) != null ? _gb : "Math",
+         icon: (_jb = (_ib = (_hb = config == null ? void 0 : config.advancedGroup) == null ? void 0 : _hb.math) == null ? void 0 : _ib.icon) != null ? _jb : functionsIcon,
+         onRun: (ctx2) => {
+@@ -916,7 +942,8 @@ const Menu = vue.defineComponent({
+           }
+         },
+         /* @__PURE__ */ vue.h(component.Icon, { icon: item.icon }),
+-        /* @__PURE__ */ vue.h("span", null, item.label)
++        /* @__PURE__ */ vue.h("span", null, item.label),
++        item.shortcut ? /* @__PURE__ */ vue.h("span", { class: "shortcut" }, item.shortcut) : null
+       )))))));
+     };
+   }
+diff --git a/node_modules/@milkdown/crepe/lib/esm/feature/block-edit/index.js b/node_modules/@milkdown/crepe/lib/esm/feature/block-edit/index.js
+index 9c2c109..3501955 100644
+--- a/node_modules/@milkdown/crepe/lib/esm/feature/block-edit/index.js
++++ b/node_modules/@milkdown/crepe/lib/esm/feature/block-edit/index.js
+@@ -486,6 +486,8 @@ function getGroups(filter, config, ctx) {
+     }
+     if (((_j = config == null ? void 0 : config.textGroup) == null ? void 0 : _j.h1) !== null) {
+       textGroup.addItem("h1", {
++        shortcut: "#",
++
+         label: (_m = (_l = (_k = config == null ? void 0 : config.textGroup) == null ? void 0 : _k.h1) == null ? void 0 : _l.label) != null ? _m : "Heading 1",
+         icon: (_p = (_o = (_n = config == null ? void 0 : config.textGroup) == null ? void 0 : _n.h1) == null ? void 0 : _o.icon) != null ? _p : h1Icon,
+         onRun: (ctx2) => {
+@@ -503,6 +505,8 @@ function getGroups(filter, config, ctx) {
+     }
+     if (((_q = config == null ? void 0 : config.textGroup) == null ? void 0 : _q.h2) !== null) {
+       textGroup.addItem("h2", {
++        shortcut: "##",
++
+         label: (_t = (_s = (_r = config == null ? void 0 : config.textGroup) == null ? void 0 : _r.h2) == null ? void 0 : _s.label) != null ? _t : "Heading 2",
+         icon: (_w = (_v = (_u = config == null ? void 0 : config.textGroup) == null ? void 0 : _u.h2) == null ? void 0 : _v.icon) != null ? _w : h2Icon,
+         onRun: (ctx2) => {
+@@ -520,6 +524,8 @@ function getGroups(filter, config, ctx) {
+     }
+     if (((_x = config == null ? void 0 : config.textGroup) == null ? void 0 : _x.h3) !== null) {
+       textGroup.addItem("h3", {
++        shortcut: "###",
++
+         label: (_A = (_z = (_y = config == null ? void 0 : config.textGroup) == null ? void 0 : _y.h3) == null ? void 0 : _z.label) != null ? _A : "Heading 3",
+         icon: (_D = (_C = (_B = config == null ? void 0 : config.textGroup) == null ? void 0 : _B.h3) == null ? void 0 : _C.icon) != null ? _D : h3Icon,
+         onRun: (ctx2) => {
+@@ -537,6 +543,8 @@ function getGroups(filter, config, ctx) {
+     }
+     if (((_E = config == null ? void 0 : config.textGroup) == null ? void 0 : _E.h4) !== null) {
+       textGroup.addItem("h4", {
++        shortcut: "####",
++
+         label: (_H = (_G = (_F = config == null ? void 0 : config.textGroup) == null ? void 0 : _F.h4) == null ? void 0 : _G.label) != null ? _H : "Heading 4",
+         icon: (_K = (_J = (_I = config == null ? void 0 : config.textGroup) == null ? void 0 : _I.h4) == null ? void 0 : _J.icon) != null ? _K : h4Icon,
+         onRun: (ctx2) => {
+@@ -554,6 +562,8 @@ function getGroups(filter, config, ctx) {
+     }
+     if (((_L = config == null ? void 0 : config.textGroup) == null ? void 0 : _L.h5) !== null) {
+       textGroup.addItem("h5", {
++        shortcut: "#####",
++
+         label: (_O = (_N = (_M = config == null ? void 0 : config.textGroup) == null ? void 0 : _M.h5) == null ? void 0 : _N.label) != null ? _O : "Heading 5",
+         icon: (_R = (_Q = (_P = config == null ? void 0 : config.textGroup) == null ? void 0 : _P.h5) == null ? void 0 : _Q.icon) != null ? _R : h5Icon,
+         onRun: (ctx2) => {
+@@ -571,6 +581,8 @@ function getGroups(filter, config, ctx) {
+     }
+     if (((_S = config == null ? void 0 : config.textGroup) == null ? void 0 : _S.h6) !== null) {
+       textGroup.addItem("h6", {
++        shortcut: "######",
++
+         label: (_V = (_U = (_T = config == null ? void 0 : config.textGroup) == null ? void 0 : _T.h6) == null ? void 0 : _U.label) != null ? _V : "Heading 6",
+         icon: (_Y = (_X = (_W = config == null ? void 0 : config.textGroup) == null ? void 0 : _W.h6) == null ? void 0 : _X.icon) != null ? _Y : h6Icon,
+         onRun: (ctx2) => {
+@@ -588,6 +600,8 @@ function getGroups(filter, config, ctx) {
+     }
+     if (((_Z = config == null ? void 0 : config.textGroup) == null ? void 0 : _Z.quote) !== null) {
+       textGroup.addItem("quote", {
++        shortcut: ">",
++
+         label: (_aa = (_$ = (__ = config == null ? void 0 : config.textGroup) == null ? void 0 : __.quote) == null ? void 0 : _$.label) != null ? _aa : "Quote",
+         icon: (_da = (_ca = (_ba = config == null ? void 0 : config.textGroup) == null ? void 0 : _ba.quote) == null ? void 0 : _ca.icon) != null ? _da : quoteIcon,
+         onRun: (ctx2) => {
+@@ -602,6 +616,8 @@ function getGroups(filter, config, ctx) {
+     }
+     if (((_ea = config == null ? void 0 : config.textGroup) == null ? void 0 : _ea.divider) !== null) {
+       textGroup.addItem("divider", {
++        shortcut: "---",
++
+         label: (_ha = (_ga = (_fa = config == null ? void 0 : config.textGroup) == null ? void 0 : _fa.divider) == null ? void 0 : _ga.label) != null ? _ha : "Divider",
+         icon: (_ka = (_ja = (_ia = config == null ? void 0 : config.textGroup) == null ? void 0 : _ia.divider) == null ? void 0 : _ja.icon) != null ? _ka : dividerIcon,
+         onRun: (ctx2) => {
+@@ -622,6 +638,8 @@ function getGroups(filter, config, ctx) {
+     );
+     if (((_na = config == null ? void 0 : config.listGroup) == null ? void 0 : _na.bulletList) !== null) {
+       listGroup.addItem("bullet-list", {
++        shortcut: "-",
++
+         label: (_qa = (_pa = (_oa = config == null ? void 0 : config.listGroup) == null ? void 0 : _oa.bulletList) == null ? void 0 : _pa.label) != null ? _qa : "Bullet List",
+         icon: (_ta = (_sa = (_ra = config == null ? void 0 : config.listGroup) == null ? void 0 : _ra.bulletList) == null ? void 0 : _sa.icon) != null ? _ta : bulletListIcon,
+         onRun: (ctx2) => {
+@@ -636,6 +654,8 @@ function getGroups(filter, config, ctx) {
+     }
+     if (((_ua = config == null ? void 0 : config.listGroup) == null ? void 0 : _ua.orderedList) !== null) {
+       listGroup.addItem("ordered-list", {
++        shortcut: "1.",
++
+         label: (_xa = (_wa = (_va = config == null ? void 0 : config.listGroup) == null ? void 0 : _va.orderedList) == null ? void 0 : _wa.label) != null ? _xa : "Ordered List",
+         icon: (_Aa = (_za = (_ya = config == null ? void 0 : config.listGroup) == null ? void 0 : _ya.orderedList) == null ? void 0 : _za.icon) != null ? _Aa : orderedListIcon,
+         onRun: (ctx2) => {
+@@ -650,6 +670,8 @@ function getGroups(filter, config, ctx) {
+     }
+     if (((_Ba = config == null ? void 0 : config.listGroup) == null ? void 0 : _Ba.taskList) !== null) {
+       listGroup.addItem("task-list", {
++        shortcut: "[]",
++
+         label: (_Ea = (_Da = (_Ca = config == null ? void 0 : config.listGroup) == null ? void 0 : _Ca.taskList) == null ? void 0 : _Da.label) != null ? _Ea : "Task List",
+         icon: (_Ha = (_Ga = (_Fa = config == null ? void 0 : config.listGroup) == null ? void 0 : _Fa.taskList) == null ? void 0 : _Ga.icon) != null ? _Ha : todoListIcon,
+         onRun: (ctx2) => {
+@@ -685,6 +707,8 @@ function getGroups(filter, config, ctx) {
+     }
+     if (((_Ra = config == null ? void 0 : config.advancedGroup) == null ? void 0 : _Ra.codeBlock) !== null) {
+       advancedGroup.addItem("code", {
++        shortcut: "```",
++
+         label: (_Ua = (_Ta = (_Sa = config == null ? void 0 : config.advancedGroup) == null ? void 0 : _Sa.codeBlock) == null ? void 0 : _Ta.label) != null ? _Ua : "Code",
+         icon: (_Xa = (_Wa = (_Va = config == null ? void 0 : config.advancedGroup) == null ? void 0 : _Va.codeBlock) == null ? void 0 : _Wa.icon) != null ? _Xa : codeIcon,
+         onRun: (ctx2) => {
+@@ -717,6 +741,8 @@ function getGroups(filter, config, ctx) {
+     }
+     if (((_db = config == null ? void 0 : config.advancedGroup) == null ? void 0 : _db.math) !== null && isLatexEnabled) {
+       advancedGroup.addItem("math", {
++        shortcut: "$$",
++
+         label: (_gb = (_fb = (_eb = config == null ? void 0 : config.advancedGroup) == null ? void 0 : _eb.math) == null ? void 0 : _fb.label) != null ? _gb : "Math",
+         icon: (_jb = (_ib = (_hb = config == null ? void 0 : config.advancedGroup) == null ? void 0 : _hb.math) == null ? void 0 : _ib.icon) != null ? _jb : functionsIcon,
+         onRun: (ctx2) => {
+@@ -914,7 +940,8 @@ const Menu = defineComponent({
+           }
+         },
+         /* @__PURE__ */ h(Icon, { icon: item.icon }),
+-        /* @__PURE__ */ h("span", null, item.label)
++        /* @__PURE__ */ h("span", null, item.label),
++        item.shortcut ? /* @__PURE__ */ h("span", { class: "shortcut" }, item.shortcut) : null
+       )))))));
+     };
+   }
+diff --git a/node_modules/@milkdown/crepe/lib/types/feature/block-edit/menu/utils.d.ts b/node_modules/@milkdown/crepe/lib/types/feature/block-edit/menu/utils.d.ts
+index 8bcf77b..f342cf8 100644
+--- a/node_modules/@milkdown/crepe/lib/types/feature/block-edit/menu/utils.d.ts
++++ b/node_modules/@milkdown/crepe/lib/types/feature/block-edit/menu/utils.d.ts
+@@ -1,5 +1,6 @@
+ export type SlashMenuItem = {
+     label: string;
+     icon: string;
++    shortcut?: string;
+ };
+ //# sourceMappingURL=utils.d.ts.map
+\ No newline at end of file
 diff --git a/node_modules/@milkdown/crepe/lib/cjs/feature/toolbar/index.js b/node_modules/@milkdown/crepe/lib/cjs/feature/toolbar/index.js
 index 8276a77..53c06c0 100644
 --- a/node_modules/@milkdown/crepe/lib/cjs/feature/toolbar/index.js

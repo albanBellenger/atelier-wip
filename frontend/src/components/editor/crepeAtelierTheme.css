@@ -108,7 +108,9 @@
     border-color 80ms ease;
 }
 
-.crepe-atelier-host .milkdown .milkdown-slash-menu .menu-group li > span {
+.crepe-atelier-host .milkdown .milkdown-slash-menu .menu-group li > span:not(.shortcut) {
+  flex: 1;
+  min-width: 0;
   font-size: 13px;
   font-weight: 500;
   color: inherit;
