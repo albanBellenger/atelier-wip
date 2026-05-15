@@ -124,7 +124,7 @@ async def test_build_patch_proposal_append_uses_prefixed_system_prompt() -> None
         effective_snap="# T\n",
         content="add",
         full="ok",
-        selection_triple=None,
+        selection_excerpt=None,
         ctx=ctx,
     )
     assert captured.get("call_source") == "thread_patch_append"
