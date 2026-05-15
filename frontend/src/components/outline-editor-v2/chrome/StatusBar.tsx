@@ -1,6 +1,8 @@
 import type { ReactElement } from 'react'
+import { useState } from 'react'
 
 import { Pill } from '../atoms/Pill'
+import { MarkdownShortcutsPopover } from './MarkdownShortcutsPopover'
 
 export function StatusBar(props: {
   driftCount: number
@@ -14,6 +16,8 @@ export function StatusBar(props: {
   rawMode: boolean
   onSetRawDefault: (raw: boolean) => void
   onTokenClick?: () => void
+  /** When false, the Markdown shortcuts control is omitted (e.g. embedders that hide help). */
+  markdownShortcutsHelp?: boolean
 }): ReactElement {
   const {
     driftCount,
@@ -27,7 +31,9 @@ export function StatusBar(props: {
     rawMode,
     onSetRawDefault,
     onTokenClick,
+    markdownShortcutsHelp = true,
   } = props
+  const [markdownShortcutsOpen, setMarkdownShortcutsOpen] = useState(false)
 
   return (
     <footer
@@ -52,6 +58,26 @@ export function StatusBar(props: {
         Cited {citationsResolved} · Missing {citationsMissing}
       </span>
       <span>Words {wordCount.toLocaleString()}</span>
+      {markdownShortcutsHelp ? (
+        <div className="relative shrink-0">
+          <button
+            type="button"
+            aria-expanded={markdownShortcutsOpen}
+            onClick={() => {
+              setMarkdownShortcutsOpen((o) => !o)
+            }}
+            className="text-zinc-500 hover:text-zinc-300 hover:underline focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-500"
+          >
+            Markdown shortcuts
+          </button>
+          <MarkdownShortcutsPopover
+            open={markdownShortcutsOpen}
+            onClose={() => {
+              setMarkdownShortcutsOpen(false)
+            }}
+          />
+        </div>
+      ) : null}
       <span className="flex-1" />
       <div className="flex items-center gap-1">
         <Pill>
