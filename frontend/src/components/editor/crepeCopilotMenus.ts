@@ -33,13 +33,28 @@ import { deleteSlashInputRange } from './slashInputDelete'
  */
 export const ATELIER_MENU_DOT_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="atelier-copilot-menu-icon"><rect x="10" y="6" width="4" height="4" rx="2"/><rect x="10" y="10" width="4" height="4" rx="2"/><rect x="10" y="14" width="4" height="4" rx="2"/></svg>`
 
-const SLASH_AI_LABELS: Record<string, string> = {
+/**
+ * Crepe slash menu filtering (see `@milkdown/crepe` `getGroups`) runs
+ * `item.label.toLowerCase().includes(filter)` for **every** item in **every** group; empty groups
+ * are dropped. Tabs reflect groups with matches — they are not a separate search scope. Users still
+ * type `/ai` or `/section`, which do not match `Copilot: …` alone; append plain hint tokens so those
+ * queries surface Copilot rows without changing Crepe itself.
+ */
+const SLASH_COPILOT_SEARCH_HINT = ' · AI · section · assist'
+
+const SLASH_AI_PRIMARY_LABELS: Record<string, string> = {
   append: 'Copilot: append',
   replace: 'Copilot: replace selection',
   edit: 'Copilot: edit (snippet)',
   ask: 'Copilot: ask',
   improve: 'Copilot: improve',
   critique: 'Copilot: critique',
+}
+
+/** Full slash row label (primary action + search hints for Crepe’s substring filter). */
+export function copilotSlashMenuLabel(menuId: string): string {
+  const primary = SLASH_AI_PRIMARY_LABELS[menuId] ?? `Copilot: ${menuId}`
+  return `${primary}${SLASH_COPILOT_SEARCH_HINT}`
 }
 
 /** Right-column slash menu hint (composer-equivalent; no global ⌘ shortcuts wired yet). */
@@ -90,7 +105,7 @@ function appendSlashCopilotGroup(
   const g = b.addGroup('atelier-copilot', 'Copilot')
   for (const id of AI_MENU_ITEM_IDS) {
     g.addItem(`atelier-ai-${id}`, {
-      label: SLASH_AI_LABELS[id] ?? id,
+      label: copilotSlashMenuLabel(id),
       icon: ATELIER_MENU_DOT_ICON,
       shortcut: copilotSlashMenuShortcutHint(id),
       onRun: (ctx: Ctx): void => {
@@ -176,8 +191,10 @@ function appendBlockHandleQuickInsertGroup(
       })
     },
   })
+  const appendPrimary =
+    SLASH_AI_PRIMARY_LABELS[APPEND_MENU_ID] ?? `Copilot: ${APPEND_MENU_ID}`
   g.addItem(`atelier-ai-${APPEND_MENU_ID}`, {
-    label: SLASH_AI_LABELS[APPEND_MENU_ID] ?? APPEND_MENU_ID,
+    label: appendPrimary,
     icon: ATELIER_MENU_DOT_ICON,
     shortcut: copilotSlashMenuShortcutHint(APPEND_MENU_ID),
     onRun: (ctx: Ctx): void => {

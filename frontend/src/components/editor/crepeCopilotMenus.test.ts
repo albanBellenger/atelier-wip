@@ -4,6 +4,7 @@ import { AI_MENU_ITEM_IDS } from '../../lib/aiMenuActions'
 import { setCrepeBlockHandleAddMenuSession } from './crepeBlockAddMenuScope'
 import {
   ATELIER_MENU_DOT_ICON,
+  copilotSlashMenuLabel,
   copilotSlashMenuShortcutHint,
   crepeBlockEditBuildMenu,
 } from './crepeCopilotMenus'
@@ -12,6 +13,22 @@ describe('ATELIER_MENU_DOT_ICON', () => {
   it('uses rect shapes so Crepe Icon DOMPurify does not strip children (circle is removed)', () => {
     expect(ATELIER_MENU_DOT_ICON).toContain('<rect')
     expect(ATELIER_MENU_DOT_ICON).not.toContain('<circle')
+  })
+})
+
+describe('copilotSlashMenuLabel', () => {
+  it('embeds substrings Crepe slash filter uses (case-insensitive includes across all menu groups)', () => {
+    for (const id of AI_MENU_ITEM_IDS) {
+      const label = copilotSlashMenuLabel(id).toLowerCase()
+      expect(label, id).toContain('ai')
+      expect(label, id).toContain('section')
+      expect(label, id).toContain('copilot')
+    }
+  })
+
+  it('keeps the primary Copilot action token in the label for each known id', () => {
+    expect(copilotSlashMenuLabel('append')).toMatch(/^Copilot: append\b/)
+    expect(copilotSlashMenuLabel('improve')).toMatch(/^Copilot: improve\b/)
   })
 })
 
