@@ -107,4 +107,27 @@ describe('useYjsCollab', () => {
     })
     unmount()
   })
+
+  it('includes userId on awareness when provided', async () => {
+    const { result, unmount } = renderHook(() =>
+      useYjsCollab('p1', 'sec-1', {
+        name: 'Pat',
+        color: 'hsl(0 0% 10%)',
+        colorLight: 'hsl(0 0% 10% / 20%)',
+        userId: 'user-42',
+      }),
+    )
+    await waitFor(() => {
+      expect(result.current).not.toBeNull()
+    })
+    await waitFor(() => {
+      expect(mockAwareness.setLocalStateField).toHaveBeenCalledWith(
+        'user',
+        expect.objectContaining({
+          userId: 'user-42',
+        }),
+      )
+    })
+    unmount()
+  })
 })

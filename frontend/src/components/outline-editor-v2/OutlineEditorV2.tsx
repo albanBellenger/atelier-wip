@@ -11,6 +11,7 @@ import {
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import type { EditorSelectionState } from '../editor/editorSelection'
+import { CollaboratorPresenceStack } from '../editor/CollaboratorPresenceStack'
 import { CrepeEditor, type CrepeEditorApi } from '../editor/CrepeEditor'
 import { buildIssueGutterMarksForSection } from '../editor/issueGutterSpec'
 import { BuilderHomeHeader } from '../home/BuilderHomeHeader'
@@ -45,6 +46,7 @@ import {
   updateSection,
 } from '../../services/api'
 import { CopilotPanel } from '../thread/CopilotPanel'
+import { useCollabAwarenessPresence } from '../../hooks/useCollabAwarenessPresence'
 import { colorsForUser, useYjsCollab } from '../../hooks/useYjsCollab'
 import { useStudioAccess } from '../../hooks/useStudioAccess'
 
@@ -251,6 +253,7 @@ export function OutlineEditorV2(): ReactElement {
       name: profile.user.display_name,
       color,
       colorLight,
+      userId: profile.user.id,
     }
   }, [profile?.user?.display_name, profile?.user?.id])
 
@@ -259,6 +262,8 @@ export function OutlineEditorV2(): ReactElement {
     sectionQ.data ? secid : undefined,
     collabUser,
   )
+
+  const { remotePeers } = useCollabAwarenessPresence(collab)
 
   const [editorSelection, setEditorSelection] =
     useState<EditorSelectionState | null>(null)
@@ -560,6 +565,11 @@ export function OutlineEditorV2(): ReactElement {
                         className="outline-editor-shell relative flex min-h-0 flex-1 flex-col overflow-hidden"
                       >
                         <SuggestionBlock overlay={patchOverlay} />
+                        {remotePeers.length > 0 ? (
+                          <div className="flex shrink-0 justify-end border-b border-zinc-800/70 bg-zinc-950 px-3 py-1.5">
+                            <CollaboratorPresenceStack peers={remotePeers} />
+                          </div>
+                        ) : null}
                         <div
                           className={
                             displayRaw

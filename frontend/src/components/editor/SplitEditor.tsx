@@ -11,6 +11,8 @@ import type { EditorViewMode } from '../section/sectionLayoutMode'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { YjsCollab } from '../../hooks/useYjsCollab'
+import { useCollabAwarenessPresence } from '../../hooks/useCollabAwarenessPresence'
+import { CollaboratorPresenceStack } from './CollaboratorPresenceStack'
 import { CrepeEditor, type CrepeEditorApi } from './CrepeEditor'
 import type { EditorSelectionState } from './editorSelection'
 
@@ -51,6 +53,7 @@ export function SplitEditor({
   onCopilotSlashExecute,
   replaceSelectionSlashDisabled = false,
 }: SplitEditorProps): ReactElement {
+  const { remotePeers } = useCollabAwarenessPresence(collab)
   const isControlled =
     viewModeProp !== undefined && onViewModeChange !== undefined
   const [uncontrolledViewMode, setUncontrolledViewMode] =
@@ -236,13 +239,16 @@ export function SplitEditor({
 
   return (
     <div>
-      <p
-        className="mb-2 text-xs text-zinc-500"
-        role="status"
-        aria-live="polite"
-      >
-        {saveState === 'saving' ? 'Saving…' : 'Saved'}
-      </p>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <p
+          className="m-0 text-xs text-zinc-500"
+          role="status"
+          aria-live="polite"
+        >
+          {saveState === 'saving' ? 'Saving…' : 'Saved'}
+        </p>
+        <CollaboratorPresenceStack peers={remotePeers} />
+      </div>
       {!isControlled ? (
         <div
           className="mb-2 flex flex-wrap gap-1.5 rounded-lg border border-zinc-800/80 bg-zinc-950/50 p-1"
