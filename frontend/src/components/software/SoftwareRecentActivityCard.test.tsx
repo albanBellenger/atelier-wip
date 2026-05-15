@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { SoftwareActivityItem } from '../../services/api'
 import { SoftwareRecentActivityCard } from './SoftwareRecentActivityCard'
@@ -17,6 +17,14 @@ const sampleItem: SoftwareActivityItem = {
 }
 
 describe('SoftwareRecentActivityCard', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-05-02T12:00:00.000Z'))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('renders formatted rows when enabled', () => {
     render(
       <SoftwareRecentActivityCard
