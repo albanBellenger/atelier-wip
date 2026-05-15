@@ -42,6 +42,21 @@ const SLASH_AI_LABELS: Record<string, string> = {
   critique: 'Copilot: critique',
 }
 
+/** Right-column slash menu hint (composer-equivalent; no global ⌘ shortcuts wired yet). */
+const SLASH_AI_SHORTCUTS: Record<string, string> = {
+  append: '/append',
+  replace: '/replace',
+  edit: '/edit',
+  ask: '/ask',
+  improve: '/improve',
+  critique: '/critique',
+}
+
+export function copilotSlashMenuShortcutHint(menuId: string): string {
+  const s = SLASH_AI_SHORTCUTS[menuId]
+  return s ?? `/${menuId}`
+}
+
 export interface CrepeCopilotMenuCallbacks {
   onAiComposerPrefill?: (markdown: string) => void
   onCopilotSlashExecute?: (rawComposerLine: string) => void | Promise<void>
@@ -59,6 +74,7 @@ type BlockEditMenuBuilder = {
       item: {
         label: string
         icon: string
+        shortcut?: string
         onRun?: (ctx: Ctx) => void
       },
     ) => unknown
@@ -76,6 +92,7 @@ function appendSlashCopilotGroup(
     g.addItem(`atelier-ai-${id}`, {
       label: SLASH_AI_LABELS[id] ?? id,
       icon: ATELIER_MENU_DOT_ICON,
+      shortcut: copilotSlashMenuShortcutHint(id),
       onRun: (ctx: Ctx): void => {
         const view = ctx.get(editorViewCtx)
         if (parsedInputForAiMenuItem(id) == null) {
@@ -120,6 +137,7 @@ function appendBlockHandleQuickInsertGroup(
   g.addItem('atelier-quick-h2', {
     label: 'Heading 2',
     icon: h2Icon,
+    shortcut: '##',
     onRun: (ctx: Ctx): void => {
       const commands = ctx.get(commandsCtx)
       const heading = headingSchema.type(ctx)
@@ -135,6 +153,7 @@ function appendBlockHandleQuickInsertGroup(
   g.addItem('atelier-quick-bullet', {
     label: 'Bullet list',
     icon: bulletListIcon,
+    shortcut: '-',
     onRun: (ctx: Ctx): void => {
       const commands = ctx.get(commandsCtx)
       const bulletList = bulletListSchema.type(ctx)
@@ -147,6 +166,7 @@ function appendBlockHandleQuickInsertGroup(
   g.addItem('atelier-quick-code', {
     label: 'Code block',
     icon: codeIcon,
+    shortcut: '```',
     onRun: (ctx: Ctx): void => {
       const commands = ctx.get(commandsCtx)
       const codeBlock = codeBlockSchema.type(ctx)
@@ -159,6 +179,7 @@ function appendBlockHandleQuickInsertGroup(
   g.addItem(`atelier-ai-${APPEND_MENU_ID}`, {
     label: SLASH_AI_LABELS[APPEND_MENU_ID] ?? APPEND_MENU_ID,
     icon: ATELIER_MENU_DOT_ICON,
+    shortcut: copilotSlashMenuShortcutHint(APPEND_MENU_ID),
     onRun: (ctx: Ctx): void => {
       const view = ctx.get(editorViewCtx)
       if (parsedInputForAiMenuItem(APPEND_MENU_ID) == null) {
