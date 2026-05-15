@@ -20,6 +20,7 @@ import {
 } from '../../lib/sectionPatchApply'
 import { startAnimateAppendMarkdown } from '../../lib/sectionStreamApply'
 import { AiComposerPrefillProvider } from './aiComposerPrefillContext'
+import { setCrepeBlockHandleAddMenuSession } from './crepeBlockAddMenuScope'
 import {
   crepeBlockEditBuildMenu,
   crepeToolbarBuildToolbar,
@@ -38,6 +39,14 @@ import '@milkdown/kit/prose/view/style/prosemirror.css'
 import './crepeAtelierTheme.css'
 
 const SNAPSHOT_DEBOUNCE_MS = 2000
+
+/** Aligned with Crepe block-edit `menuAPI` (`$ctx(..., 'menuAPICtx')`). Resolved by name via Milkdown `ctx.get`. */
+const CREPE_BLOCK_EDIT_MENU_API_NAME = 'menuAPICtx' as const
+
+interface CrepeBlockEditMenuApi {
+  show: (pos: number) => void
+  hide: () => void
+}
 
 export interface CrepeEditorApi {
   getEditorView: () => EditorView | null
@@ -296,6 +305,23 @@ const CrepeEditorInner = forwardRef<CrepeEditorApi, CrepeEditorProps>(
         if (cancelled) {
           void crepe.destroy()
           return
+        }
+        try {
+          crepe.editor.action((ctx) => {
+            const api = ctx.get(CREPE_BLOCK_EDIT_MENU_API_NAME) as CrepeBlockEditMenuApi
+            const origShow = api.show.bind(api)
+            const origHide = api.hide.bind(api)
+            api.show = (pos: number): void => {
+              setCrepeBlockHandleAddMenuSession(true)
+              origShow(pos)
+            }
+            api.hide = (): void => {
+              origHide()
+              setCrepeBlockHandleAddMenuSession(false)
+            }
+          })
+        } catch {
+          /* menu API missing — editor still usable */
         }
         crepeRef.current = crepe
         if (readOnly) {
