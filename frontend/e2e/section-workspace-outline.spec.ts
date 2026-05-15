@@ -121,7 +121,7 @@ test('editor slash AI menu prefills copilot composer', async ({
   await expect(ws.sectionOutline()).toBeVisible({ timeout: 20_000 })
   await ws.crepeProseMirror().click()
   await page.keyboard.type('/')
-  const appendBtn = page.getByText('Copilot: append', { exact: true })
+  const appendBtn = page.getByText(/^Copilot: append\b/)
   await expect(appendBtn).toBeVisible({ timeout: 15_000 })
   await appendBtn.click()
   const ta = ws.copilotComposerTextarea()
