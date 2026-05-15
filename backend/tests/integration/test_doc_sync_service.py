@@ -84,7 +84,7 @@ async def test_propose_drops_unknown_section_and_accepts_empty(
     )
     await db_session.flush()
 
-    async def fake_llm(_self: object, **_kwargs: object) -> dict[str, object]:
+    async def fake_llm(_self: object, _ctx: object, **_kwargs: object) -> dict[str, object]:
         return {
             "proposals": [
                 {
@@ -116,9 +116,12 @@ async def test_propose_drops_unknown_section_and_accepts_empty(
     assert res.proposals_kept == 1
     assert res.proposals_dropped == 1
 
+    async def async_empty_proposals(_self: object, _ctx: object, *_a: object, **_k: object) -> dict[str, object]:
+        return {"proposals": []}
+
     monkeypatch.setattr(
         "app.services.doc_sync_service.DocSyncAgent.propose_patches",
-        lambda *_a, **_k: {"proposals": []},
+        async_empty_proposals,
     )
     res2 = await svc.propose_for_work_order(wo.id, run_actor_id=user.id)
     assert res2.proposals_total == 0

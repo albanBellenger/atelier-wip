@@ -152,7 +152,7 @@ def create_app() -> FastAPI:
         if len(errs) == 1 and errs[0].get("type") == "SECTION_REQUIRED":
             code = "SECTION_REQUIRED"
         return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content={
                 "detail": jsonable_encoder(errs),
                 "code": code,

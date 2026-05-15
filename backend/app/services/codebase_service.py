@@ -198,20 +198,21 @@ class CodebaseService:
             await self.db.execute(delete(CodebaseFile).where(CodebaseFile.snapshot_id == old.id))
             old.status = "superseded"
 
-        stale_pending = (
+        stale_inflight = (
             await self.db.scalars(
                 select(CodebaseSnapshot).where(
                     CodebaseSnapshot.software_id == software_id,
-                    CodebaseSnapshot.status == "pending",
+                    CodebaseSnapshot.status.in_(("pending", "indexing")),
                     CodebaseSnapshot.id != keep_id,
                 )
             )
         ).all()
-        for old in stale_pending:
+        for old in stale_inflight:
             await self.db.execute(delete(CodebaseChunk).where(CodebaseChunk.snapshot_id == old.id))
             await self.db.execute(delete(CodebaseSymbol).where(CodebaseSymbol.snapshot_id == old.id))
             await self.db.execute(delete(CodebaseFile).where(CodebaseFile.snapshot_id == old.id))
             old.status = "superseded"
+        await self.db.flush()
 
     async def run_index_snapshot(self, snapshot_id: uuid.UUID) -> None:
         settings = get_settings()

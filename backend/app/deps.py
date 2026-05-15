@@ -720,6 +720,84 @@ async def ensure_user_can_delete_artifact(
     )
 
 
+async def ensure_user_can_configure_chunking_strategy(
+    session: AsyncSession,
+    user: User,
+    artifact: Artifact,
+) -> None:
+    """Chunking strategy updates require Studio Owner (studio_admin) at every scope.
+
+    Stricter than delete for project-scope artifacts (delete allows owning-studio builders
+    excluding cross-studio grants). See docs/rbac-module-matrix.md.
+    """
+    if user.is_platform_admin:
+        return
+    scope = artifact.scope_level or "project"
+    if scope == "project":
+        if artifact.project_id is None:
+            raise ApiError(
+                status_code=404,
+                code="NOT_FOUND",
+                message="Artifact not found.",
+            )
+        pa = await fetch_project_access(session, user, artifact.project_id)
+        if pa.studio_access.cross_studio_grant is not None:
+            raise ApiError(
+                status_code=403,
+                code="FORBIDDEN",
+                message="Studio Owner or Builder access required",
+            )
+        if not pa.studio_access.is_studio_admin:
+            raise ApiError(
+                status_code=403,
+                code="FORBIDDEN",
+                message="Studio Owner access required",
+            )
+        return
+    if scope == "studio":
+        if artifact.library_studio_id is None:
+            raise ApiError(
+                status_code=404,
+                code="NOT_FOUND",
+                message="Artifact not found.",
+            )
+        sa = await resolve_studio_access(session, user, artifact.library_studio_id)
+        if not sa.is_studio_admin:
+            raise ApiError(
+                status_code=403,
+                code="FORBIDDEN",
+                message="Studio Owner access required",
+            )
+        return
+    if scope == "software":
+        if artifact.library_software_id is None:
+            raise ApiError(
+                status_code=404,
+                code="NOT_FOUND",
+                message="Artifact not found.",
+            )
+        sw = await session.get(Software, artifact.library_software_id)
+        if sw is None:
+            raise ApiError(
+                status_code=404,
+                code="NOT_FOUND",
+                message="Artifact not found.",
+            )
+        sa = await resolve_studio_access_for_software(session, user, sw)
+        if not sa.is_studio_admin:
+            raise ApiError(
+                status_code=403,
+                code="FORBIDDEN",
+                message="Studio Owner access required",
+            )
+        return
+    raise ApiError(
+        status_code=404,
+        code="NOT_FOUND",
+        message="Artifact not found.",
+    )
+
+
 async def ensure_user_can_reindex_artifact(
     session: AsyncSession,
     user: User,

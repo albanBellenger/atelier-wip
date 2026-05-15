@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import (
+    ensure_user_can_configure_chunking_strategy,
     ensure_user_can_delete_artifact,
     ensure_user_can_download_artifact,
     ensure_user_can_reindex_artifact,
@@ -132,7 +133,7 @@ async def patch_artifact_chunking_strategy(
             code="NOT_FOUND",
             message="Artifact not found.",
         )
-    await ensure_user_can_delete_artifact(session, user, art)
+    await ensure_user_can_configure_chunking_strategy(session, user, art)
     art2 = await svc.set_chunking_strategy(artifact_id, body.chunking_strategy)
     include = await user_can_view_artifact_chunk_previews(session, user, art2)
     return await svc.build_artifact_detail(art2, include_chunk_previews=include)

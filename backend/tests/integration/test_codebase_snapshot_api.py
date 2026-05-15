@@ -18,20 +18,13 @@ from tests.factories import (
 )
 
 
-async def _register_return_token(client: AsyncClient, suffix: str, label: str) -> str:
+async def _login_cookie(client: AsyncClient, email: str, password: str = "securepass123") -> None:
     client.cookies.clear()
-    r = await client.post(
-        "/auth/register",
-        json={
-            "email": f"{label}-{suffix}@example.com",
-            "password": "securepass123",
-            "display_name": label,
-        },
-    )
+    r = await client.post("/auth/login", json={"email": email, "password": password})
     assert r.status_code == 200, r.text
     token = r.cookies.get("atelier_token")
     assert token
-    return str(token)
+    client.cookies.set("atelier_token", str(token))
 
 
 @pytest.fixture
@@ -53,7 +46,11 @@ async def test_reindex_commits_snapshot_before_background_enqueue(
 ) -> None:
     """Regression: background worker uses async_session_factory; row must be committed first."""
     sfx = uuid.uuid4().hex[:8]
-    owner = await create_user(db_session, email=f"rb-{sfx}@example.com")
+    owner = await create_user(
+        db_session,
+        email=f"rbowner-{sfx}@example.com",
+        password="securepass123",
+    )
     studio = await create_studio(db_session, name=f"RB{sfx}")
     await add_studio_member(db_session, studio.id, owner.id, role="studio_admin")
     sw = await create_software(db_session, studio.id, name="SW-RB")
@@ -61,6 +58,7 @@ async def test_reindex_commits_snapshot_before_background_enqueue(
     sw.git_branch = "main"
     sw.git_token = encrypt_secret("gitlab-token")
     await db_session.flush()
+    await db_session.commit()
 
     events: list[str] = []
     orig_commit = db_session.commit
@@ -76,9 +74,7 @@ async def test_reindex_commits_snapshot_before_background_enqueue(
 
     monkeypatch.setattr("app.routers.codebase.enqueue_codebase_index", spy_enqueue)
 
-    client.cookies.clear()
-    token = await _register_return_token(client, sfx, "rbowner")
-    client.cookies.set("atelier_token", token)
+    await _login_cookie(client, owner.email)
 
     with patch(
         "app.services.codebase_service.embedding_resolvable",
@@ -104,9 +100,21 @@ async def test_codebase_snapshot_rbac_matrix(
     _patch_codebase_background: None,
 ) -> None:
     sfx = uuid.uuid4().hex[:8]
-    owner = await create_user(db_session, email=f"owner-{sfx}@example.com")
-    viewer = await create_user(db_session, email=f"viewer-{sfx}@example.com")
-    outsider = await create_user(db_session, email=f"out-{sfx}@example.com")
+    owner = await create_user(
+        db_session,
+        email=f"tokowner-{sfx}@example.com",
+        password="securepass123",
+    )
+    viewer = await create_user(
+        db_session,
+        email=f"tokviewer-{sfx}@example.com",
+        password="securepass123",
+    )
+    outsider = await create_user(
+        db_session,
+        email=f"tokout-{sfx}@example.com",
+        password="securepass123",
+    )
     studio = await create_studio(db_session, name=f"S{sfx}")
     await add_studio_member(db_session, studio.id, owner.id, role="studio_admin")
     await add_studio_member(db_session, studio.id, viewer.id, role="studio_viewer")
@@ -115,19 +123,19 @@ async def test_codebase_snapshot_rbac_matrix(
     sw.git_branch = "main"
     sw.git_token = encrypt_secret("gitlab-token")
     await db_session.flush()
+    await db_session.commit()
 
     client.cookies.clear()
     na = await client.get(f"/software/{sw.id}/codebase/snapshots")
     assert na.status_code == 401
 
-    token_owner = await _register_return_token(client, sfx, "tokowner")
-    client.cookies.set("atelier_token", token_owner)
+    await _login_cookie(client, owner.email)
 
     client.cookies.clear()
     no_cookie = await client.post(f"/software/{sw.id}/codebase/reindex")
     assert no_cookie.status_code == 401
 
-    client.cookies.set("atelier_token", token_owner)
+    await _login_cookie(client, owner.email)
     with patch(
         "app.services.codebase_service.embedding_resolvable",
         new_callable=AsyncMock,
@@ -143,9 +151,7 @@ async def test_codebase_snapshot_rbac_matrix(
     assert body["status"] == "pending"
     assert body["software_id"] == str(sw.id)
 
-    token_viewer = await _register_return_token(client, sfx, "tokviewer")
-    client.cookies.clear()
-    client.cookies.set("atelier_token", token_viewer)
+    await _login_cookie(client, viewer.email)
     lst = await client.get(f"/software/{sw.id}/codebase/snapshots")
     assert lst.status_code == 200
     assert isinstance(lst.json(), list)
@@ -162,16 +168,13 @@ async def test_codebase_snapshot_rbac_matrix(
         forbidden = await client.post(f"/software/{sw.id}/codebase/reindex")
     assert forbidden.status_code == 403
 
-    token_out = await _register_return_token(client, sfx, "tokout")
-    client.cookies.clear()
-    client.cookies.set("atelier_token", token_out)
+    await _login_cookie(client, outsider.email)
     denied = await client.get(f"/software/{sw.id}/codebase/snapshots")
     assert denied.status_code == 403
 
     bad_uuid = await client.get("/software/not-a-uuid/codebase/snapshots")
     assert bad_uuid.status_code == 422
 
-    client.cookies.clear()
-    client.cookies.set("atelier_token", token_owner)
+    await _login_cookie(client, owner.email)
     missing = await client.get(f"/software/{sw.id}/codebase/snapshots/{uuid.uuid4()}")
     assert missing.status_code == 404

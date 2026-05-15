@@ -15,6 +15,7 @@ from app.models.work_order import WorkOrderSection
 from tests.factories import (
     add_studio_member,
     create_project,
+    create_section,
     create_software,
     create_studio,
     create_user,
@@ -88,7 +89,7 @@ async def test_doc_sync_manual_happy_path(
     )
     await db_session.commit()
 
-    async def fake_propose(_self: object, **_kwargs: object) -> dict[str, object]:
+    async def fake_propose(_self: object, _ctx: object, **_kwargs: object) -> dict[str, object]:
         return {
             "proposals": [
                 {
@@ -119,7 +120,10 @@ async def test_doc_sync_manual_happy_path(
     )
 
     await _login(client, owner.email)
-    r = await client.post(f"/projects/{proj.id}/work-orders/{wo.id}/doc-sync/run", json={})
+    r = await client.post(
+        f"/projects/{proj.id}/work-orders/{wo.id}/doc-sync/run?software_id={sw.id}",
+        json={},
+    )
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["proposals_kept"] == 1
@@ -168,7 +172,10 @@ async def test_doc_sync_manual_not_indexed(
     await db_session.commit()
 
     await _login(client, owner.email)
-    r = await client.post(f"/projects/{proj.id}/work-orders/{wo.id}/doc-sync/run", json={})
+    r = await client.post(
+        f"/projects/{proj.id}/work-orders/{wo.id}/doc-sync/run?software_id={sw.id}",
+        json={},
+    )
     assert r.status_code == 200, r.text
     assert r.json().get("skipped_reason") == "not_indexed"
 
@@ -208,11 +215,17 @@ async def test_doc_sync_rbac_cross_studio_and_auth(
     )
     await db_session.commit()
 
-    na = await client.post(f"/projects/{proj.id}/work-orders/{wo.id}/doc-sync/run", json={})
+    na = await client.post(
+        f"/projects/{proj.id}/work-orders/{wo.id}/doc-sync/run?software_id={sw.id}",
+        json={},
+    )
     assert na.status_code == 401
 
     await _login(client, viewer.email)
-    vf = await client.post(f"/projects/{proj.id}/work-orders/{wo.id}/doc-sync/run", json={})
+    vf = await client.post(
+        f"/projects/{proj.id}/work-orders/{wo.id}/doc-sync/run?software_id={sw.id}",
+        json={},
+    )
     assert vf.status_code == 403
 
     ext = await create_user(db_session, email=f"ds-ext-{sfx}@example.com", password=_PW)
@@ -231,7 +244,10 @@ async def test_doc_sync_rbac_cross_studio_and_auth(
     db_session.add(grant)
     await db_session.commit()
     await _login(client, ext.email)
-    xf = await client.post(f"/projects/{proj.id}/work-orders/{wo.id}/doc-sync/run", json={})
+    xf = await client.post(
+        f"/projects/{proj.id}/work-orders/{wo.id}/doc-sync/run?software_id={sw.id}",
+        json={},
+    )
     assert xf.status_code == 403
 
 
@@ -301,13 +317,21 @@ async def test_doc_sync_resolve_issue_with_applied_reason(
     await add_studio_member(db_session, studio.id, owner.id, role="studio_admin")
     sw = await create_software(db_session, studio.id, name="SWI")
     proj = await create_project(db_session, sw.id, name="PI", publish_folder_slug=f"pi{sfx}")
+    sec = await create_section(
+        db_session,
+        proj.id,
+        title="DocSec",
+        slug="doc-sec",
+        order=0,
+        content="doc body",
+    )
     issue = Issue(
         id=uuid.uuid4(),
-        project_id=None,
+        project_id=proj.id,
         software_id=sw.id,
         work_order_id=None,
         kind="doc_update_suggested",
-        section_a_id=uuid.uuid4(),
+        section_a_id=sec.id,
         description="r",
         status="open",
         origin="auto",
