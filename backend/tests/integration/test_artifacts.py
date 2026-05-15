@@ -6,7 +6,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tests.integration.studio_http_seed import post_admin_studio
+from tests.integration.studio_http_seed import post_admin_studio, promote_platform_admin
 
 from tests.integration.embedding_mocks import patch_fake_embedding_transport
 
@@ -390,7 +390,7 @@ async def test_cross_studio_viewer_can_download_artifact(
 
 
 @pytest.mark.asyncio
-async def test_delete_project_artifact_studio_member_forbidden(
+async def test_delete_project_artifact_studio_builder_ok(
     client: AsyncClient,
     db_session,
     fake_embed: None,
@@ -414,8 +414,69 @@ async def test_delete_project_artifact_studio_member_forbidden(
     )
     assert add_m.status_code == 200, add_m.text
     client.cookies.set("atelier_token", member_token)
+    deleted = await client.delete(f"/projects/{pid}/artifacts/{aid}")
+    assert deleted.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_delete_project_artifact_studio_viewer_forbidden(
+    client: AsyncClient,
+    db_session,
+    fake_embed: None,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    token, studio_id, _software_id, pid = await _studio_project(client, db_session, sfx)
+    client.cookies.set("atelier_token", token)
+    up = await client.post(
+        f"/projects/{pid}/artifacts/md",
+        json={"name": "viewer.md", "content": "# v"},
+    )
+    assert up.status_code == 200
+    aid = up.json()["id"]
+
+    viewer_lbl = "viewdel"
+    viewer_token = await _register(client, sfx, viewer_lbl)
+    client.cookies.set("atelier_token", token)
+    add_v = await client.post(
+        f"/studios/{studio_id}/members",
+        json={"email": f"{viewer_lbl}-{sfx}@example.com", "role": "studio_viewer"},
+    )
+    assert add_v.status_code == 200, add_v.text
+    client.cookies.set("atelier_token", viewer_token)
     forbidden = await client.delete(f"/projects/{pid}/artifacts/{aid}")
     assert forbidden.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_delete_project_artifact_requires_auth(client: AsyncClient) -> None:
+    r = await client.delete(
+        f"/projects/{uuid.uuid4()}/artifacts/{uuid.uuid4()}",
+    )
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_delete_project_artifact_platform_admin_ok(
+    client: AsyncClient,
+    db_session,
+    fake_embed: None,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    owner_token, _sid, _sfid, pid = await _studio_project(client, db_session, sfx)
+    client.cookies.set("atelier_token", owner_token)
+    up = await client.post(
+        f"/projects/{pid}/artifacts/md",
+        json={"name": "admin.md", "content": "# a"},
+    )
+    assert up.status_code == 200
+    aid = up.json()["id"]
+
+    admin_lbl = "tooladm"
+    admin_token = await _register(client, sfx, admin_lbl)
+    await promote_platform_admin(db_session, f"{admin_lbl}-{sfx}@example.com")
+    client.cookies.set("atelier_token", admin_token)
+    deleted = await client.delete(f"/projects/{pid}/artifacts/{aid}")
+    assert deleted.status_code == 204
 
 
 @pytest.mark.asyncio
@@ -489,6 +550,90 @@ async def test_cross_studio_viewer_cannot_delete_or_reindex_project_artifact(
     assert del_r.status_code == 403
     re_idx = await client.post(f"/projects/{pid_b}/artifacts/{aid}/reindex")
     assert re_idx.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_cross_studio_external_editor_cannot_delete_project_artifact(
+    client: AsyncClient,
+    db_session,
+    fake_embed: None,
+) -> None:
+    import uuid as u
+
+    from sqlalchemy import select
+
+    from app.models import CrossStudioAccess, User
+
+    sfx = u.uuid4().hex[:8]
+    token_b = await _register(client, sfx, "ownerbe")
+    client.cookies.set("atelier_token", token_b)
+    sb = (
+        await post_admin_studio(
+            client,
+            db_session,
+            user_email=f"ownerbe-{sfx}@example.com",
+            json_body={"name": f"SBE{sfx}"},
+        )
+    ).json()
+    studio_b_id = sb["id"]
+    sw_b = (
+        await client.post(
+            f"/studios/{studio_b_id}/software",
+            json={"name": "sw"},
+        )
+    ).json()
+    software_b_id = sw_b["id"]
+    pid_b = (
+        await client.post(
+            f"/software/{software_b_id}/projects",
+            json={"name": "P"},
+        )
+    ).json()["id"]
+
+    client.cookies.set("atelier_token", token_b)
+    up = await client.post(
+        f"/projects/{pid_b}/artifacts/md",
+        json={"name": "ext.md", "content": "# e"},
+    )
+    assert up.status_code == 200
+    aid = up.json()["id"]
+
+    token_a = await _register(client, sfx, "ownerae")
+    client.cookies.set("atelier_token", token_a)
+    sa = (
+        await post_admin_studio(
+            client,
+            db_session,
+            user_email=f"ownerae-{sfx}@example.com",
+            json_body={"name": f"SAE{sfx}"},
+        )
+    ).json()
+    studio_a_id = sa["id"]
+    me_a = (await client.get("/auth/me")).json()
+    user_a_id = u.UUID(me_a["user"]["id"])
+
+    r_b = await db_session.execute(
+        select(User).where(User.email == f"ownerbe-{sfx}@example.com")
+    )
+    user_b = r_b.scalar_one()
+
+    db_session.add(
+        CrossStudioAccess(
+            id=u.uuid4(),
+            requesting_studio_id=u.UUID(studio_a_id),
+            target_software_id=u.UUID(software_b_id),
+            requested_by=user_a_id,
+            approved_by=user_b.id,
+            access_level="external_editor",
+            status="approved",
+        )
+    )
+    await db_session.flush()
+
+    client.cookies.set("atelier_token", token_a)
+    del_r = await client.delete(f"/projects/{pid_b}/artifacts/{aid}")
+    assert del_r.status_code == 403
+    assert del_r.json()["code"] == "FORBIDDEN"
 
 
 @pytest.mark.asyncio
