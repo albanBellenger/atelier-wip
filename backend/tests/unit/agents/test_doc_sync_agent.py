@@ -14,9 +14,8 @@ from app.services.llm_service import LLMService
 
 
 @pytest.mark.asyncio
-async def test_propose_patches_forwards_schema_and_call_source(
-    db_session: AsyncSession,
-) -> None:
+async def test_propose_patches_forwards_schema_and_call_source() -> None:
+    session = AsyncMock(spec=AsyncSession)
     llm = MagicMock(spec=LLMService)
     llm.chat_structured = AsyncMock(
         return_value={
@@ -30,7 +29,7 @@ async def test_propose_patches_forwards_schema_and_call_source(
         }
     )
     ctx = TokenUsageScope(studio_id=uuid.uuid4(), software_id=uuid.uuid4())
-    out = await DocSyncAgent(db_session, llm).propose_patches(
+    out = await DocSyncAgent(session, llm).propose_patches(
         ctx,
         sw_name="Sw",
         def_block="Def",

@@ -8,6 +8,7 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
 from app.models import EmbeddingDimensionState
@@ -16,7 +17,7 @@ from app.services.embedding_service import EmbeddingService
 
 @pytest.mark.asyncio
 async def test_embed_batch_stores_then_validates_dimension(
-    db_session, monkeypatch: pytest.MonkeyPatch
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     row = await db_session.get(EmbeddingDimensionState, 1)
     if row is None:
@@ -102,7 +103,7 @@ async def test_embed_batch_stores_then_validates_dimension(
 
 @pytest.mark.asyncio
 async def test_connectivity_probe_skips_dimension_guard(
-    db_session, monkeypatch: pytest.MonkeyPatch
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Admin routing embedding test must not fail when probe model dim != indexed dim."""
     row = await db_session.get(EmbeddingDimensionState, 1)
@@ -151,7 +152,7 @@ async def test_connectivity_probe_skips_dimension_guard(
 
 @pytest.mark.asyncio
 async def test_embed_batch_passes_dimensions_for_text_embedding_3_when_observed_dim_set(
-    db_session, monkeypatch: pytest.MonkeyPatch
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Re-index / RAG: shrink v3-large output to match existing pgvector width."""
     row = await db_session.get(EmbeddingDimensionState, 1)
@@ -196,7 +197,7 @@ async def test_embed_batch_passes_dimensions_for_text_embedding_3_when_observed_
 
 @pytest.mark.asyncio
 async def test_embed_batch_omits_dimensions_for_ada002(
-    db_session, monkeypatch: pytest.MonkeyPatch
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     row = await db_session.get(EmbeddingDimensionState, 1)
     if row is None:

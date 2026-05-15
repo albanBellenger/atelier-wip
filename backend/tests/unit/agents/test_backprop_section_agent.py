@@ -13,9 +13,8 @@ from app.schemas.token_usage_scope import TokenUsageScope
 
 
 @pytest.mark.asyncio
-async def test_propose_section_calls_chat_structured_with_schema(
-    db_session: AsyncSession,
-) -> None:
+async def test_propose_section_calls_chat_structured_with_schema() -> None:
+    session = AsyncMock(spec=AsyncSession)
     llm = MagicMock()
     llm.chat_structured = AsyncMock(
         return_value={
@@ -29,7 +28,7 @@ async def test_propose_section_calls_chat_structured_with_schema(
         project_id=None,
         user_id=uuid.uuid4(),
     )
-    out = await BackpropSectionAgent(db_session, llm).propose_section(
+    out = await BackpropSectionAgent(session, llm).propose_section(
         ctx,
         sw_name="Svc",
         def_block="Service definition.",

@@ -18,6 +18,7 @@ from openai import (
     RateLimitError,
 )
 from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import ApiError
 from app.models import LlmProviderRegistry, LlmRoutingRule
@@ -29,7 +30,7 @@ from app.services.llm_service import LLMService, serialize_outbound_chat_message
 _REQ = httpx.Request("POST", "https://example.test/v1/chat/completions")
 
 
-async def _seed_openai_default_llm(db_session: Any, *, model: str, api_key: str = "sk-test") -> None:
+async def _seed_openai_default_llm(db_session: AsyncSession, *, model: str, api_key: str = "sk-test") -> None:
     await db_session.execute(delete(LlmRoutingRule))
     await db_session.execute(delete(LlmProviderRegistry))
     await db_session.flush()
@@ -68,7 +69,7 @@ def _usage_scope() -> TokenUsageScope:
 
 @pytest.mark.asyncio
 async def test_chat_structured_read_timeout_maps_to_api_error(
-    db_session: Any,
+    db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await _seed_openai_default_llm(db_session, model="gpt-test")
@@ -93,7 +94,7 @@ async def test_chat_structured_read_timeout_maps_to_api_error(
 
 @pytest.mark.asyncio
 async def test_chat_structured_connect_error_maps_to_transport_api_error(
-    db_session: Any,
+    db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await _seed_openai_default_llm(db_session, model="gpt-test")
@@ -118,7 +119,7 @@ async def test_chat_structured_connect_error_maps_to_transport_api_error(
 
 @pytest.mark.asyncio
 async def test_chat_stream_connect_error_maps_to_transport_api_error(
-    db_session: Any,
+    db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await _seed_openai_default_llm(db_session, model="gpt-test")
@@ -142,7 +143,7 @@ async def test_chat_stream_connect_error_maps_to_transport_api_error(
 
 
 @pytest.mark.asyncio
-async def test_admin_connectivity_probe_missing_model_returns_result(db_session: Any) -> None:
+async def test_admin_connectivity_probe_missing_model_returns_result(db_session: AsyncSession) -> None:
     await db_session.execute(delete(LlmRoutingRule))
     await db_session.execute(delete(LlmProviderRegistry))
     await db_session.flush()
@@ -156,7 +157,7 @@ async def test_admin_connectivity_probe_missing_model_returns_result(db_session:
 
 @pytest.mark.asyncio
 async def test_admin_connectivity_probe_unknown_provider_id_returns_result(
-    db_session: Any,
+    db_session: AsyncSession,
 ) -> None:
     await _seed_openai_default_llm(db_session, model="gpt-test")
 
@@ -181,7 +182,7 @@ def _probe_ok_response() -> MagicMock:
 
 
 @pytest.mark.asyncio
-async def test_admin_connectivity_probe_success(db_session: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_admin_connectivity_probe_success(db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> None:
     await _seed_openai_default_llm(db_session, model="gpt-test")
 
     monkeypatch.setattr(
@@ -198,7 +199,7 @@ async def test_admin_connectivity_probe_success(db_session: Any, monkeypatch: py
 
 @pytest.mark.asyncio
 async def test_admin_connectivity_probe_http_error_returns_result(
-    db_session: Any,
+    db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await _seed_openai_default_llm(db_session, model="gpt-test")
@@ -216,7 +217,7 @@ async def test_admin_connectivity_probe_http_error_returns_result(
 
 @pytest.mark.asyncio
 async def test_admin_connectivity_probe_network_error_returns_result(
-    db_session: Any,
+    db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await _seed_openai_default_llm(db_session, model="gpt-test")
@@ -234,7 +235,7 @@ async def test_admin_connectivity_probe_network_error_returns_result(
 
 @pytest.mark.asyncio
 async def test_admin_connectivity_probe_acompletion_unexpected_error_returns_result(
-    db_session: Any,
+    db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await _seed_openai_default_llm(db_session, model="gpt-test")
@@ -252,7 +253,7 @@ async def test_admin_connectivity_probe_acompletion_unexpected_error_returns_res
 
 @pytest.mark.asyncio
 async def test_admin_connectivity_probe_persist_success_sets_connected(
-    db_session: Any,
+    db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await _seed_openai_default_llm(db_session, model="gpt-test")
@@ -278,7 +279,7 @@ async def test_admin_connectivity_probe_persist_success_sets_connected(
 
 @pytest.mark.asyncio
 async def test_admin_connectivity_probe_persist_failure_sets_needs_key(
-    db_session: Any,
+    db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await _seed_openai_default_llm(db_session, model="gpt-test")
@@ -304,7 +305,7 @@ async def test_admin_connectivity_probe_persist_failure_sets_needs_key(
 
 @pytest.mark.asyncio
 async def test_chat_structured_upstream_http_error_maps_to_api_error(
-    db_session: Any,
+    db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await _seed_openai_default_llm(db_session, model="gpt-test")
@@ -346,7 +347,7 @@ def _structured_ok_response() -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_chat_structured_posts_openai_json_schema_request_body(
-    db_session: Any,
+    db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: list[Any] = []
@@ -387,7 +388,7 @@ async def test_chat_structured_posts_openai_json_schema_request_body(
 
 
 @pytest.mark.asyncio
-async def test_chat_structured_rejects_json_schema_not_dict(db_session: Any) -> None:
+async def test_chat_structured_rejects_json_schema_not_dict(db_session: AsyncSession) -> None:
     llm = LLMService(db_session)
     bad_schema: Any = []
     with pytest.raises(ApiError) as exc_info:
@@ -403,7 +404,7 @@ async def test_chat_structured_rejects_json_schema_not_dict(db_session: Any) -> 
 
 
 @pytest.mark.asyncio
-async def test_chat_structured_rejects_json_schema_empty_name(db_session: Any) -> None:
+async def test_chat_structured_rejects_json_schema_empty_name(db_session: AsyncSession) -> None:
     llm = LLMService(db_session)
     with pytest.raises(ApiError) as exc_info:
         await llm.chat_structured(
@@ -417,7 +418,7 @@ async def test_chat_structured_rejects_json_schema_empty_name(db_session: Any) -
 
 
 @pytest.mark.asyncio
-async def test_chat_structured_rejects_json_schema_strict_not_true(db_session: Any) -> None:
+async def test_chat_structured_rejects_json_schema_strict_not_true(db_session: AsyncSession) -> None:
     llm = LLMService(db_session)
     with pytest.raises(ApiError) as exc_info:
         await llm.chat_structured(
@@ -431,7 +432,7 @@ async def test_chat_structured_rejects_json_schema_strict_not_true(db_session: A
 
 
 @pytest.mark.asyncio
-async def test_chat_structured_rejects_json_schema_inner_not_object(db_session: Any) -> None:
+async def test_chat_structured_rejects_json_schema_inner_not_object(db_session: AsyncSession) -> None:
     llm = LLMService(db_session)
     with pytest.raises(ApiError) as exc_info:
         await llm.chat_structured(
@@ -450,7 +451,7 @@ async def test_chat_structured_rejects_json_schema_inner_not_object(db_session: 
 
 @pytest.mark.asyncio
 async def test_chat_structured_upstream_error_log_omits_raw_body(
-    db_session: Any,
+    db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await _seed_openai_default_llm(db_session, model="gpt-test")
@@ -490,7 +491,7 @@ async def test_chat_structured_upstream_error_log_omits_raw_body(
 
 @pytest.mark.asyncio
 async def test_chat_structured_empty_choices_maps_to_api_error(
-    db_session: Any,
+    db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await _seed_openai_default_llm(db_session, model="gpt-test")
@@ -517,7 +518,7 @@ async def test_chat_structured_empty_choices_maps_to_api_error(
 
 @pytest.mark.asyncio
 async def test_chat_structured_invalid_content_json_maps_to_api_error(
-    db_session: Any,
+    db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await _seed_openai_default_llm(db_session, model="gpt-test")
@@ -554,7 +555,7 @@ async def _stream_chunks_timeout() -> Any:
 
 @pytest.mark.asyncio
 async def test_chat_stream_read_timeout_maps_to_api_error(
-    db_session: Any,
+    db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await _seed_openai_default_llm(db_session, model="gpt-test")
@@ -584,7 +585,7 @@ async def _stream_chunks_rate_limit() -> Any:
 
 @pytest.mark.asyncio
 async def test_chat_stream_upstream_rate_limit_maps_to_api_error(
-    db_session: Any,
+    db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await _seed_openai_default_llm(db_session, model="gpt-test")
@@ -610,7 +611,7 @@ async def test_chat_stream_upstream_rate_limit_maps_to_api_error(
 
 @pytest.mark.asyncio
 async def test_chat_stream_upstream_error_log_omits_raw_body(
-    db_session: Any,
+    db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await _seed_openai_default_llm(db_session, model="gpt-test")
@@ -653,7 +654,7 @@ async def test_chat_stream_upstream_error_log_omits_raw_body(
 
 @pytest.mark.asyncio
 async def test_trim_chat_messages_for_stream_uses_stored_context_budget(
-    db_session: Any,
+    db_session: AsyncSession,
 ) -> None:
     from app.schemas.llm_registry_model import LlmRegistryModelEntry
     from app.services.chat_history_window import history_trim_budget_tokens
@@ -707,7 +708,7 @@ async def test_trim_chat_messages_for_stream_uses_stored_context_budget(
 
 @pytest.mark.asyncio
 async def test_trim_chat_messages_for_stream_uses_model_from_config(
-    db_session: Any,
+    db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await _seed_openai_default_llm(db_session, model="gpt-test")
@@ -753,7 +754,7 @@ def _patch_sum_content_token_counter(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.mark.asyncio
 async def test_llm_outbound_request_includes_full_messages_when_log_prompts_enabled(
-    db_session: Any,
+    db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await _seed_openai_default_llm(db_session, model="gpt-test")
@@ -798,7 +799,7 @@ async def test_llm_outbound_request_includes_full_messages_when_log_prompts_enab
 
 @pytest.mark.asyncio
 async def test_llm_outbound_request_omits_message_bodies_when_log_prompts_disabled(
-    db_session: Any,
+    db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await _seed_openai_default_llm(db_session, model="gpt-test")
@@ -836,7 +837,7 @@ async def test_llm_outbound_request_omits_message_bodies_when_log_prompts_disabl
 
 @pytest.mark.asyncio
 async def test_llm_outbound_request_stream_includes_messages_when_enabled(
-    db_session: Any,
+    db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await _seed_openai_default_llm(db_session, model="gpt-test")
@@ -883,7 +884,7 @@ async def test_llm_outbound_request_stream_includes_messages_when_enabled(
 
 @pytest.mark.asyncio
 async def test_llm_outbound_request_truncates_long_message_when_log_prompts_enabled(
-    db_session: Any,
+    db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await _seed_openai_default_llm(db_session, model="gpt-test")
@@ -962,7 +963,7 @@ def test_serialize_outbound_omits_tokens_when_counter_raises(
 
 @pytest.mark.asyncio
 async def test_resolved_chat_model_for_scope_matches_registry(
-    db_session: Any,
+    db_session: AsyncSession,
 ) -> None:
     await _seed_openai_default_llm(db_session, model="gpt-route")
     llm = LLMService(db_session)
