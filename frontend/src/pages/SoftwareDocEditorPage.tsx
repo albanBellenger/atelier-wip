@@ -152,12 +152,13 @@ export function SoftwareDocEditorPage(): ReactElement {
 
   const editorApiRef = useRef<CrepeEditorApi | null>(null)
 
-  const applyBackpropDraft = useCallback(
-    (md: string) => {
+  const applyBackpropDraft = useCallback((md: string) => {
+    try {
       editorApiRef.current?.replaceFullMarkdown(md)
-    },
-    [],
-  )
+    } finally {
+      setBackpropOpen(false)
+    }
+  }, [])
 
   const docSyncPayload = useMemo(
     () => readDocSyncPayload(docSyncIssueId),
@@ -278,6 +279,14 @@ export function SoftwareDocEditorPage(): ReactElement {
     return (
       <div className="flex min-h-screen items-center justify-center bg-zinc-950 text-zinc-400">
         Loading…
+      </div>
+    )
+  }
+
+  if (access.isLoadingCapabilities) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-zinc-950 text-zinc-400">
+        Loading studio access…
       </div>
     )
   }
