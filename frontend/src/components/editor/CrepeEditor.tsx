@@ -272,6 +272,33 @@ const CrepeEditorInner = forwardRef<CrepeEditorApi, CrepeEditorProps>(
           : undefined
       ) as CrepeConfig['featureConfigs']
 
+      const flushMarkdownSnapshotToCollab = (): void => {
+        if (snapshotTimerRef.current) {
+          clearTimeout(snapshotTimerRef.current)
+          snapshotTimerRef.current = null
+        }
+        if (!collab || readOnlyRef.current) {
+          return
+        }
+        const editor = crepeRef.current
+        if (!editor) {
+          return
+        }
+        let markdown: string
+        try {
+          markdown = editor.getMarkdown()
+          lastMarkdownRef.current = markdown
+        } catch {
+          markdown = lastMarkdownRef.current
+        }
+        collab.sendMarkdownSnapshot(markdown)
+      }
+
+      const onBeforeUnload = (): void => {
+        flushMarkdownSnapshotToCollab()
+      }
+      window.addEventListener('beforeunload', onBeforeUnload)
+
       const crepe = new Crepe({
         root: mountRoot,
         defaultValue: defaultMarkdown,
@@ -386,10 +413,8 @@ const CrepeEditorInner = forwardRef<CrepeEditorApi, CrepeEditorProps>(
 
       return () => {
         cancelled = true
-        if (snapshotTimerRef.current) {
-          clearTimeout(snapshotTimerRef.current)
-          snapshotTimerRef.current = null
-        }
+        window.removeEventListener('beforeunload', onBeforeUnload)
+        flushMarkdownSnapshotToCollab()
         cancelAnimateRef.current?.()
         cancelAnimateRef.current = null
         const c = crepeRef.current
