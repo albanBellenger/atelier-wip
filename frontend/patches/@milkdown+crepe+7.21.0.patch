@@ -1,0 +1,182 @@
+diff --git a/node_modules/@milkdown/crepe/lib/cjs/feature/toolbar/index.js b/node_modules/@milkdown/crepe/lib/cjs/feature/toolbar/index.js
+index 8276a77..53c06c0 100644
+--- a/node_modules/@milkdown/crepe/lib/cjs/feature/toolbar/index.js
++++ b/node_modules/@milkdown/crepe/lib/cjs/feature/toolbar/index.js
+@@ -918,7 +918,21 @@ var __accessCheck = (obj, member, msg) => member.has(obj) || __typeError("Cannot
+ var __privateGet = (obj, member, getter) => (__accessCheck(obj, member, "read from private field"), getter ? getter.call(obj) : member.get(obj));
+ var __privateAdd = (obj, member, value) => member.has(obj) ? __typeError("Cannot add the same private member more than once") : member instanceof WeakSet ? member.add(obj) : member.set(obj, value);
+ var __privateSet = (obj, member, value, setter) => (__accessCheck(obj, member, "write to private field"), member.set(obj, value), value);
+-var _tooltipProvider, _content, _app, _selection, _show;
++var _tooltipProvider, _content, _app, _selection, _show, _showDelayTimer, _latestView;
++function shouldShowCrepeToolbar(view2, content) {
++  const { doc, selection } = view2.state;
++  const { empty, from, to } = selection;
++  const isEmptyTextBlock = !doc.textBetween(from, to).length && selection instanceof state.TextSelection;
++  const isNotTextBlock = !(selection instanceof state.TextSelection);
++  const activeElement = view2.dom.getRootNode().activeElement;
++  const isTooltipChildren = content.contains(activeElement);
++  const notHasFocus = !view2.hasFocus() && !isTooltipChildren;
++  const isReadonly = !view2.editable;
++  if (notHasFocus || isNotTextBlock || empty || isEmptyTextBlock || isReadonly)
++    return false;
++  return true;
++}
++const ATELIER_CREPE_TOOLBAR_SHOW_DELAY_MS = 320;
+ const toolbarTooltip = tooltip.tooltipFactory("CREPE_TOOLBAR");
+ class ToolbarView {
+   constructor(ctx, view, config) {
+@@ -927,11 +941,53 @@ class ToolbarView {
+     __privateAdd(this, _app);
+     __privateAdd(this, _selection);
+     __privateAdd(this, _show, vue.ref(false));
++    __privateAdd(this, _showDelayTimer, null);
++    __privateAdd(this, _latestView, null);
+     this.update = (view, prevState) => {
+-      __privateGet(this, _tooltipProvider).update(view, prevState);
++      __privateSet(this, _latestView, view);
+       __privateGet(this, _selection).value = view.state.selection;
++      const content = __privateGet(this, _content);
++      const show = shouldShowCrepeToolbar(view, content);
++      if (!show) {
++        const pending = __privateGet(this, _showDelayTimer);
++        if (pending) {
++          clearTimeout(pending);
++          __privateSet(this, _showDelayTimer, null);
++        }
++        __privateGet(this, _tooltipProvider).update(view, prevState);
++        return;
++      }
++      const visible = content.dataset.show === "true";
++      if (visible) {
++        const pending = __privateGet(this, _showDelayTimer);
++        if (pending) {
++          clearTimeout(pending);
++          __privateSet(this, _showDelayTimer, null);
++        }
++        __privateGet(this, _tooltipProvider).update(view, prevState);
++        return;
++      }
++      const pending = __privateGet(this, _showDelayTimer);
++      if (pending)
++        clearTimeout(pending);
++      __privateSet(
++        this,
++        _showDelayTimer,
++        setTimeout(() => {
++          __privateSet(this, _showDelayTimer, null);
++          const v = __privateGet(this, _latestView);
++          if (v && shouldShowCrepeToolbar(v, __privateGet(this, _content))) {
++            __privateGet(this, _tooltipProvider).update(v, void 0);
++          }
++        }, ATELIER_CREPE_TOOLBAR_SHOW_DELAY_MS)
++      );
+     };
+     this.destroy = () => {
++      const pending = __privateGet(this, _showDelayTimer);
++      if (pending) {
++        clearTimeout(pending);
++        __privateSet(this, _showDelayTimer, null);
++      }
+       __privateGet(this, _tooltipProvider).destroy();
+       __privateGet(this, _app).unmount();
+       __privateGet(this, _content).remove();
+@@ -984,6 +1040,8 @@ _content = new WeakMap();
+ _app = new WeakMap();
+ _selection = new WeakMap();
+ _show = new WeakMap();
++_showDelayTimer = new WeakMap();
++_latestView = new WeakMap();
+ const toolbar = (editor, config) => {
+   editor.config(crepeFeatureConfig(CrepeFeature.Toolbar)).config((ctx) => {
+     ctx.set(toolbarTooltip.key, {
+diff --git a/node_modules/@milkdown/crepe/lib/esm/feature/toolbar/index.js b/node_modules/@milkdown/crepe/lib/esm/feature/toolbar/index.js
+index 36ab66f..8419bbe 100644
+--- a/node_modules/@milkdown/crepe/lib/esm/feature/toolbar/index.js
++++ b/node_modules/@milkdown/crepe/lib/esm/feature/toolbar/index.js
+@@ -916,7 +916,21 @@ var __accessCheck = (obj, member, msg) => member.has(obj) || __typeError("Cannot
+ var __privateGet = (obj, member, getter) => (__accessCheck(obj, member, "read from private field"), getter ? getter.call(obj) : member.get(obj));
+ var __privateAdd = (obj, member, value) => member.has(obj) ? __typeError("Cannot add the same private member more than once") : member instanceof WeakSet ? member.add(obj) : member.set(obj, value);
+ var __privateSet = (obj, member, value, setter) => (__accessCheck(obj, member, "write to private field"), member.set(obj, value), value);
+-var _tooltipProvider, _content, _app, _selection, _show;
++var _tooltipProvider, _content, _app, _selection, _show, _showDelayTimer, _latestView;
++function shouldShowCrepeToolbar(view2, content) {
++  const { doc, selection } = view2.state;
++  const { empty, from, to } = selection;
++  const isEmptyTextBlock = !doc.textBetween(from, to).length && selection instanceof TextSelection;
++  const isNotTextBlock = !(selection instanceof TextSelection);
++  const activeElement = view2.dom.getRootNode().activeElement;
++  const isTooltipChildren = content.contains(activeElement);
++  const notHasFocus = !view2.hasFocus() && !isTooltipChildren;
++  const isReadonly = !view2.editable;
++  if (notHasFocus || isNotTextBlock || empty || isEmptyTextBlock || isReadonly)
++    return false;
++  return true;
++}
++const ATELIER_CREPE_TOOLBAR_SHOW_DELAY_MS = 320;
+ const toolbarTooltip = tooltipFactory("CREPE_TOOLBAR");
+ class ToolbarView {
+   constructor(ctx, view, config) {
+@@ -925,11 +939,53 @@ class ToolbarView {
+     __privateAdd(this, _app);
+     __privateAdd(this, _selection);
+     __privateAdd(this, _show, ref(false));
++    __privateAdd(this, _showDelayTimer, null);
++    __privateAdd(this, _latestView, null);
+     this.update = (view, prevState) => {
+-      __privateGet(this, _tooltipProvider).update(view, prevState);
++      __privateSet(this, _latestView, view);
+       __privateGet(this, _selection).value = view.state.selection;
++      const content = __privateGet(this, _content);
++      const show = shouldShowCrepeToolbar(view, content);
++      if (!show) {
++        const pending = __privateGet(this, _showDelayTimer);
++        if (pending) {
++          clearTimeout(pending);
++          __privateSet(this, _showDelayTimer, null);
++        }
++        __privateGet(this, _tooltipProvider).update(view, prevState);
++        return;
++      }
++      const visible = content.dataset.show === "true";
++      if (visible) {
++        const pending = __privateGet(this, _showDelayTimer);
++        if (pending) {
++          clearTimeout(pending);
++          __privateSet(this, _showDelayTimer, null);
++        }
++        __privateGet(this, _tooltipProvider).update(view, prevState);
++        return;
++      }
++      const pending = __privateGet(this, _showDelayTimer);
++      if (pending)
++        clearTimeout(pending);
++      __privateSet(
++        this,
++        _showDelayTimer,
++        setTimeout(() => {
++          __privateSet(this, _showDelayTimer, null);
++          const v = __privateGet(this, _latestView);
++          if (v && shouldShowCrepeToolbar(v, __privateGet(this, _content))) {
++            __privateGet(this, _tooltipProvider).update(v, void 0);
++          }
++        }, ATELIER_CREPE_TOOLBAR_SHOW_DELAY_MS)
++      );
+     };
+     this.destroy = () => {
++      const pending = __privateGet(this, _showDelayTimer);
++      if (pending) {
++        clearTimeout(pending);
++        __privateSet(this, _showDelayTimer, null);
++      }
+       __privateGet(this, _tooltipProvider).destroy();
+       __privateGet(this, _app).unmount();
+       __privateGet(this, _content).remove();
+@@ -982,6 +1038,8 @@ _content = new WeakMap();
+ _app = new WeakMap();
+ _selection = new WeakMap();
+ _show = new WeakMap();
++_showDelayTimer = new WeakMap();
++_latestView = new WeakMap();
+ const toolbar = (editor, config) => {
+   editor.config(crepeFeatureConfig(CrepeFeature.Toolbar)).config((ctx) => {
+     ctx.set(toolbarTooltip.key, {
