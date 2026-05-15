@@ -12,7 +12,11 @@ import {
   writeEditorBlockHandleFirstRunDone,
 } from '../../lib/editorBlockHandleOnboarding'
 import type { CrepeEditorApi } from './CrepeEditor'
-import { CrepeEditor, pmSelectionToEditorState } from './CrepeEditor'
+import {
+  CrepeEditor,
+  EMPTY_SECTION_EDITOR_PLACEHOLDER,
+  pmSelectionToEditorState,
+} from './CrepeEditor'
 
 function mkTestCollab(sendMarkdownSnapshot: ReturnType<typeof vi.fn>): YjsCollab {
   return {
@@ -32,6 +36,13 @@ function renderEditor(markdown: string): ReactElement {
       defaultMarkdown={markdown}
       readOnly
     />
+  )
+}
+
+function renderEditableEditor(markdown: string): ReactElement {
+  const ref = createRef<CrepeEditorApi>()
+  return (
+    <CrepeEditor ref={ref} collab={null} defaultMarkdown={markdown} readOnly={false} />
   )
 }
 
@@ -60,6 +71,52 @@ describe('CrepeEditor', () => {
       )
 
       expect(await screen.findByText('Hello', {}, { timeout: 15_000 })).toBeInTheDocument()
+    },
+    20_000,
+  )
+
+  it(
+    'shows the empty-section placeholder on an editable blank document',
+    async () => {
+      const { container } = render(renderEditableEditor(''))
+
+      await waitFor(
+        () => {
+          expect(screen.queryByText('Loading editor…')).not.toBeInTheDocument()
+        },
+        { timeout: 15_000 },
+      )
+
+      await waitFor(
+        () => {
+          const found = [...container.querySelectorAll('[data-placeholder]')].some(
+            (el) => el.getAttribute('data-placeholder') === EMPTY_SECTION_EDITOR_PLACEHOLDER,
+          )
+          expect(found).toBe(true)
+        },
+        { timeout: 15_000 },
+      )
+    },
+    20_000,
+  )
+
+  it(
+    'does not show the editable empty-section placeholder when read-only',
+    async () => {
+      const { container } = render(renderEditor(''))
+
+      await waitFor(
+        () => {
+          expect(screen.queryByText('Loading editor…')).not.toBeInTheDocument()
+        },
+        { timeout: 15_000 },
+      )
+
+      expect(
+        [...container.querySelectorAll('[data-placeholder]')].some(
+          (el) => el.getAttribute('data-placeholder') === EMPTY_SECTION_EDITOR_PLACEHOLDER,
+        ),
+      ).toBe(false)
     },
     20_000,
   )
