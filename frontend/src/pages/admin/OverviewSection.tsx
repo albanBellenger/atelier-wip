@@ -76,7 +76,7 @@ export function OverviewSection(): ReactElement {
         subtitle="At-a-glance health: studios, spend, and embedding coverage."
       />
 
-      {overviewQ.isError ? (
+      {overviewQ.error != null ? (
         <p className="text-[12px] text-amber-300/90">
           Could not load overview metrics. KPIs show zeros until a successful load.{' '}
           <span className="font-mono text-zinc-500">

@@ -196,6 +196,14 @@ export function IssuesPage(): ReactElement {
     )
   }
 
+  if (access.isLoadingCapabilities) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-zinc-950 text-zinc-400">
+        Loading studio access…
+      </div>
+    )
+  }
+
   if (!access.isMember) {
     return (
       <div className="min-h-screen bg-zinc-950 px-4 py-12 text-zinc-100">
