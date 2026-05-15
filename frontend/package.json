@@ -8,6 +8,7 @@
     "npm": ">=11"
   },
   "scripts": {
+    "postinstall": "patch-package",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
@@ -66,6 +67,7 @@
     "globals": "^17.5.0",
     "jsdom": "^29.1.0",
     "msw": "^2.14.2",
+    "patch-package": "^8.0.1",
     "react-router-dom": "^7.14.2",
     "tailwindcss": "^4.2.4",
     "typescript": "~6.0.2",

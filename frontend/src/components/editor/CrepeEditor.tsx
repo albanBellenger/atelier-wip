@@ -242,6 +242,8 @@ const CrepeEditorInner = forwardRef<CrepeEditorApi, CrepeEditorProps>(
                 buildMenu: crepeBlockEditBuildMenu(() => copilotCallbacksRef.current),
               },
               [CrepeFeature.Toolbar]: {
+                // First bubble appearance is delayed via `patches/@milkdown+crepe+7.21.0.patch`
+                // (Milkdown’s TooltipProvider uses a leading throttle, so a high `debounce` alone does not help).
                 buildToolbar: crepeToolbarBuildToolbar(() => copilotCallbacksRef.current),
               },
             }
