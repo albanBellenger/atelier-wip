@@ -130,6 +130,7 @@ function stubApis(): void {
     drawer_tokens: null,
     drawer_sources: null,
   })
+  vi.spyOn(api, 'listProjectIssues').mockResolvedValue([])
   vi.spyOn(api, 'getSoftware').mockResolvedValue({
     id: 'sw1',
     studio_id: 's1',

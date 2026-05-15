@@ -301,3 +301,32 @@
   background: rgba(139, 92, 246, 0.12);
   color: #ddd6fe;
 }
+
+/* Issue gutter (ProseMirror widget decorations, side: -1) */
+.crepe-atelier-host .crepe-issue-gutter-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.125rem;
+  height: 1.125rem;
+  margin-right: 0.25rem;
+  border-radius: 0.25rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
+  user-select: none;
+  pointer-events: none;
+}
+
+.crepe-atelier-host .crepe-issue-gutter-icon--gap {
+  color: #fecdd3;
+  background: rgba(244, 63, 94, 0.2);
+  border: 1px solid rgba(244, 63, 94, 0.45);
+}
+
+.crepe-atelier-host .crepe-issue-gutter-icon--conflict {
+  color: #fde68a;
+  background: rgba(245, 158, 11, 0.2);
+  border: 1px solid rgba(245, 158, 11, 0.45);
+}

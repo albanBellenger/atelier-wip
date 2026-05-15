@@ -12,6 +12,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import type { EditorSelectionState } from '../editor/editorSelection'
 import { CrepeEditor, type CrepeEditorApi } from '../editor/CrepeEditor'
+import { buildIssueGutterMarksForSection } from '../editor/issueGutterSpec'
 import { BuilderHomeHeader } from '../home/BuilderHomeHeader'
 import { ContextPopover } from './annotations/ContextPopover'
 import { SuggestionBlock } from './canvas/SuggestionBlock'
@@ -34,6 +35,7 @@ import {
   getSection,
   getSectionHealth,
   getSoftware,
+  listProjectIssues,
   listProjects,
   listSections,
   listSoftware,
@@ -148,6 +150,12 @@ export function OutlineEditorV2(): ReactElement {
   const sectionHealthQ = useQuery({
     queryKey: ['sectionHealth', pid, secid],
     queryFn: () => getSectionHealth(pid, secid),
+    enabled: Boolean(pid && secid && access.isMember),
+  })
+
+  const sectionIssuesQ = useQuery({
+    queryKey: ['projectIssues', pid, secid],
+    queryFn: () => listProjectIssues(pid, { sectionId: secid }),
     enabled: Boolean(pid && secid && access.isMember),
   })
 
@@ -335,6 +343,11 @@ export function OutlineEditorV2(): ReactElement {
   }, [])
 
   const defaultSectionMarkdown = sectionQ.data?.content ?? ''
+
+  const issueGutterMarks = useMemo(
+    () => buildIssueGutterMarksForSection(sectionIssuesQ.data ?? [], secid),
+    [sectionIssuesQ.data, secid],
+  )
 
   const refreshRawOverlay = useCallback((): void => {
     if (!displayRawRef.current) {
@@ -570,6 +583,7 @@ export function OutlineEditorV2(): ReactElement {
                               onAiComposerPrefill={onAiComposerPrefill}
                               onCopilotSlashExecute={onCopilotSlashExecute}
                               replaceSelectionSlashDisabled={false}
+                              issueGutterMarks={issueGutterMarks}
                             />
                           </div>
                         </div>
