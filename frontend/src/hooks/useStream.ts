@@ -17,6 +17,7 @@ export function useStream(): {
     handlers: {
       onToken: (text: string) => void
       onMeta: (meta: PrivateThreadStreamMeta) => void
+      onResponseOpen?: () => void
     },
   ) => Promise<void>
 } {
@@ -28,6 +29,7 @@ export function useStream(): {
       handlers: {
         onToken: (text: string) => void
         onMeta: (meta: PrivateThreadStreamMeta) => void
+        onResponseOpen?: () => void
       },
     ) => streamPrivateThreadReply(projectId, sectionId, payload, handlers),
     [],

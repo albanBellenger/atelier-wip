@@ -2758,6 +2758,8 @@ export async function streamPrivateThreadReply(
   handlers: {
     onToken: (text: string) => void
     onMeta: (meta: PrivateThreadStreamMeta) => void
+    /** Fires after HTTP OK, before the response body is consumed (e.g. dismiss submit toast while tokens stream). */
+    onResponseOpen?: () => void
   },
 ): Promise<void> {
   const r = await fetch(
@@ -2771,6 +2773,7 @@ export async function streamPrivateThreadReply(
     },
   )
   await throwIfNotOk(r)
+  handlers.onResponseOpen?.()
   const reader = r.body?.getReader()
   if (!reader) {
     throw new Error('No response body')

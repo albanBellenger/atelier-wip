@@ -49,6 +49,8 @@ export interface CrepeEditorProps {
   collab: YjsCollab | null
   defaultMarkdown: string
   readOnly?: boolean
+  /** Fires after the editor instance is ready (and again after collab bind when applicable). */
+  onEditorReady?: () => void
   onSelectionChange?: (sel: EditorSelectionState | null) => void
   patchOverlay?: SectionPatchOverlayState | null
   onAiComposerPrefill?: (markdown: string) => void
@@ -56,10 +58,14 @@ export interface CrepeEditorProps {
   replaceSelectionSlashDisabled?: boolean
 }
 
-function pmSelectionToEditorState(
-  view: EditorView,
+/** Exported for unit tests. Crepe can fire `selectionUpdated` before `editorViewCtx` is ready. */
+export function pmSelectionToEditorState(
+  view: EditorView | null | undefined,
   snapshotMarkdown: string,
 ): EditorSelectionState | null {
+  if (view?.state == null) {
+    return null
+  }
   const from = view.state.selection.from
   const to = view.state.selection.to
   if (from === to) {
@@ -81,6 +87,7 @@ const CrepeEditorInner = forwardRef<CrepeEditorApi, CrepeEditorProps>(
       collab,
       defaultMarkdown,
       readOnly = false,
+      onEditorReady,
       onSelectionChange,
       patchOverlay: _patchOverlay,
       onAiComposerPrefill,
@@ -108,6 +115,8 @@ const CrepeEditorInner = forwardRef<CrepeEditorApi, CrepeEditorProps>(
       onCopilotSlashExecute,
       replaceSelectionDisabled: replaceSelectionSlashDisabled,
     }
+    const onEditorReadyRef = useRef(onEditorReady)
+    onEditorReadyRef.current = onEditorReady
 
     const [loading, setLoading] = useState(true)
 
@@ -121,7 +130,29 @@ const CrepeEditorInner = forwardRef<CrepeEditorApi, CrepeEditorProps>(
           }
           return c.editor.action((ctx) => ctx.get(editorViewCtx))
         },
-        getMarkdown: (): string => lastMarkdownRef.current,
+        getMarkdown: (): string => {
+          const c = crepeRef.current
+          if (!c) {
+            return lastMarkdownRef.current
+          }
+          try {
+            const md = c.getMarkdown()
+            lastMarkdownRef.current = md
+            return md
+          } catch {
+            try {
+              return c.editor.action((ctx) => {
+                const view = ctx.get(editorViewCtx)
+                const serializer = ctx.get(serializerCtx)
+                const md = serializer(view.state.doc)
+                lastMarkdownRef.current = md
+                return md
+              })
+            } catch {
+              return lastMarkdownRef.current
+            }
+          }
+        },
         replaceFullMarkdown: (markdown: string): void => {
           const c = crepeRef.current
           if (!c) {
@@ -266,6 +297,11 @@ const CrepeEditorInner = forwardRef<CrepeEditorApi, CrepeEditorProps>(
         // mounts ProseMirror; if `ctx.wait(CollabReady)` stalls, users otherwise see
         // content behind a perpetual "Loading editor…" shell.
         setLoading(false)
+        try {
+          onEditorReadyRef.current?.()
+        } catch {
+          /* ignore host callbacks */
+        }
         const bundle = collabRef.current
         if (bundle && !readOnlyRef.current) {
           try {
@@ -283,6 +319,13 @@ const CrepeEditorInner = forwardRef<CrepeEditorApi, CrepeEditorProps>(
             })
           } catch {
             /* collab bind is best-effort; editor remains usable */
+          }
+        }
+        if (!cancelled) {
+          try {
+            onEditorReadyRef.current?.()
+          } catch {
+            /* ignore host callbacks */
           }
         }
       })()

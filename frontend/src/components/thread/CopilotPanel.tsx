@@ -482,6 +482,9 @@ export function CopilotPanel(props: {
           : null
       setAnchorGate(anchorRef.current)
       await streamPrivateThread(projectId, sectionId, payload, {
+        onResponseOpen: () => {
+          toast.dismiss('copilot-surface-exec')
+        },
         onToken: (t: string) => {
           setStreaming((s) => s + t)
         },

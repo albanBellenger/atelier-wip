@@ -45,6 +45,12 @@ function bypassBrowserDocumentToSpa(
 
 // https://vite.dev/config/
 export default defineConfig({
+  // @milkdown/crepe embeds Vue (esm-bundler); without these, Vue logs feature-flag warnings at runtime.
+  define: {
+    __VUE_OPTIONS_API__: JSON.stringify(true),
+    __VUE_PROD_DEVTOOLS__: JSON.stringify(false),
+    __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: JSON.stringify(false),
+  },
   plugins: [atelierStudiosProjectSpaPlugin(), react(), tailwindcss()],
   server: {
     proxy: {

@@ -10,8 +10,12 @@ import {
 } from '../../lib/aiMenuActions'
 import { deleteSlashInputRange } from './slashInputDelete'
 
-/** Minimal SVG icon for Crepe slash / toolbar rows (Crepe expects HTML string icons). */
-export const ATELIER_MENU_DOT_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="atelier-copilot-menu-icon"><circle cx="12" cy="8" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="16" r="2"/></svg>`
+/**
+ * Minimal SVG for Crepe slash / toolbar (HTML string icons).
+ * Use `<rect>` not `<circle>`: Crepe’s `Icon` runs `DOMPurify.sanitize()` on `innerHTML`, which
+ * strips `<circle>` by default, leaving an empty `<svg>` in the bubble toolbar.
+ */
+export const ATELIER_MENU_DOT_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="atelier-copilot-menu-icon"><rect x="10" y="6" width="4" height="4" rx="2"/><rect x="10" y="10" width="4" height="4" rx="2"/><rect x="10" y="14" width="4" height="4" rx="2"/></svg>`
 
 const SLASH_AI_LABELS: Record<string, string> = {
   append: 'Copilot: append',

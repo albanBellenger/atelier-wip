@@ -499,6 +499,49 @@ describe('streamPrivateThreadReply', () => {
     })
   })
 
+  it('invokes onResponseOpen before any SSE token is delivered', async () => {
+    mswServer.use(
+      http.post(
+        'http://api.test/projects/p1/sections/sec1/thread/messages',
+        () => {
+          const enc = new TextEncoder()
+          const body = new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                enc.encode('data: {"type":"token","text":"x"}\n\n'),
+              )
+              controller.close()
+            },
+          })
+          return new HttpResponse(body, {
+            status: 200,
+            headers: { 'Content-Type': 'text/event-stream' },
+          })
+        },
+      ),
+    )
+
+    const order: string[] = []
+    await api.streamPrivateThreadReply(
+      'p1',
+      'sec1',
+      { content: 'hi' },
+      {
+        onToken: () => {
+          order.push('token')
+        },
+        onMeta: () => {
+          order.push('meta')
+        },
+        onResponseOpen: () => {
+          order.push('open')
+        },
+      },
+    )
+    expect(order[0]).toBe('open')
+    expect(order).toContain('token')
+  })
+
   it('throws when response body is missing', async () => {
     mswServer.use(
       http.post(

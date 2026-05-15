@@ -3,6 +3,7 @@ import type { ReactElement } from 'react'
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -44,6 +45,23 @@ import {
 import { CopilotPanel } from '../thread/CopilotPanel'
 import { colorsForUser, useYjsCollab } from '../../hooks/useYjsCollab'
 import { useStudioAccess } from '../../hooks/useStudioAccess'
+
+function markdownForRawOverlay(
+  api: CrepeEditorApi | null,
+  fallback: string,
+): string {
+  if (api == null) {
+    return fallback
+  }
+  try {
+    if (api.getEditorView() == null) {
+      return fallback
+    }
+    return api.getMarkdown()
+  } catch {
+    return fallback
+  }
+}
 
 /** Outline Editor V2 — document canvas + slide-over copilot (reuses Yjs + CopilotPanel). */
 export function OutlineEditorV2(): ReactElement {
@@ -247,6 +265,8 @@ export function OutlineEditorV2(): ReactElement {
   const [railCollapsed, setRailCollapsed] = useState(false)
   const [sessionFlip, setSessionFlip] = useState(false)
   const displayRaw = v2prefs.outlineRawDefault !== sessionFlip
+  const displayRawRef = useRef(displayRaw)
+  displayRawRef.current = displayRaw
   const [patchOverlay, setPatchOverlay] =
     useState<SectionPatchOverlayState | null>(null)
   const [syncedContextRagQuery, setSyncedContextRagQuery] = useState('')
@@ -273,7 +293,8 @@ export function OutlineEditorV2(): ReactElement {
   )
 
   const [contextPopoverOpen, setContextPopoverOpen] = useState(false)
-  const [docRenderTick, setDocRenderTick] = useState(0)
+  /** Keeps RAW overlay text in sync with Yjs; render-only ref read can miss updates. */
+  const [rawOverlayMarkdown, setRawOverlayMarkdown] = useState('')
 
   const [wordCount, setWordCount] = useState(0)
   const wordTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -315,22 +336,46 @@ export function OutlineEditorV2(): ReactElement {
 
   const defaultSectionMarkdown = sectionQ.data?.content ?? ''
 
+  const refreshRawOverlay = useCallback((): void => {
+    if (!displayRawRef.current) {
+      return
+    }
+    setRawOverlayMarkdown(
+      markdownForRawOverlay(
+        outlineCopilotEditorRef.current,
+        defaultSectionMarkdown,
+      ),
+    )
+  }, [defaultSectionMarkdown])
+
   useEffect(() => {
     setSessionFlip(false)
   }, [secid])
 
-  useEffect(() => {
-    if (!collab) {
+  useLayoutEffect(() => {
+    if (!displayRaw || !collab) {
       return
     }
+    refreshRawOverlay()
+  }, [displayRaw, collab, defaultSectionMarkdown, secid, refreshRawOverlay])
+
+  useEffect(() => {
+    if (!collab || !displayRaw) {
+      return undefined
+    }
     const onAfter = (): void => {
-      setDocRenderTick((n) => n + 1)
+      const md = markdownForRawOverlay(
+        outlineCopilotEditorRef.current,
+        defaultSectionMarkdown,
+      )
+      setRawOverlayMarkdown((prev) => (prev === md ? prev : md))
     }
     collab.ydoc.on('afterTransaction', onAfter)
+    onAfter()
     return () => {
       collab.ydoc.off('afterTransaction', onAfter)
     }
-  }, [collab, defaultSectionMarkdown])
+  }, [collab, displayRaw, defaultSectionMarkdown])
 
   useEffect(() => {
     const schedule = (): void => {
@@ -505,7 +550,7 @@ export function OutlineEditorV2(): ReactElement {
                         <div
                           className={
                             displayRaw
-                              ? 'pointer-events-none invisible absolute inset-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
+                              ? 'pointer-events-none absolute inset-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden opacity-0'
                               : 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
                           }
                           aria-hidden={displayRaw}
@@ -519,6 +564,7 @@ export function OutlineEditorV2(): ReactElement {
                               collab={collab}
                               defaultMarkdown={sectionQ.data.content ?? ''}
                               readOnly={!access.isStudioEditor}
+                              onEditorReady={refreshRawOverlay}
                               onSelectionChange={onEditorSelectionChange}
                               patchOverlay={patchOverlay}
                               onAiComposerPrefill={onAiComposerPrefill}
@@ -530,13 +576,7 @@ export function OutlineEditorV2(): ReactElement {
                         {displayRaw ? (
                           <div className="outline-editor-shell absolute inset-0 z-[1] min-h-0 flex-1 overflow-auto bg-[#08080a] p-4 font-mono text-sm leading-relaxed text-zinc-200">
                             <pre className="whitespace-pre-wrap">
-                              {(() => {
-                                void docRenderTick
-                                return (
-                                  outlineCopilotEditorRef.current?.getMarkdown() ??
-                                  defaultSectionMarkdown
-                                )
-                              })()}
+                              {rawOverlayMarkdown}
                             </pre>
                           </div>
                         ) : null}

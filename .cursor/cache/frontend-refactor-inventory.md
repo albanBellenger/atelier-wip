@@ -1,5 +1,7 @@
 # Frontend refactor — Phase A inventory
 
+**2026-05-14 (Milkdown Crepe menus):** `@milkdown/plugin-slash`, `@milkdown/plugin-tooltip`, and `@milkdown/plugin-block` were **removed from direct `package.json` dependencies** so the app does not hoist duplicate instances alongside Crepe’s bundled plugins. They remain available **transitively** via `@milkdown/kit` ← `@milkdown/crepe` (single registration path). Dead `slashBlockActions.ts` (+ its test) deleted; `slashInputDelete.ts` kept for `crepeCopilotMenus.ts`.
+
 **2026-05-13 (Milkdown follow-up):** `npm ls` audit: `@codemirror/commands`, `@codemirror/lang-markdown`, `@codemirror/state`, `@codemirror/view`, and `@codemirror/legacy-modes` are **not** direct `package.json` dependencies; they arrive transitively via `@codemirror/merge` (DiffTab), `@codemirror/theme-one-dark`, and `@milkdown/react` → `@milkdown/crepe` / `@milkdown/kit`. `y-codemirror.next` is **not** installed (empty `npm ls`). No unused direct CodeMirror packages were removed — only `@codemirror/merge` + `@codemirror/theme-one-dark` remain as direct CM deps.
 
 Generated as part of the bounded frontend refactor. **Repo:** `c:\Repo\Atelier`. **Note:** `rg` (ripgrep) was not on PATH in the automation shell; dependency hits were verified with workspace search equivalent to `rg` over `frontend/src` and config roots.
