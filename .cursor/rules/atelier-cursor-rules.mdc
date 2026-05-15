@@ -170,6 +170,13 @@ Use the `useStream()` hook for all SSE-streamed LLM responses. Never manually ma
 - `backend/tests/integration/` — real test DB (rolled-back transaction per test), real FastAPI via httpx.
 - `backend/tests/llm/` — real LLM API calls, tagged `@pytest.mark.llm`. Run nightly only.
 
+### Unit vs integration boundary
+
+`tests/unit/` is pure logic — no DB, no HTTP, no real LLM. If a test in `tests/unit/` uses `db_session` or a real `AsyncSession`, it is misplaced. Correct it by:
+1. Replacing DB access with `AsyncMock(spec=AsyncSession)` (use when the assertion is on return values or mock calls), or
+2. Moving the test to `tests/integration/` (use when the assertion is on DB state).
+Check for existing integration coverage before moving — delete the unit test if a duplicate already exists. Never add `db_session` to a new `tests/unit/` file.
+
 Every integration test must cover:
 
 - Happy path (correct role + valid data)

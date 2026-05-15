@@ -41,6 +41,21 @@ assert len(wo["title"]) < 100
 - Use factories from `backend/tests/factories.py` — never insert raw SQL
 - Mark slow LLM tests: `@pytest.mark.llm`
 
+## Unit test DB rule — never use a real session
+
+Tests in `backend/tests/unit/` must **never** receive `db_session` as a fixture parameter or import `AsyncSession` from a real conftest fixture. Services that accept `AsyncSession` are tested with a mock:
+
+```python
+from unittest.mock import AsyncMock
+from sqlalchemy.ext.asyncio import AsyncSession
+
+session = AsyncMock(spec=AsyncSession)
+session.scalar.return_value = None
+svc = MyService(session)
+```
+
+If you cannot write a meaningful assertion without real DB rows, the test belongs in `tests/integration/`, not `tests/unit/`. Check for duplicates before moving.
+
 ## Frontend tests
 
 - Use MSW handlers — never mock `fetch` directly

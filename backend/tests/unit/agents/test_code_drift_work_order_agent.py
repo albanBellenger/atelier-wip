@@ -14,7 +14,8 @@ from app.services.llm_service import LLMService
 
 
 @pytest.mark.asyncio
-async def test_analyse_forwards_schema_and_call_source(db_session: AsyncSession) -> None:
+async def test_analyse_forwards_schema_and_call_source() -> None:
+    session = AsyncMock(spec=AsyncSession)
     llm = AsyncMock(spec=LLMService)
     llm.chat_structured = AsyncMock(
         return_value={
@@ -29,7 +30,7 @@ async def test_analyse_forwards_schema_and_call_source(db_session: AsyncSession)
         project_id=None,
         user_id=uuid.uuid4(),
     )
-    agent = CodeDriftWorkOrderAgent(db_session, llm)  # type: ignore[arg-type]
+    agent = CodeDriftWorkOrderAgent(session, llm)  # type: ignore[arg-type]
     out = await agent.analyse(
         ctx,
         sw_name="Tasks",
