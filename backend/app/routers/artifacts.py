@@ -18,11 +18,11 @@ import structlog
 from app.database import get_db
 from app.deps import (
     ProjectAccess,
+    ensure_user_can_delete_artifact,
     ensure_user_can_reindex_artifact,
     get_project_access,
     get_project_access_artifact_download,
     require_project_member,
-    require_project_studio_admin,
     user_can_view_artifact_chunk_previews,
 )
 from app.exceptions import ApiError
@@ -221,7 +221,7 @@ async def delete_artifact(
     project_id: UUID,
     artifact_id: UUID,
     session: AsyncSession = Depends(get_db),
-    pa: ProjectAccess = Depends(require_project_studio_admin),
+    pa: ProjectAccess = Depends(require_project_member),
 ) -> Response:
     if pa.project.id != project_id:
         raise ApiError(
@@ -230,6 +230,8 @@ async def delete_artifact(
             message="Project not found.",
         )
     svc = ArtifactService(session)
+    art = await svc.get_in_project(project_id, artifact_id)
+    await ensure_user_can_delete_artifact(session, pa.studio_access.user, art)
     path = await svc.delete(
         project_id, artifact_id, actor_user_id=pa.studio_access.user.id
     )

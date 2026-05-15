@@ -650,7 +650,12 @@ async def ensure_user_can_delete_artifact(
     user: User,
     artifact: Artifact,
 ) -> None:
-    """Studio Owner on the owning studio (or Tool Admin) may delete or configure any artifact scope."""
+    """Delete permission by scope (FR §9.1 / §9.3):
+    - project:  Studio Builder or Owner (is_studio_editor); cross-studio External excluded
+    - studio:   Studio Owner only (is_studio_admin)
+    - software: Studio Owner only (is_studio_admin)
+    Tool Admin always permitted.
+    """
     if user.is_platform_admin:
         return
     scope = artifact.scope_level or "project"
@@ -662,11 +667,13 @@ async def ensure_user_can_delete_artifact(
                 message="Artifact not found.",
             )
         pa = await fetch_project_access(session, user, artifact.project_id)
-        if not pa.studio_access.is_studio_admin:
+        # FR §9.1: Builder OR Owner may delete project-scope artifacts.
+        # Cross-studio Externals are editors but must not delete home-studio artifacts.
+        if not pa.studio_access.is_studio_editor or pa.studio_access.cross_studio_grant is not None:
             raise ApiError(
                 status_code=403,
                 code="FORBIDDEN",
-                message="Studio Owner access required",
+                message="Studio Owner or Builder access required",
             )
         return
     if scope == "studio":
