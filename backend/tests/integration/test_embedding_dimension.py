@@ -50,6 +50,7 @@ async def test_embed_batch_stores_then_validates_dimension(
         *,
         usage_scope: object | None,
         enforce_platform_dimension: bool = True,
+        **kwargs: Any,
     ) -> list[list[float]]:
         dr = await self._get_dimension_row()
         dim = 3
@@ -73,6 +74,7 @@ async def test_embed_batch_stores_then_validates_dimension(
         *,
         usage_scope: object | None,
         enforce_platform_dimension: bool = True,
+        **kwargs: Any,
     ) -> list[list[float]]:
         dr = await self._get_dimension_row()
         emb = [0.0] * 5
@@ -137,6 +139,7 @@ async def test_connectivity_probe_skips_dimension_guard(
         *,
         usage_scope: object | None,
         enforce_platform_dimension: bool = True,
+        **kwargs: Any,
     ) -> list[list[float]]:
         assert enforce_platform_dimension is False
         return [[0.0] * 3072 for _ in inputs]

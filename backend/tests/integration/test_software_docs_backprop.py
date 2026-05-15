@@ -355,7 +355,17 @@ async def test_propose_draft_unauthenticated_401(
 
 
 @pytest.mark.asyncio
-async def test_propose_draft_invalid_path_422(client: AsyncClient) -> None:
+async def test_propose_draft_invalid_path_422(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    owner = await create_user(db_session, email=f"inv-{sfx}@example.com", password=_PW)
+    studio = await create_studio(db_session, name=f"INV{sfx}")
+    await add_studio_member(db_session, studio.id, owner.id, role="studio_admin")
+    sw = await create_software(db_session, studio.id, name="INVSW")
+    await db_session.commit()
+    await _login(client, owner.email)
     r = await client.post(
         "/software/not-a-uuid/docs/00000000-0000-0000-0000-000000000001/propose-draft",
     )

@@ -171,6 +171,10 @@ async def test_code_drift_member_can_run(
             return_value=[{"path": "a.py", "snippet": "z", "start_line": 1, "end_line": 2, "score": 0.1}]
         ),
     )
+    monkeypatch.setattr(
+        "app.services.code_drift_service.LLMService.ensure_openai_llm_ready",
+        AsyncMock(return_value=None),
+    )
 
     await _login(client, member.email)
     r = await client.post(f"/software/{sw.id}/codebase/code-drift/run")
@@ -260,6 +264,10 @@ async def test_code_drift_second_run_clears_only_drift_kinds_preserves_conflict(
             return_value=[{"path": "p.py", "snippet": "x", "start_line": 1, "end_line": 2, "score": 0.1}]
         ),
     )
+    monkeypatch.setattr(
+        "app.services.code_drift_service.LLMService.ensure_openai_llm_ready",
+        AsyncMock(return_value=None),
+    )
 
     await _login(client, owner.email)
     r1 = await client.post(f"/software/{sw.id}/codebase/code-drift/run")
@@ -293,6 +301,16 @@ async def test_code_drift_invalid_software_404(client: AsyncClient, db_session: 
 
 
 @pytest.mark.asyncio
-async def test_code_drift_malformed_software_id_422(client: AsyncClient) -> None:
+async def test_code_drift_malformed_software_id_422(
+    client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    sfx = uuid.uuid4().hex[:8]
+    owner = await create_user(db_session, email=f"cd-bad-{sfx}@example.com", password=_PW)
+    studio = await create_studio(db_session, name=f"CDBAD{sfx}")
+    await add_studio_member(db_session, studio.id, owner.id, role="studio_admin")
+    await create_software(db_session, studio.id, name="SwBad")
+    await db_session.commit()
+    await _login(client, owner.email)
     bad = await client.post("/software/not-a-uuid/codebase/code-drift/run")
     assert bad.status_code == 422
