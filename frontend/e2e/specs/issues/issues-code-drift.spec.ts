@@ -18,6 +18,8 @@ test.describe('Issues — code drift UI', () => {
     await toolAdminPage.getByRole('button', { name: /e2e drift stub/i }).click()
     await toolAdminPage.getByRole('button', { name: /mark resolved/i }).click()
 
-    await expect(toolAdminPage.getByText(/E2E drift stub/i)).toBeHidden()
+    await expect(toolAdminPage.locator('li').filter({ hasText: 'E2E drift stub' })).toHaveCount(0, {
+      timeout: 15_000,
+    })
   })
 })

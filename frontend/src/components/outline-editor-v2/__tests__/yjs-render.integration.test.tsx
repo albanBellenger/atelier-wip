@@ -37,7 +37,7 @@ vi.mock('../../editor/CrepeEditor', async () => {
         () => ({
           getEditorView: () => null,
           getMarkdown: () => props.defaultMarkdown ?? '',
-          replaceFullMarkdown: () => undefined,
+          replaceFullMarkdown: async () => undefined,
           applyPatch: () => ({ ok: false as const, reason: 'mock' }),
           animateAppendFromMarkdown: () => Promise.resolve(),
         }),

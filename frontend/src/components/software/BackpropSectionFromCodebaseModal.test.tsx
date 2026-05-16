@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -61,6 +61,45 @@ describe('BackpropSectionFromCodebaseModal', () => {
     await screen.findByText('X')
     await user.click(screen.getByRole('button', { name: /dismiss/i }))
     expect(onInsert).not.toHaveBeenCalled()
+  })
+
+  it('awaits async onInsert before dismiss cleanup runs', async () => {
+    const user = userEvent.setup()
+    let insertResolved = false
+    const onInsert = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          setTimeout(() => {
+            insertResolved = true
+            resolve()
+          }, 40)
+        }),
+    )
+    const onDismiss = vi.fn()
+    vi.spyOn(api, 'proposeSoftwareDocSectionDraft').mockResolvedValue({
+      markdown: '## Hello',
+      source_files: [],
+    })
+    render(
+      wrap(
+        <BackpropSectionFromCodebaseModal
+          softwareId="sw"
+          sectionId="sec"
+          currentMarkdown="old"
+          hasIndexedCodebase
+          isOpen
+          onDismiss={onDismiss}
+          onInsert={onInsert}
+        />,
+      ),
+    )
+    await user.click(screen.getByRole('button', { name: /generate draft/i }))
+    expect(await screen.findByText('Hello')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: /insert into editor/i }))
+    expect(onInsert).toHaveBeenCalledWith('## Hello')
+    expect(onDismiss).not.toHaveBeenCalled()
+    await waitFor(() => expect(insertResolved).toBe(true), { timeout: 2_000 })
+    await waitFor(() => expect(onDismiss).toHaveBeenCalled(), { timeout: 2_000 })
   })
 
   it('requests draft and calls onInsert', async () => {

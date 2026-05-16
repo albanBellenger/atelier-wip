@@ -1,5 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test'
 
+import { ROUTE } from '../../routePatterns'
+
 export class AdminBudgetsPage {
   private budgetPatchCount = 0
 
@@ -99,14 +101,19 @@ export class AdminBudgetsPage {
   }
 
   async beginStubAdminConsoleOverviewEmptyStudios(): Promise<void> {
-    await this.page.unroute('**/admin/console/overview')
-    await this.page.route('**/admin/console/overview', async (route) => {
+    await this.page.unroute(ROUTE.adminConsoleOverview)
+    await this.page.route(ROUTE.adminConsoleOverview, async (route) => {
       if (route.request().method() !== 'GET') {
+        await route.continue()
+        return
+      }
+      if (route.request().resourceType() === 'document') {
         await route.continue()
         return
       }
       await route.fulfill({
         status: 200,
+        headers: { 'Cache-Control': 'no-store' },
         contentType: 'application/json',
         body: JSON.stringify({
           studios: [],
@@ -119,6 +126,6 @@ export class AdminBudgetsPage {
   }
 
   async endStubAdminConsoleOverview(): Promise<void> {
-    await this.page.unroute('**/admin/console/overview')
+    await this.page.unroute(ROUTE.adminConsoleOverview)
   }
 }

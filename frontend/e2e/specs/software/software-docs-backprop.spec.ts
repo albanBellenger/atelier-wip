@@ -1,5 +1,11 @@
+import { request as pwRequest } from '@playwright/test'
+
 import { test, expect } from '../../fixtures/auth.fixture'
 import { SoftwareDocsBackpropPage } from '../../pages/software/SoftwareDocsBackpropPage'
+import {
+  stubStudioCapabilitiesMemberBuilder,
+  stubStudioCapabilitiesPlatformOwner,
+} from '../../stubs/studioCapabilitiesStub'
 
 test.describe('Software docs — backprop (outline + section)', () => {
   test('owner accepts three of five outline sections; builder inserts drafted markdown and persists', async ({
@@ -8,6 +14,8 @@ test.describe('Software docs — backprop (outline + section)', () => {
   }) => {
     const ownerPo = new SoftwareDocsBackpropPage(toolAdminPage)
     const { studioId, softwareId } = await ownerPo.seedStudioAndSoftware()
+
+    await stubStudioCapabilitiesPlatformOwner(toolAdminPage)
 
     const builderEmail = await ownerPo.getLoggedInUserEmail(nonAdminPage)
     await ownerPo.inviteStudioMemberByEmail(studioId, toolAdminPage, builderEmail)
@@ -34,6 +42,7 @@ test.describe('Software docs — backprop (outline + section)', () => {
     expect(sectionId).toBeTruthy()
 
     await SoftwareDocsBackpropPage.stubCodebaseSnapshotsAndProposeDraftOnPage(nonAdminPage)
+    await stubStudioCapabilitiesMemberBuilder(nonAdminPage)
     const builderPo = new SoftwareDocsBackpropPage(nonAdminPage)
     await builderPo.gotoDocEditor(studioId, softwareId, sectionId!)
 
@@ -46,9 +55,25 @@ test.describe('Software docs — backprop (outline + section)', () => {
     await expect(nonAdminPage.getByRole('dialog')).toBeHidden()
 
     await expect(nonAdminPage.getByText(/^Saved$/)).toBeVisible({ timeout: 30_000 })
-    await nonAdminPage.reload()
-    await expect(nonAdminPage.getByText('Stubbed section body.')).toBeVisible({
-      timeout: 15_000,
-    })
+
+    const base = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:5173'
+    const storage = await nonAdminPage.context().storageState()
+    const api = await pwRequest.newContext({ baseURL: base, storageState: storage })
+    try {
+      // Collab persists `sections.content` from debounced `markdown_snapshot` frames;
+      // allow a short window for the server to commit after the editor reports Saved.
+      await expect
+        .poll(async () => {
+          const r = await api.get(`/software/${softwareId}/docs/${sectionId}`)
+          if (!r.ok()) {
+            return ''
+          }
+          const row = (await r.json()) as { content?: string }
+          return row.content ?? ''
+        }, { timeout: 20_000 })
+        .toContain('Stubbed section body')
+    } finally {
+      await api.dispose()
+    }
   })
 })

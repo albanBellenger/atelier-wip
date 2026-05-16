@@ -1,5 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test'
 
+import { ROUTE } from '../../routePatterns'
+
 export class AdminOverviewPage {
   private readonly page: Page
 
@@ -94,14 +96,19 @@ export class AdminOverviewPage {
   }
 
   async beginStubAdminConsoleOverviewHttpError(status: number): Promise<void> {
-    await this.page.unroute('**/admin/console/overview')
-    await this.page.route('**/admin/console/overview', async (route) => {
+    await this.page.unroute(ROUTE.adminConsoleOverview)
+    await this.page.route(ROUTE.adminConsoleOverview, async (route) => {
       if (route.request().method() !== 'GET') {
+        await route.continue()
+        return
+      }
+      if (route.request().resourceType() === 'document') {
         await route.continue()
         return
       }
       await route.fulfill({
         status,
+        headers: { 'Cache-Control': 'no-store' },
         contentType: 'application/json',
         body: JSON.stringify({ detail: 'E2E stub overview failure' }),
       })
@@ -109,6 +116,6 @@ export class AdminOverviewPage {
   }
 
   async endStubAdminConsoleOverview(): Promise<void> {
-    await this.page.unroute('**/admin/console/overview')
+    await this.page.unroute(ROUTE.adminConsoleOverview)
   }
 }

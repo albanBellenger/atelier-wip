@@ -1,5 +1,6 @@
 import { test, expect } from '../../fixtures/auth.fixture'
 import { IssuesDocSyncPage } from '../../pages/issues/IssuesDocSyncPage'
+import { stubStudioCapabilitiesPlatformOwner } from '../../stubs/studioCapabilitiesStub'
 
 test.describe('Issues — doc sync apply navigation', () => {
   test('Apply opens software doc editor with docSyncIssue query (stubbed APIs)', async ({
@@ -11,7 +12,13 @@ test.describe('Issues — doc sync apply navigation', () => {
     const sectionId = '00000000-0000-4000-8000-00000000d502'
     const workOrderId = '00000000-0000-4000-8000-00000000d503'
 
+    await stubStudioCapabilitiesPlatformOwner(toolAdminPage)
+
     await toolAdminPage.route('**/projects/*/issues', async (route) => {
+      if (route.request().resourceType() === 'document') {
+        await route.continue()
+        return
+      }
       const url = route.request().url()
       if (!url.match(/\/projects\/[^/]+\/issues(\?|$)/)) {
         await route.continue()

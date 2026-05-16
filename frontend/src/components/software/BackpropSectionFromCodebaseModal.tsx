@@ -13,7 +13,7 @@ export interface BackpropSectionFromCodebaseModalProps {
   hasIndexedCodebase: boolean
   isOpen: boolean
   onDismiss: () => void
-  onInsert: (markdown: string) => void
+  onInsert: (markdown: string) => void | Promise<void>
 }
 
 export function BackpropSectionFromCodebaseModal(
@@ -64,8 +64,13 @@ export function BackpropSectionFromCodebaseModal(
     if (!markdown.trim()) {
       return
     }
-    onInsert(markdown)
-    handleDismiss()
+    void (async (): Promise<void> => {
+      try {
+        await Promise.resolve(onInsert(markdown))
+      } finally {
+        handleDismiss()
+      }
+    })()
   }, [handleDismiss, markdown, onInsert])
 
   if (!isOpen) {

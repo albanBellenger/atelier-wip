@@ -1,6 +1,8 @@
 import type { Page } from '@playwright/test'
 import { request } from '@playwright/test'
 
+import { ROUTE } from '../../routePatterns'
+
 /** Page object: Software tab=docs + backprop outline flow (network stubbed where noted). */
 export class SoftwareDocsBackpropPage {
   constructor(private readonly page: Page) {}
@@ -11,7 +13,7 @@ export class SoftwareDocsBackpropPage {
 
   /** Stubs ready snapshot + propose-outline (five sections). Leaves real GET/POST /software/{id}/docs to the API. */
   async stubReadySnapshotProposeOutlineFiveSections(): Promise<void> {
-    await this.page.route('**/codebase/snapshots', async (route) => {
+    await this.page.route(ROUTE.softwareCodebaseSnapshots, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -31,7 +33,7 @@ export class SoftwareDocsBackpropPage {
         ]),
       })
     })
-    await this.page.route('**/docs/propose-outline', async (route) => {
+    await this.page.route(ROUTE.softwareDocsProposeOutline, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -114,7 +116,7 @@ export class SoftwareDocsBackpropPage {
   }
 
   static async stubCodebaseSnapshotsAndProposeDraftOnPage(page: Page): Promise<void> {
-    await page.route('**/codebase/snapshots', async (route) => {
+    await page.route(ROUTE.softwareCodebaseSnapshots, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -134,7 +136,7 @@ export class SoftwareDocsBackpropPage {
         ]),
       })
     })
-    await page.route('**/propose-draft', async (route) => {
+    await page.route(ROUTE.softwareDocSectionProposeDraft, async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
