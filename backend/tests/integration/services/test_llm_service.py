@@ -1,4 +1,8 @@
-"""LLM client behavior via LiteLLM (timeouts / transport → ApiError)."""
+"""LLM client behavior via LiteLLM (timeouts / transport → ApiError).
+
+Pure ``serialize_outbound_chat_messages_for_debug`` tests live in
+``tests/unit/services/test_llm_outbound_serialize.py``.
+"""
 
 from __future__ import annotations
 
@@ -25,7 +29,7 @@ from app.models import LlmProviderRegistry, LlmRoutingRule
 from app.schemas.auth import AdminConnectivityResult
 from app.schemas.token_usage_scope import TokenUsageScope
 from app.security.field_encryption import encode_admin_stored_secret
-from app.services.llm_service import LLMService, serialize_outbound_chat_messages_for_debug
+from app.services.llm_service import LLMService
 
 _REQ = httpx.Request("POST", "https://example.test/v1/chat/completions")
 
@@ -917,48 +921,6 @@ async def test_llm_outbound_request_truncates_long_message_when_log_prompts_enab
     assert msgs[1]["content"] == "12345…[truncated]"
     assert msgs[0]["tokens"] == 1
     assert msgs[1]["tokens"] == 9
-
-
-def test_serialize_outbound_chat_messages_for_debug_truncates(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr("app.services.llm_service._MAX_LLM_LOG_MESSAGE_CHARS", 4)
-    out = serialize_outbound_chat_messages_for_debug(
-        [{"role": "user", "content": "abcdef"}]
-    )
-    assert out[0]["role"] == "user"
-    assert out[0]["content"] == "abcd…[truncated]"
-    assert "tokens" not in out[0]
-
-
-def test_serialize_outbound_chat_messages_for_debug_includes_tokens_when_model_set(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _patch_sum_content_token_counter(monkeypatch)
-    out = serialize_outbound_chat_messages_for_debug(
-        [
-            {"role": "system", "content": "aa"},
-            {"role": "user", "content": "bbb"},
-        ],
-        model="gpt-test",
-    )
-    assert out[0]["tokens"] == 2
-    assert out[1]["tokens"] == 3
-
-
-def test_serialize_outbound_omits_tokens_when_counter_raises(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def boom(**kwargs: Any) -> int:
-        raise RuntimeError("no tokenizer")
-
-    monkeypatch.setattr("app.services.llm_service.litellm_token_counter", boom)
-    out = serialize_outbound_chat_messages_for_debug(
-        [{"role": "user", "content": "x"}],
-        model="unknown/x",
-    )
-    assert out[0]["role"] == "user"
-    assert "tokens" not in out[0]
 
 
 @pytest.mark.asyncio
