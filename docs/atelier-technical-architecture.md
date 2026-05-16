@@ -1,5 +1,5 @@
 # Atelier — Technical Architecture
-_Version 2.3 — replaced LlamaIndex with LiteLLM in tech stack; corrected Knowledge Graph library label; documented Issues visibility by Viewer role; added codebase index feature section; added stale-draft notification job; added per-role token usage visibility; added emergency CLI reference_
+_Version 2.4 — v2.3 baseline; documented non-SPA ops routes (graph analyze-sections, codebase diagnostics, stale-draft job); aligned studio-creation docs with platform-admin `POST /admin/studios` vs legacy `POST /studios` (RBAC decision pending)._
 
 ---
 
@@ -536,6 +536,8 @@ Listing and read/unread updates use `NotificationService` (e.g. `/me/notificatio
 | `/admin/token-usage` | GET | Tool Admin | **Not registered** (default **404**; removed); use `GET /studios/{id}/token-usage` (studio admin) or `GET /me/token-usage` |
 | `/admin/users` | GET/POST | Tool Admin | User directory / create user (`require_platform_admin`) |
 | `/admin/users/{id}/admin-status` | PUT | Tool Admin | Set platform admin flag (`require_platform_admin`) |
+| `/admin/studios` | POST | Tool Admin | **Canonical studio creation** for the Admin Console SPA (`StudiosSection`); creates studio and assigns creator as Studio Owner (`require_platform_admin`) |
+| `/admin/jobs/stale-draft-notifications` | POST | Tool Admin | Manually trigger stale-unpublished draft notification sweep (no SPA caller; operators / automation only; equivalent to the optional daily loop when `ATELIER_STALE_DRAFT_NOTIFIER=1`) |
 
 **Emergency CLI recovery:** if all Tool Admin accounts are inaccessible, a sysadmin with shell access to the backend container can grant Tool Admin status (creating the user if needed) without touching the database directly:
 
@@ -551,7 +553,7 @@ Omitting `--password` generates a random 16-character password printed once. Def
 ### StudioService
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
-| `/studios` | POST | JWT | Create studio (creator becomes Studio Owner) |
+| `/studios` | POST | Tool Admin (`require_platform_admin`) | **Legacy duplicate** of `POST /admin/studios` — same handler semantics (platform admin only). The SPA and `api.ts` use **`POST /admin/studios`** only. **Do not remove this route without an RBAC/inventory pass:** confirm no MCP, scripts, or external clients rely on the `/studios` prefix; if unused, delete the handler; if still required, keep it explicitly documented as an alias. |
 | `/studios` | GET | JWT | List studios the user belongs to |
 | `/studios/{id}` | GET | Studio Builder | Studio detail |
 | `/studios/{id}` | PUT | Studio Owner | Update name, description, logo |
@@ -650,7 +652,7 @@ On status transition to `Done`:
 
 After a successful publish:
 
-1. Existing behaviour (write project files, run conflict/gap analysis, drift detection on work orders) is unchanged.
+1. Existing behaviour (write project files to git, notifications, activity) is unchanged. After the commit succeeds, `PublishService` runs **post-commit LLM analysis** on the same database session path: `ConflictAgent.run_conflict_analysis` and **`SectionRelationshipAgent.detect_section_relationships`** (implicit cross-section reference scan, same entrypoint as `POST /projects/{pid}/graph/analyze-sections`). Failures are logged and swallowed; they do **not** roll back the published commit.
 2. **NEW:** if the software has a `ready` codebase snapshot, schedule `CodeDriftService.run_for_software` as a background task with the publishing user as `run_actor_id`. The publish never blocks on this. Failure is logged and swallowed.
 3. **NEW:** publish Software Docs to `<repo_root>/docs/<section-slug>.md` and a generated `<repo_root>/docs/README.md` with the docs outline.
 
@@ -671,11 +673,12 @@ After a successful publish:
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
 | `/projects/{pid}/graph` | GET | Member/Viewer | Full graph data (nodes + edges) |
+| `/projects/{pid}/graph/analyze-sections` | POST | Studio Builder+ (`require_project_member`) | Runs **`SectionRelationshipAgent.detect_section_relationships`** (LLM scan for implicit cross-section references, persisted as `graph_edges`). **Not called from the SPA** — exposed for manual runs, automation, and tests. The same agent method runs automatically from **`PublishService`** after a successful publish (see PublishService). |
 
 Internal methods:
 - `add_edge(project_id, source_type, source_id, target_type, target_id, edge_type)` — called by other services when relationships are created
 - `remove_edges_for(node_type, node_id)` — called on deletion
-- `detect_section_relationships(project_id)` — LLM-based scan to find implicit cross-section references, called on publish
+- **`SectionRelationshipAgent.detect_section_relationships`** — LLM scan (not on `GraphService`); invoked from `PublishService` after publish and from `POST /projects/{pid}/graph/analyze-sections` above
 
 ### DriftService (internal)
 - `check_work_order_drift(work_order_id)` — called after every section save (debounced 5s)
@@ -814,7 +817,7 @@ Behaviour:
 | `/software/{sid}/codebase/reindex` | POST | Studio Builder+ (owning studio only; cross-studio externals denied) | Create a pending snapshot; index runs in background |
 | `/software/{sid}/codebase/snapshots` | GET | Studio Member / Viewer | List snapshots (most recent first) |
 | `/software/{sid}/codebase/snapshots/{snapid}` | GET | Studio Member / Viewer | Snapshot detail (file count, chunk count, status, error) |
-| `/software/{sid}/codebase/diagnostics` | GET | Tool Admin | `?q=` text → repo-map JSON + top vector hits against current ready snapshot |
+| `/software/{sid}/codebase/diagnostics` | GET | Tool Admin | `?q=` text → repo-map JSON + top vector hits against current ready snapshot. **No SPA caller** — tool-admin / ops / automation only (Slice 16c intentionally shipped without UI). |
 
 Internal methods:
 
@@ -927,8 +930,6 @@ frontend/src/
 │   │   └── ThreadPanel.tsx
 │   ├── home/
 │   │   └── BuilderHomeComposer.tsx # Studio dashboard — draft → navigate to software chat
-│   ├── outline/
-│   │   └── OutlineNav.tsx
 │   ├── work-orders/
 │   │   ├── KanbanBoard.tsx
 │   │   ├── WorkOrderCard.tsx
@@ -1690,7 +1691,7 @@ ENCRYPTION_KEY=changeme-32-byte-fernet-key
 #### Slice 16c — Codebase RAG + repo map
 - `CodebaseRagService.retrieve_chunks_for_text`
 - `codebase_repo_map.build_repo_map` (NetworkX, co-directory PageRank) + `repo_map_lru` cache
-- `/software/{sid}/codebase/diagnostics` (Tool Admin)
+- `/software/{sid}/codebase/diagnostics` (Tool Admin; **no SPA** — ops / automation)
 - No user-facing UI in this slice
 
 #### Slice 16d — Backprop agents
@@ -1754,11 +1755,12 @@ ENCRYPTION_KEY=changeme-32-byte-fernet-key
 | GET | `/admin/token-usage` | **Not registered** (default **404**; removed); use `/studios/{id}/token-usage` or `/me/token-usage` |
 | GET/POST | `/admin/users` | User directory / create |
 | PUT | `/admin/users/{id}/admin-status` | Platform admin toggle |
+| POST | `/admin/studios` | Tool Admin | Create studio (canonical for Admin Console SPA) |
 
 ### Studios
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| POST | `/studios` | JWT | Create studio |
+| POST | `/studios` | Tool Admin | **Legacy alias** — same as `POST /admin/studios` (platform admin only). SPA uses `/admin/studios` only. **RBAC owner decision:** remove this route if no non-SPA client needs the prefix; otherwise keep and treat as documented duplicate. |
 | GET | `/studios` | JWT | List my studios |
 | GET/PUT | `/studios/{id}` | Member/Admin | Detail / update |
 | GET/POST/DELETE | `/studios/{id}/members[/{uid}]` | Admin | Member management |
@@ -1825,6 +1827,7 @@ ENCRYPTION_KEY=changeme-32-byte-fernet-key
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | GET | `/projects/{pid}/graph` | Member/Viewer | Nodes + edges |
+| POST | `/projects/{pid}/graph/analyze-sections` | Studio Builder+ | `SectionRelationshipAgent` LLM scan (not SPA; publish + manual/automation). |
 
 ### Publish, Git & Issues
 | Method | Path | Auth | Description |
@@ -1854,7 +1857,7 @@ ENCRYPTION_KEY=changeme-32-byte-fernet-key
 | GET | `/me/notifications` | JWT | Paginated inbox (cursor-based) |
 | PATCH | `/me/notifications/{nid}` | JWT | Mark individual notification read/unread |
 | POST | `/me/notifications/mark-all-read` | JWT | Mark all as read |
-| POST | `/admin/jobs/stale-draft-notifications` | Tool Admin | Manually trigger the stale-draft notification sweep (equivalent to the daily job) |
+| POST | `/admin/jobs/stale-draft-notifications` | Tool Admin | Manually trigger the stale-draft notification sweep (equivalent to the daily job). **No SPA caller** — operators / automation / CI only. |
 
 **Stale-draft notification job** — the `draft_unpublished` kind is written by a background job (`draft_unpublished_notification_job`), not by `NotificationDispatchService`. Enable the daily sweep at application startup with `ATELIER_STALE_DRAFT_NOTIFIER=1`. Platform administrators can trigger it on demand via `POST /admin/jobs/stale-draft-notifications`.
 
@@ -1898,7 +1901,7 @@ Atelier is built test-first. Every service, route, and component has tests writt
 | POST | `/software/{sid}/codebase/reindex` | Studio Builder+ (owning studio) | Trigger snapshot |
 | GET | `/software/{sid}/codebase/snapshots` | Studio Member / Viewer | List snapshots |
 | GET | `/software/{sid}/codebase/snapshots/{snapid}` | Studio Member / Viewer | Snapshot detail |
-| GET | `/software/{sid}/codebase/diagnostics` | Tool Admin | Repo map + vector hits for `?q=` |
+| GET | `/software/{sid}/codebase/diagnostics` | Tool Admin | Repo map + vector hits for `?q=` (no SPA; ops / automation). |
 
 ### Backprop
 

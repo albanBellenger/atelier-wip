@@ -152,7 +152,7 @@ describe('request — shape', () => {
         })
       }),
     )
-    await api.createStudio({ name: 'X' })
+    await api.postAdminStudio({ name: 'X' })
     expect(captured).not.toBeNull()
     expect(captured!.method).toBe('POST')
     expect(captured!.headers.get('Content-Type')).toBe('application/json')
