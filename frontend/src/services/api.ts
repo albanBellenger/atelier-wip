@@ -961,11 +961,6 @@ export async function listStudios(): Promise<StudioListItem[]> {
   return request<StudioListItem[]>('GET', '/studios')
 }
 
-/** @deprecated Use ``postAdminStudio`` — studio creation is platform-admin only. */
-export async function createStudio(body: StudioCreateBody): Promise<Studio> {
-  return postAdminStudio(body)
-}
-
 /** Platform admin — create studio (admin console). */
 export async function postAdminStudio(body: StudioCreateBody): Promise<Studio> {
   return request<Studio>('POST', '/admin/studios', body)

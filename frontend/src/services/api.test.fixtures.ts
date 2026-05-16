@@ -663,7 +663,7 @@ export async function invokeThinApiCoverage(api: typeof import('./api')): Promis
   await api.downloadStudioTokenUsageCsv('st1')
   await api.postStudioCrossStudioRequest('st1', { target_software_id: 'sw1' })
   await api.listStudios()
-  await api.createStudio({ name: 'S' })
+  await api.postAdminStudio({ name: 'S' })
   await api.getStudio('st1')
   await api.getStudioCapabilities('st1')
   await api.getStudioCapabilities('st1', 'sw1')
