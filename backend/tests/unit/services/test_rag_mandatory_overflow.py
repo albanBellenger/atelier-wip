@@ -1,6 +1,4 @@
-"""Unit tests for RAG chunk ordering and mandatory overflow (Slice 6)."""
-
-import pytest
+"""Pure RAG ordering / overflow helpers (no database)."""
 
 from app.services.rag_service import (
     _mandatory_blocks_and_current_overflow,

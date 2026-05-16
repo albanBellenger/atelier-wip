@@ -1,4 +1,7 @@
-"""Integration tests for RAG context assembly (pgvector + real AsyncSession)."""
+"""RAGService DB-backed context assembly (Slice 6).
+
+Pure ranking / overflow helpers live in ``tests/unit/services/test_rag_mandatory_overflow.py``.
+"""
 
 import uuid
 
@@ -147,7 +150,6 @@ async def test_rag_includes_software_library_artifact_chunks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Software-scoped library rows have project_id NULL but must appear in RAG."""
-
     async def ready(_self: object, _studio_id: object) -> tuple[str, str, str, str]:
         return ("text-embedding-3-small", "sk-fake", "openai", "http://embed.example")
 
@@ -211,7 +213,6 @@ async def test_rag_omits_software_excluded_library_chunks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Software-scope exclusion must hide software-library chunks from retrieval."""
-
     async def ready(_self: object, _studio_id: object) -> tuple[str, str, str, str]:
         return ("text-embedding-3-small", "sk-fake", "openai", "http://embed.example")
 
@@ -282,7 +283,6 @@ async def test_rag_omits_project_excluded_artifact_chunks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Project-scope exclusion must hide that project's artifact chunks from retrieval."""
-
     async def ready(_self: object, _studio_id: object) -> tuple[str, str, str, str]:
         return ("text-embedding-3-small", "sk-fake", "openai", "http://embed.example")
 
