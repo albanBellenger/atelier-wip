@@ -32,7 +32,7 @@ function mkEditorRef(): RefObject<CrepeEditorApi | null> {
     current: {
       getEditorView: () => null,
       getMarkdown: () => '',
-      replaceFullMarkdown: () => {},
+      replaceFullMarkdown: async () => {},
       applyPatch: () => ({ ok: false, reason: 'noop' }),
       animateAppendFromMarkdown: () => Promise.resolve(),
     },
@@ -128,7 +128,7 @@ describe('CopilotPanel', () => {
       current: {
         getEditorView: () => null,
         getMarkdown: () => 'section-md',
-        replaceFullMarkdown: () => {},
+        replaceFullMarkdown: async () => {},
         applyPatch: () => ({ ok: false, reason: 'noop' }),
         animateAppendFromMarkdown: () => Promise.resolve(),
       },
@@ -184,7 +184,7 @@ describe('CopilotPanel', () => {
       current: {
         getEditorView: () => null,
         getMarkdown: () => 'x',
-        replaceFullMarkdown: () => {},
+        replaceFullMarkdown: async () => {},
         applyPatch: () => ({ ok: false, reason: 'noop' }),
         animateAppendFromMarkdown: () => Promise.resolve(),
       },

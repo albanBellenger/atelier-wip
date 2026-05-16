@@ -66,9 +66,9 @@ test.describe('Admin console — overview', () => {
     try {
       const console_ = new AdminConsolePage(toolAdminPage)
       await console_.goto('overview')
-      await console_.expectSideNavVisible()
       await overview.expectHeadingVisible()
       await overview.expectOverviewMetricsErrorVisible()
+      await console_.expectSideNavVisible()
     } finally {
       await overview.endStubAdminConsoleOverview()
     }

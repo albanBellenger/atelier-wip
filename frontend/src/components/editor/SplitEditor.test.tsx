@@ -16,7 +16,7 @@ vi.mock('./CrepeEditor', () => ({
     React.useImperativeHandle(ref, () => ({
       getMarkdown: () => '',
       getEditorView: () => null,
-      replaceFullMarkdown: vi.fn(),
+      replaceFullMarkdown: vi.fn().mockResolvedValue(undefined),
       applyPatch: () => ({ ok: false, reason: 'mock' }),
       animateAppendFromMarkdown: () => Promise.resolve(),
     }))

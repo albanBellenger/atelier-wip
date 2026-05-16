@@ -34,7 +34,7 @@ function mkSectionEditorApiRef(
     current: {
       getEditorView: () => null,
       getMarkdown: () => '',
-      replaceFullMarkdown: () => {},
+      replaceFullMarkdown: async () => {},
       applyPatch: () => ({ ok: false, reason: 'noop' }),
       animateAppendFromMarkdown: () => Promise.resolve(),
       ...overrides,

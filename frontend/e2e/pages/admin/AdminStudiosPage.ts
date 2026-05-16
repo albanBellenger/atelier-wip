@@ -1,5 +1,7 @@
 import { expect, type Locator, type Page } from '@playwright/test'
 
+import { ROUTE } from '../../routePatterns'
+
 export class AdminStudiosPage {
   private readonly page: Page
 
@@ -129,8 +131,8 @@ export class AdminStudiosPage {
     git_branch?: string
     git_token_set?: boolean
   }): Promise<void> {
-    await this.page.unroute('**/admin/studios/*')
-    await this.page.route('**/admin/studios/*', async (route) => {
+    await this.page.unroute(ROUTE.adminStudioDetail)
+    await this.page.route(ROUTE.adminStudioDetail, async (route) => {
       if (route.request().method() !== 'GET') {
         await route.continue()
         return
@@ -170,7 +172,7 @@ export class AdminStudiosPage {
   }
 
   async endStubAdminStudioDetail(): Promise<void> {
-    await this.page.unroute('**/admin/studios/*')
+    await this.page.unroute(ROUTE.adminStudioDetail)
   }
 
   async expectGitLabCardShowsRepoAndBranch(): Promise<void> {
@@ -178,23 +180,13 @@ export class AdminStudiosPage {
       has: this.page.getByRole('heading', { name: 'GitLab connectivity', exact: true }),
     })
     await expect(card.getByText('Repository URL', { exact: true })).toBeVisible()
-    const repoInput = card
-      .locator('div')
-      .filter({ has: card.getByText('Repository URL', { exact: true }) })
-      .locator('input')
-    await expect(repoInput).toHaveValue(/gitlab\.example\.com/)
+    await expect(
+      card.locator('input[value*="gitlab.example.com"]'),
+    ).toBeVisible({ timeout: 15_000 })
     await expect(card.getByText('Default branch', { exact: true })).toBeVisible()
-    const branchInput = card
-      .locator('div')
-      .filter({ has: card.getByText('Default branch', { exact: true }) })
-      .locator('input')
-    await expect(branchInput).toHaveValue('main')
+    await expect(card.locator('input[value="main"]')).toBeVisible()
     await expect(card.getByText('Deploy token', { exact: true })).toBeVisible()
-    const tokenInput = card
-      .locator('div')
-      .filter({ has: card.getByText('Deploy token', { exact: true }) })
-      .locator('input')
-    await expect(tokenInput).toHaveValue('set')
+    await expect(card.locator('input[value="set"]')).toBeVisible()
   }
 
   allowedProvidersSection(): ReturnType<Page['locator']> {

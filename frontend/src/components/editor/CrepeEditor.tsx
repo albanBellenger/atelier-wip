@@ -24,6 +24,7 @@ import type { YjsCollab } from '../../hooks/useYjsCollab'
 import type { SectionPatchOverlayState } from '../../lib/sectionPatchOverlay'
 import {
   applyPatchToEditor,
+  replaceDocFromMarkdown,
   type PatchAnchor,
   type PatchProposalMeta,
 } from '../../lib/sectionPatchApply'
@@ -65,7 +66,7 @@ interface CrepeBlockEditMenuApi {
 export interface CrepeEditorApi {
   getEditorView: () => EditorView | null
   getMarkdown: () => string
-  replaceFullMarkdown: (markdown: string) => void
+  replaceFullMarkdown: (markdown: string) => Promise<void>
   applyPatch: (
     proposal: PatchProposalMeta,
     anchor: PatchAnchor,
@@ -139,6 +140,8 @@ const CrepeEditorInner = forwardRef<CrepeEditorApi, CrepeEditorProps>(
     readOnlyRef.current = readOnly
     const collabRef = useRef<YjsCollab | null>(collab)
     collabRef.current = collab
+    /** Set from the mount effect so imperative `replaceFullMarkdown` can flush REST snapshots. */
+    const flushCollabSnapshotRef = useRef<(() => void) | null>(null)
     const cancelAnimateRef = useRef<(() => void) | null>(null)
     const copilotCallbacksRef = useRef<CrepeCopilotMenuCallbacks>({})
     copilotCallbacksRef.current = {
@@ -189,16 +192,27 @@ const CrepeEditorInner = forwardRef<CrepeEditorApi, CrepeEditorProps>(
             }
           }
         },
-        replaceFullMarkdown: (markdown: string): void => {
+        replaceFullMarkdown: async (markdown: string): Promise<void> => {
           const c = crepeRef.current
           if (!c) {
             return
           }
           lastMarkdownRef.current = markdown
-          void c.editor.action((ctx) => {
-            const svc = ctx.get(collabServiceCtx)
-            svc.applyTemplate(markdown, () => true)
+          // Do not `await ctx.wait(CollabReady)` here: in some environments the clock can
+          // time out while the editor is still usable; full-doc replace still dispatches.
+          c.editor.action((ctx) => {
+            const view = ctx.get(editorViewCtx)
+            const parser = ctx.get(parserCtx)
+            const serializer = ctx.get(serializerCtx)
+            replaceDocFromMarkdown(view, parser, markdown)
+            lastMarkdownRef.current = serializer(view.state.doc)
           })
+          window.setTimeout(() => {
+            flushCollabSnapshotRef.current?.()
+          }, 50)
+          window.setTimeout(() => {
+            flushCollabSnapshotRef.current?.()
+          }, 400)
         },
         applyPatch: (
           proposal: PatchProposalMeta,
@@ -301,6 +315,8 @@ const CrepeEditorInner = forwardRef<CrepeEditorApi, CrepeEditorProps>(
         }
         collab.sendMarkdownSnapshot(markdown)
       }
+
+      flushCollabSnapshotRef.current = flushMarkdownSnapshotToCollab
 
       const onBeforeUnload = (): void => {
         flushMarkdownSnapshotToCollab()
@@ -423,6 +439,7 @@ const CrepeEditorInner = forwardRef<CrepeEditorApi, CrepeEditorProps>(
         cancelled = true
         window.removeEventListener('beforeunload', onBeforeUnload)
         flushMarkdownSnapshotToCollab()
+        flushCollabSnapshotRef.current = null
         cancelAnimateRef.current?.()
         cancelAnimateRef.current = null
         const c = crepeRef.current

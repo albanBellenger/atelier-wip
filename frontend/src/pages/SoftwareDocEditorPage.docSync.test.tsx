@@ -11,7 +11,7 @@ import * as api from '../services/api'
 import { SoftwareDocEditorPage } from './SoftwareDocEditorPage'
 
 const docSyncEditorMocks = vi.hoisted(() => ({
-  replaceFullMarkdownSpy: vi.fn((_: string) => undefined),
+  replaceFullMarkdownSpy: vi.fn(async (_: string) => undefined),
 }))
 
 /** Mirrors production: collab is null until Yjs connects after the editor can mount. */
@@ -33,8 +33,8 @@ vi.mock('../components/editor/SplitEditor', async () => {
         const api: CrepeEditorApi = {
           getEditorView: () => null,
           getMarkdown: () => props.defaultMarkdown,
-          replaceFullMarkdown: (md: string) => {
-            docSyncEditorMocks.replaceFullMarkdownSpy(md)
+          replaceFullMarkdown: async (md: string) => {
+            await docSyncEditorMocks.replaceFullMarkdownSpy(md)
           },
           applyPatch: () => ({ ok: false, reason: 'mock' }),
           animateAppendFromMarkdown: async () => {},

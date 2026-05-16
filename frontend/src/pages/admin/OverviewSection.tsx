@@ -15,6 +15,16 @@ import {
 import { adminConsolePath, type AdminConsoleSection } from '../../lib/adminConsoleNav'
 import { getAdminConsoleOverview } from '../../services/api'
 
+function formatOverviewMetricsErr(error: unknown, failureReason: unknown): string {
+  if (failureReason instanceof Error) return failureReason.message
+  if (error instanceof Error) return error.message
+  if (error && typeof error === 'object' && 'detail' in error) {
+    const d = (error as { detail: unknown }).detail
+    if (typeof d === 'string') return d
+  }
+  return 'request failed'
+}
+
 export function OverviewSection(): ReactElement {
   const navigate = useNavigate()
   const go = (s: AdminConsoleSection): void => {
@@ -28,6 +38,10 @@ export function OverviewSection(): ReactElement {
   })
 
   const live = overviewQ.isSuccess ? overviewQ.data : undefined
+  const overviewMetricsFailed =
+    overviewQ.isError ||
+    overviewQ.error != null ||
+    (overviewQ.failureReason != null && overviewQ.fetchStatus === 'idle')
 
   const mtdTotal = live
     ? live.studios.reduce((s, r) => s + Number.parseFloat(r.mtd_spend_usd || '0'), 0)
@@ -76,11 +90,11 @@ export function OverviewSection(): ReactElement {
         subtitle="At-a-glance health: studios, spend, and embedding coverage."
       />
 
-      {overviewQ.error != null ? (
+      {overviewMetricsFailed ? (
         <p className="text-[12px] text-amber-300/90">
           Could not load overview metrics. KPIs show zeros until a successful load.{' '}
           <span className="font-mono text-zinc-500">
-            {(overviewQ.error as Error)?.message ?? 'request failed'}
+            {formatOverviewMetricsErr(overviewQ.error, overviewQ.failureReason)}
           </span>
         </p>
       ) : null}

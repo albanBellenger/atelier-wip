@@ -1,6 +1,9 @@
 import type { Page } from '@playwright/test'
 import { request } from '@playwright/test'
 
+import { ROUTE } from '../../routePatterns'
+import { stubStudioCapabilitiesPlatformOwner } from '../../stubs/studioCapabilitiesStub'
+
 /** Issues page + code drift run (network partially stubbed). */
 export class IssuesCodeDriftPage {
   constructor(private readonly page: Page) {}
@@ -60,9 +63,14 @@ export class IssuesCodeDriftPage {
    * one open drift issue after the first GET (simulates refetch after run).
    */
   async stubSnapshotsDriftRunAndIssuesList(issueId: string, softwareId: string): Promise<void> {
+    await stubStudioCapabilitiesPlatformOwner(this.page)
     let sawDriftRun = false
     let sawResolve = false
-    await this.page.route('**/codebase/snapshots', async (route) => {
+    await this.page.route(ROUTE.softwareCodebaseSnapshots, async (route) => {
+      if (route.request().resourceType() === 'document') {
+        await route.continue()
+        return
+      }
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -83,6 +91,10 @@ export class IssuesCodeDriftPage {
       })
     })
     await this.page.route('**/codebase/code-drift/run', async (route) => {
+      if (route.request().resourceType() === 'document') {
+        await route.continue()
+        return
+      }
       sawDriftRun = true
       await route.fulfill({
         status: 200,
@@ -97,6 +109,10 @@ export class IssuesCodeDriftPage {
       })
     })
     await this.page.route('**/projects/*/issues', async (route) => {
+      if (route.request().resourceType() === 'document') {
+        await route.continue()
+        return
+      }
       const url = route.request().url()
       if (!url.match(/\/projects\/[^/]+\/issues(\?|$)/)) {
         await route.continue()
@@ -133,6 +149,10 @@ export class IssuesCodeDriftPage {
       })
     })
     await this.page.route('**/projects/*/issues/*', async (route) => {
+      if (route.request().resourceType() === 'document') {
+        await route.continue()
+        return
+      }
       if (route.request().method() !== 'PUT') {
         await route.continue()
         return

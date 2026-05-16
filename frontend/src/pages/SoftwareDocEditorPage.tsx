@@ -152,12 +152,12 @@ export function SoftwareDocEditorPage(): ReactElement {
 
   const editorApiRef = useRef<CrepeEditorApi | null>(null)
 
-  const applyBackpropDraft = useCallback((md: string) => {
-    try {
-      editorApiRef.current?.replaceFullMarkdown(md)
-    } finally {
-      setBackpropOpen(false)
+  const applyBackpropDraft = useCallback((md: string): Promise<void> => {
+    const api = editorApiRef.current
+    if (!api) {
+      return Promise.resolve()
     }
+    return api.replaceFullMarkdown(md)
   }, [])
 
   const docSyncPayload = useMemo(
