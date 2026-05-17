@@ -31,11 +31,8 @@ import {
 import { startAnimateAppendMarkdown } from '../../lib/sectionStreamApply'
 import { AiComposerPrefillProvider } from './aiComposerPrefillContext'
 import { setCrepeBlockHandleAddMenuSession } from './crepeBlockAddMenuScope'
-import {
-  crepeBlockEditBuildMenu,
-  crepeToolbarBuildToolbar,
-  type CrepeCopilotMenuCallbacks,
-} from './crepeCopilotMenus'
+import { crepeBlockEditBuildMenu, type CrepeCopilotMenuCallbacks } from './crepeCopilotMenus'
+import { crepeToolbarBuildAtelier } from './crepeToolbarAtelier'
 import {
   createIssueGutterMilkdownPlugin,
   dispatchIssueGutterRefresh,
@@ -284,7 +281,7 @@ const CrepeEditorInner = forwardRef<CrepeEditorApi, CrepeEditorProps>(
               [CrepeFeature.Toolbar]: {
                 // First bubble appearance is delayed via `patches/@milkdown+crepe+7.21.0.patch`
                 // (Milkdown’s TooltipProvider uses a leading throttle, so a high `debounce` alone does not help).
-                buildToolbar: crepeToolbarBuildToolbar(() => copilotCallbacksRef.current),
+                buildToolbar: crepeToolbarBuildAtelier(() => copilotCallbacksRef.current),
               },
               [CrepeFeature.Placeholder]: {
                 text: EMPTY_SECTION_EDITOR_PLACEHOLDER,
